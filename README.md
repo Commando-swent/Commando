@@ -42,3 +42,7 @@ The camera will allow requesters to send photos of specific products and shopper
 Previously loaded trips, active requests, product lists, and order details will remain accessible offline.
 
 Actions performed without connectivity will be marked as pending and synchronized once the device reconnects.
+
+## Figma
+
+The application's mockups and wireframes are available on [Figma](https://www.figma.com/design/WPmz3r0efh7jF2BQmUTfRt/Command-o-%E2%80%93-App-Mockups?node-id=0-1&t=NffdyAdRoARsGMDX-1).

@@ -95,7 +95,7 @@ android {
 
 sonar {
     properties {
-        property("sonar.projectKey", "swent-project_Commando")
+        property("sonar.projectKey", "Commando-project_Commando")
         property("sonar.projectName", "Commando")
         property("sonar.organization", "commando-swent")
         property("sonar.host.url", "https://sonarcloud.io")

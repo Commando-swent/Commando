@@ -1,7 +1,8 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.androidApplication)
-    alias(libs.plugins.jetbrainsKotlinAndroid)
+    alias(libs.plugins.kotlinCompose)
     alias(libs.plugins.ktfmt)
     alias(libs.plugins.sonar)
     id("jacoco")
@@ -10,7 +11,7 @@ plugins {
 
 android {
     namespace = "com.android.sample"
-    compileSdk = 34
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.android.sample"
@@ -20,9 +21,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
-        }
+        vectorDrawables { useSupportLibrary = true }
     }
 
     buildTypes {
@@ -30,7 +29,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
 
@@ -40,25 +39,13 @@ android {
         }
     }
 
-    testCoverage {
-        jacocoVersion = "0.8.11"
-    }
+    testCoverage { jacocoVersion = "0.8.11" }
 
-    buildFeatures {
-        compose = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
-    }
+    buildFeatures { compose = true }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
     }
 
     packaging {
@@ -74,37 +61,57 @@ android {
         }
     }
 
-    // Robolectric needs to be run only in debug. But its tests are placed in the shared source set (test)
+    // Robolectric needs to be run only in debug. But its tests are placed in the shared source set
+    // (test)
     // The next lines transfers the src/test/* from shared to the testDebug one
     //
     // This prevent errors from occurring during unit tests
     sourceSets.getByName("testDebug") {
         val test = sourceSets.getByName("test")
 
-        java.setSrcDirs(test.java.srcDirs)
-        res.setSrcDirs(test.res.srcDirs)
-        resources.setSrcDirs(test.resources.srcDirs)
+        java.directories.clear()
+        java.directories.addAll(test.java.directories)
+        res.directories.clear()
+        res.directories.addAll(test.res.directories)
+        resources.directories.clear()
+        resources.directories.addAll(test.resources.directories)
     }
 
     sourceSets.getByName("test") {
-        java.setSrcDirs(emptyList<File>())
-        res.setSrcDirs(emptyList<File>())
-        resources.setSrcDirs(emptyList<File>())
+        java.directories.clear()
+        res.directories.clear()
+        resources.directories.clear()
+    }
+}
+
+// With AGP 9+ the JVM target is set outside the Android block.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
 sonar {
     properties {
-        property("sonar.projectKey", "swent-project_Commando")
+        property("sonar.projectKey", "Commando-project_Commando")
         property("sonar.projectName", "Commando")
         property("sonar.organization", "commando-swent")
         property("sonar.host.url", "https://sonarcloud.io")
-        // Comma-separated paths to the various directories containing the *.xml JUnit report files. Each path may be absolute or relative to the project base directory.
-        property("sonar.junit.reportPaths", "${project.layout.buildDirectory.get()}/test-results/testDebugunitTest/")
-        // Paths to xml files with Android Lint issues. If the main flavor is changed, this file will have to be changed too.
-        property("sonar.androidLint.reportPaths", "${project.layout.buildDirectory.get()}/reports/lint-results-debug.xml")
-        // Paths to JaCoCo XML coverage report files.
-        property("sonar.coverage.jacoco.xmlReportPaths", "${project.layout.buildDirectory.get()}/reports/jacoco/jacocoTestReport/jacocoTestReport.xml")
+
+        property(
+            "sonar.junit.reportPaths",
+            "${project.layout.buildDirectory.get()}/test-results/testDebugunitTest/",
+        )
+
+        property(
+            "sonar.androidLint.reportPaths",
+            "${project.layout.buildDirectory.get()}/reports/lint-results-debug.xml",
+        )
+
+        property(
+            "sonar.coverage.jacoco.xmlReportPaths",
+            "${project.layout.buildDirectory.get()}/reports/jacoco/jacocoTestReport/jacocoTestReport.xml",
+        )
     }
 }
 
@@ -123,6 +130,7 @@ dependencies {
     testImplementation(libs.junit)
     globalTestImplementation(libs.androidx.junit)
     globalTestImplementation(libs.androidx.espresso.core)
+
     // Firebase
     implementation(platform("com.google.firebase:firebase-bom:33.8.0"))
     implementation("com.google.firebase:firebase-auth")
@@ -135,15 +143,20 @@ dependencies {
 
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.graphics)
+
     // Material Design 3
     implementation(libs.compose.material3)
+
     // Integration with activities
     implementation(libs.compose.activity)
+
     // Integration with ViewModels
     implementation(libs.compose.viewmodel)
+
     // Android Studio Preview support
     implementation(libs.compose.preview)
     debugImplementation(libs.compose.tooling)
+
     // UI Tests
     globalTestImplementation(libs.compose.test.junit)
     debugImplementation(libs.compose.test.manifest)
@@ -152,7 +165,7 @@ dependencies {
     globalTestImplementation(libs.kaspresso)
     globalTestImplementation(libs.kaspresso.compose)
 
-    // ----------       Robolectric     ------------
+    // ---------- Robolectric ----------
     testImplementation(libs.robolectric)
 }
 
@@ -172,24 +185,28 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
         html.required = true
     }
 
-    val fileFilter = listOf(
-        "**/R.class",
-        "**/R$*.class",
-        "**/BuildConfig.*",
-        "**/Manifest*.*",
-        "**/*Test*.*",
-        "android/**/*.*",
-    )
+    val fileFilter =
+        listOf(
+            "**/R.class",
+            "**/R$*.class",
+            "**/BuildConfig.*",
+            "**/Manifest*.*",
+            "**/*Test*.*",
+            "android/**/*.*",
+        )
 
-    val debugTree = fileTree("${project.layout.buildDirectory.get()}/tmp/kotlin-classes/debug") {
-        exclude(fileFilter)
-    }
+    val debugTree =
+        fileTree("${project.layout.buildDirectory.get()}/tmp/kotlin-classes/debug") {
+            exclude(fileFilter)
+        }
 
     val mainSrc = "${project.layout.projectDirectory}/src/main/java"
     sourceDirectories.setFrom(files(mainSrc))
     classDirectories.setFrom(files(debugTree))
-    executionData.setFrom(fileTree(project.layout.buildDirectory.get()) {
-        include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
-        include("outputs/code_coverage/debugAndroidTest/connected/*/coverage.ec")
-    })
+    executionData.setFrom(
+        fileTree(project.layout.buildDirectory.get()) {
+            include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+            include("outputs/code_coverage/debugAndroidTest/connected/*/coverage.ec")
+        }
+    )
 }

@@ -188,11 +188,11 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
       )
 
   val debugTree =
-    fileTree(
-      "${project.layout.buildDirectory.get()}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes"
-    ) {
-      exclude(fileFilter)
-    }
+      fileTree(
+          "${project.layout.buildDirectory.get()}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes"
+      ) {
+        exclude(fileFilter)
+      }
 
   val mainSrc = "${project.layout.projectDirectory}/src/main/java"
   sourceDirectories.setFrom(files(mainSrc))

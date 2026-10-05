@@ -5,9 +5,7 @@ import com.android.sample.model.NewTrip
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import java.time.Instant
-import kotlin.coroutines.Continuation
-import kotlin.coroutines.EmptyCoroutineContext
-import kotlin.coroutines.startCoroutine
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -20,7 +18,7 @@ class FakeTripRepositoryTest {
   private val handoff = Location(name = "EPFL", latitude = 46.5188, longitude = 6.5665)
 
   @Test
-  fun publishTrip_withValidData_createsAndStoresTrip() = runSuspend {
+  fun publishTrip_withValidData_createsAndStoresTrip() = runTest {
     val repository = createRepository()
     val newTrip = newTripAt(currentTime.plusSeconds(3_600))
 
@@ -40,7 +38,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun publishTrip_twice_generatesDifferentIds() = runSuspend {
+  fun publishTrip_twice_generatesDifferentIds() = runTest {
     val repository = createRepository()
 
     val first = repository.publishTrip(newTripAt(currentTime.plusSeconds(3_600))).successData()
@@ -50,7 +48,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun publishTrip_withBlankNameInEitherLocation_returnsInvalidData() = runSuspend {
+  fun publishTrip_withBlankNameInEitherLocation_returnsInvalidDataWithoutStoringTrips() = runTest {
     val repository = createRepository()
     val validTrip = newTripAt(currentTime.plusSeconds(3_600))
     val invalidTrips =
@@ -65,10 +63,12 @@ class FakeTripRepositoryTest {
           repository.publishTrip(invalidTrip),
       )
     }
+
+    assertEquals(TripResult.Success(emptyList<Trip>()), repository.getMyTrips())
   }
 
   @Test
-  fun publishTrip_withOutOfRangeCoordinateInEitherLocation_returnsInvalidData() = runSuspend {
+  fun publishTrip_withOutOfRangeCoordinateInEitherLocation_returnsInvalidData() = runTest {
     val repository = createRepository()
     val invalidLocations =
         listOf(
@@ -96,7 +96,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun publishTrip_withBoundaryCoordinatesInEitherLocation_succeeds() = runSuspend {
+  fun publishTrip_withBoundaryCoordinatesInEitherLocation_succeeds() = runTest {
     val repository = createRepository()
     val boundaryLocations =
         listOf(
@@ -117,7 +117,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun publishTrip_withNonFiniteCoordinateInEitherLocation_returnsInvalidData() = runSuspend {
+  fun publishTrip_withNonFiniteCoordinateInEitherLocation_returnsInvalidData() = runTest {
     val repository = createRepository()
     val nonFiniteValues = listOf(Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY)
 
@@ -141,7 +141,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun publishTrip_atScheduleBoundary_acceptsOnlyTimesAfterNow() = runSuspend {
+  fun publishTrip_atScheduleBoundary_acceptsOnlyTimesAfterNow() = runTest {
     val repository = createRepository()
 
     listOf(currentTime.minusSeconds(1), currentTime).forEach { scheduledAt ->
@@ -155,7 +155,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun publishTrip_readsClockOnceAndUsesThatInstantForBothTimestamps() = runSuspend {
+  fun publishTrip_readsClockOnceAndUsesThatInstantForBothTimestamps() = runTest {
     var clockReads = 0
     val repository =
         FakeTripRepository(
@@ -175,7 +175,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getTripById_withExistingId_returnsTrip() = runSuspend {
+  fun getTripById_withExistingId_returnsTrip() = runTest {
     val existingTrip = trip(id = "existing", scheduledAt = currentTime.plusSeconds(3_600))
     val repository = createRepository(initialTrips = listOf(existingTrip))
 
@@ -183,7 +183,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getTripById_withMissingId_returnsNotFound() = runSuspend {
+  fun getTripById_withMissingId_returnsNotFound() = runTest {
     val repository = createRepository()
 
     assertEquals(
@@ -193,7 +193,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getUpcomingTrips_returnsAllFuturePublishedTripsSortedByScheduledTime() = runSuspend {
+  fun getUpcomingTrips_returnsAllFuturePublishedTripsSortedByScheduledTime() = runTest {
     val later = trip(id = "later", scheduledAt = currentTime.plusSeconds(7_200))
     val earlier = trip(id = "earlier", scheduledAt = currentTime.plusSeconds(3_600))
     val repository = createRepository(initialTrips = listOf(later, earlier))
@@ -205,7 +205,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getUpcomingTrips_excludesPastAndNonPublishedTrips() = runSuspend {
+  fun getUpcomingTrips_excludesPastAndNonPublishedTrips() = runTest {
     val upcoming = trip(id = "upcoming", scheduledAt = currentTime.plusSeconds(3_600))
     val excludedTrips =
         listOf(
@@ -236,7 +236,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getUpcomingTrips_withNoMatches_returnsEmptyList() = runSuspend {
+  fun getUpcomingTrips_withNoMatches_returnsEmptyList() = runTest {
     val repository =
         createRepository(
             initialTrips = listOf(trip(id = "past", scheduledAt = currentTime.minusSeconds(1)))
@@ -246,7 +246,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getUpcomingTrips_readsClockOncePerOperation() = runSuspend {
+  fun getUpcomingTrips_readsClockOncePerOperation() = runTest {
     var clockReads = 0
     val repository =
         FakeTripRepository(
@@ -268,7 +268,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun getMyTrips_filtersOnlyByOwnerAndPreservesAllDatesAndStatuses() = runSuspend {
+  fun getMyTrips_filtersOnlyByOwnerAndPreservesAllDatesAndStatuses() = runTest {
     val mine =
         TripStatus.entries.mapIndexed { index, status ->
           trip(
@@ -285,7 +285,7 @@ class FakeTripRepositoryTest {
   }
 
   @Test
-  fun configuredError_isReturnedByEveryOperationWithoutMutationAndCanBeCleared() = runSuspend {
+  fun configuredError_isReturnedByEveryOperationWithoutMutationAndCanBeCleared() = runTest {
     val repository = createRepository()
     val errors =
         listOf(
@@ -350,18 +350,4 @@ class FakeTripRepositoryTest {
         is TripResult.Success -> data
         is TripResult.Error -> error("Expected success, got $error")
       }
-
-  private fun runSuspend(block: suspend () -> Unit) {
-    var outcome: Result<Unit>? = null
-    block.startCoroutine(
-        object : Continuation<Unit> {
-          override val context = EmptyCoroutineContext
-
-          override fun resumeWith(result: Result<Unit>) {
-            outcome = result
-          }
-        }
-    )
-    checkNotNull(outcome).getOrThrow()
-  }
 }

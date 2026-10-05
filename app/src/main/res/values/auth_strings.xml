@@ -1,0 +1,33 @@
+<resources>
+    <string name="auth_brand">Command’o</string>
+    <string name="auth_back">←  Back</string>
+    <string name="auth_login_title">Welcome back.</string>
+    <string name="auth_signup_title">Join your campus.</string>
+    <string name="auth_login_subtitle">Your next grocery run starts here.</string>
+    <string name="auth_signup_subtitle">One account. Two ways to help.</string>
+    <string name="auth_login">Log in</string>
+    <string name="auth_signup">Sign up</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_email_hint">Your university email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_password_hint">Enter your password</string>
+    <string name="auth_confirmation">Confirm password</string>
+    <string name="auth_confirmation_hint">Enter your password again</string>
+    <string name="auth_create">Create account  →</string>
+    <string name="auth_login_action">Log in  →</string>
+    <string name="auth_loading">Signing in…</string>
+    <string name="auth_or">or continue with</string>
+    <string name="auth_google">Continue with Google</string>
+    <string name="auth_signup_footer">New to Command’o? Create an account.</string>
+    <string name="auth_login_footer">Already have an account? Log in.</string>
+    <string name="auth_required">This field is required.</string>
+    <string name="auth_invalid_email">Enter a valid email address.</string>
+    <string name="auth_password_mismatch">Passwords do not match.</string>
+    <string name="auth_email_used">This email is already registered. Try logging in.</string>
+    <string name="auth_account_conflict">Use the sign-in method already linked to this email.</string>
+    <string name="auth_invalid_credentials">Incorrect email or password. Please try again.</string>
+    <string name="auth_google_error">Google sign-in failed. Please try again.</string>
+    <string name="auth_network_error">Check your connection and try again.</string>
+    <string name="auth_too_many_requests">Too many attempts. Please try again later.</string>
+    <string name="auth_unknown_error">Unable to sign in. Please try again.</string>
+</resources>

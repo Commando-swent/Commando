@@ -10,6 +10,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.R
 import com.android.sample.model.authentication.AuthException
+import com.android.sample.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -31,7 +32,7 @@ class AuthComponentsTest {
   ) {
     compose.setContent {
       var value by remember { mutableStateOf("") }
-      AuthTheme {
+      SampleAppTheme {
         AuthField(
             value,
             {
@@ -110,7 +111,7 @@ class AuthComponentsTest {
   fun emailIsVisibleAndNextMovesFocusWithoutSubmitting() {
     var submissions = 0
     compose.setContent {
-      AuthTheme {
+      SampleAppTheme {
         Column {
           AuthField(
               "adam@epfl.ch",

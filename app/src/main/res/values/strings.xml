@@ -10,4 +10,14 @@
     <string name="nav_sign_out">Sign out</string>
     <string name="nav_sign_out_error">Unable to sign out. Please try again.</string>
     <string name="nav_screen_pending">This screen is not available yet.</string>
+    <string name="home_requester">Requester</string>
+    <string name="home_commando">Commando</string>
+    <string name="home_requester_title">Need a few things?</string>
+    <string name="home_requester_description">Someone on campus is probably heading to the shop. Add your items to their trip and meet at the handoff.</string>
+    <string name="home_commando_title">Heading to the shop soon?</string>
+    <string name="home_commando_description">Publish your next trip and let others add a few items. You choose which requests to take.</string>
+    <string name="home_find_trip">Find a trip</string>
+    <string name="home_publish_trip">Publish a trip</string>
+    <string name="home_trips">Trips</string>
+    <string name="home_map">Map</string>
 </resources>

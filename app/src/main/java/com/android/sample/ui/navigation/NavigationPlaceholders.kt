@@ -34,18 +34,6 @@ internal fun AuthPlaceholderScreen(mode: AuthMode, onSwitchMode: (AuthMode) -> U
   }
 }
 
-@Composable
-internal fun HomePlaceholderScreen(onProfile: () -> Unit) {
-  NavigationPlaceholder(
-      stringResource(CommandoScreens.Home.title),
-      NavigationTestTags.HOME_SCREEN,
-  ) {
-    Button(onClick = onProfile, modifier = Modifier.testTag(NavigationTestTags.PROFILE_BUTTON)) {
-      Text(stringResource(CommandoScreens.Profile.title))
-    }
-  }
-}
-
 /** Temporary profile destination to exercise sign-out before issue #11 is integrated. */
 @Composable
 internal fun ProfilePlaceholderScreen(

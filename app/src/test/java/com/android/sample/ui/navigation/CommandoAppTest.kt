@@ -3,12 +3,15 @@ package com.android.sample.ui.navigation
 // AI assistance: OpenAI Codex.
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -39,6 +42,48 @@ class CommandoAppTest {
 
   private fun pressBack() {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+  }
+
+  @Test
+  fun switchingModeKeepsTheAccountAndProfileBackKeepsTheMode() {
+    val repository = FakeAuthRepository(alice)
+    show(repository)
+    compose.onNodeWithTag(HomeTestTags.REQUESTER_MODE).assertIsSelected()
+    click(HomeTestTags.COMMANDO_MODE)
+    compose
+        .onNodeWithTag(HomeTestTags.EMPTY_STATE_TITLE)
+        .assertTextEquals("Heading to the shop soon?")
+    assertEquals(alice, repository.currentUser)
+    click(NavigationTestTags.PROFILE_BUTTON)
+    pressBack()
+    compose.onNodeWithTag(HomeTestTags.COMMANDO_MODE).assertIsSelected()
+    click(HomeTestTags.REQUESTER_MODE)
+    compose.onNodeWithTag(HomeTestTags.EMPTY_STATE_TITLE).assertTextEquals("Need a few things?")
+    assertEquals(alice, repository.currentUser)
+  }
+
+  @Test
+  fun signingOutAndBackIntoTheSameAccountResetsTheMode() = runTest {
+    val repository = FakeAuthRepository(alice)
+    show(repository)
+    click(HomeTestTags.COMMANDO_MODE)
+    click(NavigationTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    repository.signInWithEmailResult = Result.success(alice)
+    repository.signInWithEmail("", "")
+    compose.onNodeWithTag(HomeTestTags.REQUESTER_MODE).assertIsSelected()
+  }
+
+  @Test
+  fun changingAccountResetsHomeMode() = runTest {
+    val repository = FakeAuthRepository(alice)
+    show(repository)
+    click(HomeTestTags.COMMANDO_MODE)
+    repository.signInWithEmailResult = Result.success(bob)
+    repository.signInWithEmail("", "")
+    compose.onNodeWithTag(HomeTestTags.REQUESTER_MODE).assertIsSelected()
+    assertEquals(bob, repository.currentUser)
   }
 
   @Test

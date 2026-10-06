@@ -3,6 +3,7 @@ package com.android.sample.ui.navigation
 // AI assistance: OpenAI Codex.
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -45,19 +46,46 @@ class CommandoAppTest {
   }
 
   @Test
+  fun authDoesNotDisplaySharedBars() {
+    show(FakeAuthRepository())
+    compose.onNodeWithTag(AppTestTags.APP_SCAFFOLD).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.BOTTOM_BAR).assertDoesNotExist()
+  }
+
+  @Test
+  fun bottomBarTracksDestinationAndHomeReturnsWithoutDuplicatingTheStack() {
+    show(FakeAuthRepository(alice))
+    compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
+    click(AppTestTags.COMMANDO_MODE)
+    click(NavigationTestTags.PROFILE_BUTTON)
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_BUTTON).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
+    click(NavigationTestTags.PROFILE_BUTTON)
+    click(AppTestTags.HOME_BUTTON)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
+    pressBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+  }
+
+  @Test
   fun switchingModeKeepsTheAccountAndProfileBackKeepsTheMode() {
     val repository = FakeAuthRepository(alice)
     show(repository)
-    compose.onNodeWithTag(HomeTestTags.REQUESTER_MODE).assertIsSelected()
-    click(HomeTestTags.COMMANDO_MODE)
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsNotSelected()
+    click(AppTestTags.COMMANDO_MODE)
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsNotSelected()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
     compose
         .onNodeWithTag(HomeTestTags.EMPTY_STATE_TITLE)
         .assertTextEquals("Heading to the shop soon?")
     assertEquals(alice, repository.currentUser)
     click(NavigationTestTags.PROFILE_BUTTON)
     pressBack()
-    compose.onNodeWithTag(HomeTestTags.COMMANDO_MODE).assertIsSelected()
-    click(HomeTestTags.REQUESTER_MODE)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    click(AppTestTags.REQUESTER_MODE)
     compose.onNodeWithTag(HomeTestTags.EMPTY_STATE_TITLE).assertTextEquals("Need a few things?")
     assertEquals(alice, repository.currentUser)
   }
@@ -66,23 +94,23 @@ class CommandoAppTest {
   fun signingOutAndBackIntoTheSameAccountResetsTheMode() = runTest {
     val repository = FakeAuthRepository(alice)
     show(repository)
-    click(HomeTestTags.COMMANDO_MODE)
+    click(AppTestTags.COMMANDO_MODE)
     click(NavigationTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
-    compose.onNodeWithTag(HomeTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
   }
 
   @Test
   fun changingAccountResetsHomeMode() = runTest {
     val repository = FakeAuthRepository(alice)
     show(repository)
-    click(HomeTestTags.COMMANDO_MODE)
+    click(AppTestTags.COMMANDO_MODE)
     repository.signInWithEmailResult = Result.success(bob)
     repository.signInWithEmail("", "")
-    compose.onNodeWithTag(HomeTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
     assertEquals(bob, repository.currentUser)
   }
 

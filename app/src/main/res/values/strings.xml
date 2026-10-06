@@ -2,4 +2,12 @@
     <string name="app_name">SampleApp</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+    <string name="nav_login">Login</string>
+    <string name="nav_sign_up">Sign up</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_profile">Profile</string>
+    <string name="nav_back">Back</string>
+    <string name="nav_sign_out">Sign out</string>
+    <string name="nav_sign_out_error">Unable to sign out. Please try again.</string>
+    <string name="nav_screen_pending">This screen is not available yet.</string>
 </resources>

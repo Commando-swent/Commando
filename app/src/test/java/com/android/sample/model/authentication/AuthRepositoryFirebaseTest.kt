@@ -2,6 +2,7 @@ package com.android.sample.model.authentication
 
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.PasswordCredential
@@ -10,21 +11,26 @@ import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
+import com.google.firebase.FirebaseException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthCredential
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.slot
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlin.reflect.KClass
 import kotlinx.coroutines.CancellationException
@@ -33,7 +39,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -270,6 +278,38 @@ class AuthRepositoryFirebaseTest {
       )
 
   @Test
+  fun genericFirebaseErrorsMapToUnknown() {
+    assertFailureForAll(
+        FirebaseAuthException("ERROR_INTERNAL_ERROR", "internal"),
+        AuthException.Unknown::class,
+    )
+    assertFailureForAll(FirebaseException("firebase"), AuthException.Unknown::class)
+  }
+
+  @Test
+  fun disabledOrExpiredUserMapsToInvalidCredentials() {
+    for (code in listOf("ERROR_USER_DISABLED", "ERROR_USER_TOKEN_EXPIRED")) {
+      assertFailureForAll(
+          FirebaseAuthInvalidUserException(code, "invalid user"),
+          AuthException.InvalidCredentials::class,
+      )
+    }
+  }
+
+  @Test
+  fun emptyEmailRejectedSynchronouslyBySdkMapsToUnknown() = runTest {
+    // The Firebase SDK rejects empty arguments by throwing before returning a Task.
+    val error = IllegalArgumentException("Given String is empty or null")
+    every { auth.signInWithEmailAndPassword(any(), any()) } throws error
+
+    val returned = repository.signInWithEmail("   ", "example-password").exceptionOrNull()
+
+    assertTrue("returned $returned", returned is AuthException.Unknown)
+    assertSame(error, returned?.cause)
+    verify(exactly = 1) { auth.signInWithEmailAndPassword("", "example-password") }
+  }
+
+  @Test
   fun unexpectedExceptionMapsToUnknown() =
       assertFailureForAll(IllegalStateException("unexpected"), AuthException.Unknown::class)
 
@@ -391,6 +431,35 @@ class AuthRepositoryFirebaseTest {
     assertSame(error, returned?.cause)
   }
 
+  // ---------- default dependencies ----------
+
+  @Test
+  fun defaultConstructorUsesFirebaseAuthInstanceAndRealGoogleHelper() = runTest {
+    mockkStatic(FirebaseAuth::class)
+    try {
+      every { FirebaseAuth.getInstance() } returns auth
+      every { auth.currentUser } returns firebaseUser(alice)
+      val firebaseCredential = slot<AuthCredential>()
+      every { auth.signInWithCredential(capture(firebaseCredential)) } returns
+          authResult(firebaseUser(alice))
+      val idToken = unsignedIdToken()
+      val bundle =
+          GoogleIdTokenCredential.Builder().setId(alice.email!!).setIdToken(idToken).build().data
+
+      val defaultRepository = AuthRepositoryFirebase()
+
+      assertEquals(alice, defaultRepository.currentUser)
+      val user =
+          defaultRepository.signInWithGoogle(
+              CustomCredential(GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL, bundle)
+          )
+      assertEquals(Result.success(alice), user)
+      assertTrue(firebaseCredential.captured is GoogleAuthCredential)
+    } finally {
+      unmockkStatic(FirebaseAuth::class)
+    }
+  }
+
   // ---------- current user ----------
 
   @Test
@@ -460,8 +529,53 @@ class AuthRepositoryFirebaseTest {
     assertEquals(listOf<AuthUser?>(alice), emissions)
   }
 
+  @Test
+  fun eachCollectorRegistersAndRemovesItsOwnListener() = runTest {
+    val listeners = mutableListOf<FirebaseAuth.AuthStateListener>()
+    every { auth.addAuthStateListener(capture(listeners)) } just Runs
+    every { auth.removeAuthStateListener(any()) } just Runs
+    every { auth.currentUser } returns null
+    val first = mutableListOf<AuthUser?>()
+    val second = mutableListOf<AuthUser?>()
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    val firstJob = launch(dispatcher) { repository.observeAuthState().collect { first.add(it) } }
+    val secondJob = launch(dispatcher) { repository.observeAuthState().collect { second.add(it) } }
+
+    assertEquals(2, listeners.size)
+    assertNotSame(listeners[0], listeners[1])
+    every { auth.currentUser } returns firebaseUser(alice)
+    listeners.forEach { it.onAuthStateChanged(auth) }
+    assertEquals(listOf(null, alice), first)
+    assertEquals(listOf(null, alice), second)
+
+    firstJob.cancel()
+    advanceUntilIdle()
+    verify(exactly = 1) { auth.removeAuthStateListener(listeners[0]) }
+    verify(exactly = 0) { auth.removeAuthStateListener(listeners[1]) }
+
+    every { auth.currentUser } returns null
+    listeners[1].onAuthStateChanged(auth)
+    assertEquals(listOf(null, alice), first)
+    assertEquals(listOf(null, alice, null), second)
+
+    secondJob.cancel()
+    advanceUntilIdle()
+    verify(exactly = 1) { auth.removeAuthStateListener(listeners[1]) }
+  }
+
   private companion object {
     fun googleCredential(): CustomCredential =
         CustomCredential(GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL, Bundle())
+
+    /** Unsigned JWT that the Google ID library can parse; never a real token. */
+    fun unsignedIdToken(): String {
+      fun encode(json: JSONObject): String =
+          Base64.encodeToString(
+              json.toString().toByteArray(),
+              Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+          )
+      val payload = JSONObject(mapOf("sub" to "alice", "email" to "alice@example.test"))
+      return "${encode(JSONObject(mapOf("alg" to "none")))}.${encode(payload)}.sig"
+    }
   }
 }

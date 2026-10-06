@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -138,7 +140,11 @@ private fun TripStatusCard(message: String, onRetry: (() -> Unit)? = null) {
       border = BorderStroke(1.dp, runsOutlineVariant),
   ) {
     Column(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).padding(20.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = 280.dp)
+                .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
     ) {

@@ -1,8 +1,12 @@
 package com.android.sample.ui.trips
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
@@ -120,6 +124,29 @@ class AvailableTripsScreenTest {
         .onNodeWithText("No trips available right now.")
         .assertIsDisplayed()
         .assertTextEquals("No trips available right now.")
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
+  fun errorRetryIsReachableInShortViewportWithLargeText() {
+    var retries = 0
+    compose.setContent {
+      CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 2f)) {
+        MaterialTheme {
+          AvailableTripsScreen(
+              state = AvailableTripsUiState.Error(TripError.Unknown),
+              onRetry = { retries++ },
+              onTripSelected = {},
+          )
+        }
+      }
+    }
+    compose.onRoot().assertWidthIsEqualTo(640.dp).assertHeightIsEqualTo(320.dp)
+    compose.runOnIdle { assertEquals(0, retries) }
+    val retry = compose.onNodeWithText("Retry")
+    retry.assertIsNotDisplayed()
+    retry.performScrollTo().assertIsDisplayed().assertHasClickAction().performClick()
+    compose.runOnIdle { assertEquals(1, retries) }
   }
 
   @Test

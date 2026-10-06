@@ -19,6 +19,7 @@ credentials = "1.6.0"
 coroutines = "1.11.0"
 googleid = "1.2.0"
 mockk = "1.14.11"
+navigation = "2.10.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -43,6 +44,7 @@ compose-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 compose-activity = { group = "androidx.activity", name = "activity-compose", version.ref = "composeActivity" }
 compose-viewmodel = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "composeViewModel" }
+compose-navigation = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 compose-test-junit = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 compose-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 

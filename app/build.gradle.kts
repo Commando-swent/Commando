@@ -152,6 +152,7 @@ dependencies {
 
   // Integration with ViewModels
   implementation(libs.compose.viewmodel)
+  implementation(libs.compose.navigation)
 
   // Android Studio Preview support
   implementation(libs.compose.preview)

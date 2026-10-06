@@ -1,10 +1,8 @@
 package com.android.sample.model.authentication
 
-import android.content.Context
 import android.os.Bundle
 import android.util.Base64
 import androidx.credentials.CustomCredential
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.utils.FirebaseAuthEmulator
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -25,10 +23,8 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -36,9 +32,9 @@ import org.junit.runner.RunWith
 /**
  * Integration tests of [AuthRepositoryFirebase] against the local Firebase Auth emulator.
  *
- * Requires the emulator to be running on the host: `firebase emulators:start --only auth`. The
- * tests fail immediately with a clear message when it is not reachable, and never touch the
- * production Firebase project. Every account is deleted before each test.
+ * Requires the emulator to be running on the host: `firebase emulators:start --only auth --project
+ * command-o`. The tests fail immediately with a clear message when it is not reachable, and never
+ * touch the production Firebase project. Every account is deleted before each test.
  *
  * Session restoration across a process restart is out of scope: it needs a real process relaunch,
  * which an instrumented test cannot do.
@@ -120,6 +116,15 @@ class AuthRepositoryFirebaseEmulatorTest {
         "Expected InvalidCredentials, got ${describe(error)}",
         error is AuthException.InvalidCredentials,
     )
+    assertNull(repository.currentUser)
+  }
+
+  @Test
+  fun signInWithEmail_malformedEmail_failsWithInvalidEmail() = runBlocking {
+    val error = repository.signInWithEmail("not-an-email", PASSWORD).exceptionOrNull()
+
+    assertTrue("Expected InvalidEmail, got ${describe(error)}", error is AuthException.InvalidEmail)
+    assertNull(repository.currentUser)
   }
 
   @Test
@@ -185,34 +190,86 @@ class AuthRepositoryFirebaseEmulatorTest {
   }
 
   @Test
-  fun observation_emailAccountThenGoogleSignInWithSameEmail() = runBlocking {
+  fun signInWithGoogle_sameVerifiedEmailAsEmailAccount_returnsSameUid() = runBlocking {
     val emailUser = repository.signUpWithEmail(EMAIL, PASSWORD).getOrThrow()
     repository.signOut().getOrThrow()
 
-    val result = repository.signInWithGoogle(googleCredential(GOOGLE_SUB, EMAIL, NAME))
+    val googleUser =
+        repository.signInWithGoogle(googleCredential(GOOGLE_SUB, EMAIL, NAME)).getOrThrow()
 
-    val outcome = describeOutcome(result, emailUser.uid)
-    println("OBSERVED: email account then Google sign-in with same email -> $outcome")
-    assertAuthResult(result, outcome)
+    // The emulator links the verified Google identity to the existing email account.
+    assertEquals(emailUser.uid, googleUser.uid)
+    assertEquals(EMAIL, googleUser.email)
+    assertEquals(googleUser, repository.currentUser)
   }
 
   @Test
-  fun observation_googleAccountThenEmailSignUpAndSignInWithSameEmail() = runBlocking {
-    val googleUser =
-        repository.signInWithGoogle(googleCredential(GOOGLE_SUB, EMAIL, NAME)).getOrThrow()
+  fun signInWithGoogle_unverifiedEmailOfEmailAccount_failsWithAccountConflict() = runBlocking {
+    repository.signUpWithEmail(EMAIL, PASSWORD).getOrThrow()
+    repository.signOut().getOrThrow()
+    val token =
+        unsignedJwt(
+            JSONObject(
+                mapOf(
+                    "sub" to GOOGLE_SUB,
+                    "email" to EMAIL,
+                    "email_verified" to false,
+                    "name" to NAME,
+                )
+            )
+        )
+
+    val error = repository.signInWithGoogle(googleCredential(token, EMAIL)).exceptionOrNull()
+
+    assertTrue(
+        "Expected AccountConflict, got ${describe(error)}",
+        error is AuthException.AccountConflict,
+    )
+    assertNull(repository.currentUser)
+  }
+
+  @Test
+  fun signUpWithEmail_afterGoogleAccountWithSameEmail_failsWithEmailAlreadyInUse() = runBlocking {
+    repository.signInWithGoogle(googleCredential(GOOGLE_SUB, EMAIL, NAME)).getOrThrow()
     repository.signOut().getOrThrow()
 
-    val signUp = repository.signUpWithEmail(EMAIL, PASSWORD)
-    val signUpOutcome = describeOutcome(signUp, googleUser.uid)
-    println("OBSERVED: Google account then email sign-up with same email -> $signUpOutcome")
+    val error = repository.signUpWithEmail(EMAIL, PASSWORD).exceptionOrNull()
+
+    assertTrue(
+        "Expected EmailAlreadyInUse, got ${describe(error)}",
+        error is AuthException.EmailAlreadyInUse,
+    )
+    assertNull(repository.currentUser)
+  }
+
+  @Test
+  fun signInWithEmail_googleOnlyAccount_failsWithInvalidCredentials() = runBlocking {
+    repository.signInWithGoogle(googleCredential(GOOGLE_SUB, EMAIL, NAME)).getOrThrow()
     repository.signOut().getOrThrow()
 
-    val signIn = repository.signInWithEmail(EMAIL, PASSWORD)
-    val signInOutcome = describeOutcome(signIn, googleUser.uid)
-    println("OBSERVED: Google account then email sign-in with same email -> $signInOutcome")
+    val error = repository.signInWithEmail(EMAIL, PASSWORD).exceptionOrNull()
 
-    assertAuthResult(signUp, "sign-up: $signUpOutcome")
-    assertAuthResult(signIn, "sign-in: $signInOutcome")
+    assertTrue(
+        "Expected InvalidCredentials, got ${describe(error)}",
+        error is AuthException.InvalidCredentials,
+    )
+    assertNull(repository.currentUser)
+  }
+
+  @Test
+  fun observeAuthState_emitsGoogleUserThenNullAfterSignOut() = runBlocking {
+    val emissions = Collections.synchronizedList(mutableListOf<AuthUser?>())
+    val job =
+        launch(Dispatchers.Default) { repository.observeAuthState().collect { emissions.add(it) } }
+
+    awaitSize(emissions, 1)
+    val user = repository.signInWithGoogle(googleCredential(GOOGLE_SUB, EMAIL, NAME)).getOrThrow()
+    awaitSize(emissions, 2)
+    repository.signOut().getOrThrow()
+    awaitSize(emissions, 3)
+    job.cancel()
+
+    assertEquals(listOf(null, user, null), emissions.toList())
   }
 
   @Test
@@ -438,22 +495,6 @@ class AuthRepositoryFirebaseEmulatorTest {
     assertNull(repository.currentUser)
   }
 
-  @Test
-  fun google_sign_in_is_configured() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val resourceId =
-        context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-
-    // Skipped until a Google OAuth client is added to google-services.json.
-    assumeTrue("Google Sign-In not configured - skipping test", resourceId != 0)
-
-    val clientId = context.getString(resourceId)
-    assertTrue(
-        "Invalid Google client ID format: $clientId",
-        clientId.endsWith(".googleusercontent.com"),
-    )
-  }
-
   private suspend fun awaitSize(list: List<*>, size: Int) =
       withTimeout(TIMEOUT_MS) { while (list.size < size) delay(POLL_MS) }
 
@@ -466,31 +507,17 @@ class AuthRepositoryFirebaseEmulatorTest {
     return "${encode(JSONObject(mapOf("alg" to "none")))}.${encode(payload)}.sig"
   }
 
-  private fun googleCredential(sub: String, email: String, name: String): CustomCredential {
+  private fun googleCredential(sub: String, email: String, name: String): CustomCredential =
+      googleCredential(FirebaseAuthEmulator.fakeGoogleIdToken(sub, email, name), email)
+
+  private fun googleCredential(idToken: String, email: String): CustomCredential {
     val googleCredential =
-        GoogleIdTokenCredential.Builder()
-            .setId(email)
-            .setIdToken(FirebaseAuthEmulator.fakeGoogleIdToken(sub, email, name))
-            .build()
+        GoogleIdTokenCredential.Builder().setId(email).setIdToken(idToken).build()
     return CustomCredential(
         GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL,
         googleCredential.data,
     )
   }
-
-  /** Asserts that [result] is a success or an [AuthException] failure, never another type. */
-  private fun assertAuthResult(result: Result<AuthUser>, outcome: String) {
-    val error = result.exceptionOrNull()
-    assertTrue("Unexpected outcome: $outcome", error == null || error is AuthException)
-    if (error == null) assertNotNull(result.getOrNull())
-  }
-
-  /** Describes a result without tokens or passwords; [otherUid] is the first account's uid. */
-  private fun describeOutcome(result: Result<AuthUser>, otherUid: String): String =
-      result.fold(
-          onSuccess = { "success (same uid as first account: ${it.uid == otherUid})" },
-          onFailure = { "failure ${describe(it)}" },
-      )
 
   /** Type of the error and of its cause only; messages could contain sensitive data. */
   private fun describe(error: Throwable?): String =

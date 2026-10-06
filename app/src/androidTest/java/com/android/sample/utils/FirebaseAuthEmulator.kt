@@ -29,7 +29,7 @@ object FirebaseAuthEmulator {
   private val connection: Unit by lazy {
     check(isReachable()) {
       "Firebase Auth emulator is not reachable at $HOST:$AUTH_PORT. " +
-          "Start it with: firebase emulators:start --only auth"
+          "Start it with: firebase emulators:start --only auth --project command-o"
     }
     Firebase.auth.useEmulator(HOST, AUTH_PORT)
   }

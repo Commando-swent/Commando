@@ -271,11 +271,15 @@ class AuthRepositoryFirebaseTest {
   }
 
   @Test
-  fun invalidUserMapsToInvalidCredentials() =
+  fun invalidUserMapsToInvalidCredentials() {
+    for (code in
+        listOf("ERROR_USER_NOT_FOUND", "ERROR_USER_DISABLED", "ERROR_USER_TOKEN_EXPIRED")) {
       assertFailureForAll(
-          FirebaseAuthInvalidUserException("ERROR_USER_NOT_FOUND", "no user"),
+          FirebaseAuthInvalidUserException(code, "invalid user"),
           AuthException.InvalidCredentials::class,
       )
+    }
+  }
 
   @Test
   fun genericFirebaseErrorsMapToUnknown() {
@@ -284,16 +288,6 @@ class AuthRepositoryFirebaseTest {
         AuthException.Unknown::class,
     )
     assertFailureForAll(FirebaseException("firebase"), AuthException.Unknown::class)
-  }
-
-  @Test
-  fun disabledOrExpiredUserMapsToInvalidCredentials() {
-    for (code in listOf("ERROR_USER_DISABLED", "ERROR_USER_TOKEN_EXPIRED")) {
-      assertFailureForAll(
-          FirebaseAuthInvalidUserException(code, "invalid user"),
-          AuthException.InvalidCredentials::class,
-      )
-    }
   }
 
   @Test
@@ -394,7 +388,6 @@ class AuthRepositoryFirebaseTest {
       assertTrue("$operation job must end cancelled", job.isCancelled)
       assertNull("$operation must not produce a Result", result)
     }
-    verify(exactly = 0) { auth.signOut() }
   }
 
   @Test

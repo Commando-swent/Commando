@@ -124,7 +124,7 @@ class SessionViewModelTest {
   }
 
   @Test
-  fun thrownSignOutFailureIsReportedButCancellationIsRethrown() = runTest {
+  fun thrownSignOutFailureIsReported() = runTest {
     val fake = FakeAuthRepository(alice)
     val failure = IllegalStateException("Provider failure")
     val repository =
@@ -135,7 +135,11 @@ class SessionViewModelTest {
     viewModel.signOut()
     assertEquals(alice, viewModel.uiState.value.user)
     assertSame(failure, viewModel.uiState.value.signOutError?.cause)
+  }
 
+  @Test
+  fun signOutCancellationIsRethrown() = runTest {
+    val fake = FakeAuthRepository(alice)
     val cancelledRepository =
         object : AuthRepository by fake {
           override fun signOut(): Result<Unit> = throw CancellationException()

@@ -15,6 +15,23 @@ This file defines the guidelines that AI coding agents must follow when working 
 
 ## Code Quality
 
+### Kotlin and Compose Conventions
+
+- Follow the bootcamp's MVVM separation and the existing Command'o naming style.
+- Use PascalCase for classes, enums, and composables; camelCase for functions and variables;
+  uppercase snake case for constants.
+- Declare navigation destinations in `ui/navigation/CommandoScreens.kt`, with a `@StringRes`
+  title. Use the enum's `.name` for `NavHost`, `composable`, and `navigate` routes instead of
+  repeating string literals. Keep only implemented destinations in the enum.
+- Keep navigation in `CommandoApp`, called from `MainActivity`. Screens receive named action
+  callbacks rather than owning the application's navigation controller.
+- Keep screen state and ViewModels in the relevant `ui/` feature folder. Data models and
+  repository interfaces belong in the data/model layer.
+- Expose read-only `StateFlow` from ViewModels and keep `MutableStateFlow` private.
+- Group UI test tags in an object with uppercase constant names, as in the bootcamp.
+- Preserve session routing and clear authenticated navigation state on sign-out or account change.
+- Reuse existing Command'o interfaces; do not copy bootcamp implementations or grading files.
+
 - Write clear, readable, and maintainable Kotlin code.
 - Follow the existing coding style of the project.
 - Do not modify unrelated code.

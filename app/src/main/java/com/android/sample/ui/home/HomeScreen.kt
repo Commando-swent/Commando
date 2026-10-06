@@ -109,7 +109,6 @@ private fun HomePreview(mode: AppMode) {
         onSwitchMode = {},
         onHome = {},
         onProfile = {},
-        onFindTrip = {},
     ) { padding ->
       HomeScreen(mode, Modifier.padding(padding), onFindTrip = {}, onPublishTrip = {})
     }

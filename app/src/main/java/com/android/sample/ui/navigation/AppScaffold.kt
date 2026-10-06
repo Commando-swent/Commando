@@ -29,7 +29,6 @@ fun AppScaffold(
     onSwitchMode: (AppMode) -> Unit,
     onHome: () -> Unit,
     onProfile: () -> Unit,
-    onFindTrip: (() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
   Scaffold(
@@ -38,7 +37,7 @@ fun AppScaffold(
       topBar = { if (currentScreen.showModeSelector) AppTopBar(mode, onSwitchMode) },
       bottomBar = {
         if (currentScreen.showBottomBar) {
-          AppBottomBar(currentScreen, onHome, onProfile, onFindTrip)
+          AppBottomBar(currentScreen, onHome, onProfile)
         }
       },
       content = content,
@@ -109,7 +108,6 @@ private fun AppBottomBar(
     currentScreen: CommandoScreens,
     onHome: () -> Unit,
     onProfile: () -> Unit,
-    onFindTrip: (() -> Unit)?,
 ) {
   NavigationBar(
       modifier = Modifier.testTag(AppTestTags.BOTTOM_BAR),
@@ -125,14 +123,14 @@ private fun AppBottomBar(
     AppNavigationItem(
         R.drawable.home_trips,
         R.string.home_trips,
-        enabled = onFindTrip != null,
-        onClick = { onFindTrip?.invoke() },
+        enabled = false,
+        onClick = {},
     )
     AppNavigationItem(R.drawable.home_map, R.string.home_map, enabled = false, onClick = {})
     AppNavigationItem(
         R.drawable.home_profile,
         R.string.nav_profile,
-        modifier = Modifier.testTag(NavigationTestTags.PROFILE_BUTTON),
+        modifier = Modifier.testTag(AppTestTags.PROFILE_BUTTON),
         selected = currentScreen == CommandoScreens.Profile,
         onClick = onProfile,
     )

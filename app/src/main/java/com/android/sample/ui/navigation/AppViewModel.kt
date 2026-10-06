@@ -8,8 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The mode belongs to the authenticated navigation entry, independently of the authentication
- * session.
+ * Shares the mode across authenticated screens and restores it when the App entry is recreated.
+ * Signing out or changing accounts discards that entry, so a new session starts in Requester mode.
  */
 class AppViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel() {
   private val mutableState =

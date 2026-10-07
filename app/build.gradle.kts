@@ -121,6 +121,7 @@ dependencies {
   implementation(platform(libs.compose.bom))
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.mockk)
   globalTestImplementation(libs.androidx.junit)
   globalTestImplementation(libs.androidx.espresso.core)
 
@@ -131,6 +132,7 @@ dependencies {
 
   implementation(libs.androidx.credentials)
   implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.kotlinx.coroutines.play.services)
   // ------------- Jetpack Compose ------------------
   val composeBom = platform(libs.compose.bom)
   implementation(composeBom)

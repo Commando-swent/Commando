@@ -117,57 +117,55 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 }
 
 dependencies {
+  val composeBom = platform(libs.compose.bom)
+
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
   implementation(libs.androidx.lifecycle.runtime.ktx)
-  implementation(platform(libs.compose.bom))
-  testImplementation(libs.junit)
-  testImplementation(libs.kotlinx.coroutines.test)
-  testImplementation(libs.mockk)
-  globalTestImplementation(libs.androidx.junit)
-  globalTestImplementation(libs.androidx.espresso.core)
 
   // Firebase
   implementation(platform("com.google.firebase:firebase-bom:33.8.0"))
   implementation("com.google.firebase:firebase-auth")
   implementation("com.google.firebase:firebase-firestore")
 
+  // Authentication and coroutines
   implementation(libs.androidx.credentials)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.coroutines.play.services)
-  // ------------- Jetpack Compose ------------------
-  val composeBom = platform(libs.compose.bom)
-  implementation(composeBom)
-  globalTestImplementation(composeBom)
+  implementation(libs.googleid)
 
+  // ------------- Jetpack Compose ------------------
+  implementation(composeBom)
   implementation(libs.compose.ui)
   implementation(libs.compose.ui.graphics)
-
   // Material Design 3
   implementation(libs.compose.material3)
-
   // Integration with activities
   implementation(libs.compose.activity)
-
   // Integration with ViewModels
   implementation(libs.compose.viewmodel)
   implementation(libs.compose.navigation)
-
   // Android Studio Preview support
   implementation(libs.compose.preview)
-  debugImplementation(libs.compose.tooling)
 
-  // UI Tests
-  globalTestImplementation(libs.compose.test.junit)
+  debugImplementation(libs.compose.tooling)
   debugImplementation(libs.compose.test.manifest)
 
+  testImplementation(libs.junit)
+  testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation(libs.mockk)
+  // ---------- Robolectric ----------
+  testImplementation(libs.robolectric)
+
+  globalTestImplementation(composeBom)
+  globalTestImplementation(libs.androidx.junit)
+  globalTestImplementation(libs.androidx.espresso.core)
+  // UI Tests
+  globalTestImplementation(libs.compose.test.junit)
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)
   globalTestImplementation(libs.kaspresso.compose)
-
-  // ---------- Robolectric ----------
-  testImplementation(libs.robolectric)
 }
 
 val firebaseEmulatorTestPatterns =

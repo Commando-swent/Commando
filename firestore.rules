@@ -1,0 +1,79 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function hasExactTripFields(data) {
+      return data.keys().hasAll([
+        "ownerId",
+        "store",
+        "scheduledAt",
+        "handoffLocation",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]) && data.keys().hasOnly([
+        "ownerId",
+        "store",
+        "scheduledAt",
+        "handoffLocation",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]);
+    }
+
+    function isValidLocation(location) {
+      return location is map
+        && location.keys().hasAll(["name", "latitude", "longitude"])
+        && location.keys().hasOnly(["name", "latitude", "longitude"])
+        && location.name is string
+        && location.name.matches('.*\\S.*')
+        && location.latitude is number
+        && location.latitude >= -90
+        && location.latitude <= 90
+        && location.longitude is number
+        && location.longitude >= -180
+        && location.longitude <= 180;
+    }
+
+    function isValidTripStatus(status) {
+      return status is string
+        && status in ["PUBLISHED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+    }
+
+    function isValidTrip(data) {
+      return data is map
+        && hasExactTripFields(data)
+        && data.ownerId is string
+        && isValidLocation(data.store)
+        && data.scheduledAt is timestamp
+        && isValidLocation(data.handoffLocation)
+        && isValidTripStatus(data.status)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /trips/{tripId} {
+      allow create: if isAuthenticated()
+        && isValidTrip(request.resource.data)
+        && request.resource.data.ownerId == request.auth.uid;
+
+      allow read: if isAuthenticated()
+        && (resource.data.status == "PUBLISHED"
+          || resource.data.ownerId == request.auth.uid);
+
+      allow update: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid
+        && isValidTrip(request.resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if isAuthenticated()
+        && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}

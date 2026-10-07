@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.robolectric.Shadows.shadowOf
 
@@ -60,22 +61,23 @@ object FirebaseAuthEmulator {
    */
   fun runTest(block: suspend CoroutineScope.() -> Unit) {
     var failure: Throwable? = null
-    var done = false
     val worker = Thread {
       try {
-        runBlocking { withContext(Dispatchers.IO) { coroutineScope { block() } } }
+        // On timeout, withTimeout cancels block and its children, so the worker always ends.
+        runBlocking {
+          withTimeout(TEST_TIMEOUT_MS) {
+            withContext(Dispatchers.IO) { coroutineScope { block() } }
+          }
+        }
       } catch (e: Throwable) {
         failure = e
-      } finally {
-        done = true
       }
     }
     worker.start()
-    val deadline = System.currentTimeMillis() + TEST_TIMEOUT_MS
-    while (!done) {
+    // Once isAlive is false, the worker's writes (failure) are visible here (JLS 17.4.4).
+    while (worker.isAlive) {
       shadowOf(Looper.getMainLooper()).idle()
       Thread.sleep(5)
-      check(System.currentTimeMillis() < deadline) { "Emulator test timed out." }
     }
     failure?.let { throw it }
   }

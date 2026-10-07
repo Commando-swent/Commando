@@ -8,13 +8,17 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import com.android.sample.model.authentication.AuthException
+import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -22,6 +26,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 class CommandoAppTest {
@@ -118,9 +123,9 @@ class CommandoAppTest {
   fun signedOutUserSeesAuthAndCanSwitchForms() {
     show(FakeAuthRepository())
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     assertScreen(NavigationTestTags.SIGN_UP_SCREEN)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_login")
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
   }
@@ -140,7 +145,7 @@ class CommandoAppTest {
   fun signingInRemovesAuthFromBackStack() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -213,7 +218,7 @@ class CommandoAppTest {
   fun signingOutRecreatesTheLoginForm() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -221,5 +226,82 @@ class CommandoAppTest {
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
+  }
+
+  @After
+  fun resetProvider() {
+    AuthRepositoryProvider.reset()
+  }
+
+  private fun fillEmailForm() {
+    compose.onNodeWithTag("auth_email").performTextInput("student@epfl.ch")
+    compose.onNodeWithTag("auth_password").performTextInput("secret123")
+  }
+
+  @Test
+  fun defaultAppUsesProviderAndEmailLoginReachesHome() {
+    val repository = FakeAuthRepository()
+    repository.signInWithEmailResult = Result.success(alice)
+    AuthRepositoryProvider.repository = repository
+    compose.setContent { SampleAppTheme { CommandoApp() } }
+    fillEmailForm()
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    assertEquals(alice, repository.currentUser)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.onNodeWithTag("auth_email").assertTextEquals("", "Your university email")
+    pressBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+  }
+
+  @Test
+  fun signupThroughFormReachesHome() {
+    val repository = FakeAuthRepository()
+    repository.signUpWithEmailResult = Result.success(alice)
+    show(repository)
+    click("auth_tab_signup")
+    fillEmailForm()
+    compose.onNodeWithTag("auth_confirmation").performTextInput("secret123")
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    assertEquals(alice, repository.currentUser)
+    pressBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+  }
+
+  @Test
+  fun failedEmailLoginKeepsFormAndCanRetry() {
+    val repository = FakeAuthRepository()
+    repository.signInWithEmailResult = Result.failure(AuthException.InvalidCredentials())
+    show(repository)
+    fillEmailForm()
+    click("auth_submit")
+    compose.onNodeWithText("Incorrect email or password. Please try again.").assertIsDisplayed()
+    assertNull(repository.currentUser)
+    compose.runOnIdle { repository.signInWithEmailResult = Result.success(alice) }
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun googlePendingShowsFeedbackWithoutAuthenticating() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    show(repository)
+    click("auth_google")
+    compose.runOnIdle {
+      assertEquals(
+          "Google sign-in is not available yet. Please use email and password.",
+          ShadowToast.getTextOfLatestToast(),
+      )
+      assertNull(repository.currentUser)
+    }
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    fillEmailForm()
+    repository.signInWithEmailResult = Result.success(alice)
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
   }
 }

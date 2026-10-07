@@ -3,6 +3,8 @@ package com.android.sample.ui.home
 // AI assistance: OpenAI Codex.
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
@@ -10,6 +12,9 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import com.android.sample.ui.navigation.AppMode
+import com.android.sample.ui.navigation.AppScaffold
+import com.android.sample.ui.navigation.CommandoScreens
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File
 import org.junit.Assert.assertEquals
@@ -31,7 +36,15 @@ class HomeScreenTest {
     var calls = 0
     compose.setContent {
       SampleAppTheme {
-        HomeScreen(HomeUiState(), onSwitchMode = {}, onProfile = {}, onFindTrip = { calls++ })
+        AppScaffold(
+            CommandoScreens.Home,
+            AppMode.Requester,
+            onSwitchMode = {},
+            onHome = {},
+            onProfile = {},
+        ) { padding ->
+          HomeScreen(AppMode.Requester, Modifier.padding(padding), onFindTrip = { calls++ })
+        }
       }
     }
     compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performClick()
@@ -44,12 +57,19 @@ class HomeScreenTest {
     var calls = 0
     compose.setContent {
       SampleAppTheme {
-        HomeScreen(
-            HomeUiState(HomeMode.Commando),
+        AppScaffold(
+            CommandoScreens.Home,
+            AppMode.Commando,
             onSwitchMode = {},
+            onHome = {},
             onProfile = {},
-            onPublishTrip = { calls++ },
-        )
+        ) { padding ->
+          HomeScreen(
+              AppMode.Commando,
+              modifier = Modifier.padding(padding),
+              onPublishTrip = { calls++ },
+          )
+        }
       }
     }
     compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performClick()
@@ -59,9 +79,7 @@ class HomeScreenTest {
 
   @Test
   fun unavailableTripDestinationIsDisabled() {
-    compose.setContent {
-      SampleAppTheme { HomeScreen(HomeUiState(), onSwitchMode = {}, onProfile = {}) }
-    }
+    compose.setContent { SampleAppTheme { HomeScreen(AppMode.Requester) } }
     compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).assertIsNotEnabled()
   }
 

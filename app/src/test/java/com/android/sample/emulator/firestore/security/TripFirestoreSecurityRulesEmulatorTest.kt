@@ -5,6 +5,7 @@ import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.android.sample.data.repository.successData
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
+import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.google.firebase.FirebaseApp
@@ -75,6 +76,36 @@ class TripFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun create_rejectsOtherwiseValidNonPublishedTrip() = runTest {
+    withClients("owner" to true) { (owner) ->
+      val ownerId = checkNotNull(owner.auth.currentUser).uid
+
+      assertPermissionDenied {
+        owner.firestore
+            .collection(TRIPS_COLLECTION)
+            .document("non-published-${UUID.randomUUID()}")
+            .set(storedTrip(ownerId, status = TripStatus.IN_PROGRESS.name))
+            .await()
+      }
+    }
+  }
+
+  @Test
+  fun create_rejectsDifferentCreationAndUpdateTimestamps() = runTest {
+    withClients("owner" to true) { (owner) ->
+      val ownerId = checkNotNull(owner.auth.currentUser).uid
+
+      assertPermissionDenied {
+        owner.firestore
+            .collection(TRIPS_COLLECTION)
+            .document("different-timestamps-${UUID.randomUUID()}")
+            .set(storedTrip(ownerId, updatedAt = NOW.plusSeconds(1)))
+            .await()
+      }
+    }
+  }
+
+  @Test
   fun read_requiresAuthenticationAndRespectsVisibility() = runTest {
     withClients(
         "unauthenticated" to false,
@@ -93,7 +124,8 @@ class TripFirestoreSecurityRulesEmulatorTest {
         unauthenticated.firestore.collection(TRIPS_COLLECTION).document(published.id).get().await()
       }
 
-      nonPublished.set(storedTrip(ownerId, status = "IN_PROGRESS")).await()
+      nonPublished.set(storedTrip(ownerId)).await()
+      nonPublished.update("status", TripStatus.IN_PROGRESS.name).await()
       assertTrue(nonPublished.get().await().exists())
       assertPermissionDenied {
         other.firestore.collection(TRIPS_COLLECTION).document(nonPublished.id).get().await()
@@ -132,16 +164,12 @@ class TripFirestoreSecurityRulesEmulatorTest {
       val otherId = checkNotNull(other.auth.currentUser).uid
       val ownedTripId = "owned-${UUID.randomUUID()}"
       val otherTripId = "other-${UUID.randomUUID()}"
-      owner.firestore
-          .collection(TRIPS_COLLECTION)
-          .document(ownedTripId)
-          .set(storedTrip(ownerId, status = "IN_PROGRESS"))
-          .await()
-      other.firestore
-          .collection(TRIPS_COLLECTION)
-          .document(otherTripId)
-          .set(storedTrip(otherId, status = "CANCELLED"))
-          .await()
+      val ownedTrip = owner.firestore.collection(TRIPS_COLLECTION).document(ownedTripId)
+      ownedTrip.set(storedTrip(ownerId)).await()
+      ownedTrip.update("status", TripStatus.IN_PROGRESS.name).await()
+      val otherTrip = other.firestore.collection(TRIPS_COLLECTION).document(otherTripId)
+      otherTrip.set(storedTrip(otherId)).await()
+      otherTrip.update("status", TripStatus.CANCELLED.name).await()
       val repository =
           TripRepositoryFirestore(
               authRepository = FakeAuthRepository(AuthUser(uid = ownerId)),
@@ -181,7 +209,8 @@ class TripFirestoreSecurityRulesEmulatorTest {
       val ownerId = checkNotNull(owner.auth.currentUser).uid
       val published =
           owner.firestore.collection(TRIPS_COLLECTION).document("delete-${UUID.randomUUID()}")
-      published.set(storedTrip(ownerId, status = "CANCELLED")).await()
+      published.set(storedTrip(ownerId)).await()
+      published.update("status", TripStatus.CANCELLED.name).await()
       val otherPublished = other.firestore.collection(TRIPS_COLLECTION).document(published.id)
 
       assertPermissionDenied { otherPublished.delete().await() }
@@ -293,6 +322,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
       scheduledAt: Instant = NOW.plusSeconds(3_600),
       store: Map<String, Any> = storeLocation(),
       handoffLocation: Map<String, Any> = handoffLocation(),
+      updatedAt: Instant = NOW,
   ): Map<String, Any> =
       mapOf(
           "ownerId" to ownerId,
@@ -301,7 +331,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
           "handoffLocation" to handoffLocation,
           "status" to status,
           "createdAt" to Timestamp(NOW.epochSecond, NOW.nano),
-          "updatedAt" to Timestamp(NOW.epochSecond, NOW.nano),
+          "updatedAt" to Timestamp(updatedAt.epochSecond, updatedAt.nano),
       )
 
   private fun storeLocation(

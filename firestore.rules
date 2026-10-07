@@ -60,7 +60,9 @@ service cloud.firestore {
     match /trips/{tripId} {
       allow create: if isAuthenticated()
         && isValidTrip(request.resource.data)
-        && request.resource.data.ownerId == request.auth.uid;
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.status == "PUBLISHED"
+        && request.resource.data.createdAt == request.resource.data.updatedAt;
 
       allow read: if isAuthenticated()
         && (resource.data.status == "PUBLISHED"

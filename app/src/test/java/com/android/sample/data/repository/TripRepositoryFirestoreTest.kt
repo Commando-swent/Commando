@@ -226,6 +226,7 @@ class TripRepositoryFirestoreTest {
     val malformedDocuments =
         listOf(
             "missing ownerId" to (validData - "ownerId"),
+            "blank ownerId" to (validData + ("ownerId" to "   ")),
             "missing store" to (validData - "store"),
             "non-map store" to (validData + ("store" to "not-a-map")),
             "missing store name" to
@@ -241,6 +242,16 @@ class TripRepositoryFirestoreTest {
             "missing scheduledAt" to (validData - "scheduledAt"),
             "non-timestamp scheduledAt" to (validData + ("scheduledAt" to "not-a-timestamp")),
             "missing handoffLocation" to (validData - "handoffLocation"),
+            "non-number handoff longitude" to
+                (validData +
+                    ("handoffLocation" to (handoff.toStoredLocation() + ("longitude" to "east")))),
+            "non-finite handoff longitude" to
+                (validData +
+                    ("handoffLocation" to
+                        handoff.copy(longitude = Double.POSITIVE_INFINITY).toStoredLocation())),
+            "out-of-range handoff longitude" to
+                (validData +
+                    ("handoffLocation" to handoff.copy(longitude = 180.1).toStoredLocation())),
             "missing status" to (validData - "status"),
             "unknown status" to (validData + ("status" to "NOT_A_STATUS")),
             "missing createdAt" to (validData - "createdAt"),
@@ -380,6 +391,8 @@ class TripRepositoryFirestoreTest {
             firebaseException(Code.DEADLINE_EXCEEDED) to TripError.NetworkError,
             firebaseException(Code.NOT_FOUND) to TripError.NotFound,
             firebaseException(Code.INVALID_ARGUMENT) to TripError.InvalidData,
+            firebaseException(Code.OUT_OF_RANGE) to TripError.InvalidData,
+            firebaseException(Code.DATA_LOSS) to TripError.InvalidData,
             IOException("offline") to TripError.NetworkError,
             firebaseException(Code.FAILED_PRECONDITION) to TripError.Unknown,
             IllegalStateException("unexpected") to TripError.Unknown,

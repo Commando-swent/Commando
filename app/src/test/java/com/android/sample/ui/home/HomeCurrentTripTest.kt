@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.TripRepository
+import com.android.sample.data.repository.TripResult
 import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
@@ -95,7 +97,13 @@ class HomeCurrentTripTest {
   @Test
   fun changingAccountDoesNotReuseThePreviousUsersTrip() = runTest {
     val auth = FakeAuthRepository(AuthUser("alice"))
-    val trips = FakeTripRepository("alice", { now }, listOf(trip))
+    val aliceTrips = FakeTripRepository("alice", { now }, listOf(trip))
+    val trips =
+        object : TripRepository by aliceTrips {
+          override suspend fun getMyTrips(): TripResult<List<Trip>> =
+              FakeTripRepository(requireNotNull(auth.currentUser).uid, { now }, listOf(trip))
+                  .getMyTrips()
+        }
     compose.setContent { SampleAppTheme { CommandoApp(auth, trips) } }
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
     compose.onNodeWithTag(HomeTestTags.CURRENT_TRIP).assertIsDisplayed()

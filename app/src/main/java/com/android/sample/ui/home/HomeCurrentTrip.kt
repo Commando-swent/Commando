@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -18,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
@@ -37,6 +37,37 @@ internal fun HomeCurrentTrip(
     onPublishTrip: (() -> Unit)?,
     modifier: Modifier,
 ) {
+  if (state is HomeTripUiState.Loading || state is HomeTripUiState.Error) {
+    Box(
+        modifier.fillMaxSize().testTag(NavigationTestTags.HOME_SCREEN),
+        contentAlignment = Alignment.Center,
+    ) {
+      Column(
+          Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
+          horizontalAlignment = Alignment.CenterHorizontally,
+          verticalArrangement = Arrangement.spacedBy(16.dp),
+      ) {
+        if (state is HomeTripUiState.Loading) {
+          CircularProgressIndicator(Modifier.size(48.dp).testTag(HomeTestTags.LOADING))
+          Text(
+              stringResource(R.string.home_trip_loading),
+              textAlign = TextAlign.Center,
+              style = MaterialTheme.typography.bodyMedium,
+          )
+        } else {
+          Text(
+              stringResource(R.string.home_trip_error),
+              textAlign = TextAlign.Center,
+              style = MaterialTheme.typography.bodyMedium,
+          )
+          Button(onClick = onRetry, modifier = Modifier.height(56.dp).testTag(HomeTestTags.RETRY)) {
+            Text(stringResource(R.string.trips_retry))
+          }
+        }
+      }
+    }
+    return
+  }
   BoxWithConstraints(modifier.fillMaxSize().testTag(NavigationTestTags.HOME_SCREEN)) {
     val minimumHeight = maxHeight
     Column(
@@ -47,18 +78,6 @@ internal fun HomeCurrentTrip(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
       when (state) {
-        HomeTripUiState.Loading -> {
-          CircularProgressIndicator(
-              Modifier.align(Alignment.CenterHorizontally).testTag(HomeTestTags.LOADING)
-          )
-          Text(stringResource(R.string.home_trip_loading))
-        }
-        is HomeTripUiState.Error -> {
-          Text(stringResource(R.string.home_trip_error))
-          Button(onClick = onRetry, modifier = Modifier.testTag(HomeTestTags.RETRY)) {
-            Text(stringResource(R.string.trips_retry))
-          }
-        }
         is HomeTripUiState.Content -> {
           val trip = state.trip
           Text(
@@ -87,6 +106,8 @@ internal fun HomeCurrentTrip(
           }
         }
         HomeTripUiState.Empty -> Unit // HomeScreen renders the existing empty state.
+        HomeTripUiState.Loading,
+        is HomeTripUiState.Error -> Unit // Centered states render above.
       }
     }
   }
@@ -121,7 +142,7 @@ private fun HomeTripCard(trip: Trip) {
                   MaterialTheme.typography.headlineLarge.copy(fontSize = 40.sp, lineHeight = 44.sp),
           )
         }
-        Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFF3B4D29)) {
+        Surface(shape = RoundedCornerShape(16.dp), color = colors.primaryContainer) {
           Row(
               Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
               verticalAlignment = Alignment.CenterVertically,
@@ -135,7 +156,7 @@ private fun HomeTripCard(trip: Trip) {
                     else R.string.home_trip_open
                 ),
                 style = MaterialTheme.typography.labelSmall,
-                color = Color(0xFFD6F0B4),
+                color = colors.onPrimaryContainer,
             )
           }
         }
@@ -147,7 +168,7 @@ private fun HomeTripCard(trip: Trip) {
         Surface(
             Modifier.size(32.dp),
             shape = RoundedCornerShape(10.dp),
-            color = Color(0xFF3A472D),
+            color = colors.surfaceContainerHighest,
         ) {
           Box(contentAlignment = Alignment.Center) {
             Text(trip.store.name.take(1), color = colors.primary, fontWeight = FontWeight.ExtraBold)

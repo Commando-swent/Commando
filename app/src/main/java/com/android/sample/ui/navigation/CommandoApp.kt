@@ -13,7 +13,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.compose.ComposeNavigator
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -51,18 +50,6 @@ fun CommandoApp(
     val navController = rememberNavController()
     val user = sessionUiState.user
     val signedIn = user != null
-    DisposableEffect(navController) {
-      onDispose {
-        if (user != null && sessionViewModel.uiState.value.user?.uid != user.uid) {
-          val entry = navController.currentBackStackEntry
-          navController.popBackStack(CommandoScreens.App.name, inclusive = true)
-          if (entry != null)
-              navController.navigatorProvider
-                  .getNavigator(ComposeNavigator::class.java)
-                  .onTransitionComplete(entry)
-        }
-      }
-    }
     NavHost(
         navController = navController,
         startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Auth.name,
@@ -85,7 +72,6 @@ fun CommandoApp(
               }
           AuthenticatedApp(
               tripRepository = trips,
-              userId = userId,
               onSignOut = sessionViewModel::signOut,
               signOutError = sessionUiState.signOutError,
           )
@@ -99,7 +85,6 @@ fun CommandoApp(
 @Composable
 private fun AuthenticatedApp(
     tripRepository: TripRepository,
-    userId: String,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
 ) {
@@ -134,7 +119,7 @@ private fun AuthenticatedApp(
         var tripState: HomeTripUiState = HomeTripUiState.Empty
         var onRetry: () -> Unit = {}
         if (appUiState.mode == AppMode.Commando) {
-          val homeViewModel: HomeViewModel = viewModel { HomeViewModel(tripRepository, userId) }
+          val homeViewModel: HomeViewModel = viewModel { HomeViewModel(tripRepository) }
           val state by homeViewModel.uiState.collectAsState()
           tripState = state
           onRetry = homeViewModel::refresh

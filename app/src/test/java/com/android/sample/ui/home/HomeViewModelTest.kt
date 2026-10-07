@@ -48,10 +48,10 @@ class HomeViewModelTest {
     Dispatchers.resetMain()
   }
 
-  private fun viewModel() = HomeViewModel(repository, "alice", { now })
+  private fun viewModel() = HomeViewModel(repository, { now })
 
   @Test
-  fun selectsNearestPublishedOwnTripAndIgnoresClosedPastAndOtherAccounts() = runTest {
+  fun selectsNearestPublishedTripAndIgnoresClosedAndPastTrips() = runTest {
     repository.result =
         TripResult.Success(
             listOf(
@@ -59,7 +59,6 @@ class HomeViewModelTest {
                 trip.copy(id = "past", scheduledAt = now.minusSeconds(1)),
                 trip.copy(id = "completed", status = TripStatus.COMPLETED),
                 trip.copy(id = "cancelled", status = TripStatus.CANCELLED),
-                trip.copy(id = "foreign", ownerId = "bob", scheduledAt = now.plusSeconds(1)),
                 trip,
             )
         )
@@ -67,6 +66,20 @@ class HomeViewModelTest {
     vm.refresh()
     advanceUntilIdle()
     assertEquals(HomeTripUiState.Content(trip), vm.uiState.value)
+  }
+
+  @Test
+  fun refreshKeepsExistingContentVisibleUntilTheResultArrives() = runTest {
+    repository.result = TripResult.Success(listOf(trip))
+    val vm = viewModel()
+    vm.refresh()
+    advanceUntilIdle()
+    val updated = trip.copy(store = Location("Coop", 46.52, 6.63))
+    repository.result = TripResult.Success(listOf(updated))
+    vm.refresh()
+    assertEquals(HomeTripUiState.Content(trip), vm.uiState.value)
+    advanceUntilIdle()
+    assertEquals(HomeTripUiState.Content(updated), vm.uiState.value)
   }
 
   @Test

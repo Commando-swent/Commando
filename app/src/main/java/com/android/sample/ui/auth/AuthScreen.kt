@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.Credential
 import com.android.sample.R
 import com.android.sample.model.authentication.AuthUser
+import com.android.sample.ui.theme.SampleAppTheme
 
 /** The navigation owner supplies the ViewModel, Google account picker and destination callbacks. */
 @Composable
@@ -57,7 +58,7 @@ internal fun AuthScreen(
     onSubmit: () -> Unit,
     onGoogle: () -> Unit,
     onBack: () -> Unit,
-) = AuthTheme {
+) = SampleAppTheme {
   val signup = state.mode == AuthMode.SIGN_UP
   val enabled = !state.isLoading && state.user == null
   val colors = MaterialTheme.colorScheme
@@ -81,7 +82,7 @@ internal fun AuthScreen(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(12.dp),
       ) {
-        Image(painterResource(R.drawable.auth_logo), null, Modifier.size(32.dp))
+        Image(painterResource(R.drawable.home_logo), null, Modifier.size(32.dp))
         Text(stringResource(R.string.auth_brand), style = MaterialTheme.typography.titleMedium)
       }
       TextButton(

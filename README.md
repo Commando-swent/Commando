@@ -43,6 +43,32 @@ Previously loaded trips, active requests, product lists, and order details will 
 
 Actions performed without connectivity will be marked as pending and synchronized once the device reconnects.
 
+## Firebase emulator tests
+
+Firebase emulator tests are grouped by the environment they require:
+
+- `app/src/test/java/com/android/sample/emulator/auth/` uses the Auth emulator.
+- `app/src/test/java/com/android/sample/emulator/firestore/adapter/` uses Firestore with
+  permissive test-only rules.
+- `app/src/test/java/com/android/sample/emulator/firestore/security/` uses Firestore and Auth with
+  the production rules declared by `firebase.json`.
+
+Name each test file `*EmulatorTest.kt` and place it under the matching profile. CI discovers and
+runs the profile automatically. Security-rules tests must be named `*SecurityRulesEmulatorTest.kt`
+and placed in the `firestore/security` profile.
+
+The Kotlin package must match its profile directory. Connect Firebase SDK clients using
+`FIRESTORE_EMULATOR_HOST` and/or `FIREBASE_AUTH_EMULATOR_HOST` for the selected profile.
+
+Run every detected profile locally with:
+
+```bash
+bash scripts/ci/run-firebase-emulator-tests.sh
+```
+
+The security profile is enabled only when `firebase.json` explicitly points to the production
+`firestore.rules` file at the repository root.
+
 ## Figma
 
 The application's mockups and wireframes are available on [Figma](https://www.figma.com/design/WPmz3r0efh7jF2BQmUTfRt/Command-o-%E2%80%93-App-Mockups?node-id=0-1&t=NffdyAdRoARsGMDX-1).

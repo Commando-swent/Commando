@@ -1,5 +1,8 @@
 name: CI - Test Runner
 
+env:
+  FIREBASE_TOOLS_VERSION: "15.32.1"
+
 # Run the workflow when commits are pushed on main or when a PR is modified
 on:
   push:
@@ -11,6 +14,10 @@ on:
       - opened
       - synchronize
       - reopened
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ci:
@@ -40,12 +47,25 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
       # Caching is a very useful part of a CI, as a workflow is executed in a clean environment every time,
       # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
       #
       # To avoid that, we cache the the gradle folder to reuse it later.
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v6
+
+      - name: Firebase emulator cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ env.FIREBASE_TOOLS_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
 
       # Cache the Emulator, if the cache does not hit, create the emulator.
       # API 34 matches targetSdk. compileSdk 37 is only the compile platform.
@@ -84,6 +104,9 @@ jobs:
         run: |
           # To run the CI with debug information, add --info
           ./gradlew assemble lint --parallel --build-cache
+
+      - name: Run Firebase emulator tests
+        run: bash scripts/ci/run-firebase-emulator-tests.sh
 
       # Run Unit tests
       - name: Run tests

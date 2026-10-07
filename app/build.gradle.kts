@@ -1,3 +1,6 @@
+import org.gradle.api.tasks.testing.TestDescriptor
+import org.gradle.api.tasks.testing.TestListener
+import org.gradle.api.tasks.testing.TestResult
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -167,11 +170,55 @@ dependencies {
   testImplementation(libs.robolectric)
 }
 
+val firebaseEmulatorTestPatterns =
+    mapOf(
+        "auth" to "com.android.sample.emulator.auth.*",
+        "firestoreAdapter" to "com.android.sample.emulator.firestore.adapter.*",
+        "firestoreSecurity" to "com.android.sample.emulator.firestore.security.*",
+    )
+val firebaseEmulatorProfile = providers.gradleProperty("firebaseEmulatorProfile").orNull
+
 tasks.withType<Test> {
   // Configure Jacoco for each tests
   configure<JacocoTaskExtension> {
     isIncludeNoLocationClasses = true
     excludes = listOf("jdk.internal.*")
+  }
+
+  if (firebaseEmulatorProfile == null) {
+    filter { excludeTestsMatching("com.android.sample.emulator.*") }
+  } else if (name == "testDebugUnitTest") {
+    filter {
+      val testPattern =
+          firebaseEmulatorTestPatterns[firebaseEmulatorProfile]
+              ?: throw GradleException(
+                  "Unknown Firebase emulator profile '$firebaseEmulatorProfile'. " +
+                      "Expected one of: ${firebaseEmulatorTestPatterns.keys.joinToString()}"
+              )
+      includeTestsMatching(testPattern)
+      isFailOnNoMatchingTests = true
+    }
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+
+    addTestListener(
+        object : TestListener {
+          override fun beforeSuite(suite: TestDescriptor) = Unit
+
+          override fun afterSuite(suite: TestDescriptor, result: TestResult) {
+            if (suite.parent == null && result.skippedTestCount > 0) {
+              throw GradleException(
+                  "Firebase emulator profile '$firebaseEmulatorProfile' skipped " +
+                      "${result.skippedTestCount} test(s)"
+              )
+            }
+          }
+
+          override fun beforeTest(testDescriptor: TestDescriptor) = Unit
+
+          override fun afterTest(testDescriptor: TestDescriptor, result: TestResult) = Unit
+        }
+    )
   }
 }
 

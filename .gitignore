@@ -7,3 +7,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Firebase CLI and emulator debug logs generated at the repository root
+/firebase-debug*.log
+/firestore-debug*.log

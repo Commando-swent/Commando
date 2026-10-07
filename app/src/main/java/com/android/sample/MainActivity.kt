@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
+import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
@@ -28,7 +29,8 @@ import com.android.sample.ui.navigation.AppScaffold
 import com.android.sample.ui.navigation.CommandoApp
 import com.android.sample.ui.navigation.CommandoScreens
 import com.android.sample.ui.theme.SampleAppTheme
-import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,23 +93,42 @@ private fun MainHomePreview(
   }
 }
 
-@Preview(name = "Home · Current trip", group = "Home", widthDp = 412, heightDp = 915)
+@Preview(name = "Home · Trip published", group = "Home", widthDp = 412, heightDp = 915)
 @Composable
-private fun CurrentTripHomePreview() {
-  val now = Instant.now()
-  MainHomePreview(
-      AppMode.Commando,
-      HomeTripUiState.Content(
-          Trip(
-              "preview",
-              "preview",
-              Location("Migros · Coop", 46.52, 6.63),
-              now,
-              Location("Rolex Learning Center", 46.52, 6.57),
-              TripStatus.PUBLISHED,
-              now,
-              now,
-          )
-      ),
+private fun PublishedTripHomePreview() {
+  MainHomePreview(AppMode.Commando, previewTrip(TripStatus.PUBLISHED))
+}
+
+@Preview(name = "Home · Trip in progress", group = "Home", widthDp = 412, heightDp = 915)
+@Composable
+private fun OngoingTripHomePreview() {
+  MainHomePreview(AppMode.Commando, previewTrip(TripStatus.IN_PROGRESS))
+}
+
+@Preview(name = "Home · Trip loading", group = "Home", widthDp = 412, heightDp = 915)
+@Composable
+private fun LoadingTripHomePreview() {
+  MainHomePreview(AppMode.Commando, HomeTripUiState.Loading)
+}
+
+@Preview(name = "Home · Trip error", group = "Home", widthDp = 412, heightDp = 915)
+@Composable
+private fun ErrorTripHomePreview() {
+  MainHomePreview(AppMode.Commando, HomeTripUiState.Error(TripError.NetworkError))
+}
+
+private fun previewTrip(status: TripStatus): HomeTripUiState.Content {
+  val departure = LocalDate.now().atTime(17, 30).atZone(ZoneId.systemDefault()).toInstant()
+  return HomeTripUiState.Content(
+      Trip(
+          "preview",
+          "preview",
+          Location("Migros · Coop", 46.52, 6.63),
+          departure,
+          Location("Rolex Learning Center", 46.52, 6.57),
+          status,
+          departure,
+          departure,
+      )
   )
 }

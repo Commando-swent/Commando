@@ -1,0 +1,14 @@
+{
+  "firestore": {
+    "rules": "app/src/test/resources/firestore-emulator-open.rules"
+  },
+  "emulators": {
+    "singleProjectMode": false,
+    "firestore": {
+      "port": 8080
+    },
+    "ui": {
+      "enabled": false
+    }
+  }
+}

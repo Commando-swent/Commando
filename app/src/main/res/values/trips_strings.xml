@@ -1,0 +1,10 @@
+<resources>
+    <string name="trips_title">Available runs</string>
+    <string name="trips_subtitle">Upcoming runs you can order on.</string>
+    <string name="trips_loading">Loading available trips</string>
+    <string name="trips_empty">No trips available right now.</string>
+    <string name="trips_error">Something went wrong while loading trips.</string>
+    <string name="trips_retry">Retry</string>
+    <string name="trips_departure">Departure: %1$s</string>
+    <string name="trips_handoff">%1$s · Handoff point</string>
+</resources>

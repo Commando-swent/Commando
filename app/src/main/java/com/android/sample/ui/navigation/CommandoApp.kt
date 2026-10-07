@@ -1,17 +1,22 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.AuthViewModel
+import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.session.SessionViewModel
 
 // One temporary instance for the process, shared across activity recreation as well.
@@ -34,7 +39,7 @@ fun CommandoApp(repository: AuthRepository = temporaryAuthRepository) {
     val signedIn = sessionUiState.user != null
     NavHost(
         navController = navController,
-        startDestination = if (signedIn) CommandoScreens.Home.name else CommandoScreens.Auth.name,
+        startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Auth.name,
     ) {
       if (!signedIn) {
         composable(route = CommandoScreens.Auth.name) {
@@ -46,20 +51,54 @@ fun CommandoApp(repository: AuthRepository = temporaryAuthRepository) {
           )
         }
       } else {
-        composable(route = CommandoScreens.Home.name) {
-          HomePlaceholderScreen(
-              onProfile = {
-                navController.navigate(CommandoScreens.Profile.name) { launchSingleTop = true }
-              }
-          )
-        }
-        composable(route = CommandoScreens.Profile.name) {
-          ProfilePlaceholderScreen(
-              onBack = { navController.popBackStack() },
+        composable(route = CommandoScreens.App.name) {
+          AuthenticatedApp(
               onSignOut = sessionViewModel::signOut,
               signOutError = sessionUiState.signOutError,
           )
         }
+      }
+    }
+  }
+}
+
+/** The outer App entry owns the shared mode and is discarded when the session changes. */
+@Composable
+private fun AuthenticatedApp(onSignOut: () -> Unit, signOutError: AuthException?) {
+  val appViewModel: AppViewModel = viewModel()
+  val appUiState by appViewModel.uiState.collectAsState()
+  val navController = rememberNavController()
+  val backStackEntry by navController.currentBackStackEntryAsState()
+  val currentScreen =
+      CommandoScreens.entries.firstOrNull { it.name == backStackEntry?.destination?.route }
+          ?: CommandoScreens.Home
+
+  AppScaffold(
+      currentScreen = currentScreen,
+      mode = appUiState.mode,
+      onSwitchMode = appViewModel::switchMode,
+      onHome = {
+        navController.navigate(CommandoScreens.Home.name) {
+          popUpTo(CommandoScreens.Home.name)
+          launchSingleTop = true
+        }
+      },
+      onProfile = {
+        navController.navigate(CommandoScreens.Profile.name) { launchSingleTop = true }
+      },
+  ) { padding ->
+    NavHost(
+        navController = navController,
+        startDestination = CommandoScreens.Home.name,
+        modifier = Modifier.padding(padding),
+    ) {
+      composable(route = CommandoScreens.Home.name) { HomeScreen(mode = appUiState.mode) }
+      composable(route = CommandoScreens.Profile.name) {
+        ProfilePlaceholderScreen(
+            onBack = { navController.popBackStack() },
+            onSignOut = onSignOut,
+            signOutError = signOutError,
+        )
       }
     }
   }

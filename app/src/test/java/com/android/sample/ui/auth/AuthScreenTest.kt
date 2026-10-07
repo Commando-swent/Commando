@@ -8,6 +8,7 @@ import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Rule
@@ -29,7 +30,7 @@ class AuthScreenTest {
       google: suspend () -> androidx.credentials.Credential? = { null },
   ) {
     val viewModel = AuthViewModel(repository)
-    compose.setContent { AuthRoute(viewModel, google, authenticated::add, {}) }
+    compose.setContent { SampleAppTheme { AuthRoute(viewModel, google, authenticated::add, {}) } }
   }
 
   private fun node(tag: String) = compose.onNodeWithTag(tag)
@@ -167,7 +168,9 @@ class AuthScreenTest {
   fun cancelledGooglePickerLeavesFormUsableAndBackCallsOwner() {
     val viewModel = AuthViewModel(fake)
     var backs = 0
-    compose.setContent { AuthRoute(viewModel, { null }, authenticated::add, { backs++ }) }
+    compose.setContent {
+      SampleAppTheme { AuthRoute(viewModel, { null }, authenticated::add, { backs++ }) }
+    }
     node("auth_google").performClick()
     node("auth_submit").assertIsEnabled()
     node("auth_back").performClick()

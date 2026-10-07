@@ -135,6 +135,7 @@ dependencies {
 
   implementation(libs.androidx.credentials)
   implementation(libs.kotlinx.coroutines.core)
+  implementation(libs.googleid)
   implementation(libs.kotlinx.coroutines.play.services)
   // ------------- Jetpack Compose ------------------
   val composeBom = platform(libs.compose.bom)

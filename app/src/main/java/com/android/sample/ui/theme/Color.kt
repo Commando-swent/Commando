@@ -5,9 +5,6 @@ import androidx.compose.ui.graphics.Color
 
 val Primary = Color(0xFFB9E48A)
 val OnPrimary = Color(0xFF17240A)
-val PrimaryContainer = Color(0xFF3B4D29)
-val OnPrimaryContainer = Color(0xFFD6F0B4)
-val SurfaceContainerHighest = Color(0xFF3A472D)
 val Background = Color(0xFF161B12)
 val OnBackground = Color(0xFFF4F2E6)
 val Surface = Color(0xFF1D2417)

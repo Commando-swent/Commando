@@ -1,4 +1,4 @@
-package com.android.sample.ui.theme
+qpackage com.android.sample.ui.theme
 
 // AI assistance: OpenAI Codex.
 import android.app.Activity
@@ -30,6 +30,8 @@ private val AppColorScheme =
         onSecondaryContainer = OnSecondaryContainer,
         surfaceContainer = SurfaceContainer,
         error = Error,
+        primaryContainer = PrimaryContainer,
+        onPrimaryContainer = OnPrimaryContainer,
         surfaceContainerLow = SurfaceContainerLow,
         surfaceContainerHigh = SurfaceContainerHigh,
         errorContainer = ErrorContainer,

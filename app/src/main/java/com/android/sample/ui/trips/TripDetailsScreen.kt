@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Trip
+import com.android.sample.model.TripStatus
 
 private val detailsBackground = Color(0xFF161B12)
 private val detailsSurface = Color(0xFF252E1D)
@@ -71,6 +72,13 @@ fun TripDetailsScreen(
           TripDetailsButton(
               text = stringResource(R.string.trip_details_add_items),
               onClick = { onAddItems(state.trip.id) },
+              enabled =
+                  when (state.trip.status) {
+                    TripStatus.PUBLISHED,
+                    TripStatus.IN_PROGRESS -> true
+                    TripStatus.COMPLETED,
+                    TripStatus.CANCELLED -> false
+                  },
           )
         }
         is TripDetailsUiState.Error -> {
@@ -169,9 +177,10 @@ private fun TripDetailsCard(content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-private fun TripDetailsButton(text: String, onClick: () -> Unit) {
+private fun TripDetailsButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
   Button(
       onClick = onClick,
+      enabled = enabled,
       modifier = Modifier.fillMaxWidth(),
       colors =
           ButtonDefaults.buttonColors(

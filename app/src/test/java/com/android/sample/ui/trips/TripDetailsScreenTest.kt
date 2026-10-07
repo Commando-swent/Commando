@@ -110,9 +110,50 @@ class TripDetailsScreenTest {
         .onNodeWithText("Add items to this run")
         .assertIsDisplayed()
         .assertTextEquals("Add items to this run")
+        .assertIsEnabled()
         .assertHasClickAction()
         .performClick()
     compose.runOnIdle { assertEquals(listOf(trip.id), addedTripIds) }
+  }
+
+  @Test
+  fun inProgressAddItemsIsEnabledAndInvokesCallbackWithExactId() {
+    val addedTripIds = mutableListOf<String>()
+    show(
+        TripDetailsUiState.Content(trip.copy(status = TripStatus.IN_PROGRESS)),
+        onAddItems = { addedTripIds.add(it) },
+    )
+    compose.runOnIdle { assertEquals(emptyList<String>(), addedTripIds) }
+    compose
+        .onNodeWithText("Add items to this run")
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    compose.runOnIdle { assertEquals(listOf(trip.id), addedTripIds) }
+  }
+
+  @Test
+  fun completedAddItemsIsDisabledAndDoesNotInvokeCallback() {
+    assertAddItemsDisabled(TripStatus.COMPLETED)
+  }
+
+  @Test
+  fun cancelledAddItemsIsDisabledAndDoesNotInvokeCallback() {
+    assertAddItemsDisabled(TripStatus.CANCELLED)
+  }
+
+  private fun assertAddItemsDisabled(status: TripStatus) {
+    val addedTripIds = mutableListOf<String>()
+    show(
+        TripDetailsUiState.Content(trip.copy(status = status)),
+        onAddItems = { addedTripIds.add(it) },
+    )
+    compose
+        .onNodeWithText("Add items to this run")
+        .assertIsDisplayed()
+        .assertIsNotEnabled()
+        .performTouchInput { click() }
+    compose.runOnIdle { assertEquals(emptyList<String>(), addedTripIds) }
   }
 
   @Test

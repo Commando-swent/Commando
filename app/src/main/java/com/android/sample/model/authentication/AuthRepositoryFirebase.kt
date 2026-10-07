@@ -2,6 +2,9 @@ package com.android.sample.model.authentication
 
 // AI assistance: Claude (Anthropic).
 import androidx.credentials.Credential
+import androidx.credentials.CustomCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
@@ -27,17 +30,21 @@ import kotlinx.coroutines.tasks.await
  * Firebase implementation of [AuthRepository].
  *
  * Converts [FirebaseUser] into [AuthUser] and Firebase errors into [AuthException], keeping the
- * original error as the cause. Passwords and tokens are never logged.
- *
- * Google sign-in is added by a later sub-issue of #6.
+ * original error as the cause. Passwords and tokens are never logged. Clearing the Credential
+ * Manager state on sign-out belongs to the UI integration (#7), not to this repository.
  *
  * @param auth The [FirebaseAuth] instance used for authentication.
+ * @param helper Extracts Google ID tokens and converts them to Firebase credentials.
  */
-class AuthRepositoryFirebase(private val auth: FirebaseAuth = Firebase.auth) : AuthRepository {
+class AuthRepositoryFirebase(
+    private val auth: FirebaseAuth = Firebase.auth,
+    private val helper: GoogleSignInHelper = DefaultGoogleSignInHelper(),
+) : AuthRepository {
 
   private enum class Operation {
     SIGN_UP,
     SIGN_IN_EMAIL,
+    GOOGLE,
   }
 
   override val currentUser: AuthUser?
@@ -63,8 +70,18 @@ class AuthRepositoryFirebase(private val auth: FirebaseAuth = Firebase.auth) : A
         auth.signInWithEmailAndPassword(email.trim(), password).await()
       }
 
-  override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> =
-      TODO("Google sign-in is added by a later sub-issue of #6.")
+  override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> {
+    if (
+        credential !is CustomCredential ||
+            credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+    ) {
+      return Result.failure(AuthException.InvalidGoogleCredential())
+    }
+    return authenticate(Operation.GOOGLE) {
+      val idToken = helper.extractIdTokenCredential(credential.data).idToken
+      auth.signInWithCredential(helper.toFirebaseCredential(idToken)).await()
+    }
+  }
 
   override fun signOut(): Result<Unit> =
       try {
@@ -96,6 +113,7 @@ class AuthRepositoryFirebase(private val auth: FirebaseAuth = Firebase.auth) : A
   // Subclasses are checked before their superclasses.
   private fun Exception.toAuthException(operation: Operation): AuthException =
       when (this) {
+        is GoogleIdTokenParsingException -> AuthException.InvalidGoogleCredential(this)
         is FirebaseNetworkException -> AuthException.Network(this)
         is FirebaseTooManyRequestsException -> AuthException.TooManyRequests(this)
         is FirebaseAuthWeakPasswordException -> AuthException.Unknown(this)
@@ -106,8 +124,11 @@ class AuthRepositoryFirebase(private val auth: FirebaseAuth = Firebase.auth) : A
               AuthException.AccountConflict(this)
             }
         is FirebaseAuthInvalidCredentialsException ->
-            if (errorCode == ERROR_INVALID_EMAIL) AuthException.InvalidEmail(this)
-            else AuthException.InvalidCredentials(this)
+            when {
+              errorCode == ERROR_INVALID_EMAIL -> AuthException.InvalidEmail(this)
+              operation == Operation.GOOGLE -> AuthException.InvalidGoogleCredential(this)
+              else -> AuthException.InvalidCredentials(this)
+            }
         is FirebaseAuthInvalidUserException -> AuthException.InvalidCredentials(this)
         else -> AuthException.Unknown(this)
       }

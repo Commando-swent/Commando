@@ -10,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -23,14 +22,6 @@ import com.android.sample.R
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
-
-private val detailsBackground = Color(0xFF161B12)
-private val detailsSurface = Color(0xFF252E1D)
-private val detailsOutline = Color(0xFF3F4A33)
-private val detailsText = Color(0xFFF4F2E6)
-private val detailsMuted = Color(0xFFC3C9B2)
-private val detailsAccent = Color(0xFFB9E48A)
-private val detailsOnAccent = Color(0xFF17240A)
 
 @Composable
 fun TripDetailsScreen(
@@ -51,12 +42,14 @@ fun TripDetailsScreen(
     onAddItems: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  Column(modifier.fillMaxSize().background(detailsBackground).safeDrawingPadding()) {
+  Column(
+      modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
+  ) {
     // Keep Back outside the scrolling body and independent of the loading result.
     TextButton(
         onClick = onBack,
         modifier = Modifier.padding(horizontal = 12.dp),
-        colors = ButtonDefaults.textButtonColors(contentColor = detailsAccent),
+        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary),
     ) {
       Text(stringResource(R.string.trip_details_back))
     }
@@ -103,15 +96,15 @@ private fun TripDetailsContent(trip: Trip) {
     Text(
         trip.store.name,
         modifier = Modifier.semantics { heading() },
-        color = detailsText,
+        color = MaterialTheme.colorScheme.onSurface,
         style = MaterialTheme.typography.headlineSmall,
     )
-    HorizontalDivider(color = detailsOutline)
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     TripDetailsField(
         label = stringResource(R.string.trip_details_shopping_time),
         value = formatTripDeparture(trip.scheduledAt, locale),
     )
-    HorizontalDivider(color = detailsOutline)
+    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     TripDetailsField(
         label = stringResource(R.string.trip_details_handoff),
         value = trip.handoffLocation.name,
@@ -122,8 +115,16 @@ private fun TripDetailsContent(trip: Trip) {
 @Composable
 private fun TripDetailsField(label: String, value: String) {
   Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Text(label, color = detailsMuted, style = MaterialTheme.typography.bodySmall)
-    Text(value, color = detailsText, style = MaterialTheme.typography.titleMedium)
+    Text(
+        label,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text(
+        value,
+        color = MaterialTheme.colorScheme.onSurface,
+        style = MaterialTheme.typography.titleMedium,
+    )
   }
 }
 
@@ -132,12 +133,12 @@ private fun TripDetailsLoading() {
   TripDetailsCard {
     CircularProgressIndicator(
         modifier = Modifier.align(Alignment.CenterHorizontally),
-        color = detailsAccent,
+        color = MaterialTheme.colorScheme.primary,
     )
     Text(
         stringResource(R.string.trip_details_loading),
         modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-        color = detailsText,
+        color = MaterialTheme.colorScheme.onSurface,
         textAlign = TextAlign.Center,
         style = MaterialTheme.typography.titleMedium,
     )
@@ -150,7 +151,7 @@ private fun TripDetailsError(message: String, onRetry: (() -> Unit)?) {
     Text(
         message,
         modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
-        color = detailsText,
+        color = MaterialTheme.colorScheme.onSurface,
         textAlign = TextAlign.Center,
         style = MaterialTheme.typography.titleMedium,
     )
@@ -165,8 +166,8 @@ private fun TripDetailsCard(content: @Composable ColumnScope.() -> Unit) {
   Card(
       modifier = Modifier.fillMaxWidth(),
       shape = RoundedCornerShape(16.dp),
-      colors = CardDefaults.cardColors(containerColor = detailsSurface),
-      border = BorderStroke(1.dp, detailsOutline),
+      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
   ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(20.dp),
@@ -184,8 +185,8 @@ private fun TripDetailsButton(text: String, onClick: () -> Unit, enabled: Boolea
       modifier = Modifier.fillMaxWidth(),
       colors =
           ButtonDefaults.buttonColors(
-              containerColor = detailsAccent,
-              contentColor = detailsOnAccent,
+              containerColor = MaterialTheme.colorScheme.primary,
+              contentColor = MaterialTheme.colorScheme.onPrimary,
           ),
   ) {
     Text(text, textAlign = TextAlign.Center)

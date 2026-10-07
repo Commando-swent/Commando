@@ -1,4 +1,4 @@
-qpackage com.android.sample.ui.theme
+package com.android.sample.ui.theme
 
 // AI assistance: OpenAI Codex.
 import android.app.Activity

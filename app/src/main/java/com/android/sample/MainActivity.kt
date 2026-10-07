@@ -17,13 +17,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
+import com.android.sample.model.Location
+import com.android.sample.model.Trip
+import com.android.sample.model.TripStatus
 import com.android.sample.resources.C
 import com.android.sample.ui.home.HomeScreen
+import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.navigation.AppMode
 import com.android.sample.ui.navigation.AppScaffold
 import com.android.sample.ui.navigation.CommandoApp
 import com.android.sample.ui.navigation.CommandoScreens
 import com.android.sample.ui.theme.SampleAppTheme
+import java.time.Instant
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,7 +66,10 @@ private fun CommandoHomePreview() {
 }
 
 @Composable
-private fun MainHomePreview(initialMode: AppMode) {
+private fun MainHomePreview(
+    initialMode: AppMode,
+    tripState: HomeTripUiState = HomeTripUiState.Empty,
+) {
   var mode by rememberSaveable { mutableStateOf(initialMode) }
   SampleAppTheme {
     AppScaffold(
@@ -76,7 +84,30 @@ private fun MainHomePreview(initialMode: AppMode) {
           modifier = Modifier.padding(padding),
           onFindTrip = {},
           onPublishTrip = {},
+          tripState = tripState,
+          onManageTrip = {},
       )
     }
   }
+}
+
+@Preview(name = "Home · Current trip", group = "Home", widthDp = 412, heightDp = 915)
+@Composable
+private fun CurrentTripHomePreview() {
+  val now = Instant.now()
+  MainHomePreview(
+      AppMode.Commando,
+      HomeTripUiState.Content(
+          Trip(
+              "preview",
+              "preview",
+              Location("Migros · Coop", 46.52, 6.63),
+              now,
+              Location("Rolex Learning Center", 46.52, 6.57),
+              TripStatus.PUBLISHED,
+              now,
+              now,
+          )
+      ),
+  )
 }

@@ -29,14 +29,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
     onFindTrip: (() -> Unit)? = null,
     onPublishTrip: (() -> Unit)? = null,
-    tripState: HomeTripUiState = HomeTripUiState.Empty,
-    onRetry: () -> Unit = {},
-    onManageTrip: ((String) -> Unit)? = null,
 ) {
-  if (mode == AppMode.Commando && tripState != HomeTripUiState.Empty) {
-    HomeCurrentTrip(tripState, onRetry, onManageTrip, onPublishTrip, modifier)
-    return
-  }
   val requester = mode == AppMode.Requester
   Column(
       modifier

@@ -16,9 +16,6 @@ private val AppColorScheme =
     darkColorScheme(
         primary = Primary,
         onPrimary = OnPrimary,
-        primaryContainer = PrimaryContainer,
-        onPrimaryContainer = OnPrimaryContainer,
-        surfaceContainerHighest = SurfaceContainerHighest,
         background = Background,
         onBackground = OnBackground,
         surface = Surface,

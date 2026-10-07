@@ -91,6 +91,27 @@ jobs:
           # To run the CI with debug information, add --info
           ./gradlew check --parallel --build-cache
 
+      # Firebase Auth emulator used by the connected tests (reached from the AVD at 10.0.2.2:9099)
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Start Firebase Auth emulator
+        run: |
+          npm install -g firebase-tools
+          nohup firebase emulators:start --only auth --project command-o > firebase-emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null http://localhost:9099/; then
+              echo "Firebase Auth emulator is up."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Firebase Auth emulator did not start in time."
+          cat firebase-emulator.log
+          exit 1
+
       # Run connected tests on the emulator
       - name: run tests
         uses: reactivecircus/android-emulator-runner@v2

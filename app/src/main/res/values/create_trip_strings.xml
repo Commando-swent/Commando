@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="create_trip_stores_label">Stores</string>
+    <string name="create_trip_stores_helper">Choose the stores you\'ll visit on this run.</string>
+    <string name="create_trip_add_store">Add store</string>
+    <string name="create_trip_remove_store">Remove %1$s</string>
+    <string name="create_trip_date_label">Date</string>
+    <string name="create_trip_date_placeholder">Select date</string>
+    <string name="create_trip_date_helper">Today or later</string>
+    <string name="create_trip_time_label">Shopping time</string>
+    <string name="create_trip_time_placeholder">Select time</string>
+    <string name="create_trip_time_helper">Must be in the future</string>
+    <string name="create_trip_handoff_label">Handoff location</string>
+    <string name="create_trip_handoff_placeholder">e.g. Rolex Center</string>
+    <string name="create_trip_handoff_helper">Where requesters meet you to collect their groceries.</string>
+    <string name="create_trip_max_orders_label">Maximum number of orders</string>
+    <string name="create_trip_max_orders_placeholder">e.g. 3</string>
+    <string name="create_trip_max_orders_helper">A whole number, 1 or more.</string>
+    <string name="create_trip_error_stores_required">Select at least one store.</string>
+    <string name="create_trip_error_date_required">Choose a date.</string>
+    <string name="create_trip_error_date_in_past">Choose today or a later date.</string>
+    <string name="create_trip_error_time_required">Choose a time.</string>
+    <string name="create_trip_error_time_in_past">That time has already passed.</string>
+    <string name="create_trip_error_handoff_required">Enter where you will hand over the groceries.</string>
+    <string name="create_trip_error_max_orders">Enter a whole number of 1 or more.</string>
+
+    <string name="create_trip_store_dialog_title">Add a store</string>
+    <string name="create_trip_store_dialog_name">Store name</string>
+    <string name="create_trip_store_dialog_confirm">Add</string>
+    <string name="create_trip_dialog_ok">OK</string>
+    <string name="create_trip_dialog_cancel">Cancel</string>
+    <string name="create_trip_publish">Publish trip</string>
+    <string name="create_trip_publishing">Publishing…</string>
+    <string name="create_trip_retry">Try again</string>
+    <string name="create_trip_publish_failed_title">Couldn\'t publish your trip</string>
+    <string name="create_trip_publish_failed_network">Check your connection and try again. Your details are saved.</string>
+    <string name="create_trip_publish_failed_permission">You are not allowed to publish trips. Your details are saved.</string>
+    <string name="create_trip_publish_failed_invalid">Some details were not accepted. Check them and try again.</string>
+    <string name="create_trip_publish_failed_unknown">Something went wrong. Try again. Your details are saved.</string>
+
+    <string name="create_trip_title">Publish a trip</string>
+    <string name="create_trip_intro">Share where and when you\'re shopping. Others can then add a few items to your run.</string>
+    <string name="create_trip_back">Back</string>
+    <string name="create_trip_date_today">Today, %1$s</string>
+    <string name="create_trip_date_tomorrow">Tomorrow, %1$s</string>
+    <string name="create_trip_published">Trip published</string>
+</resources>

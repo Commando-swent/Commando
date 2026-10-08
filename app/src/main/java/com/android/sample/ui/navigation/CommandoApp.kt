@@ -10,10 +10,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -23,18 +26,30 @@ import com.android.sample.R
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
+import com.android.sample.ui.auth.AndroidGoogleCredentialClient
 import com.android.sample.ui.auth.AuthMode
 import com.android.sample.ui.auth.AuthRoute
 import com.android.sample.ui.auth.AuthViewModel
+import com.android.sample.ui.auth.GoogleCredentialClient
+import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.session.SessionViewModel
+import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
 @Composable
-fun CommandoApp(repository: AuthRepository = AuthRepositoryProvider.repository) {
+fun CommandoApp(
+    repository: AuthRepository = AuthRepositoryProvider.repository,
+    googleCredentials: GoogleCredentialClient? = null,
+) {
   val context = LocalContext.current
   val activity = LocalActivity.current
   val googleUnavailable = stringResource(R.string.auth_google_unavailable)
+  val clearSessionError = stringResource(R.string.auth_google_clear_error)
+  val googleClient =
+      googleCredentials
+          ?: remember(context) { AndroidGoogleCredentialClient(context.applicationContext) }
+  val scope = rememberCoroutineScope()
   val sessionViewModel: SessionViewModel = viewModel { SessionViewModel(repository) }
   val sessionUiState by sessionViewModel.uiState.collectAsState()
 
@@ -61,9 +76,12 @@ fun CommandoApp(repository: AuthRepository = AuthRepositoryProvider.repository) 
             AuthRoute(
                 viewModel = authViewModel,
                 requestGoogleCredential = {
-                  // The repository's Google implementation is still pending; never call its TODO.
-                  Toast.makeText(context, googleUnavailable, Toast.LENGTH_SHORT).show()
-                  null
+                  try {
+                    googleClient.request(activity ?: context)
+                  } catch (_: GoogleSignInNotConfiguredException) {
+                    Toast.makeText(context, googleUnavailable, Toast.LENGTH_LONG).show()
+                    null
+                  }
                 },
                 // Session observation changes the graph after authentication succeeds.
                 onAuthenticated = {},
@@ -74,7 +92,18 @@ fun CommandoApp(repository: AuthRepository = AuthRepositoryProvider.repository) 
       } else {
         composable(route = CommandoScreens.App.name) {
           AuthenticatedApp(
-              onSignOut = sessionViewModel::signOut,
+              onSignOut = {
+                scope.launch {
+                  try {
+                    googleClient.clearSession()
+                  } catch (_: ClearCredentialException) {
+                    Toast.makeText(context, clearSessionError, Toast.LENGTH_LONG).show()
+                  } finally {
+                    // A provider cleanup failure must not leave the Firebase session signed in.
+                    sessionViewModel.signOut()
+                  }
+                }
+              },
               signOutError = sessionUiState.signOutError,
           )
         }

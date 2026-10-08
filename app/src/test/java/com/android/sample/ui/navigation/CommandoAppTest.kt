@@ -1,6 +1,8 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
+import android.content.Context
+import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -11,10 +13,15 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.credentials.Credential
+import androidx.credentials.CustomCredential
+import androidx.credentials.exceptions.ClearCredentialUnknownException
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.auth.GoogleCredentialClient
+import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import kotlinx.coroutines.test.runTest
@@ -34,8 +41,25 @@ class CommandoAppTest {
   private val alice = AuthUser("alice")
   private val bob = AuthUser("bob")
 
-  private fun show(repository: FakeAuthRepository) {
-    compose.setContent { SampleAppTheme { CommandoApp(repository) } }
+  private class Picker : GoogleCredentialClient {
+    var credential: Credential? = null
+    var error: Exception? = null
+    var clearError: Exception? = null
+    var clearCalls = 0
+
+    override suspend fun request(context: Context): Credential? {
+      error?.let { throw it }
+      return credential
+    }
+
+    override suspend fun clearSession() {
+      clearCalls++
+      clearError?.let { throw it }
+    }
+  }
+
+  private fun show(repository: FakeAuthRepository, picker: Picker = Picker()) {
+    compose.setContent { SampleAppTheme { CommandoApp(repository, picker) } }
   }
 
   private fun assertScreen(tag: String) {
@@ -243,7 +267,7 @@ class CommandoAppTest {
     val repository = FakeAuthRepository()
     repository.signInWithEmailResult = Result.success(alice)
     AuthRepositoryProvider.repository = repository
-    compose.setContent { SampleAppTheme { CommandoApp() } }
+    compose.setContent { SampleAppTheme { CommandoApp(googleCredentials = Picker()) } }
     fillEmailForm()
     click("auth_submit")
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -286,14 +310,14 @@ class CommandoAppTest {
   }
 
   @Test
-  fun googlePendingShowsFeedbackWithoutAuthenticating() {
+  fun missingGoogleConfigurationShowsFeedbackAndEmailStillWorks() {
     val repository = FakeAuthRepository()
     repository.signInWithGoogleResult = Result.success(alice)
-    show(repository)
+    show(repository, Picker().apply { error = GoogleSignInNotConfiguredException() })
     click("auth_google")
     compose.runOnIdle {
       assertEquals(
-          "Google sign-in is not available yet. Please use email and password.",
+          "Google sign-in needs Firebase configuration. Please use email and password for now.",
           ShadowToast.getTextOfLatestToast(),
       )
       assertNull(repository.currentUser)
@@ -303,5 +327,66 @@ class CommandoAppTest {
     repository.signInWithEmailResult = Result.success(alice)
     click("auth_submit")
     assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun googleCredentialAuthenticatesAndSignOutClearsPickerSession() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    val picker = Picker().apply { credential = CustomCredential("google", Bundle()) }
+    show(repository, picker)
+    click("auth_google")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    assertEquals(alice, repository.currentUser)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.runOnIdle { assertEquals(1, picker.clearCalls) }
+  }
+
+  @Test
+  fun dismissingPickerDoesNotAuthenticateAndSignupGoogleCanRetry() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    val picker = Picker()
+    show(repository, picker)
+    click("auth_tab_signup")
+    click("auth_google")
+    assertScreen(NavigationTestTags.SIGN_UP_SCREEN)
+    compose.runOnIdle {
+      assertNull(repository.currentUser)
+      picker.credential = CustomCredential("google", Bundle())
+    }
+    click("auth_google")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun pickerFailureShowsSafeErrorAndAllowsRetry() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    val picker = Picker().apply { error = AuthException.InvalidGoogleCredential() }
+    show(repository, picker)
+    click("auth_google")
+    compose.onNodeWithText("Google sign-in failed. Please try again.").assertIsDisplayed()
+    compose.runOnIdle {
+      assertNull(repository.currentUser)
+      picker.error = null
+      picker.credential = CustomCredential("google", Bundle())
+    }
+    click("auth_google")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun providerCleanupFailureStillSignsOutOfFirebase() {
+    val repository = FakeAuthRepository(alice)
+    val picker = Picker().apply { clearError = ClearCredentialUnknownException() }
+    show(repository, picker)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertNull(repository.currentUser)
+    compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 }

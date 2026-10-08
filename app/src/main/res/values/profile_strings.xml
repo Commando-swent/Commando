@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_personal_information">Personal info</string>
+    <string name="profile_full_name">Full Name</string>
+    <string name="profile_email">Email</string>
+    <string name="profile_missing_value">—</string>
+    <string name="profile_loading">Loading profile…</string>
+    <string name="profile_missing_user">Your session is no longer available.</string>
+    <string name="profile_neutral_avatar">Profile avatar</string>
+    <string name="profile_edit">✎ Edit</string>
+    <string name="profile_add_photo">+</string>
+    <string name="profile_add_photo_description">Add profile photo</string>
+</resources>

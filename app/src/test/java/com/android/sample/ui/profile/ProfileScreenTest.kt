@@ -3,9 +3,11 @@ package com.android.sample.ui.profile
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.padding
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.model.authentication.AuthException
@@ -25,6 +27,25 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ProfileScreenTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+  @Test
+  fun staticPreviewDisplaysDemoProfileInScaffold() {
+    compose.setContent {
+      CompositionLocalProvider(LocalInspectionMode provides true) { ProfilePreview() }
+    }
+    compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals("Alex Morgan")
+    compose.onNodeWithTag(ProfileTestTags.EMAIL).assertTextEquals("alex@example.com")
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun interactivePreviewNavigatesToProfileAndSignsOutDemoSession() {
+    compose.setContent { ProfilePreview() }
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals("Alex Morgan")
+    compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_BUTTON).performClick()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+  }
 
   @Test
   fun profileRendersAccountInformationWithinTheSharedScaffold() {

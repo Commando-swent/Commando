@@ -39,8 +39,8 @@ fun ProfileScreen(
     uiState: ProfileUiState,
     onBack: () -> Unit,
     onSignOut: () -> Unit,
-    signOutError: AuthException? = null,
     modifier: Modifier = Modifier,
+    signOutError: AuthException? = null,
 ) {
   Column(
       modifier
@@ -119,7 +119,7 @@ fun ProfileScreen(
 
 @Preview(name = "Home / Profile · demo account", widthDp = 412, heightDp = 830)
 @Composable
-private fun ProfilePreview() {
+internal fun ProfilePreview() {
   val demoUser = remember {
     AuthUser(uid = "profile-preview", displayName = "Alex Morgan", email = "alex@example.com")
   }
@@ -149,7 +149,9 @@ private fun ProfilePreview() {
           object : GoogleCredentialClient {
             override suspend fun request(context: Context): Credential? = null
 
-            override suspend fun clearSession() {}
+            override suspend fun clearSession() {
+              // The isolated demo preview has no Google credential session to clear.
+            }
           }
         }
         CommandoApp(

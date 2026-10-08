@@ -109,14 +109,13 @@ fun CommandoApp(
           AuthenticatedApp(
               tripRepository = trips,
               onSignOut = {
-                scope.launch {
-                  try {
-                    googleClient.clearSession()
-                  } catch (_: ClearCredentialException) {
-                    Toast.makeText(context, clearSessionError, Toast.LENGTH_LONG).show()
-                  } finally {
-                    // A provider cleanup failure must not leave the Firebase session signed in.
-                    sessionViewModel.signOut()
+                if (sessionViewModel.signOut()) {
+                  scope.launch {
+                    try {
+                      googleClient.clearSession()
+                    } catch (_: ClearCredentialException) {
+                      Toast.makeText(context, clearSessionError, Toast.LENGTH_LONG).show()
+                    }
                   }
                 }
               },

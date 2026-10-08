@@ -24,6 +24,7 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -46,6 +47,7 @@ class CommandoAppTest {
     var error: Exception? = null
     var clearError: Exception? = null
     var clearCalls = 0
+    var clearGate: CompletableDeferred<Unit>? = null
 
     override suspend fun request(context: Context): Credential? {
       error?.let { throw it }
@@ -54,6 +56,7 @@ class CommandoAppTest {
 
     override suspend fun clearSession() {
       clearCalls++
+      clearGate?.await()
       clearError?.let { throw it }
     }
   }
@@ -208,15 +211,18 @@ class CommandoAppTest {
   fun failedSignOutKeepsProfileAndAllowsRetry() {
     val repository = FakeAuthRepository(alice)
     repository.signOutResult = Result.failure(AuthException.Network())
-    show(repository)
+    val picker = Picker()
+    show(repository, picker)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.PROFILE_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_ERROR).assertIsDisplayed()
     assertEquals(alice, repository.currentUser)
+    compose.runOnIdle { assertEquals(0, picker.clearCalls) }
     repository.signOutResult = Result.success(Unit)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 
   @Test
@@ -390,5 +396,28 @@ class CommandoAppTest {
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     assertNull(repository.currentUser)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
+  }
+
+  @Test
+  fun suspendedProviderCleanupDoesNotDelaySignOutOrPreserveProtectedScreens() {
+    val repository = FakeAuthRepository(alice)
+    val gate = CompletableDeferred<Unit>()
+    val picker = Picker().apply { clearGate = gate }
+    show(repository, picker)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    try {
+      assertScreen(NavigationTestTags.LOGIN_SCREEN)
+      compose.runOnIdle {
+        assertNull(repository.currentUser)
+        assertEquals(1, picker.clearCalls)
+        assertTrue(!gate.isCompleted)
+      }
+      compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+      pressBack()
+      compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
+    } finally {
+      compose.runOnIdle { gate.complete(Unit) }
+    }
   }
 }

@@ -34,21 +34,25 @@ class SessionViewModel(private val repository: AuthRepository) : ViewModel() {
     }
   }
 
-  /** A failed sign-out preserves the session and exposes an error so the user can retry. */
-  fun signOut() {
+  /** Returns success so provider cleanup runs only after repository sign-out succeeds. */
+  fun signOut(): Boolean {
     mutableState.update { it.copy(signOutError = null) }
-    try {
-      repository.signOut().onFailure { error ->
-        mutableState.update {
-          it.copy(signOutError = error as? AuthException ?: AuthException.Unknown(error))
-        }
-      }
+    return try {
+      repository
+          .signOut()
+          .onFailure { error ->
+            mutableState.update {
+              it.copy(signOutError = error as? AuthException ?: AuthException.Unknown(error))
+            }
+          }
+          .isSuccess
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (error: Exception) {
       mutableState.update {
         it.copy(signOutError = error as? AuthException ?: AuthException.Unknown(error))
       }
+      false
     }
   }
 

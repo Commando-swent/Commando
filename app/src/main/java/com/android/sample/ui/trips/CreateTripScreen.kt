@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,12 +19,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.Location
 import com.android.sample.model.Trip
+import com.android.sample.model.TripLocations
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -61,11 +60,10 @@ fun CreateTripScreen(
   CreateTripContent(
       state = state,
       onBack = onBack,
-      onStoreChange = viewModel::setStore,
+      onStoreSelected = viewModel::setStore,
       onDateSelected = viewModel::setDate,
       onTimeSelected = viewModel::setTime,
-      onHandoffLocationChange = viewModel::setHandoffLocation,
-      onMaxOrdersChange = viewModel::setMaxOrders,
+      onHandoffLocationSelected = viewModel::setHandoffLocation,
       onPublish = viewModel::publish,
       modifier = modifier,
       snackbarHostState = snackbarHostState,
@@ -76,11 +74,10 @@ fun CreateTripScreen(
 fun CreateTripContent(
     state: CreateTripUiState,
     onBack: () -> Unit,
-    onStoreChange: (String) -> Unit,
+    onStoreSelected: (Location) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
     onTimeSelected: (LocalTime) -> Unit,
-    onHandoffLocationChange: (String) -> Unit,
-    onMaxOrdersChange: (String) -> Unit,
+    onHandoffLocationSelected: (Location) -> Unit,
     onPublish: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
@@ -112,17 +109,17 @@ fun CreateTripContent(
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
       state.publishError?.let { PublishErrorBanner(it) }
-      TextInputField(
+      LocationPickerField(
           label = R.string.create_trip_store_label,
           icon = R.drawable.ic_trip_shopping_bag,
-          value = state.store,
-          onValueChange = onStoreChange,
+          selected = state.store,
+          options = TripLocations.stores,
           placeholder = R.string.create_trip_store_placeholder,
           helper = R.string.create_trip_store_helper,
           error = state.storeError,
           enabled = editable,
-          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-          tag = CreateTripScreenTestTags.STORE_INPUT,
+          onSelected = onStoreSelected,
+          tag = CreateTripScreenTestTags.STORE_FIELD,
           errorTag = CreateTripScreenTestTags.STORE_ERROR,
       )
       Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -153,32 +150,18 @@ fun CreateTripContent(
             modifier = Modifier.weight(1f),
         )
       }
-      TextInputField(
+      LocationPickerField(
           label = R.string.create_trip_handoff_label,
           icon = R.drawable.ic_trip_map_pin,
-          value = state.handoffLocation,
-          onValueChange = onHandoffLocationChange,
+          selected = state.handoffLocation,
+          options = TripLocations.handoffPoints,
           placeholder = R.string.create_trip_handoff_placeholder,
           helper = R.string.create_trip_handoff_helper,
           error = state.handoffLocationError,
           enabled = editable,
-          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-          tag = CreateTripScreenTestTags.HANDOFF_LOCATION_INPUT,
+          onSelected = onHandoffLocationSelected,
+          tag = CreateTripScreenTestTags.HANDOFF_LOCATION_FIELD,
           errorTag = CreateTripScreenTestTags.HANDOFF_LOCATION_ERROR,
-      )
-      TextInputField(
-          label = R.string.create_trip_max_orders_label,
-          icon = R.drawable.ic_trip_hash,
-          value = state.maxOrders,
-          onValueChange = onMaxOrdersChange,
-          placeholder = R.string.create_trip_max_orders_placeholder,
-          helper = R.string.create_trip_max_orders_helper,
-          error = state.maxOrdersError,
-          enabled = editable,
-          keyboardOptions =
-              KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
-          tag = CreateTripScreenTestTags.MAX_ORDERS_INPUT,
-          errorTag = CreateTripScreenTestTags.MAX_ORDERS_ERROR,
       )
     }
   }

@@ -1,6 +1,8 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
+import android.content.Context
+import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -8,13 +10,23 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.credentials.Credential
+import androidx.credentials.CustomCredential
+import androidx.credentials.exceptions.ClearCredentialUnknownException
 import com.android.sample.model.authentication.AuthException
+import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.auth.GoogleCredentialClient
+import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -22,6 +34,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 class CommandoAppTest {
@@ -29,8 +42,29 @@ class CommandoAppTest {
   private val alice = AuthUser("alice")
   private val bob = AuthUser("bob")
 
-  private fun show(repository: FakeAuthRepository) {
-    compose.setContent { SampleAppTheme { CommandoApp(repository) } }
+  private class Picker : GoogleCredentialClient {
+    var credential: Credential? = null
+    var error: Exception? = null
+    var clearError: Exception? = null
+    var clearCalls = 0
+    var clearGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun request(context: Context): Credential? {
+      error?.let { throw it }
+      return credential
+    }
+
+    override suspend fun clearSession() {
+      clearCalls++
+      clearGate?.await()
+      clearError?.let { throw it }
+    }
+  }
+
+  private fun show(repository: FakeAuthRepository, picker: Picker = Picker()) {
+    compose.setContent {
+      SampleAppTheme { CommandoApp(repository = repository, googleCredentials = picker) }
+    }
   }
 
   private fun assertScreen(tag: String) {
@@ -118,9 +152,9 @@ class CommandoAppTest {
   fun signedOutUserSeesAuthAndCanSwitchForms() {
     show(FakeAuthRepository())
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     assertScreen(NavigationTestTags.SIGN_UP_SCREEN)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_login")
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
   }
@@ -140,7 +174,7 @@ class CommandoAppTest {
   fun signingInRemovesAuthFromBackStack() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -177,15 +211,18 @@ class CommandoAppTest {
   fun failedSignOutKeepsProfileAndAllowsRetry() {
     val repository = FakeAuthRepository(alice)
     repository.signOutResult = Result.failure(AuthException.Network())
-    show(repository)
+    val picker = Picker()
+    show(repository, picker)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.PROFILE_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_ERROR).assertIsDisplayed()
     assertEquals(alice, repository.currentUser)
+    compose.runOnIdle { assertEquals(0, picker.clearCalls) }
     repository.signOutResult = Result.success(Unit)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 
   @Test
@@ -213,7 +250,7 @@ class CommandoAppTest {
   fun signingOutRecreatesTheLoginForm() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -221,5 +258,166 @@ class CommandoAppTest {
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
+  }
+
+  @After
+  fun resetProvider() {
+    AuthRepositoryProvider.reset()
+  }
+
+  private fun fillEmailForm() {
+    compose.onNodeWithTag("auth_email").performTextInput("student@epfl.ch")
+    compose.onNodeWithTag("auth_password").performTextInput("secret123")
+  }
+
+  @Test
+  fun defaultAppUsesProviderAndEmailLoginReachesHome() {
+    val repository = FakeAuthRepository()
+    repository.signInWithEmailResult = Result.success(alice)
+    AuthRepositoryProvider.repository = repository
+    compose.setContent { SampleAppTheme { CommandoApp(googleCredentials = Picker()) } }
+    fillEmailForm()
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    assertEquals(alice, repository.currentUser)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.onNodeWithTag("auth_email").assertTextEquals("", "Your university email")
+    pressBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+  }
+
+  @Test
+  fun signupThroughFormReachesHome() {
+    val repository = FakeAuthRepository()
+    repository.signUpWithEmailResult = Result.success(alice)
+    show(repository)
+    click("auth_tab_signup")
+    fillEmailForm()
+    compose.onNodeWithTag("auth_confirmation").performTextInput("secret123")
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    assertEquals(alice, repository.currentUser)
+    pressBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+  }
+
+  @Test
+  fun failedEmailLoginKeepsFormAndCanRetry() {
+    val repository = FakeAuthRepository()
+    repository.signInWithEmailResult = Result.failure(AuthException.InvalidCredentials())
+    show(repository)
+    fillEmailForm()
+    click("auth_submit")
+    compose.onNodeWithText("Incorrect email or password. Please try again.").assertIsDisplayed()
+    assertNull(repository.currentUser)
+    compose.runOnIdle { repository.signInWithEmailResult = Result.success(alice) }
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun missingGoogleConfigurationShowsFeedbackAndEmailStillWorks() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    show(repository, Picker().apply { error = GoogleSignInNotConfiguredException() })
+    click("auth_google")
+    compose.runOnIdle {
+      assertEquals(
+          "Google sign-in needs Firebase configuration. Please use email and password for now.",
+          ShadowToast.getTextOfLatestToast(),
+      )
+      assertNull(repository.currentUser)
+    }
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    fillEmailForm()
+    repository.signInWithEmailResult = Result.success(alice)
+    click("auth_submit")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun googleCredentialAuthenticatesAndSignOutClearsPickerSession() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    val picker = Picker().apply { credential = CustomCredential("google", Bundle()) }
+    show(repository, picker)
+    click("auth_google")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    assertEquals(alice, repository.currentUser)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.runOnIdle { assertEquals(1, picker.clearCalls) }
+  }
+
+  @Test
+  fun dismissingPickerDoesNotAuthenticateAndSignupGoogleCanRetry() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    val picker = Picker()
+    show(repository, picker)
+    click("auth_tab_signup")
+    click("auth_google")
+    assertScreen(NavigationTestTags.SIGN_UP_SCREEN)
+    compose.runOnIdle {
+      assertNull(repository.currentUser)
+      picker.credential = CustomCredential("google", Bundle())
+    }
+    click("auth_google")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun pickerFailureShowsSafeErrorAndAllowsRetry() {
+    val repository = FakeAuthRepository()
+    repository.signInWithGoogleResult = Result.success(alice)
+    val picker = Picker().apply { error = AuthException.InvalidGoogleCredential() }
+    show(repository, picker)
+    click("auth_google")
+    compose.onNodeWithText("Google sign-in failed. Please try again.").assertIsDisplayed()
+    compose.runOnIdle {
+      assertNull(repository.currentUser)
+      picker.error = null
+      picker.credential = CustomCredential("google", Bundle())
+    }
+    click("auth_google")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun providerCleanupFailureStillSignsOutOfFirebase() {
+    val repository = FakeAuthRepository(alice)
+    val picker = Picker().apply { clearError = ClearCredentialUnknownException() }
+    show(repository, picker)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertNull(repository.currentUser)
+    compose.runOnIdle { assertEquals(1, picker.clearCalls) }
+  }
+
+  @Test
+  fun suspendedProviderCleanupDoesNotDelaySignOutOrPreserveProtectedScreens() {
+    val repository = FakeAuthRepository(alice)
+    val gate = CompletableDeferred<Unit>()
+    val picker = Picker().apply { clearGate = gate }
+    show(repository, picker)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    try {
+      assertScreen(NavigationTestTags.LOGIN_SCREEN)
+      compose.runOnIdle {
+        assertNull(repository.currentUser)
+        assertEquals(1, picker.clearCalls)
+        assertTrue(!gate.isCompleted)
+      }
+      compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+      pressBack()
+      compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
+    } finally {
+      compose.runOnIdle { gate.complete(Unit) }
+    }
   }
 }

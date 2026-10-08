@@ -107,11 +107,24 @@ class CreateTripScreenTest {
   }
 
   @Test
-  fun screen_publishesThroughTheViewModelAndNotifiesOnce() {
+  fun screen_confirmsThePublicationBeforeLeaving() {
     val repository = FakeTripRepository(currentUserId = "me", now = { NOW })
     val viewModel = CreateTripViewModel(repository, Clock.fixed(NOW, ZONE))
     val notified = mutableListOf<Trip>()
-    composeTestRule.setContent { CreateTripScreen(viewModel, {}, { notified += it }) }
+    var onScreen by mutableStateOf(true)
+    // Like navigation would, the callback removes the screen.
+    composeTestRule.setContent {
+      if (onScreen) {
+        CreateTripScreen(
+            viewModel,
+            {},
+            {
+              notified += it
+              onScreen = false
+            },
+        )
+      }
+    }
     composeTestRule.runOnIdle {
       viewModel.setStore(STORE)
       viewModel.setDate(TODAY.plusDays(1))
@@ -124,6 +137,7 @@ class CreateTripScreenTest {
     node(CreateTripScreenTestTags.PUBLISH_BUTTON).performClick()
     composeTestRule.mainClock.advanceTimeBy(1_000)
     composeTestRule.onNodeWithText("Trip published").assertExists()
+    assertEquals(emptyList<Trip>(), notified)
     composeTestRule.mainClock.advanceTimeBy(10_000)
     composeTestRule.mainClock.autoAdvance = true
 
@@ -132,6 +146,7 @@ class CreateTripScreenTest {
       assertEquals(listOf(viewModel.uiState.value.publishedTrip), stored)
       assertEquals(stored, notified)
     }
+    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.PUBLISH_BUTTON).assertDoesNotExist()
   }
 
   /** Renders the content like the ViewModel would and logs the forwarded actions. */

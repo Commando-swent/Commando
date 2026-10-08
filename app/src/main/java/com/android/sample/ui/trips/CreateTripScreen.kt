@@ -30,8 +30,8 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Lets a commando publish a delivery run. [onTripPublished] is called once per published trip, and
- * the back action is unavailable while publishing.
+ * Lets a commando publish a delivery run. [onTripPublished] is called once per published trip,
+ * after the confirmation has been shown, and the back action is unavailable while publishing.
  */
 @Composable
 fun CreateTripScreen(
@@ -49,9 +49,10 @@ fun CreateTripScreen(
 
   LaunchedEffect(publishedTrip) {
     if (publishedTrip != null && publishedTrip.id != handledTripId) {
+      // Confirm first: the callback may leave this screen, which would dismiss the snackbar.
+      snackbarHostState.showSnackbar(publishedMessage)
       handledTripId = publishedTrip.id
       currentOnTripPublished(publishedTrip)
-      snackbarHostState.showSnackbar(publishedMessage)
     }
   }
   // Leaving would cancel the publication, so system back is ignored while it runs.

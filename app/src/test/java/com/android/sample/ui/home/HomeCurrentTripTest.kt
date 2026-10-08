@@ -1,6 +1,7 @@
 package com.android.sample.ui.home
 
 // AI assistance: OpenAI Codex.
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,7 @@ import com.android.sample.data.repository.TripResult
 import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File
@@ -32,6 +34,12 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class HomeCurrentTripTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+  private val googleCredentials =
+      object : GoogleCredentialClient {
+        override suspend fun request(context: Context) = null
+
+        override suspend fun clearSession() {}
+      }
   private val now = Instant.now()
   private val trip =
       Trip(
@@ -104,7 +112,7 @@ class HomeCurrentTripTest {
               FakeTripRepository(requireNotNull(auth.currentUser).uid, { now }, listOf(trip))
                   .getMyTrips()
         }
-    compose.setContent { SampleAppTheme { CommandoApp(auth, trips) } }
+    compose.setContent { SampleAppTheme { CommandoApp(auth, trips, googleCredentials) } }
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
     compose.onNodeWithTag(HomeTestTags.CURRENT_TRIP).assertIsDisplayed()
     auth.signInWithEmailResult = Result.success(AuthUser("bob"))
@@ -118,7 +126,7 @@ class HomeCurrentTripTest {
   fun returningFromProfileReloadsTheTripAndSignOutRemovesIt() {
     val auth = FakeAuthRepository(AuthUser("alice"))
     val trips = FakeTripRepository("alice", { now }, listOf(trip))
-    compose.setContent { SampleAppTheme { CommandoApp(auth, trips) } }
+    compose.setContent { SampleAppTheme { CommandoApp(auth, trips, googleCredentials) } }
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
     compose.onNodeWithTag(HomeTestTags.CURRENT_TRIP).assertIsDisplayed()
     compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()

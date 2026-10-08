@@ -1,6 +1,10 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
+import android.widget.Toast
+import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -8,41 +12,62 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.android.sample.data.repository.FakeTripRepository
+import androidx.navigation.navArgument
+import com.android.sample.R
 import com.android.sample.data.repository.TripRepository
+import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
-import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.model.authentication.AuthRepositoryProvider
+import com.android.sample.ui.auth.AndroidGoogleCredentialClient
+import com.android.sample.ui.auth.AuthMode
+import com.android.sample.ui.auth.AuthRoute
 import com.android.sample.ui.auth.AuthViewModel
+import com.android.sample.ui.auth.GoogleCredentialClient
+import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
+import com.android.sample.ui.trips.AvailableTripsScreen
+import com.android.sample.ui.trips.AvailableTripsViewModel
+import com.android.sample.ui.trips.TripDetailsScreen
+import com.android.sample.ui.trips.TripDetailsViewModel
+import kotlinx.coroutines.launch
 
-// One temporary instance for the process, shared across activity recreation as well.
-private val temporaryAuthRepository: AuthRepository by lazy { FakeAuthRepository() }
-
-/**
- * Application navigation root. The in-memory repository is temporary until the Firebase
- * implementation is available; it starts signed out and does not fabricate a successful login.
- * Inject a stable repository instance to share authentication between the form and the session.
- */
+/** The form and session share the same repository; tests can inject an in-memory implementation. */
 @Composable
 fun CommandoApp(
-    repository: AuthRepository = temporaryAuthRepository,
+    repository: AuthRepository = AuthRepositoryProvider.repository,
     tripRepository: TripRepository? = null,
+    googleCredentials: GoogleCredentialClient? = null,
 ) {
+  val context = LocalContext.current
+  val activity = LocalActivity.current
+  val googleUnavailable = stringResource(R.string.auth_google_unavailable)
+  val clearSessionError = stringResource(R.string.auth_google_clear_error)
+  val googleClient =
+      googleCredentials
+          ?: remember(context) { AndroidGoogleCredentialClient(context.applicationContext) }
+  val scope = rememberCoroutineScope()
   val sessionViewModel: SessionViewModel = viewModel { SessionViewModel(repository) }
   val sessionUiState by sessionViewModel.uiState.collectAsState()
 
@@ -60,22 +85,51 @@ fun CommandoApp(
         composable(route = CommandoScreens.Auth.name) {
           val authViewModel: AuthViewModel = viewModel { AuthViewModel(repository) }
           val authUiState by authViewModel.uiState.collectAsState()
-          AuthPlaceholderScreen(
-              mode = authUiState.mode,
-              onSwitchMode = authViewModel::switchMode,
-          )
+          Box(
+              Modifier.fillMaxSize()
+                  .testTag(
+                      if (authUiState.mode == AuthMode.LOGIN) NavigationTestTags.LOGIN_SCREEN
+                      else NavigationTestTags.SIGN_UP_SCREEN
+                  )
+          ) {
+            AuthRoute(
+                viewModel = authViewModel,
+                requestGoogleCredential = {
+                  try {
+                    googleClient.request(activity ?: context)
+                  } catch (_: GoogleSignInNotConfiguredException) {
+                    Toast.makeText(context, googleUnavailable, Toast.LENGTH_LONG).show()
+                    null
+                  }
+                },
+                // Session observation changes the graph after authentication succeeds.
+                onAuthenticated = {},
+                onBack = { activity?.finish() },
+            )
+          }
         }
       } else {
         composable(route = CommandoScreens.App.name) {
-          val userId = requireNotNull(user).uid
-          val trips =
-              remember(userId, tripRepository) {
-                tripRepository ?: FakeTripRepository(currentUserId = userId)
-              }
+          val tripRepositoryViewModel: SessionTripRepositoryViewModel = viewModel {
+            SessionTripRepositoryViewModel(
+                tripRepository ?: TripRepositoryFirestore(authRepository = repository)
+            )
+          }
+          val trips = tripRepositoryViewModel.repository
           AuthenticatedApp(
               repository = repository,
               tripRepository = trips,
-              onSignOut = sessionViewModel::signOut,
+              onSignOut = {
+                if (sessionViewModel.signOut()) {
+                  scope.launch {
+                    try {
+                      googleClient.clearSession()
+                    } catch (_: ClearCredentialException) {
+                      Toast.makeText(context, clearSessionError, Toast.LENGTH_LONG).show()
+                    }
+                  }
+                }
+              },
               signOutError = sessionUiState.signOutError,
           )
         }
@@ -97,7 +151,7 @@ private fun AuthenticatedApp(
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
   val currentScreen =
-      CommandoScreens.entries.firstOrNull { it.name == backStackEntry?.destination?.route }
+      CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
 
   AppScaffold(
@@ -136,7 +190,51 @@ private fun AuthenticatedApp(
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
           }
         }
-        HomeScreen(mode = appUiState.mode, tripState = tripState, onRetry = onRetry)
+        HomeScreen(
+            mode = appUiState.mode,
+            tripState = tripState,
+            onRetry = onRetry,
+            onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
+        )
+      }
+      composable(route = CommandoScreens.AvailableTrips.name) { entry ->
+        val availableTripsViewModel: AvailableTripsViewModel =
+            viewModel(viewModelStoreOwner = entry) { AvailableTripsViewModel(tripRepository) }
+        AvailableTripsScreen(
+            viewModel = availableTripsViewModel,
+            onTripSelected = { tripId ->
+              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
+            },
+        )
+      }
+      composable(
+          route = CommandoScreens.TripDetails.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Trip Details requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        val tripDetailsViewModel: TripDetailsViewModel =
+            viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
+        TripDetailsScreen(
+            viewModel = tripDetailsViewModel,
+            onBack = { navController.popBackStack() },
+            onAddItems = { selectedTripId ->
+              navController.navigate(CommandoScreens.addItemsRoute(selectedTripId))
+            },
+        )
+      }
+      composable(
+          route = CommandoScreens.AddItems.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+          "Add Items requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+        }
+        AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
       }
       composable(route = CommandoScreens.Profile.name) {
         val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
@@ -151,3 +249,6 @@ private fun AuthenticatedApp(
     }
   }
 }
+
+/** Retains one trip repository for the authenticated App entry, including activity recreation. */
+private class SessionTripRepositoryViewModel(val repository: TripRepository) : ViewModel()

@@ -30,4 +30,6 @@
     <string name="auth_network_error">Check your connection and try again.</string>
     <string name="auth_too_many_requests">Too many attempts. Please try again later.</string>
     <string name="auth_unknown_error">Unable to sign in. Please try again.</string>
+    <string name="auth_google_unavailable">Google sign-in needs Firebase configuration. Please use email and password for now.</string>
+    <string name="auth_google_clear_error">Unable to reset Google account selection. Please try again later.</string>
 </resources>

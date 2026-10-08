@@ -1,5 +1,6 @@
 package com.android.sample.ui.profile
 
+import android.content.Context
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
@@ -31,10 +32,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.Credential
 import com.android.sample.R
+import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.AppMode
 import com.android.sample.ui.navigation.AppScaffold
 import com.android.sample.ui.navigation.CommandoApp
@@ -322,7 +326,19 @@ private fun ProfilePreview() {
       } else {
         // Running this Preview on a device uses real navigation with a demo session only.
         val previewRepository = remember { FakeAuthRepository(demoUser) }
-        CommandoApp(repository = previewRepository)
+        val previewTrips = remember { FakeTripRepository(currentUserId = demoUser.uid) }
+        val previewCredentials = remember {
+          object : GoogleCredentialClient {
+            override suspend fun request(context: Context): Credential? = null
+
+            override suspend fun clearSession() {}
+          }
+        }
+        CommandoApp(
+            repository = previewRepository,
+            tripRepository = previewTrips,
+            googleCredentials = previewCredentials,
+        )
       }
     }
   }

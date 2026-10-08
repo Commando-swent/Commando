@@ -60,7 +60,7 @@ class TripDetailsScreenTest {
       state: TripDetailsUiState,
       onRetry: () -> Unit = {},
       onBack: () -> Unit = {},
-      onAddItems: (String) -> Unit = {},
+      onAddItems: ((String) -> Unit)? = {},
       largeText: Boolean = false,
   ) {
     compose.setContent {
@@ -114,6 +114,18 @@ class TripDetailsScreenTest {
         .assertHasClickAction()
         .performClick()
     compose.runOnIdle { assertEquals(listOf(trip.id), addedTripIds) }
+  }
+
+  @Test
+  fun publishedTripWithoutAddItemsCallbackShowsDisabledCta() {
+    show(TripDetailsUiState.Content(trip), onAddItems = null)
+    compose
+        .onNodeWithText("Add items to this run")
+        .assertIsDisplayed()
+        .assertIsNotEnabled()
+        .performTouchInput { click() }
+    compose.onNodeWithText("Migros").assertIsDisplayed()
+    compose.onNodeWithText("Add items to this run").assertIsNotEnabled()
   }
 
   @Test

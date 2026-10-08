@@ -115,5 +115,8 @@ internal fun AuthException.messageResource() =
       is AuthException.InvalidGoogleCredential -> R.string.auth_google_error
       is AuthException.Network -> R.string.auth_network_error
       is AuthException.TooManyRequests -> R.string.auth_too_many_requests
+      is AuthException.InvalidName,
+      is AuthException.RequiresRecentLogin,
+      is AuthException.SessionChanged -> R.string.auth_unknown_error
       is AuthException.Unknown -> R.string.auth_unknown_error
     }

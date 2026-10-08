@@ -5,6 +5,12 @@ package com.android.sample.model.authentication
  * users. Compare by type (`is` / `when`), never with `equals`.
  */
 sealed class AuthException(cause: Throwable? = null) : Exception(cause) {
+  class InvalidName(cause: Throwable? = null) : AuthException(cause)
+
+  class RequiresRecentLogin(cause: Throwable? = null) : AuthException(cause)
+
+  class SessionChanged(cause: Throwable? = null) : AuthException(cause)
+
   class InvalidEmail(cause: Throwable? = null) : AuthException(cause)
 
   class EmailAlreadyInUse(cause: Throwable? = null) : AuthException(cause)

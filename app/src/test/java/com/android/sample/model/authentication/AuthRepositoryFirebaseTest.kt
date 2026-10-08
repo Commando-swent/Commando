@@ -525,6 +525,28 @@ class AuthRepositoryFirebaseTest {
     assertEquals(listOf(null, alice), emissions)
   }
 
+  @Test
+  fun observerStartedDuringNameSaveSeesUserWhenSaveEndsBeforeItSubscribes() = runTest {
+    val user = firebaseUser(alice)
+    val nameSaved = TaskCompletionSource<Void>()
+    nameUpdate(user, nameSaved.task)
+    Operation.SIGN_UP.stub(auth, authResult(user))
+    every { auth.currentUser } returns user
+    every { auth.removeAuthStateListener(any()) } just Runs
+    // The save ends after the initial emission but before the sign-up collector subscribes.
+    every { auth.addAuthStateListener(any()) } answers { nameSaved.setResult(null) }
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    val signUp = launch(dispatcher) { repository.signUpWithEmail("a@b.test", "pw", "Alice") }
+    val emissions = mutableListOf<AuthUser?>()
+
+    backgroundScope.launch(dispatcher) {
+      repository.observeAuthState().collect { emissions.add(it) }
+    }
+    signUp.join()
+
+    assertEquals(listOf(null, alice), emissions)
+  }
+
   // ---------- current user ----------
 
   @Test

@@ -26,7 +26,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
@@ -64,7 +63,9 @@ class AuthRepositoryFirebase(
     val listener = FirebaseAuth.AuthStateListener { publish() }
     auth.addAuthStateListener(listener)
     // Firebase does not notify profile changes, so the end of a sign-up republishes the user.
-    launch { signingUp.drop(1).collect { publish() } }
+    // The current value is not dropped: a sign-up may end before this collector subscribes, and
+    // a repeated state is removed by distinctUntilChanged.
+    launch { signingUp.collect { publish() } }
     awaitClose { auth.removeAuthStateListener(listener) }
   }
       .conflate()

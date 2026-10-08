@@ -46,6 +46,7 @@ class AuthViewModelTest {
 
   private fun fillForm(mode: AuthMode = AuthMode.LOGIN) {
     viewModel.switchMode(mode)
+    viewModel.updateFullName("Alex Martin")
     viewModel.updateEmail("alex@epfl.ch")
     viewModel.updatePassword("Campus2026!")
     viewModel.updateConfirmation("Campus2026!")
@@ -54,11 +55,13 @@ class AuthViewModelTest {
   @Test
   fun blankFieldsAreRequiredAndNeverSubmitted() = runTest {
     viewModel.switchMode(AuthMode.SIGN_UP)
+    viewModel.updateFullName("  ")
     viewModel.updateEmail("  ")
     viewModel.updatePassword("  ")
     viewModel.submitEmail()
     advanceUntilIdle()
     with(viewModel.uiState.value) {
+      assertEquals(FieldError.REQUIRED, fullNameError)
       assertEquals(FieldError.REQUIRED, emailError)
       assertEquals(FieldError.REQUIRED, passwordError)
       assertEquals(FieldError.REQUIRED, confirmationError)
@@ -111,9 +114,31 @@ class AuthViewModelTest {
     viewModel.submitEmail()
     advanceUntilIdle()
     assertEquals(AuthMode.SIGN_UP, repository.mode)
+    assertEquals("Alex Martin", repository.fullName)
     assertEquals(user, viewModel.uiState.value.user)
     assertEquals("", viewModel.uiState.value.password)
     assertEquals("", viewModel.uiState.value.confirmation)
+  }
+
+  @Test
+  fun signUpTrimsFullName() = runTest {
+    fake.signUpWithEmailResult = Result.success(user)
+    fillForm(AuthMode.SIGN_UP)
+    viewModel.updateFullName("  Alex Martin ")
+    viewModel.submitEmail()
+    advanceUntilIdle()
+    assertEquals("Alex Martin", repository.fullName)
+  }
+
+  @Test
+  fun loginIgnoresFullName() = runTest {
+    fake.signInWithEmailResult = Result.success(user)
+    fillForm()
+    viewModel.updateFullName("")
+    viewModel.submitEmail()
+    advanceUntilIdle()
+    assertNull(viewModel.uiState.value.fullNameError)
+    assertEquals(AuthMode.LOGIN, repository.mode)
   }
 
   @Test
@@ -225,6 +250,7 @@ class AuthViewModelTest {
     var calls = 0
     var email: String? = null
     var password: String? = null
+    var fullName: String? = null
     var mode: AuthMode? = null
     var credential: Credential? = null
     var gate: CompletableDeferred<Unit>? = null
@@ -234,9 +260,14 @@ class AuthViewModelTest {
       return fake.signInWithEmail(email, password)
     }
 
-    override suspend fun signUpWithEmail(email: String, password: String): Result<AuthUser> {
+    override suspend fun signUpWithEmail(
+        email: String,
+        password: String,
+        fullName: String?,
+    ): Result<AuthUser> {
+      this.fullName = fullName
       record(email, password, AuthMode.SIGN_UP)
-      return fake.signUpWithEmail(email, password)
+      return fake.signUpWithEmail(email, password, fullName)
     }
 
     override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> {

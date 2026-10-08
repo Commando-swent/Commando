@@ -744,6 +744,7 @@ class CommandoAppTest {
     repository.signUpWithEmailResult = Result.success(alice)
     show(repository)
     click("auth_tab_signup")
+    compose.onNodeWithTag("auth_full_name").performTextInput("Alice Example")
     fillEmailForm()
     compose.onNodeWithTag("auth_confirmation").performTextInput("secret123")
     click("auth_submit")

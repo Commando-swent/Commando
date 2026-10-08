@@ -59,9 +59,11 @@ class AuthScreenTest {
                 androidx.compose.ui.text.AnnotatedString(""),
             )
         )
+    node("auth_full_name").assertExists()
     node("auth_confirmation").assertExists()
     node("auth_switch").performScrollTo().performClick()
     node("auth_tab_login").assertIsSelected()
+    node("auth_full_name").assertDoesNotExist()
     node("auth_confirmation").assertDoesNotExist()
   }
 
@@ -84,7 +86,8 @@ class AuthScreenTest {
     node("auth_tab_signup").performClick()
     fillLogin()
     node("auth_submit").performClick()
-    compose.onNodeWithText("This field is required.").assertIsDisplayed()
+    compose.onAllNodesWithText("This field is required.").assertCountEquals(2)
+    node("auth_full_name").performTextInput("Alex Martin")
     node("auth_confirmation").performTextInput("different")
     node("auth_submit").performClick()
     compose.onNodeWithText("Passwords do not match.").assertIsDisplayed()

@@ -25,6 +25,8 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthCredential
+import com.google.firebase.auth.UserProfileChangeRequest
+import io.mockk.CapturingSlot
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
@@ -452,6 +454,75 @@ class AuthRepositoryFirebaseTest {
     } finally {
       unmockkStatic(FirebaseAuth::class)
     }
+  }
+
+  // ---------- sign-up name ----------
+
+  private fun nameUpdate(
+      user: FirebaseUser,
+      task: Task<Void>,
+  ): CapturingSlot<UserProfileChangeRequest> {
+    val request = slot<UserProfileChangeRequest>()
+    every { user.updateProfile(capture(request)) } returns task
+    return request
+  }
+
+  @Test
+  fun signUpSavesTrimmedFullName() = runTest {
+    val user = firebaseUser(alice)
+    val request = nameUpdate(user, Tasks.forResult(null))
+    Operation.SIGN_UP.stub(auth, authResult(user))
+
+    val result = repository.signUpWithEmail("alice@example.test", "pw", "  Alice Example ")
+
+    assertEquals(Result.success(alice), result)
+    assertEquals("Alice Example", request.captured.displayName)
+  }
+
+  @Test
+  fun signUpWithoutNameDoesNotUpdateProfile() = runTest {
+    val user = firebaseUser(alice)
+    Operation.SIGN_UP.stub(auth, authResult(user))
+
+    repository.signUpWithEmail("alice@example.test", "pw", "  ")
+
+    verify(exactly = 0) { user.updateProfile(any()) }
+  }
+
+  @Test
+  fun signUpSucceedsWhenSavingNameFails() = runTest {
+    val user = firebaseUser(alice)
+    nameUpdate(user, Tasks.forException(FirebaseNetworkException("offline")))
+    Operation.SIGN_UP.stub(auth, authResult(user))
+
+    assertEquals(Result.success(alice), repository.signUpWithEmail("a@b.test", "pw", "Alice"))
+  }
+
+  @Test
+  fun observersSeeNewAccountOnlyAfterNameIsSaved() = runTest {
+    val listener = slot<FirebaseAuth.AuthStateListener>()
+    every { auth.addAuthStateListener(capture(listener)) } just Runs
+    every { auth.removeAuthStateListener(any()) } just Runs
+    every { auth.currentUser } returns null
+    val user = firebaseUser(alice)
+    val nameSaved = TaskCompletionSource<Void>()
+    nameUpdate(user, nameSaved.task)
+    Operation.SIGN_UP.stub(auth, authResult(user))
+    val emissions = mutableListOf<AuthUser?>()
+    val dispatcher = UnconfinedTestDispatcher(testScheduler)
+    backgroundScope.launch(dispatcher) {
+      repository.observeAuthState().collect { emissions.add(it) }
+    }
+
+    val signUp = launch(dispatcher) { repository.signUpWithEmail("a@b.test", "pw", "Alice") }
+    // Firebase signs the new account in before its name is saved.
+    every { auth.currentUser } returns user
+    listener.captured.onAuthStateChanged(auth)
+    assertEquals(listOf<AuthUser?>(null), emissions)
+
+    nameSaved.setResult(null)
+    signUp.join()
+    assertEquals(listOf(null, alice), emissions)
   }
 
   // ---------- current user ----------

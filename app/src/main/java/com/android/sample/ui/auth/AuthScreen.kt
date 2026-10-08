@@ -39,6 +39,7 @@ fun AuthRoute(
   AuthScreen(
       state,
       AuthScreenActions(
+          viewModel::updateFullName,
           viewModel::updateEmail,
           viewModel::updatePassword,
           viewModel::updateConfirmation,
@@ -51,6 +52,7 @@ fun AuthRoute(
 }
 
 internal data class AuthScreenActions(
+    val onFullNameChange: (String) -> Unit,
     val onEmailChange: (String) -> Unit,
     val onPasswordChange: (String) -> Unit,
     val onConfirmationChange: (String) -> Unit,
@@ -169,6 +171,19 @@ private fun AuthForm(
 ) {
   val signup = state.mode == AuthMode.SIGN_UP
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    if (signup)
+        AuthField(
+            state.fullName,
+            actions.onFullNameChange,
+            R.string.auth_full_name,
+            R.string.auth_full_name_hint,
+            "auth_full_name",
+            state.fullNameError,
+            enabled,
+            password = false,
+            done = false,
+            submit,
+        )
     AuthField(
         state.email,
         actions.onEmailChange,
@@ -285,6 +300,7 @@ private fun AuthPreview(mode: AuthMode) {
     AuthScreen(
         state,
         AuthScreenActions(
+            { state = state.copy(fullName = it) },
             { state = state.copy(email = it) },
             { state = state.copy(password = it) },
             { state = state.copy(confirmation = it) },

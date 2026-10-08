@@ -26,7 +26,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** Firebase Task tests: these exercise production SDK calls rather than the fake repository. */
 @OptIn(ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class AuthRepositoryFirebaseProfileTest {

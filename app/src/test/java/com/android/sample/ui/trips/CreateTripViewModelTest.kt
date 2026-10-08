@@ -1,12 +1,14 @@
 package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
+import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
 import com.android.sample.model.Trip
+import com.android.sample.model.TripLocations
 import com.android.sample.model.TripStatus.PUBLISHED
 import java.time.Clock
 import java.time.Instant
@@ -33,7 +35,6 @@ import org.junit.Test
 class CreateTripViewModelTest {
 
   private lateinit var repository: RecordingRepository
-  private val drafts = mutableListOf<TripDraft>()
 
   @Before
   fun setUp() {
@@ -50,17 +51,17 @@ class CreateTripViewModelTest {
   fun errorsAreHiddenUntilTheFieldIsEdited() {
     val viewModel = createViewModel()
     assertEquals(CreateTripUiState(), viewModel.uiState.value)
-    viewModel.setStore("Migros")
+
+    viewModel.setStore(STORE)
     viewModel.setDate(TOMORROW)
     viewModel.setTime(LocalTime.of(18, 30))
-    viewModel.setHandoffLocation("EPFL")
-    assertEquals(VALID_STATE.copy(maxOrders = "", canPublish = false), viewModel.uiState.value)
+    assertEquals(
+        VALID_STATE.copy(handoffLocation = null, canPublish = false),
+        viewModel.uiState.value,
+    )
 
-    viewModel.setHandoffLocation("   ")
-
-    val state = viewModel.uiState.value
-    assertEquals(CreateTripError.HANDOFF_LOCATION_REQUIRED, state.handoffLocationError)
-    assertNull(state.maxOrdersError)
+    viewModel.setHandoffLocation(HANDOFF)
+    assertEquals(VALID_STATE, viewModel.uiState.value)
   }
 
   @Test
@@ -76,23 +77,10 @@ class CreateTripViewModelTest {
             dateError = CreateTripError.DATE_REQUIRED,
             timeError = CreateTripError.TIME_REQUIRED,
             handoffLocationError = CreateTripError.HANDOFF_LOCATION_REQUIRED,
-            maxOrdersError = CreateTripError.MAX_ORDERS_REQUIRED,
         ),
         viewModel.uiState.value,
     )
-    assertTrue(drafts.isEmpty() && repository.published.isEmpty())
-  }
-
-  @Test
-  fun blankStore_isRejectedAndKeptAsTyped() {
-    val viewModel = createViewModel()
-    viewModel.fillValidForm()
-
-    viewModel.setStore("   ")
-
-    assertEquals("   ", viewModel.uiState.value.store)
-    assertEquals(CreateTripError.STORE_REQUIRED, viewModel.uiState.value.storeError)
-    assertFalse(viewModel.uiState.value.canPublish)
+    assertTrue(repository.published.isEmpty())
   }
 
   @Test
@@ -137,51 +125,41 @@ class CreateTripViewModelTest {
 
     assertEquals(CreateTripError.TIME_IN_PAST, viewModel.uiState.value.timeError)
     assertFalse(viewModel.uiState.value.canPublish)
-    assertTrue(drafts.isEmpty() && repository.published.isEmpty())
+    assertTrue(repository.published.isEmpty())
   }
 
   @Test
-  fun maxOrders_mustBeAPositiveWholeNumber() {
-    val invalid = listOf("0", "00", "-1", "2.5", "abc", "1e3", "+3", "1 2", "99999999999", "١٢")
-    val expected: Map<String, CreateTripError?> =
-        mapOf(
-            "" to CreateTripError.MAX_ORDERS_REQUIRED,
-            "  " to CreateTripError.MAX_ORDERS_REQUIRED,
-        ) +
-            invalid.associateWith { CreateTripError.MAX_ORDERS_NOT_POSITIVE_INTEGER } +
-            listOf("1", " 3 ", "007", "2147483647").associateWith { null }
-    expected.forEach { (text, error) ->
-      val viewModel = createViewModel()
-      viewModel.fillValidForm(maxOrders = text)
-      assertEquals("max orders '$text'", error, viewModel.uiState.value.maxOrdersError)
-      assertEquals("max orders '$text'", error == null, viewModel.uiState.value.canPublish)
-      assertEquals(text, viewModel.uiState.value.maxOrders)
-    }
-  }
-
-  @Test
-  fun publish_sendsTheDraftOnceAndLocksTheForm() = runTest {
+  fun publish_sendsTheChosenPlacesOnceAndLocksTheForm() = runTest {
     val viewModel = createViewModel()
-    viewModel.fillValidForm(store = " Migros ", maxOrders = " 3 ", handoff = "  EPFL ")
+    viewModel.fillValidForm()
 
     viewModel.publish()
     advanceUntilIdle()
-    viewModel.setMaxOrders("5")
+    viewModel.setStore(OTHER_STORE)
     viewModel.publish()
     advanceUntilIdle()
 
-    assertEquals(listOf(VALID_DRAFT), drafts)
-    assertEquals(listOf(newTripFor(VALID_DRAFT)), repository.published)
+    assertEquals(listOf(NEW_TRIP), repository.published)
     assertEquals(
-        VALID_STATE.copy(
-            store = " Migros ",
-            maxOrders = " 3 ",
-            handoffLocation = "  EPFL ",
-            canPublish = false,
-            publishedTrip = PUBLISHED_TRIP,
-        ),
+        VALID_STATE.copy(canPublish = false, publishedTrip = PUBLISHED_TRIP),
         viewModel.uiState.value,
     )
+  }
+
+  @Test
+  fun publish_isAcceptedByTheSharedFakeRepository() = runTest {
+    val fake = FakeTripRepository(currentUserId = "me", now = { NOW })
+    val viewModel = CreateTripViewModel(fake, Clock.fixed(NOW, ZONE))
+    viewModel.fillValidForm()
+
+    viewModel.publish()
+    advanceUntilIdle()
+
+    val trip = requireNotNull(viewModel.uiState.value.publishedTrip)
+    assertEquals(STORE, trip.store)
+    assertEquals(HANDOFF, trip.handoffLocation)
+    assertEquals(NEW_TRIP.scheduledAt, trip.scheduledAt)
+    assertEquals(listOf(trip), (fake.getMyTrips() as TripResult.Success).data)
   }
 
   @Test
@@ -214,14 +192,14 @@ class CreateTripViewModelTest {
     viewModel.publish()
     advanceUntilIdle()
 
-    viewModel.setHandoffLocation("Rolex Center")
+    viewModel.setHandoffLocation(OTHER_HANDOFF)
     assertNull(viewModel.uiState.value.publishError)
     repository.result = TripResult.Success(PUBLISHED_TRIP)
     viewModel.publish()
     advanceUntilIdle()
 
     assertEquals(2, repository.published.size)
-    assertEquals("Rolex Center", repository.published.last().handoffLocation.name)
+    assertEquals(OTHER_HANDOFF, repository.published.last().handoffLocation)
     assertEquals(PUBLISHED_TRIP, viewModel.uiState.value.publishedTrip)
   }
 
@@ -237,47 +215,26 @@ class CreateTripViewModelTest {
     viewModel.publish()
     runCurrent()
     viewModel.publish()
-    viewModel.setMaxOrders("9")
-    viewModel.setStore("Coop")
+    viewModel.setStore(OTHER_STORE)
+    viewModel.setHandoffLocation(OTHER_HANDOFF)
     gate.complete(Unit)
     advanceUntilIdle()
 
-    assertEquals(1, drafts.size)
     assertEquals(1, repository.published.size)
     assertEquals(VALID_STATE.copy(publishError = TripError.NetworkError), viewModel.uiState.value)
   }
 
-  @Test
-  fun defaultMapping_neverCallsTheRepository() = runTest {
-    val viewModel = CreateTripViewModel(repository, Clock.fixed(NOW, ZONE))
-    viewModel.fillValidForm()
-
-    viewModel.publish()
-    advanceUntilIdle()
-
-    assertNull(VALID_DRAFT.toNewTrip())
-    assertEquals(emptyList<NewTrip>(), repository.published)
-    assertEquals(VALID_STATE.copy(publishError = TripError.InvalidData), viewModel.uiState.value)
-  }
-
   private fun createViewModel(clock: Clock = Clock.fixed(NOW, ZONE)) =
-      CreateTripViewModel(repository, clock) { draft ->
-        drafts += draft
-        newTripFor(draft)
-      }
+      CreateTripViewModel(repository, clock)
 
   private fun CreateTripViewModel.fillValidForm(
-      store: String = "Migros",
       date: LocalDate = TOMORROW,
       time: LocalTime = LocalTime.of(18, 30),
-      handoff: String = "EPFL",
-      maxOrders: String = "3",
   ) {
-    setStore(store)
+    setStore(STORE)
     setDate(date)
     setTime(time)
-    setHandoffLocation(handoff)
-    setMaxOrders(maxOrders)
+    setHandoffLocation(HANDOFF)
   }
 
   /** Records published trips; returns [result], or throws [exception], after [gate] opens. */
@@ -325,26 +282,25 @@ class CreateTripViewModelTest {
             TripError.Unknown,
         )
 
+    val STORE: Location = TripLocations.stores[0]
+    val OTHER_STORE: Location = TripLocations.stores[1]
+    val HANDOFF: Location = TripLocations.handoffPoints[0]
+    val OTHER_HANDOFF: Location = TripLocations.handoffPoints[1]
+
     val VALID_STATE =
         CreateTripUiState(
-            store = "Migros",
+            store = STORE,
             date = TOMORROW,
             time = LocalTime.of(18, 30),
-            handoffLocation = "EPFL",
-            maxOrders = "3",
+            handoffLocation = HANDOFF,
             canPublish = true,
         )
 
-    val VALID_DRAFT = TripDraft("Migros", Instant.parse("2026-10-06T16:30:00Z"), "EPFL", 3)
+    // 18:30 on 6 October in Zurich.
+    val NEW_TRIP = NewTrip(STORE, Instant.parse("2026-10-06T16:30:00Z"), HANDOFF)
 
-    fun place(name: String) = Location(name, 46.52, 6.57)
-
-    fun newTripFor(draft: TripDraft) =
-        NewTrip(place(draft.store), draft.scheduledAt, place(draft.handoffLocation))
-
-    val PUBLISHED_TRIP =
-        newTripFor(VALID_DRAFT).run {
-          Trip("trip-1", "owner-1", store, scheduledAt, handoffLocation, PUBLISHED, NOW, NOW)
-        }
+    val PUBLISHED_TRIP = NEW_TRIP.run {
+      Trip("trip-1", "owner-1", store, scheduledAt, handoffLocation, PUBLISHED, NOW, NOW)
+    }
   }
 }

@@ -2,6 +2,7 @@ package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import java.time.LocalDate
 import java.time.LocalTime
@@ -14,27 +15,23 @@ enum class CreateTripError {
   TIME_REQUIRED,
   TIME_IN_PAST,
   HANDOFF_LOCATION_REQUIRED,
-  MAX_ORDERS_REQUIRED,
-  MAX_ORDERS_NOT_POSITIVE_INTEGER,
 }
 
 /**
  * State of the trip creation form.
  *
  * Field errors are only reported once the user has edited that field or tried to publish, so an
- * untouched form shows no errors. [maxOrders] is kept as typed so invalid input stays visible.
+ * untouched form shows no errors.
  */
 data class CreateTripUiState(
-    val store: String = "",
+    val store: Location? = null,
     val date: LocalDate? = null,
     val time: LocalTime? = null,
-    val handoffLocation: String = "",
-    val maxOrders: String = "",
+    val handoffLocation: Location? = null,
     val storeError: CreateTripError? = null,
     val dateError: CreateTripError? = null,
     val timeError: CreateTripError? = null,
     val handoffLocationError: CreateTripError? = null,
-    val maxOrdersError: CreateTripError? = null,
     /** True when every field is valid and nothing is being or has been published. */
     val canPublish: Boolean = false,
     val isPublishing: Boolean = false,

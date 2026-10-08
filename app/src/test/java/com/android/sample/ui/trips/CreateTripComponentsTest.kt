@@ -1,12 +1,13 @@
 package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.R
+import com.android.sample.model.Location
+import com.android.sample.model.TripLocations
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -18,80 +19,13 @@ class CreateTripComponentsTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   @Test
-  fun textInputField_showsHelperAndPlaceholderThenTheTypedText() {
-    var value by mutableStateOf("")
-    composeTestRule.setContent { HandoffField(value, error = null, enabled = true) { value = it } }
-    composeTestRule.onNodeWithText("Handoff location").assertExists()
-    composeTestRule.onNodeWithText("e.g. Rolex Center").assertExists()
-    composeTestRule
-        .onNodeWithText("Where requesters meet you to collect their groceries.")
-        .assertExists()
-
-    composeTestRule.onNodeWithTag(INPUT).performTextInput("Rolex Center")
-
-    composeTestRule.runOnIdle { assertEquals("Rolex Center", value) }
-    composeTestRule.onNodeWithTag(INPUT).assertTextContains("Rolex Center")
-    composeTestRule.onNodeWithTag(ERROR).assertDoesNotExist()
-  }
-
-  @Test
-  fun textInputField_withErrorAndDisabled_showsTheMessageAndRejectsInput() {
-    composeTestRule.setContent {
-      HandoffField("", CreateTripError.HANDOFF_LOCATION_REQUIRED, enabled = false) {}
-    }
-
-    composeTestRule.onNodeWithTag(ERROR).assertExists()
-    composeTestRule.onNodeWithText("Enter where you will hand over the groceries.").assertExists()
-    composeTestRule
-        .onNodeWithText("Where requesters meet you to collect their groceries.")
-        .assertDoesNotExist()
-    composeTestRule.onNodeWithTag(INPUT).assertIsNotEnabled()
-  }
-
-  @Test
-  fun everyErrorHasAMessage() {
-    val messages =
-        mapOf(
-            CreateTripError.STORE_REQUIRED to "Enter the store you'll shop at.",
-            CreateTripError.DATE_REQUIRED to "Choose a date.",
-            CreateTripError.DATE_IN_PAST to "Choose today or a later date.",
-            CreateTripError.TIME_REQUIRED to "Choose a time.",
-            CreateTripError.TIME_IN_PAST to "That time has already passed.",
-            CreateTripError.HANDOFF_LOCATION_REQUIRED to
-                "Enter where you will hand over the groceries.",
-            CreateTripError.MAX_ORDERS_REQUIRED to "Enter a whole number of 1 or more.",
-            CreateTripError.MAX_ORDERS_NOT_POSITIVE_INTEGER to "Enter a whole number of 1 or more.",
-        )
-    assertEquals(CreateTripError.entries.toSet(), messages.keys)
-    var error by mutableStateOf(CreateTripError.STORE_REQUIRED)
-    composeTestRule.setContent { HandoffField("", error, enabled = true) {} }
-
-    messages.forEach { (shown, message) ->
-      error = shown
-      composeTestRule.onNodeWithText(message).assertExists()
-    }
-  }
-
-  @Test
   fun pickerField_showsPlaceholderOrValueAndOpensOnlyWhenEnabled() {
     var value by mutableStateOf<String?>(null)
     var enabled by mutableStateOf(true)
     var clicks = 0
-    composeTestRule.setContent {
-      PickerField(
-          label = R.string.create_trip_time_label,
-          icon = R.drawable.ic_trip_clock,
-          value = value,
-          placeholder = R.string.create_trip_time_placeholder,
-          helper = R.string.create_trip_time_helper,
-          error = null,
-          enabled = enabled,
-          onClick = { clicks++ },
-          tag = INPUT,
-          errorTag = ERROR,
-      )
-    }
+    composeTestRule.setContent { TimeField(value, error = null, enabled = enabled) { clicks++ } }
     composeTestRule.onNodeWithText("Select time").assertExists()
+    composeTestRule.onNodeWithText("Must be in the future").assertExists()
 
     composeTestRule.onNodeWithTag(INPUT).performClick()
     value = "17:30"
@@ -102,23 +36,78 @@ class CreateTripComponentsTest {
     composeTestRule.runOnIdle { assertEquals(1, clicks) }
   }
 
+  @Test
+  fun pickerField_withError_showsTheMessageInsteadOfTheHelper() {
+    composeTestRule.setContent { TimeField(null, CreateTripError.TIME_REQUIRED, enabled = true) {} }
+
+    composeTestRule.onNodeWithTag(ERROR).assertExists()
+    composeTestRule.onNodeWithText("Choose a time.").assertExists()
+    composeTestRule.onNodeWithText("Must be in the future").assertDoesNotExist()
+  }
+
+  @Test
+  fun everyErrorHasAMessage() {
+    val messages =
+        mapOf(
+            CreateTripError.STORE_REQUIRED to "Choose a store.",
+            CreateTripError.DATE_REQUIRED to "Choose a date.",
+            CreateTripError.DATE_IN_PAST to "Choose today or a later date.",
+            CreateTripError.TIME_REQUIRED to "Choose a time.",
+            CreateTripError.TIME_IN_PAST to "That time has already passed.",
+            CreateTripError.HANDOFF_LOCATION_REQUIRED to
+                "Choose where you will hand over the groceries.",
+        )
+    assertEquals(CreateTripError.entries.toSet(), messages.keys)
+    var error by mutableStateOf(CreateTripError.STORE_REQUIRED)
+    composeTestRule.setContent { TimeField(null, error, enabled = true) {} }
+
+    messages.forEach { (shown, message) ->
+      error = shown
+      composeTestRule.onNodeWithText(message).assertExists()
+    }
+  }
+
+  @Test
+  fun locationPickerField_showsThePlaceholderThenTheSelectedPlace() {
+    var selected by mutableStateOf<Location?>(null)
+    composeTestRule.setContent {
+      LocationPickerField(
+          label = R.string.create_trip_store_label,
+          icon = R.drawable.ic_trip_shopping_bag,
+          selected = selected,
+          options = TripLocations.stores,
+          placeholder = R.string.create_trip_store_placeholder,
+          helper = R.string.create_trip_store_helper,
+          error = null,
+          enabled = true,
+          onSelected = {},
+          tag = INPUT,
+          errorTag = ERROR,
+      )
+    }
+    composeTestRule.onNodeWithTag(INPUT).assertTextContains("Select a store")
+
+    selected = TripLocations.stores[1]
+
+    composeTestRule.onNodeWithTag(INPUT).assertTextContains(TripLocations.stores[1].name)
+  }
+
   @Composable
-  private fun HandoffField(
-      value: String,
+  private fun TimeField(
+      value: String?,
       error: CreateTripError?,
       enabled: Boolean,
-      onValueChange: (String) -> Unit,
+      onClick: () -> Unit,
   ) {
-    TextInputField(
-        label = R.string.create_trip_handoff_label,
-        icon = R.drawable.ic_trip_map_pin,
+    PickerField(
+        label = R.string.create_trip_time_label,
+        icon = R.drawable.ic_trip_clock,
         value = value,
-        onValueChange = onValueChange,
-        placeholder = R.string.create_trip_handoff_placeholder,
-        helper = R.string.create_trip_handoff_helper,
+        placeholder = R.string.create_trip_time_placeholder,
+        helper = R.string.create_trip_time_helper,
         error = error,
         enabled = enabled,
-        keyboardOptions = KeyboardOptions.Default,
+        onClick = onClick,
         tag = INPUT,
         errorTag = ERROR,
     )

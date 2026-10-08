@@ -10,14 +10,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -29,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
+import com.android.sample.model.Location
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -99,47 +98,7 @@ private val CreateTripError.message: Int
         CreateTripError.TIME_REQUIRED -> R.string.create_trip_error_time_required
         CreateTripError.TIME_IN_PAST -> R.string.create_trip_error_time_in_past
         CreateTripError.HANDOFF_LOCATION_REQUIRED -> R.string.create_trip_error_handoff_required
-        CreateTripError.MAX_ORDERS_REQUIRED,
-        CreateTripError.MAX_ORDERS_NOT_POSITIVE_INTEGER -> R.string.create_trip_error_max_orders
       }
-
-@Composable
-internal fun TextInputField(
-    @StringRes label: Int,
-    @DrawableRes icon: Int,
-    value: String,
-    onValueChange: (String) -> Unit,
-    @StringRes placeholder: Int,
-    @StringRes helper: Int,
-    error: CreateTripError?,
-    enabled: Boolean,
-    keyboardOptions: KeyboardOptions,
-    tag: String,
-    errorTag: String,
-) {
-  FormField(label, helper, error, errorTag) {
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        enabled = enabled,
-        singleLine = true,
-        textStyle = inputStyle(isValue = true, enabled = enabled),
-        keyboardOptions = keyboardOptions,
-        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-        modifier = Modifier.fillMaxWidth().testTag(tag),
-        decorationBox = { innerTextField ->
-          InputBox(icon = icon, isError = error != null, enabled = enabled) {
-            Box(Modifier.weight(1f)) {
-              if (value.isEmpty()) {
-                Text(stringResource(placeholder), style = inputStyle(isValue = false, enabled))
-              }
-              innerTextField()
-            }
-          }
-        },
-    )
-  }
-}
 
 /** A read-only field that shows [value] (or the placeholder) and opens a picker on click. */
 @Composable
@@ -172,6 +131,50 @@ internal fun PickerField(
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
       )
+    }
+  }
+}
+
+/** A [PickerField] that opens a menu of [options] and reports the one the user picks. */
+@Composable
+internal fun LocationPickerField(
+    @StringRes label: Int,
+    @DrawableRes icon: Int,
+    selected: Location?,
+    options: List<Location>,
+    @StringRes placeholder: Int,
+    @StringRes helper: Int,
+    error: CreateTripError?,
+    enabled: Boolean,
+    onSelected: (Location) -> Unit,
+    tag: String,
+    errorTag: String,
+) {
+  var expanded by rememberSaveable { mutableStateOf(false) }
+  Box {
+    PickerField(
+        label = label,
+        icon = icon,
+        value = selected?.name,
+        placeholder = placeholder,
+        helper = helper,
+        error = error,
+        enabled = enabled,
+        onClick = { expanded = true },
+        tag = tag,
+        errorTag = errorTag,
+    )
+    DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
+      options.forEach { location ->
+        DropdownMenuItem(
+            text = { Text(location.name) },
+            onClick = {
+              expanded = false
+              onSelected(location)
+            },
+            modifier = Modifier.testTag(CreateTripScreenTestTags.locationOption(location.name)),
+        )
+      }
     }
   }
 }

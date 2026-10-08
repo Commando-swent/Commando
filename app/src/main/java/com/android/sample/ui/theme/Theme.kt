@@ -30,6 +30,10 @@ private val AppColorScheme =
         onSecondaryContainer = OnSecondaryContainer,
         surfaceContainer = SurfaceContainer,
         error = Error,
+        surfaceContainerLow = SurfaceContainerLow,
+        surfaceContainerHigh = SurfaceContainerHigh,
+        errorContainer = ErrorContainer,
+        onErrorContainer = OnErrorContainer,
     )
 
 /** The Figma design uses a fixed dark palette, independent of Android's wallpaper colors. */

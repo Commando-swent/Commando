@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="profile_edit_title">Edit Profile</string>
+    <string name="profile_edit_personal_information">Personal information</string>
+    <string name="profile_edit_email_hint">Email Address</string>
+    <string name="profile_edit_name_required">Please enter your full name.</string>
+    <string name="profile_edit_email_required">Please enter your email address.</string>
+    <string name="profile_edit_email_invalid">Please enter a valid email address.</string>
+    <string name="profile_edit_save">Save changes</string>
+    <string name="profile_edit_cancel">Cancel</string>
+    <string name="profile_edit_saving">Saving…</string>
+    <string name="profile_edit_done">Done</string>
+    <string name="profile_edit_saved">Your profile has been updated.</string>
+    <string name="profile_edit_email_verification">A verification link was sent to %1$s. Your current email stays unchanged until you verify the new address.</string>
+    <string name="profile_edit_network_error">Could not finish updating your profile. Check your connection and try again.</string>
+    <string name="profile_edit_email_in_use">This email address is already in use. Please choose another one.</string>
+    <string name="profile_edit_recent_login">Please sign out and sign in again before saving your profile.</string>
+    <string name="profile_edit_session_changed">Your session changed. Please reopen your profile and try again.</string>
+    <string name="profile_edit_unknown_error">Could not finish updating your profile. Please try again.</string>
+</resources>

@@ -19,7 +19,15 @@ interface AuthRepository {
    */
   fun observeAuthState(): Flow<AuthUser?>
 
-  suspend fun signUpWithEmail(email: String, password: String): Result<AuthUser>
+  /**
+   * Creates an account and signs it in. A non-blank [fullName] becomes the user's display name; the
+   * new session is only observed once that name is saved.
+   */
+  suspend fun signUpWithEmail(
+      email: String,
+      password: String,
+      fullName: String? = null,
+  ): Result<AuthUser>
 
   suspend fun signInWithEmail(email: String, password: String): Result<AuthUser>
 

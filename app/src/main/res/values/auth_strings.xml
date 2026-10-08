@@ -7,6 +7,8 @@
     <string name="auth_signup_subtitle">One account. Two ways to help.</string>
     <string name="auth_login">Log in</string>
     <string name="auth_signup">Sign up</string>
+    <string name="auth_full_name">Full name</string>
+    <string name="auth_full_name_hint">Your full name</string>
     <string name="auth_email">Email</string>
     <string name="auth_email_hint">Your university email</string>
     <string name="auth_password">Password</string>

@@ -15,15 +15,18 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.auth.auth
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -50,20 +53,40 @@ class AuthRepositoryFirebase(
   override val currentUser: AuthUser?
     get() = auth.currentUser?.toAuthUser()
 
+  // True while a new account waits for its display name, so observers do not see it unnamed.
+  private val signingUp = MutableStateFlow(false)
+
   override fun observeAuthState(): Flow<AuthUser?> = callbackFlow {
+    fun publish() = trySend(if (signingUp.value) null else auth.currentUser?.toAuthUser())
     // Emit the current session immediately; Firebase's own initial callback is deduplicated.
-    trySend(auth.currentUser?.toAuthUser())
-    val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.toAuthUser()) }
+    publish()
+    val listener = FirebaseAuth.AuthStateListener { publish() }
     auth.addAuthStateListener(listener)
+    // Firebase does not notify profile changes, so the end of a sign-up republishes the user.
+    // The current value is not dropped: a sign-up may end before this collector subscribes, and
+    // a repeated state is removed by distinctUntilChanged.
+    launch { signingUp.collect { publish() } }
     awaitClose { auth.removeAuthStateListener(listener) }
   }
       .conflate()
       .distinctUntilChanged()
 
-  override suspend fun signUpWithEmail(email: String, password: String): Result<AuthUser> =
+  override suspend fun signUpWithEmail(
+      email: String,
+      password: String,
+      fullName: String?,
+  ): Result<AuthUser> {
+    signingUp.value = true
+    return try {
       authenticate(Operation.SIGN_UP) {
-        auth.createUserWithEmailAndPassword(email.trim(), password).await()
+        auth.createUserWithEmailAndPassword(email.trim(), password).await().also { result ->
+          fullName?.trim()?.takeIf { it.isNotEmpty() }?.let { result.user?.saveDisplayName(it) }
+        }
       }
+    } finally {
+      signingUp.value = false
+    }
+  }
 
   override suspend fun signInWithEmail(email: String, password: String): Result<AuthUser> =
       authenticate(Operation.SIGN_IN_EMAIL) {
@@ -106,6 +129,17 @@ class AuthRepositoryFirebase(
       } catch (e: Exception) {
         Result.failure(e.toAuthException(operation))
       }
+
+  /** The account already exists at this point, so a failure here must not fail the sign-up. */
+  private suspend fun FirebaseUser.saveDisplayName(name: String) {
+    try {
+      updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name).build()).await()
+    } catch (e: CancellationException) {
+      currentCoroutineContext().ensureActive()
+    } catch (_: Exception) {
+      // ponytail: the user stays unnamed; surface a retry if this happens in practice.
+    }
+  }
 
   private fun FirebaseUser.toAuthUser() =
       AuthUser(uid = uid, displayName = displayName, email = email, photoUrl = photoUrl?.toString())

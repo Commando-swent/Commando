@@ -2,11 +2,13 @@ package com.android.sample.ui.profile
 
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.ui.theme.SampleAppTheme
@@ -29,7 +31,7 @@ class ProfileInformationTest {
     compose.setContent {
       SampleAppTheme {
         Surface(color = MaterialTheme.colorScheme.background) {
-          Column { ProfileInformation(profile.value) }
+          Box { ProfileInformation(profile.value, Modifier.testTag("profile_information")) }
         }
       }
     }
@@ -58,6 +60,17 @@ class ProfileInformationTest {
           .asAndroidBitmap()
           .compress(Bitmap.CompressFormat.PNG, 100, it)
     }
+  }
+
+  @Test
+  fun sectionsAreStackedInsideBoxAndCallerModifierIsApplied() {
+    show()
+    compose.onNodeWithTag("profile_information").assertIsDisplayed()
+    val avatar = compose.onNodeWithTag(ProfileTestTags.INITIALS).fetchSemanticsNode().boundsInRoot
+    val edit = compose.onNodeWithTag(ProfileTestTags.EDIT).fetchSemanticsNode().boundsInRoot
+    val name = compose.onNodeWithTag(ProfileTestTags.FULL_NAME).fetchSemanticsNode().boundsInRoot
+    org.junit.Assert.assertTrue(avatar.bottom <= edit.top)
+    org.junit.Assert.assertTrue(edit.bottom <= name.top)
   }
 
   @Test

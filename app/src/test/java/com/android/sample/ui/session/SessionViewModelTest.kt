@@ -82,7 +82,7 @@ class SessionViewModelTest {
     val repository = FakeAuthRepository(alice)
     val viewModel = createViewModel(repository)
     runCurrent()
-    viewModel.signOut()
+    assertTrue(viewModel.signOut())
     runCurrent()
     assertNull(repository.currentUser)
     assertEquals(SessionUiState(), viewModel.uiState.value)
@@ -94,14 +94,14 @@ class SessionViewModelTest {
     val viewModel = createViewModel(repository)
     val error = AuthException.Network()
     repository.signOutResult = Result.failure(error)
-    viewModel.signOut()
+    assertFalse(viewModel.signOut())
     runCurrent()
     assertEquals(alice, repository.currentUser)
     assertEquals(alice, viewModel.uiState.value.user)
     assertSame(error, viewModel.uiState.value.signOutError)
 
     repository.signOutResult = Result.success(Unit)
-    viewModel.signOut()
+    assertTrue(viewModel.signOut())
     runCurrent()
     assertEquals(SessionUiState(), viewModel.uiState.value)
   }
@@ -132,7 +132,7 @@ class SessionViewModelTest {
           override fun signOut(): Result<Unit> = throw failure
         }
     val viewModel = createViewModel(repository)
-    viewModel.signOut()
+    assertFalse(viewModel.signOut())
     assertEquals(alice, viewModel.uiState.value.user)
     assertSame(failure, viewModel.uiState.value.signOutError?.cause)
   }

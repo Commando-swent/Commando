@@ -2,12 +2,16 @@ package com.android.sample
 
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.android.sample.model.authentication.AuthRepositoryProvider
+import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.screen.MainScreen
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import io.github.kakaocup.compose.node.element.ComposeScreen
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.ExternalResource
+import org.junit.rules.RuleChain
 import org.junit.runner.RunWith
 
 /**
@@ -18,7 +22,18 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class MainActivityTest : TestCase() {
 
-  @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
+  val composeTestRule = createAndroidComposeRule<MainActivity>()
+  private val repositoryRule =
+      object : ExternalResource() {
+        override fun before() {
+          AuthRepositoryProvider.repository = FakeAuthRepository()
+        }
+
+        override fun after() {
+          AuthRepositoryProvider.reset()
+        }
+      }
+  @get:Rule val rules: RuleChain = RuleChain.outerRule(repositoryRule).around(composeTestRule)
 
   @Test
   fun test() = run {
@@ -26,7 +41,7 @@ class MainActivityTest : TestCase() {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
         simpleText {
           assertIsDisplayed()
-          assertTextEquals("Login")
+          assertTextEquals("Welcome back.")
         }
       }
     }

@@ -42,10 +42,12 @@ import org.robolectric.annotation.Config
 @Config(qualifiers = "w412dp-h915dp-mdpi")
 class HomeFirestoreIntegrationTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-  private val googleCredentials = object : GoogleCredentialClient {
-    override suspend fun request(context: Context) = null
-    override suspend fun clearSession() {}
-  }
+  private val googleCredentials =
+      object : GoogleCredentialClient {
+        override suspend fun request(context: Context) = null
+
+        override suspend fun clearSession() {}
+      }
   private val now = Instant.now()
   private val auth = FakeAuthRepository(AuthUser("alice"))
   private val source = HomeDataSource()
@@ -91,7 +93,9 @@ class HomeFirestoreIntegrationTest {
     try {
       every { FirebaseFirestore.getInstance() } returns firestore
       // Leave tripRepository unset to exercise the production wiring, not an injected adapter.
-      compose.setContent { SampleAppTheme { CommandoApp(repository = auth) } }
+      compose.setContent {
+        SampleAppTheme { CommandoApp(repository = auth, googleCredentials = googleCredentials) }
+      }
       compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
       compose.onNodeWithText("alice shop").assertIsDisplayed()
       compose.onNodeWithText("EPFL").assertIsDisplayed()

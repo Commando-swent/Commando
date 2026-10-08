@@ -65,7 +65,9 @@ class CommandoAppTest {
   private fun show(repository: FakeAuthRepository, picker: Picker = Picker()) {
     val trips = FakeTripRepository(currentUserId = "alice")
     compose.setContent {
-      SampleAppTheme { CommandoApp(repository = repository, tripRepository = trips, googleCredentials = picker) }
+      SampleAppTheme {
+        CommandoApp(repository = repository, tripRepository = trips, googleCredentials = picker)
+      }
     }
   }
 
@@ -277,7 +279,14 @@ class CommandoAppTest {
     val repository = FakeAuthRepository()
     repository.signInWithEmailResult = Result.success(alice)
     AuthRepositoryProvider.repository = repository
-    compose.setContent { SampleAppTheme { CommandoApp(tripRepository = FakeTripRepository(currentUserId = alice.uid), googleCredentials = Picker()) } }
+    compose.setContent {
+      SampleAppTheme {
+        CommandoApp(
+            tripRepository = FakeTripRepository(currentUserId = alice.uid),
+            googleCredentials = Picker(),
+        )
+      }
+    }
     fillEmailForm()
     click("auth_submit")
     assertScreen(NavigationTestTags.HOME_SCREEN)

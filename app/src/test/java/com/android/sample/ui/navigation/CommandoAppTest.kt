@@ -32,6 +32,7 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -53,8 +54,8 @@ import org.robolectric.shadows.ShadowToast
 @RunWith(RobolectricTestRunner::class)
 class CommandoAppTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
-  private val alice = AuthUser("alice")
-  private val bob = AuthUser("bob")
+  private val alice = AuthUser("alice", displayName = "Alice Smith", email = "alice@example.com")
+  private val bob = AuthUser("bob", displayName = "Bob Jones", email = "bob@example.com")
 
   private class Picker : GoogleCredentialClient {
     var credential: Credential? = null
@@ -118,6 +119,14 @@ class CommandoAppTest {
 
   private fun pressBack() {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+  }
+
+  private fun assertProfile(fullName: String, email: String, initials: String) {
+    assertScreen(NavigationTestTags.PROFILE_SCREEN)
+    compose.onNodeWithTag(NavigationTestTags.SCREEN_TITLE).assertTextEquals("Profile")
+    compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals(fullName)
+    compose.onNodeWithTag(ProfileTestTags.EMAIL).assertTextEquals(email)
+    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertTextEquals(initials)
   }
 
   private val tripTime = Instant.parse("2026-10-07T12:00:00Z")
@@ -482,10 +491,13 @@ class CommandoAppTest {
     compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
     click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.PROFILE_BUTTON)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
     compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).assertIsSelected()
     compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
     click(AppTestTags.PROFILE_BUTTON)
     click(AppTestTags.HOME_BUTTON)
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
     compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
     pressBack()
@@ -549,13 +561,15 @@ class CommandoAppTest {
   }
 
   @Test
-  fun existingSessionStartsOnHomeAndProfileReturnsWithBack() {
+  fun existingSessionStartsOnHomeAndProfileHeaderReturnsHome() {
     show(FakeAuthRepository(alice))
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(AppTestTags.PROFILE_BUTTON)
-    assertScreen(NavigationTestTags.PROFILE_SCREEN)
-    pressBack()
+    assertProfile("Alice Smith", "alice@example.com", "AS")
+    click(NavigationTestTags.BACK_BUTTON)
     assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertDoesNotExist()
   }
 
@@ -577,13 +591,18 @@ class CommandoAppTest {
     val repository = FakeAuthRepository(alice)
     show(repository)
     click(AppTestTags.PROFILE_BUTTON)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
     assertNull(repository.currentUser)
     pressBack()
     compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+    compose.onNodeWithText("Alice Smith").assertDoesNotExist()
+    compose.onNodeWithText("alice@example.com").assertDoesNotExist()
+    compose.onNodeWithText("AS").assertDoesNotExist()
   }
 
   @Test
@@ -615,28 +634,44 @@ class CommandoAppTest {
   }
 
   @Test
-  fun changingAccountStartsAtHomeInsteadOfPreviousProfile() = runTest {
+  fun changingAccountClearsPreviousProfileAndStartsAtHome() = runTest {
     val repository = FakeAuthRepository(alice)
     show(repository)
     click(AppTestTags.PROFILE_BUTTON)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
     repository.signInWithEmailResult = Result.success(bob)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+    compose.onNodeWithText("Alice Smith").assertDoesNotExist()
+    compose.onNodeWithText("alice@example.com").assertDoesNotExist()
+    click(AppTestTags.PROFILE_BUTTON)
+    assertProfile("Bob Jones", "bob@example.com", "BJ")
+    compose.onNodeWithText("Alice Smith").assertDoesNotExist()
+    compose.onNodeWithText("alice@example.com").assertDoesNotExist()
   }
 
   @Test
-  fun profileUpdateKeepsNavigationForTheSameAccount() = runTest {
+  fun profileUpdateRefreshesFieldsAndKeepsNavigationForTheSameAccount() = runTest {
     val repository = FakeAuthRepository(alice)
     show(repository)
+    click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.PROFILE_BUTTON)
-    repository.signInWithEmailResult = Result.success(alice.copy(displayName = "Alice"))
+    assertProfile("Alice Smith", "alice@example.com", "AS")
+    repository.signInWithEmailResult =
+        Result.success(alice.copy(displayName = "Alice Brown", email = "alice.brown@example.com"))
     repository.signInWithEmail("", "")
-    assertScreen(NavigationTestTags.PROFILE_SCREEN)
+    assertProfile("Alice Brown", "alice.brown@example.com", "AB")
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).assertIsSelected()
+    compose.onNodeWithText("Alice Smith").assertDoesNotExist()
+    compose.onNodeWithText("alice@example.com").assertDoesNotExist()
+    click(NavigationTestTags.BACK_BUTTON)
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
   }
 
   @Test
-  fun signingOutRecreatesTheLoginForm() = runTest {
+  fun signingOutRecreatesLoginAndNextAccountDoesNotRestorePreviousProfile() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
     click("auth_tab_signup")
@@ -644,9 +679,26 @@ class CommandoAppTest {
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(AppTestTags.PROFILE_BUTTON)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+    compose.onNodeWithText("Alice Smith").assertDoesNotExist()
+    compose.onNodeWithText("alice@example.com").assertDoesNotExist()
+    compose.onNodeWithText("AS").assertDoesNotExist()
+    assertNull(repository.currentUser)
+
+    repository.signInWithEmailResult = Result.success(bob)
+    repository.signInWithEmail("", "")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
+    click(AppTestTags.PROFILE_BUTTON)
+    assertProfile("Bob Jones", "bob@example.com", "BJ")
+    compose.onNodeWithText("Alice Smith").assertDoesNotExist()
+    compose.onNodeWithText("alice@example.com").assertDoesNotExist()
+    compose.onNodeWithText("AS").assertDoesNotExist()
   }
 
   @After

@@ -44,6 +44,8 @@ import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.profile.ProfileScreen
+import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
@@ -115,6 +117,7 @@ fun CommandoApp(
           }
           val trips = tripRepositoryViewModel.repository
           AuthenticatedApp(
+              repository = repository,
               tripRepository = trips,
               onSignOut = {
                 if (sessionViewModel.signOut()) {
@@ -138,6 +141,7 @@ fun CommandoApp(
 /** The outer App entry owns the shared mode and is discarded when the session changes. */
 @Composable
 private fun AuthenticatedApp(
+    repository: AuthRepository,
     tripRepository: TripRepository,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
@@ -233,7 +237,10 @@ private fun AuthenticatedApp(
         AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
       }
       composable(route = CommandoScreens.Profile.name) {
-        ProfilePlaceholderScreen(
+        val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
+        val profileUiState by profileViewModel.uiState.collectAsState()
+        ProfileScreen(
+            uiState = profileUiState,
             onBack = { navController.popBackStack() },
             onSignOut = onSignOut,
             signOutError = signOutError,

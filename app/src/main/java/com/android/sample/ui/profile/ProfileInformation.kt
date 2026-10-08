@@ -30,6 +30,7 @@ import com.android.sample.R
 internal fun ProfileInformation(
     profile: ProfileUiState.Content,
     modifier: Modifier = Modifier,
+    onEdit: (() -> Unit)? = null,
 ) {
   Column(modifier) {
     val fullName = profile.fullName?.takeUnless { it.isBlank() }
@@ -59,8 +60,8 @@ internal fun ProfileInformation(
       )
       // Editing belongs to the next sub-issue; retain its affordance without a fake action.
       TextButton(
-          onClick = {},
-          enabled = false,
+          onClick = { onEdit?.invoke() },
+          enabled = onEdit != null,
           modifier = Modifier.heightIn(min = 48.dp).testTag(ProfileTestTags.EDIT),
           contentPadding = PaddingValues(horizontal = 4.dp),
           colors =

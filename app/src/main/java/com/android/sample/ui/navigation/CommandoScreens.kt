@@ -14,6 +14,7 @@ enum class CommandoScreens(
   Auth(title = R.string.nav_login),
   App(title = R.string.nav_home),
   Home(title = R.string.nav_home, showModeSelector = true, showBottomBar = true),
+  EditProfile(title = R.string.profile_edit_title),
   Profile(title = R.string.nav_profile, showBottomBar = true),
   AvailableTrips(title = R.string.trips_title, showBottomBar = true),
   TripDetails(title = R.string.trips_title),

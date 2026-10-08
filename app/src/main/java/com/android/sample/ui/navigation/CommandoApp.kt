@@ -2,6 +2,7 @@ package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +45,7 @@ import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
@@ -146,6 +148,7 @@ private fun AuthenticatedApp(
     onSignOut: () -> Unit,
     signOutError: AuthException?,
 ) {
+  val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
   val appViewModel: AppViewModel = viewModel()
   val appUiState by appViewModel.uiState.collectAsState()
   val navController = rememberNavController()
@@ -237,14 +240,40 @@ private fun AuthenticatedApp(
         AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
       }
       composable(route = CommandoScreens.Profile.name) {
-        val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
         val profileUiState by profileViewModel.uiState.collectAsState()
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
             onSignOut = onSignOut,
             signOutError = signOutError,
+            onEdit = {
+              profileViewModel.beginEditing()
+              navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
+            },
         )
+      }
+      composable(route = CommandoScreens.EditProfile.name) {
+        val draft by profileViewModel.editState.collectAsState()
+        val profile by profileViewModel.uiState.collectAsState()
+        val onCancel = {
+          if (draft?.isSaving != true) {
+            profileViewModel.cancelEditing()
+            navController.popBackStack()
+          }
+          Unit
+        }
+        BackHandler { onCancel() }
+        draft?.let { state ->
+          EditProfileScreen(
+              uiState = state,
+              onFullNameChange = profileViewModel::updateFullName,
+              onEmailChange = profileViewModel::updateEmail,
+              onSave = profileViewModel::saveProfile,
+              onCancel = onCancel,
+              avatarFullName =
+                  (profile as? com.android.sample.ui.profile.ProfileUiState.Content)?.fullName,
+          )
+        }
       }
     }
   }

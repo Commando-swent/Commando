@@ -49,6 +49,8 @@ import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
+import com.android.sample.ui.trips.CreateTripScreen
+import com.android.sample.ui.trips.CreateTripViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsViewModel
 import kotlinx.coroutines.launch
@@ -195,6 +197,21 @@ private fun AuthenticatedApp(
             tripState = tripState,
             onRetry = onRetry,
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
+            onPublishTrip = {
+              navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
+            },
+        )
+      }
+      composable(route = CommandoScreens.CreateTrip.name) { entry ->
+        val createTripViewModel: CreateTripViewModel =
+            viewModel(viewModelStoreOwner = entry) { CreateTripViewModel(tripRepository) }
+        CreateTripScreen(
+            viewModel = createTripViewModel,
+            onBack = { navController.popBackStack() },
+            onTripPublished = {
+              // Resuming Home refreshes its current trip from the shared repository.
+              navController.popBackStack(CommandoScreens.Home.name, inclusive = false)
+            },
         )
       }
       composable(route = CommandoScreens.AvailableTrips.name) { entry ->

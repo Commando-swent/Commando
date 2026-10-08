@@ -15,6 +15,10 @@ readonly PRODUCTION_FIRESTORE_RULES="firestore.rules"
 readonly SHARED_FIREBASE_CONFIG="firebase.json"
 readonly FIREBASE_PROJECT_ID="demo-commando"
 readonly FIREBASE_TOOLS_VERSION="${FIREBASE_TOOLS_VERSION:-15.32.1}"
+# Every profile reruns testDebugUnitTest, which replaces this file, so each profile's coverage is
+# preserved separately for jacocoTestReport.
+readonly UNIT_TEST_COVERAGE_FILE="app/build/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec"
+readonly EMULATOR_COVERAGE_DIR="app/build/jacoco/firebaseEmulator"
 
 fail() {
   echo "Firebase emulator test configuration error: $*" >&2
@@ -38,7 +42,16 @@ run_gradle_profile() {
     [[ -n "${!host_variable:-}" ]] || fail "${host_variable} is not set"
   done
 
+  rm -f "${UNIT_TEST_COVERAGE_FILE}"
   ./gradlew :app:testDebugUnitTest "-PfirebaseEmulatorProfile=${profile}"
+
+  if [[ ! -f "${UNIT_TEST_COVERAGE_FILE}" ]]; then
+    echo "Firebase emulator profile ${profile} did not produce coverage data:" \
+      "${UNIT_TEST_COVERAGE_FILE}" >&2
+    exit 1
+  fi
+  mkdir -p "${EMULATOR_COVERAGE_DIR}"
+  cp "${UNIT_TEST_COVERAGE_FILE}" "${EMULATOR_COVERAGE_DIR}/${profile}.exec"
 }
 
 validate_package() {
@@ -140,6 +153,9 @@ if (($# != 0)); then
   echo "Profile-scoped test filters may be added later without changing profile mappings." >&2
   exit 64
 fi
+
+# Coverage from a previous run must never be reported as part of this one.
+rm -rf "${EMULATOR_COVERAGE_DIR}"
 
 validate_test_locations
 

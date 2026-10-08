@@ -61,8 +61,7 @@ fun CreateTripScreen(
   CreateTripContent(
       state = state,
       onBack = onBack,
-      onAddStore = viewModel::addStore,
-      onRemoveStore = viewModel::removeStore,
+      onStoreChange = viewModel::setStore,
       onDateSelected = viewModel::setDate,
       onTimeSelected = viewModel::setTime,
       onHandoffLocationChange = viewModel::setHandoffLocation,
@@ -77,8 +76,7 @@ fun CreateTripScreen(
 fun CreateTripContent(
     state: CreateTripUiState,
     onBack: () -> Unit,
-    onAddStore: (String) -> Unit,
-    onRemoveStore: (String) -> Unit,
+    onStoreChange: (String) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
     onTimeSelected: (LocalTime) -> Unit,
     onHandoffLocationChange: (String) -> Unit,
@@ -89,7 +87,6 @@ fun CreateTripContent(
     today: LocalDate = LocalDate.now(),
 ) {
   val editable = !state.isPublishing && state.publishedTrip == null
-  var showStorePicker by rememberSaveable { mutableStateOf(false) }
   var showDatePicker by rememberSaveable { mutableStateOf(false) }
   var showTimePicker by rememberSaveable { mutableStateOf(false) }
 
@@ -115,7 +112,19 @@ fun CreateTripContent(
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
       state.publishError?.let { PublishErrorBanner(it) }
-      StoresSection(state, editable, { showStorePicker = true }, onRemoveStore)
+      TextInputField(
+          label = R.string.create_trip_store_label,
+          icon = R.drawable.ic_trip_shopping_bag,
+          value = state.store,
+          onValueChange = onStoreChange,
+          placeholder = R.string.create_trip_store_placeholder,
+          helper = R.string.create_trip_store_helper,
+          error = state.storeError,
+          enabled = editable,
+          keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+          tag = CreateTripScreenTestTags.STORE_INPUT,
+          errorTag = CreateTripScreenTestTags.STORE_ERROR,
+      )
       Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         PickerField(
             label = R.string.create_trip_date_label,
@@ -174,12 +183,6 @@ fun CreateTripContent(
     }
   }
 
-  if (showStorePicker) {
-    StorePickerDialog(onDismiss = { showStorePicker = false }) {
-      showStorePicker = false
-      onAddStore(it)
-    }
-  }
   if (showDatePicker) {
     TripDatePickerDialog(state.date, today, onDismiss = { showDatePicker = false }) {
       showDatePicker = false
@@ -242,31 +245,6 @@ private fun CreateTripTopBar(backEnabled: Boolean, onBack: () -> Unit) {
         style = tripTextStyle(20, 28, FontWeight.Bold),
         color = MaterialTheme.colorScheme.onSurface,
     )
-  }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun StoresSection(
-    state: CreateTripUiState,
-    enabled: Boolean,
-    onAddStoreClick: () -> Unit,
-    onRemoveStore: (String) -> Unit,
-) {
-  FormField(
-      label = R.string.create_trip_stores_label,
-      helper = R.string.create_trip_stores_helper,
-      error = state.storesError,
-      errorTag = CreateTripScreenTestTags.STORES_ERROR,
-  ) {
-    FlowRow(
-        modifier = Modifier.fillMaxWidth().alpha(if (enabled) 1f else 0.5f),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-      state.stores.forEach { store -> StoreChip(store, enabled) { onRemoveStore(store) } }
-      AddStoreChip(enabled = enabled, onClick = onAddStoreClick)
-    }
   }
 }
 

@@ -45,7 +45,7 @@ class CreateTripScreenTest {
   fun validationErrors_areShownUnderTheirFields() {
     state =
         CreateTripUiState(
-            storesError = CreateTripError.STORES_REQUIRED,
+            storeError = CreateTripError.STORE_REQUIRED,
             dateError = CreateTripError.DATE_REQUIRED,
             timeError = CreateTripError.TIME_REQUIRED,
             handoffLocationError = CreateTripError.HANDOFF_LOCATION_REQUIRED,
@@ -61,8 +61,7 @@ class CreateTripScreenTest {
     state = READY
     setContent()
 
-    node(CreateTripScreenTestTags.storeChip("Migros")).assertExists()
-    node(CreateTripScreenTestTags.storeChip("Coop")).assertExists()
+    node(CreateTripScreenTestTags.STORE_INPUT).assertTextContains("Migros")
     node(CreateTripScreenTestTags.DATE_FIELD).assertTextContains("Today, 5 Oct")
     node(CreateTripScreenTestTags.TIME_FIELD).assertTextContains("17:30")
     node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertIsEnabled().performClick()
@@ -81,7 +80,7 @@ class CreateTripScreenTest {
 
     listOf(
             CreateTripScreenTestTags.BACK_BUTTON,
-            CreateTripScreenTestTags.ADD_STORE_BUTTON,
+            CreateTripScreenTestTags.STORE_INPUT,
             CreateTripScreenTestTags.DATE_FIELD,
             CreateTripScreenTestTags.TIME_FIELD,
             CreateTripScreenTestTags.HANDOFF_LOCATION_INPUT,
@@ -106,18 +105,19 @@ class CreateTripScreenTest {
 
   @Test
   fun userActions_areForwarded() {
-    state = READY.copy(handoffLocation = "", maxOrders = "")
+    state = READY.copy(store = "", handoffLocation = "", maxOrders = "")
     setContent()
 
+    node(CreateTripScreenTestTags.STORE_INPUT).performTextInput("Coop")
     node(CreateTripScreenTestTags.HANDOFF_LOCATION_INPUT).performTextInput("Rolex Center")
     node(CreateTripScreenTestTags.MAX_ORDERS_INPUT).performTextInput("4")
-    node(CreateTripScreenTestTags.removeStoreButton("Coop")).performClick()
     node(CreateTripScreenTestTags.BACK_BUTTON).performClick()
 
     composeTestRule.runOnIdle {
+      assertEquals("Coop", state.store)
       assertEquals("Rolex Center", state.handoffLocation)
       assertEquals("4", state.maxOrders)
-      assertEquals(listOf("remove Coop", "back"), events)
+      assertEquals(listOf("back"), events)
     }
   }
 
@@ -141,10 +141,10 @@ class CreateTripScreenTest {
     val notified = mutableListOf<Trip>()
     composeTestRule.setContent { CreateTripScreen(viewModel, {}, { notified += it }) }
     composeTestRule.runOnIdle {
-      viewModel.addStore("Migros")
       viewModel.setDate(TODAY.plusDays(1))
       viewModel.setTime(LocalTime.of(18, 30))
     }
+    node(CreateTripScreenTestTags.STORE_INPUT).performTextInput("Migros")
     node(CreateTripScreenTestTags.HANDOFF_LOCATION_INPUT).performTextInput("EPFL")
     node(CreateTripScreenTestTags.MAX_ORDERS_INPUT).performTextInput("3")
 
@@ -170,8 +170,7 @@ class CreateTripScreenTest {
       CreateTripContent(
           state = state,
           onBack = { events += "back" },
-          onAddStore = { events += "add $it" },
-          onRemoveStore = { events += "remove $it" },
+          onStoreChange = { state = state.copy(store = it) },
           onDateSelected = { events += "date $it" },
           onTimeSelected = { events += "time $it" },
           onHandoffLocationChange = { state = state.copy(handoffLocation = it) },
@@ -193,7 +192,7 @@ class CreateTripScreenTest {
 
     val READY =
         CreateTripUiState(
-            stores = listOf("Migros", "Coop"),
+            store = "Migros",
             date = TODAY,
             time = LocalTime.of(17, 30),
             handoffLocation = "EPFL",
@@ -203,7 +202,7 @@ class CreateTripScreenTest {
 
     val ERROR_TAGS =
         listOf(
-            CreateTripScreenTestTags.STORES_ERROR,
+            CreateTripScreenTestTags.STORE_ERROR,
             CreateTripScreenTestTags.DATE_ERROR,
             CreateTripScreenTestTags.TIME_ERROR,
             CreateTripScreenTestTags.HANDOFF_LOCATION_ERROR,

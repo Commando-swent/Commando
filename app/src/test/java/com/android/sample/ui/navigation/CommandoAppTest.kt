@@ -118,9 +118,9 @@ class CommandoAppTest {
   fun signedOutUserSeesAuthAndCanSwitchForms() {
     show(FakeAuthRepository())
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     assertScreen(NavigationTestTags.SIGN_UP_SCREEN)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_login")
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
   }
@@ -140,7 +140,7 @@ class CommandoAppTest {
   fun signingInRemovesAuthFromBackStack() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -213,7 +213,7 @@ class CommandoAppTest {
   fun signingOutRecreatesTheLoginForm() = runTest {
     val repository = FakeAuthRepository()
     show(repository)
-    click(NavigationTestTags.AUTH_MODE_BUTTON)
+    click("auth_tab_signup")
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)

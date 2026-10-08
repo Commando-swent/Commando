@@ -131,6 +131,7 @@ dependencies {
 
   // Authentication and coroutines
   implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.kotlinx.coroutines.play.services)
   implementation(libs.googleid)

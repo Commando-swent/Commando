@@ -1,6 +1,9 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
+import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -8,7 +11,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.credentials.Credential
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -21,26 +27,28 @@ import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
-import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.model.authentication.AuthRepositoryProvider
+import com.android.sample.ui.auth.AuthMode
+import com.android.sample.ui.auth.AuthRoute
 import com.android.sample.ui.auth.AuthViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.session.SessionViewModel
+import kotlinx.coroutines.launch
 
-// One temporary instance for the process, shared across activity recreation as well.
-private val temporaryAuthRepository: AuthRepository by lazy { FakeAuthRepository() }
-
-/**
- * Application navigation root. The in-memory repository is temporary until the Firebase
- * implementation is available; it starts signed out and does not fabricate a successful login.
- * Inject a stable repository instance to share authentication between the form and the session.
- */
+/** Session-driven navigation; the form and session observer share one auth repository. */
 @Composable
 fun CommandoApp(
-    repository: AuthRepository = temporaryAuthRepository,
+    repository: AuthRepository = AuthRepositoryProvider.repository,
     tripRepository: TripRepository? = null,
+    requestGoogleCredential: suspend () -> Credential? = {
+      throw AuthException.InvalidGoogleCredential()
+    },
+    clearCredentialState: suspend () -> Unit = {},
 ) {
+  val activity = LocalActivity.current
+  val scope = rememberCoroutineScope()
   val sessionViewModel: SessionViewModel = viewModel { SessionViewModel(repository) }
   val sessionUiState by sessionViewModel.uiState.collectAsState()
 
@@ -58,10 +66,24 @@ fun CommandoApp(
         composable(route = CommandoScreens.Auth.name) {
           val authViewModel: AuthViewModel = viewModel { AuthViewModel(repository) }
           val authUiState by authViewModel.uiState.collectAsState()
-          AuthPlaceholderScreen(
-              mode = authUiState.mode,
-              onSwitchMode = authViewModel::switchMode,
-          )
+          Box(
+              Modifier.fillMaxSize()
+                  .testTag(
+                      if (authUiState.mode == AuthMode.LOGIN) NavigationTestTags.LOGIN_SCREEN
+                      else NavigationTestTags.SIGN_UP_SCREEN
+                  )
+          ) {
+            AuthRoute(
+                viewModel = authViewModel,
+                requestGoogleCredential = requestGoogleCredential,
+                // SessionViewModel observes repository updates and replaces the graph.
+                onAuthenticated = {},
+                onBack = {
+                  if (authUiState.mode == AuthMode.SIGN_UP) authViewModel.switchMode(AuthMode.LOGIN)
+                  else activity?.finish()
+                },
+            )
+          }
         }
       } else {
         composable(route = CommandoScreens.App.name) {
@@ -72,7 +94,12 @@ fun CommandoApp(
               }
           AuthenticatedApp(
               tripRepository = trips,
-              onSignOut = sessionViewModel::signOut,
+              onSignOut = {
+                sessionViewModel.signOut()
+                if (repository.currentUser == null) {
+                  scope.launch { clearCredentialState() }
+                }
+              },
               signOutError = sessionUiState.signOutError,
           )
         }

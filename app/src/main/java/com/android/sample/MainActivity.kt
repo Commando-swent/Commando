@@ -22,6 +22,7 @@ import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.resources.C
+import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.navigation.AppMode
@@ -33,6 +34,8 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
+  private val googleCredentials by lazy { GoogleCredentialClient(this) }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
@@ -42,7 +45,10 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
             color = MaterialTheme.colorScheme.background,
         ) {
-          CommandoApp()
+          CommandoApp(
+              requestGoogleCredential = googleCredentials::requestCredential,
+              clearCredentialState = googleCredentials::clearSession,
+          )
         }
       }
     }

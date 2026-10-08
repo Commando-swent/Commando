@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +18,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.credentials.Credential
@@ -182,7 +185,12 @@ private fun AuthForm(
             enabled,
             password = false,
             done = false,
-            submit,
+            keyboard =
+                KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Words,
+                    keyboardType = KeyboardType.Text,
+                ),
+            onSubmit = submit,
         )
     AuthField(
         state.email,
@@ -194,7 +202,7 @@ private fun AuthForm(
         enabled,
         password = false,
         done = false,
-        submit,
+        onSubmit = submit,
     )
     AuthField(
         state.password,
@@ -206,7 +214,7 @@ private fun AuthForm(
         enabled,
         password = true,
         done = !signup,
-        submit,
+        onSubmit = submit,
     )
     if (signup)
         AuthField(
@@ -219,7 +227,7 @@ private fun AuthForm(
             enabled,
             password = true,
             done = true,
-            submit,
+            onSubmit = submit,
         )
     state.authError?.let { AuthError(stringResource(it.messageResource())) }
     Button(

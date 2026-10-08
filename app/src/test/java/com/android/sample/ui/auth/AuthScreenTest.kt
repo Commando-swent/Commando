@@ -1,6 +1,10 @@
 package com.android.sample.ui.auth
 
 import android.os.Bundle
+import android.text.InputType
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.credentials.CustomCredential
@@ -65,6 +69,35 @@ class AuthScreenTest {
     node("auth_tab_login").assertIsSelected()
     node("auth_full_name").assertDoesNotExist()
     node("auth_confirmation").assertDoesNotExist()
+  }
+
+  private fun inputType(view: View, tag: String): Int {
+    node(tag).performClick()
+    return compose.runOnIdle { EditorInfo().also { view.onCreateInputConnection(it) }.inputType }
+  }
+
+  @Test
+  fun fullNameUsesCapitalizedTextKeyboardAndOtherFieldsKeepTheirs() {
+    lateinit var view: View
+    val viewModel = AuthViewModel(fake)
+    compose.setContent {
+      view = LocalView.current
+      SampleAppTheme { AuthRoute(viewModel, { null }, {}, {}) }
+    }
+    node("auth_tab_signup").performClick()
+    val variation = InputType.TYPE_MASK_CLASS or InputType.TYPE_MASK_VARIATION
+
+    val name = inputType(view, "auth_full_name")
+    assertEquals(InputType.TYPE_CLASS_TEXT, name and variation)
+    assertTrue(name and InputType.TYPE_TEXT_FLAG_CAP_WORDS != 0)
+    assertEquals(
+        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+        inputType(view, "auth_email") and variation,
+    )
+    assertEquals(
+        InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD,
+        inputType(view, "auth_password") and variation,
+    )
   }
 
   @Test

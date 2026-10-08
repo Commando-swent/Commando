@@ -36,6 +36,8 @@ internal fun AuthField(
     enabled: Boolean,
     password: Boolean,
     done: Boolean,
+    keyboard: KeyboardOptions =
+        KeyboardOptions(keyboardType = if (password) KeyboardType.Password else KeyboardType.Email),
     onSubmit: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
@@ -66,11 +68,7 @@ internal fun AuthField(
         cursorBrush = SolidColor(colors.primary),
         visualTransformation =
             if (password) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions =
-            KeyboardOptions(
-                keyboardType = if (password) KeyboardType.Password else KeyboardType.Email,
-                imeAction = if (done) ImeAction.Done else ImeAction.Next,
-            ),
+        keyboardOptions = keyboard.copy(imeAction = if (done) ImeAction.Done else ImeAction.Next),
         keyboardActions =
             KeyboardActions(
                 onDone = { if (enabled) onSubmit() },

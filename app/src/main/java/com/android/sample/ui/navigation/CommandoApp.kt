@@ -26,6 +26,8 @@ import com.android.sample.ui.auth.AuthViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.profile.ProfileScreen
+import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 
 // One temporary instance for the process, shared across activity recreation as well.
@@ -71,6 +73,7 @@ fun CommandoApp(
                 tripRepository ?: FakeTripRepository(currentUserId = userId)
               }
           AuthenticatedApp(
+              repository = repository,
               tripRepository = trips,
               onSignOut = sessionViewModel::signOut,
               signOutError = sessionUiState.signOutError,
@@ -84,6 +87,7 @@ fun CommandoApp(
 /** The outer App entry owns the shared mode and is discarded when the session changes. */
 @Composable
 private fun AuthenticatedApp(
+    repository: AuthRepository,
     tripRepository: TripRepository,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
@@ -135,7 +139,10 @@ private fun AuthenticatedApp(
         HomeScreen(mode = appUiState.mode, tripState = tripState, onRetry = onRetry)
       }
       composable(route = CommandoScreens.Profile.name) {
-        ProfilePlaceholderScreen(
+        val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
+        val profileUiState by profileViewModel.uiState.collectAsState()
+        ProfileScreen(
+            uiState = profileUiState,
             onBack = { navController.popBackStack() },
             onSignOut = onSignOut,
             signOutError = signOutError,

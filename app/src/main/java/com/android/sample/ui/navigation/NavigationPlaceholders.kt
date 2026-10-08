@@ -14,7 +14,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.model.authentication.AuthException
 import com.android.sample.ui.auth.AuthMode
 
 /** Temporary form destination; the actual authentication UI belongs to issue #5. */
@@ -30,33 +29,6 @@ internal fun AuthPlaceholderScreen(mode: AuthMode, onSwitchMode: (AuthMode) -> U
         modifier = Modifier.testTag(NavigationTestTags.AUTH_MODE_BUTTON),
     ) {
       Text(stringResource(if (isLogin) R.string.nav_sign_up else CommandoScreens.Auth.title))
-    }
-  }
-}
-
-/** Temporary profile destination to exercise sign-out before issue #11 is integrated. */
-@Composable
-internal fun ProfilePlaceholderScreen(
-    onBack: () -> Unit,
-    onSignOut: () -> Unit,
-    signOutError: AuthException?,
-) {
-  NavigationPlaceholder(
-      stringResource(CommandoScreens.Profile.title),
-      NavigationTestTags.PROFILE_SCREEN,
-  ) {
-    Button(onClick = onBack, modifier = Modifier.testTag(NavigationTestTags.BACK_BUTTON)) {
-      Text(stringResource(R.string.nav_back))
-    }
-    Button(onClick = onSignOut, modifier = Modifier.testTag(NavigationTestTags.SIGN_OUT_BUTTON)) {
-      Text(stringResource(R.string.nav_sign_out))
-    }
-    if (signOutError != null) {
-      Text(
-          stringResource(R.string.nav_sign_out_error),
-          color = MaterialTheme.colorScheme.error,
-          modifier = Modifier.testTag(NavigationTestTags.SIGN_OUT_ERROR),
-      )
     }
   }
 }

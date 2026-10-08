@@ -296,6 +296,15 @@ class AuthRepositoryFirebaseEmulatorTest {
   }
 
   @Test
+  fun signUpWithEmail_savesTrimmedFullNameBeforeSessionIsObserved() = runTest {
+    val user = repository.signUpWithEmail(EMAIL, PASSWORD, "  Alex Martin ").getOrThrow()
+
+    assertEquals("Alex Martin", user.displayName)
+    assertEquals("Alex Martin", auth.currentUser?.displayName)
+    assertEquals(user, repository.observeAuthState().first())
+  }
+
+  @Test
   fun currentUser_matchesFirebaseCurrentUser() = runTest {
     assertNull(auth.currentUser)
     assertNull(repository.currentUser)

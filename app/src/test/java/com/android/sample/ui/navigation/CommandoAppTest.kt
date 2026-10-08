@@ -59,7 +59,9 @@ class CommandoAppTest {
   }
 
   private fun show(repository: FakeAuthRepository, picker: Picker = Picker()) {
-    compose.setContent { SampleAppTheme { CommandoApp(repository, picker) } }
+    compose.setContent {
+      SampleAppTheme { CommandoApp(repository = repository, googleCredentials = picker) }
+    }
   }
 
   private fun assertScreen(tag: String) {

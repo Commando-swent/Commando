@@ -95,7 +95,7 @@ sonar {
 
     property(
         "sonar.junit.reportPaths",
-        "${project.layout.buildDirectory.get()}/test-results/testDebugunitTest/",
+        "${project.layout.buildDirectory.get()}/test-results/testDebugUnitTest/",
     )
 
     property(
@@ -252,6 +252,8 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
   executionData.setFrom(
       fileTree(project.layout.buildDirectory.get()) {
         include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+        // Written by scripts/ci/run-firebase-emulator-tests.sh, one file per emulator profile
+        include("jacoco/firebaseEmulator/*.exec")
         include("outputs/code_coverage/debugAndroidTest/connected/*/coverage.ec")
       }
   )

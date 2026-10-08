@@ -2,12 +2,20 @@ package com.android.sample.model.authentication
 
 // AI assistance: Claude (Anthropic).
 import android.net.Uri
+import android.os.Bundle
+import android.util.Base64
+import androidx.credentials.Credential
+import androidx.credentials.CustomCredential
+import androidx.credentials.PasswordCredential
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.google.firebase.FirebaseException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
@@ -16,6 +24,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthCredential
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
@@ -31,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -40,10 +50,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/**
- * Unit tests for email/password and session in [AuthRepositoryFirebase] with a mocked
- * [FirebaseAuth].
- */
+/** Unit tests for [AuthRepositoryFirebase] with a mocked [FirebaseAuth] and a fake helper. */
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class AuthRepositoryFirebaseTest {
@@ -53,16 +60,41 @@ class AuthRepositoryFirebaseTest {
       AuthUser("bob", "Bob Example", "bob@example.test", "https://example.test/bob.png")
 
   private val auth = mockk<FirebaseAuth>()
-  private val repository = AuthRepositoryFirebase(auth)
+  private val helper = FakeGoogleSignInHelper()
+  private val repository = AuthRepositoryFirebase(auth, helper)
+
+  /** Records calls and returns canned values; never inspects real tokens. */
+  private class FakeGoogleSignInHelper : GoogleSignInHelper {
+    val idToken = "id-token.example.test"
+    val firebaseCredential = mockk<AuthCredential>()
+    var extractError: Exception? = null
+    val extractedBundles = mutableListOf<Bundle>()
+    val convertedTokens = mutableListOf<String>()
+
+    override fun extractIdTokenCredential(bundle: Bundle): GoogleIdTokenCredential {
+      extractedBundles.add(bundle)
+      extractError?.let { throw it }
+      val credential = mockk<GoogleIdTokenCredential>()
+      every { credential.idToken } returns idToken
+      return credential
+    }
+
+    override fun toFirebaseCredential(idToken: String): AuthCredential {
+      convertedTokens.add(idToken)
+      return firebaseCredential
+    }
+  }
 
   private enum class Operation {
     SIGN_UP,
-    EMAIL;
+    EMAIL,
+    GOOGLE;
 
     fun stub(auth: FirebaseAuth, task: Task<AuthResult>) {
       when (this) {
         SIGN_UP -> every { auth.createUserWithEmailAndPassword(any(), any()) } returns task
         EMAIL -> every { auth.signInWithEmailAndPassword(any(), any()) } returns task
+        GOOGLE -> every { auth.signInWithCredential(any()) } returns task
       }
     }
 
@@ -70,6 +102,7 @@ class AuthRepositoryFirebaseTest {
         when (this) {
           SIGN_UP -> repository.signUpWithEmail("alice@example.test", "example-password")
           EMAIL -> repository.signInWithEmail("alice@example.test", "example-password")
+          GOOGLE -> repository.signInWithGoogle(googleCredential())
         }
   }
 
@@ -148,6 +181,18 @@ class AuthRepositoryFirebaseTest {
     verify(exactly = 1) { auth.signInWithEmailAndPassword("alice@example.test", " pass word ") }
   }
 
+  @Test
+  fun googleSignInPassesBundleAndTokenThroughHelper() = runTest {
+    Operation.GOOGLE.stub(auth, authResult(firebaseUser(alice)))
+    val credential = googleCredential()
+
+    assertEquals(Result.success(alice), repository.signInWithGoogle(credential))
+
+    assertSame(credential.data, helper.extractedBundles.single())
+    assertEquals(listOf(helper.idToken), helper.convertedTokens)
+    verify(exactly = 1) { auth.signInWithCredential(helper.firebaseCredential) }
+  }
+
   // ---------- null user ----------
 
   @Test
@@ -160,6 +205,13 @@ class AuthRepositoryFirebaseTest {
   }
 
   // ---------- error mapping ----------
+
+  @Test
+  fun googleIdTokenParsingExceptionMapsToInvalidGoogleCredential() =
+      assertFailureForAll(
+          GoogleIdTokenParsingException(IllegalArgumentException("malformed")),
+          AuthException.InvalidGoogleCredential::class,
+      )
 
   @Test
   fun networkExceptionMapsToNetwork() =
@@ -183,6 +235,7 @@ class AuthRepositoryFirebaseTest {
   fun emailAlreadyInUseDependsOnOperation() {
     fun error() = FirebaseAuthUserCollisionException("ERROR_EMAIL_ALREADY_IN_USE", "in use")
     assertFailure(Operation.SIGN_UP, error(), AuthException.EmailAlreadyInUse::class)
+    assertFailure(Operation.GOOGLE, error(), AuthException.AccountConflict::class)
     assertFailure(Operation.EMAIL, error(), AuthException.AccountConflict::class)
   }
 
@@ -209,12 +262,12 @@ class AuthRepositoryFirebaseTest {
       )
 
   @Test
-  fun otherInvalidCredentialsMapToInvalidCredentials() {
+  fun otherInvalidCredentialsDependOnOperation() {
     for (code in listOf("ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL")) {
-      assertFailureForAll(
-          FirebaseAuthInvalidCredentialsException(code, "invalid"),
-          AuthException.InvalidCredentials::class,
-      )
+      fun error() = FirebaseAuthInvalidCredentialsException(code, "invalid")
+      assertFailure(Operation.SIGN_UP, error(), AuthException.InvalidCredentials::class)
+      assertFailure(Operation.EMAIL, error(), AuthException.InvalidCredentials::class)
+      assertFailure(Operation.GOOGLE, error(), AuthException.InvalidGoogleCredential::class)
     }
   }
 
@@ -255,6 +308,54 @@ class AuthRepositoryFirebaseTest {
   fun unexpectedExceptionMapsToUnknown() =
       assertFailureForAll(IllegalStateException("unexpected"), AuthException.Unknown::class)
 
+  // ---------- Google credential handling ----------
+
+  @Test
+  fun nonGoogleCredentialsAreRejectedWithoutCallingAuthOrHelper() = runTest {
+    val credentials: List<Credential> =
+        listOf(
+            PasswordCredential("alice@example.test", "example-password"),
+            CustomCredential("com.example.test.OTHER", Bundle()),
+            CustomCredential(
+                GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_SIWG_CREDENTIAL,
+                Bundle(),
+            ),
+        )
+    for (credential in credentials) {
+      val returned = repository.signInWithGoogle(credential).exceptionOrNull()
+      assertTrue(
+          "$credential returned $returned",
+          returned is AuthException.InvalidGoogleCredential,
+      )
+    }
+    verify(exactly = 0) { auth.signInWithCredential(any()) }
+    assertTrue(helper.extractedBundles.isEmpty())
+    assertTrue(helper.convertedTokens.isEmpty())
+  }
+
+  @Test
+  fun helperParsingFailureMapsToInvalidGoogleCredentialWithCause() = runTest {
+    val error = GoogleIdTokenParsingException(IllegalArgumentException("malformed"))
+    helper.extractError = error
+
+    val returned = repository.signInWithGoogle(googleCredential()).exceptionOrNull()
+
+    assertTrue("returned $returned", returned is AuthException.InvalidGoogleCredential)
+    assertSame(error, returned?.cause)
+    verify(exactly = 0) { auth.signInWithCredential(any()) }
+  }
+
+  @Test
+  fun helperUnexpectedFailureMapsToUnknownWithCause() = runTest {
+    val error = IllegalStateException("unexpected")
+    helper.extractError = error
+
+    val returned = repository.signInWithGoogle(googleCredential()).exceptionOrNull()
+
+    assertTrue("returned $returned", returned is AuthException.Unknown)
+    assertSame(error, returned?.cause)
+  }
+
   // ---------- cancellation ----------
 
   @Test
@@ -290,6 +391,18 @@ class AuthRepositoryFirebaseTest {
     }
   }
 
+  @Test
+  fun helperCancellationIsUnknownWhileCallerIsActive() = runTest {
+    val cancellation = CancellationException("cancelled")
+    helper.extractError = cancellation
+
+    val returned = repository.signInWithGoogle(googleCredential()).exceptionOrNull()
+
+    assertTrue("returned $returned", returned is AuthException.Unknown)
+    assertSame(cancellation, returned?.cause)
+    verify(exactly = 0) { auth.signInWithCredential(any()) }
+  }
+
   // ---------- sign out ----------
 
   @Test
@@ -315,16 +428,27 @@ class AuthRepositoryFirebaseTest {
   // ---------- default dependencies ----------
 
   @Test
-  fun defaultConstructorUsesFirebaseAuthInstance() = runTest {
+  fun defaultConstructorUsesFirebaseAuthInstanceAndRealGoogleHelper() = runTest {
     mockkStatic(FirebaseAuth::class)
     try {
       every { FirebaseAuth.getInstance() } returns auth
-      Operation.EMAIL.stub(auth, authResult(firebaseUser(alice)))
+      every { auth.currentUser } returns firebaseUser(alice)
+      val firebaseCredential = slot<AuthCredential>()
+      every { auth.signInWithCredential(capture(firebaseCredential)) } returns
+          authResult(firebaseUser(alice))
+      val idToken = unsignedIdToken()
+      val bundle =
+          GoogleIdTokenCredential.Builder().setId(alice.email!!).setIdToken(idToken).build().data
 
-      val user = AuthRepositoryFirebase().signInWithEmail("alice@example.test", "example-password")
+      val defaultRepository = AuthRepositoryFirebase()
 
+      assertEquals(alice, defaultRepository.currentUser)
+      val user =
+          defaultRepository.signInWithGoogle(
+              CustomCredential(GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL, bundle)
+          )
       assertEquals(Result.success(alice), user)
-      verify(exactly = 1) { auth.signInWithEmailAndPassword(any(), any()) }
+      assertTrue(firebaseCredential.captured is GoogleAuthCredential)
     } finally {
       unmockkStatic(FirebaseAuth::class)
     }
@@ -431,5 +555,21 @@ class AuthRepositoryFirebaseTest {
     secondJob.cancel()
     advanceUntilIdle()
     verify(exactly = 1) { auth.removeAuthStateListener(listeners[1]) }
+  }
+
+  private companion object {
+    fun googleCredential(): CustomCredential =
+        CustomCredential(GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL, Bundle())
+
+    /** Unsigned JWT that the Google ID library can parse; never a real token. */
+    fun unsignedIdToken(): String {
+      fun encode(json: JSONObject): String =
+          Base64.encodeToString(
+              json.toString().toByteArray(),
+              Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+          )
+      val payload = JSONObject(mapOf("sub" to "alice", "email" to "alice@example.test"))
+      return "${encode(JSONObject(mapOf("alg" to "none")))}.${encode(payload)}.sig"
+    }
   }
 }

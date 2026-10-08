@@ -3,6 +3,7 @@ package com.android.sample.emulator.auth
 // AI assistance: Claude (Anthropic).
 import android.content.Context
 import android.os.Looper
+import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -88,12 +89,47 @@ object FirebaseAuthEmulator {
     check(code in 200..299) { "Failed to clear Auth emulator accounts (HTTP $code)." }
   }
 
+  /** Builds an unsigned Google ID token that the Auth emulator accepts. */
+  fun fakeGoogleIdToken(sub: String, email: String, name: String): String =
+      unsignedJwt(
+          JSONObject(
+              mapOf("sub" to sub, "email" to email, "email_verified" to true, "name" to name)
+          )
+      )
+
+  /** Builds an unsigned JWT with [payload]; the emulator does not check signatures. */
+  fun unsignedJwt(payload: JSONObject): String {
+    fun encode(json: JSONObject): String =
+        Base64.encodeToString(
+            json.toString().toByteArray(),
+            Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP,
+        )
+    return "${encode(JSONObject(mapOf("alg" to "none")))}.${encode(payload)}.sig"
+  }
+
+  /** Creates (or signs in) a Google account through the emulator REST API and returns its uid. */
+  fun createGoogleUser(idToken: String): String {
+    val body =
+        JSONObject()
+            .put("postBody", "id_token=$idToken&providerId=google.com")
+            .put("requestUri", "http://localhost")
+            .put("returnSecureToken", true)
+    return postJson(
+            "/identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=fake-api-key",
+            body,
+        )
+        .getString("localId")
+  }
+
   /** Disables the account [uid] with the emulator's admin API. */
   fun disableUser(uid: String) {
-    val connection =
-        URL("http://$host/identitytoolkit.googleapis.com/v1/projects/$PROJECT_ID/accounts:update")
-            .openConnection() as HttpURLConnection
-    try {
+    val body = JSONObject().put("localId", uid).put("disableUser", true)
+    postJson("/identitytoolkit.googleapis.com/v1/projects/$PROJECT_ID/accounts:update", body)
+  }
+
+  private fun postJson(path: String, body: JSONObject): JSONObject {
+    val connection = URL("http://$host$path").openConnection() as HttpURLConnection
+    return try {
       connection.requestMethod = "POST"
       connection.connectTimeout = TIMEOUT_MS
       connection.readTimeout = TIMEOUT_MS
@@ -101,11 +137,11 @@ object FirebaseAuthEmulator {
       connection.setRequestProperty("Content-Type", "application/json")
       // The emulator accepts this fixed admin token; it is not a secret.
       connection.setRequestProperty("Authorization", "Bearer owner")
-      val body = JSONObject().put("localId", uid).put("disableUser", true)
       connection.outputStream.use { it.write(body.toString().toByteArray()) }
-      // Only the status code is reported: the response may contain tokens.
       val code = connection.responseCode
+      // Only the status code is reported: the response may contain tokens.
       check(code in 200..299) { "Auth emulator request failed (HTTP $code)." }
+      JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
     } finally {
       connection.disconnect()
     }

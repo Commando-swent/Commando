@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.model.authentication.AuthException
-import com.android.sample.ui.auth.AuthMode
 
 /** Keeps the trip context in navigation until the requester flow is implemented in Sprint 2. */
 @Composable
@@ -39,23 +38,6 @@ internal fun AddItemsPlaceholderScreen(onBack: () -> Unit) {
     )
     Text(stringResource(R.string.add_items_sprint_two))
     Button(onClick = onBack) { Text(stringResource(R.string.nav_back)) }
-  }
-}
-
-/** Temporary form destination; the actual authentication UI belongs to issue #5. */
-@Composable
-internal fun AuthPlaceholderScreen(mode: AuthMode, onSwitchMode: (AuthMode) -> Unit) {
-  val isLogin = mode == AuthMode.LOGIN
-  NavigationPlaceholder(
-      title = stringResource(if (isLogin) CommandoScreens.Auth.title else R.string.nav_sign_up),
-      tag = if (isLogin) NavigationTestTags.LOGIN_SCREEN else NavigationTestTags.SIGN_UP_SCREEN,
-  ) {
-    Button(
-        onClick = { onSwitchMode(if (isLogin) AuthMode.SIGN_UP else AuthMode.LOGIN) },
-        modifier = Modifier.testTag(NavigationTestTags.AUTH_MODE_BUTTON),
-    ) {
-      Text(stringResource(if (isLogin) R.string.nav_sign_up else CommandoScreens.Auth.title))
-    }
   }
 }
 

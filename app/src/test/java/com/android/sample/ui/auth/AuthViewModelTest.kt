@@ -183,6 +183,29 @@ class AuthViewModelTest {
   }
 
   @Test
+  fun googlePickerLoadingPreventsRepeatedGoogleAndEmailSubmissions() = runTest {
+    val picker = CompletableDeferred<Credential?>()
+    var pickerCalls = 0
+    viewModel.signInWithGoogle {
+      pickerCalls++
+      picker.await()
+    }
+    assertTrue(viewModel.uiState.value.isLoading)
+    runCurrent()
+    viewModel.signInWithGoogle {
+      pickerCalls++
+      null
+    }
+    viewModel.submitEmail()
+    runCurrent()
+    assertEquals(1, pickerCalls)
+    assertEquals(0, repository.calls)
+    picker.complete(null)
+    advanceUntilIdle()
+    assertEquals(AuthUiState(), viewModel.uiState.value)
+  }
+
+  @Test
   fun dismissingGooglePickerIsNotAnAuthenticationError() = runTest {
     viewModel.signInWithGoogle { null }
     advanceUntilIdle()

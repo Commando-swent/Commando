@@ -2,6 +2,7 @@ package com.android.sample.ui.profile
 
 /** Stable identifiers for profile editing and its validation feedback. */
 object ProfileEditTestTags {
+  const val LOADING = "profile_edit_loading"
   const val SCREEN = "profile_edit_screen"
   const val BACK = "profile_edit_back"
   const val FULL_NAME = "profile_edit_full_name"

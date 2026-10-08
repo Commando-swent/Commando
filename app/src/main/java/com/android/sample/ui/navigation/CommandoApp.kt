@@ -7,13 +7,16 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -47,6 +50,7 @@ import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileScreen
+import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
@@ -253,27 +257,7 @@ private fun AuthenticatedApp(
         )
       }
       composable(route = CommandoScreens.EditProfile.name) {
-        val draft by profileViewModel.editState.collectAsState()
-        val profile by profileViewModel.uiState.collectAsState()
-        val onCancel = {
-          if (draft?.isSaving != true) {
-            profileViewModel.cancelEditing()
-            navController.popBackStack()
-          }
-          Unit
-        }
-        BackHandler { onCancel() }
-        draft?.let { state ->
-          EditProfileScreen(
-              uiState = state,
-              onFullNameChange = profileViewModel::updateFullName,
-              onEmailChange = profileViewModel::updateEmail,
-              onSave = profileViewModel::saveProfile,
-              onCancel = onCancel,
-              avatarFullName =
-                  (profile as? com.android.sample.ui.profile.ProfileUiState.Content)?.fullName,
-          )
-        }
+        ProfileEditRoute(profileViewModel) { navController.popBackStack() }
       }
     }
   }
@@ -281,3 +265,38 @@ private fun AuthenticatedApp(
 
 /** Retains one trip repository for the authenticated App entry, including activity recreation. */
 private class SessionTripRepositoryViewModel(val repository: TripRepository) : ViewModel()
+
+/** Recreates a missing draft after session data loads, without resetting an existing draft. */
+@Composable
+internal fun ProfileEditRoute(model: ProfileViewModel, onReturn: () -> Unit) {
+  val draft by model.editState.collectAsState()
+  val profile by model.uiState.collectAsState()
+  LaunchedEffect(profile, draft == null) {
+    if (profile is ProfileUiState.Content && model.editState.value == null) model.beginEditing()
+  }
+  val onCancel = {
+    if (model.editState.value?.isSaving != true) {
+      model.cancelEditing()
+      onReturn()
+    }
+  }
+  BackHandler { onCancel() }
+  val state = draft
+  if (state == null) {
+    Box(
+        Modifier.fillMaxSize().testTag(com.android.sample.ui.profile.ProfileEditTestTags.LOADING),
+        contentAlignment = Alignment.Center,
+    ) {
+      CircularProgressIndicator()
+    }
+  } else {
+    EditProfileScreen(
+        uiState = state,
+        onFullNameChange = model::updateFullName,
+        onEmailChange = model::updateEmail,
+        onSave = model::saveProfile,
+        onCancel = onCancel,
+        avatarFullName = (profile as? ProfileUiState.Content)?.fullName,
+    )
+  }
+}

@@ -20,12 +20,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.android.sample.R
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
@@ -42,6 +45,10 @@ import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.session.SessionViewModel
+import com.android.sample.ui.trips.AvailableTripsScreen
+import com.android.sample.ui.trips.AvailableTripsViewModel
+import com.android.sample.ui.trips.TripDetailsScreen
+import com.android.sample.ui.trips.TripDetailsViewModel
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
@@ -101,11 +108,12 @@ fun CommandoApp(
         }
       } else {
         composable(route = CommandoScreens.App.name) {
-          val userId = requireNotNull(user).uid
-          val trips =
-              remember(userId, repository, tripRepository) {
+          val tripRepositoryViewModel: SessionTripRepositoryViewModel = viewModel {
+            SessionTripRepositoryViewModel(
                 tripRepository ?: TripRepositoryFirestore(authRepository = repository)
-              }
+            )
+          }
+          val trips = tripRepositoryViewModel.repository
           AuthenticatedApp(
               tripRepository = trips,
               onSignOut = {
@@ -139,7 +147,7 @@ private fun AuthenticatedApp(
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
   val currentScreen =
-      CommandoScreens.entries.firstOrNull { it.name == backStackEntry?.destination?.route }
+      CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
 
   AppScaffold(
@@ -178,7 +186,51 @@ private fun AuthenticatedApp(
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
           }
         }
-        HomeScreen(mode = appUiState.mode, tripState = tripState, onRetry = onRetry)
+        HomeScreen(
+            mode = appUiState.mode,
+            tripState = tripState,
+            onRetry = onRetry,
+            onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
+        )
+      }
+      composable(route = CommandoScreens.AvailableTrips.name) { entry ->
+        val availableTripsViewModel: AvailableTripsViewModel =
+            viewModel(viewModelStoreOwner = entry) { AvailableTripsViewModel(tripRepository) }
+        AvailableTripsScreen(
+            viewModel = availableTripsViewModel,
+            onTripSelected = { tripId ->
+              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
+            },
+        )
+      }
+      composable(
+          route = CommandoScreens.TripDetails.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Trip Details requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        val tripDetailsViewModel: TripDetailsViewModel =
+            viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
+        TripDetailsScreen(
+            viewModel = tripDetailsViewModel,
+            onBack = { navController.popBackStack() },
+            onAddItems = { selectedTripId ->
+              navController.navigate(CommandoScreens.addItemsRoute(selectedTripId))
+            },
+        )
+      }
+      composable(
+          route = CommandoScreens.AddItems.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+          "Add Items requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+        }
+        AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
       }
       composable(route = CommandoScreens.Profile.name) {
         ProfilePlaceholderScreen(
@@ -190,3 +242,6 @@ private fun AuthenticatedApp(
     }
   }
 }
+
+/** Retains one trip repository for the authenticated App entry, including activity recreation. */
+private class SessionTripRepositoryViewModel(val repository: TripRepository) : ViewModel()

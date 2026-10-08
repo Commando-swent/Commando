@@ -14,7 +14,18 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.AppTestTags
 import com.android.sample.ui.navigation.CommandoApp
 import com.android.sample.ui.theme.SampleAppTheme
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.QuerySnapshot
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import io.mockk.verify
 import java.io.IOException
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -60,6 +71,34 @@ class HomeFirestoreIntegrationTest {
     val trips = TripRepositoryFirestore(source, auth, { now })
     compose.setContent { SampleAppTheme { CommandoApp(auth, trips, googleCredentials) } }
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
+  }
+
+  @Test
+  fun defaultAppRepositoryQueriesFirestoreForTheSignedInAccount() {
+    val firestore = mockk<FirebaseFirestore>()
+    val collection = mockk<CollectionReference>()
+    val query = mockk<Query>()
+    val snapshot = mockk<QuerySnapshot>()
+    val storedTrip = mockk<DocumentSnapshot>()
+    val data = document("alice")
+    every { firestore.collection("trips") } returns collection
+    every { collection.whereEqualTo("ownerId", "alice") } returns query
+    every { query.get() } returns Tasks.forResult(snapshot)
+    every { snapshot.documents } returns listOf(storedTrip)
+    every { storedTrip.id } returns data.id
+    every { storedTrip.data } returns data.data
+    mockkStatic(FirebaseFirestore::class)
+    try {
+      every { FirebaseFirestore.getInstance() } returns firestore
+      // Leave tripRepository unset to exercise the production wiring, not an injected adapter.
+      compose.setContent { SampleAppTheme { CommandoApp(repository = auth) } }
+      compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
+      compose.onNodeWithText("alice shop").assertIsDisplayed()
+      compose.onNodeWithText("EPFL").assertIsDisplayed()
+      compose.runOnIdle { verify(exactly = 1) { collection.whereEqualTo("ownerId", "alice") } }
+    } finally {
+      unmockkStatic(FirebaseFirestore::class)
+    }
   }
 
   @Test

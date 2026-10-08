@@ -44,6 +44,12 @@ class FakeAuthRepository(initialUser: AuthUser? = null) : AuthRepository {
       field = validateResult(value)
     }
 
+  /** Null uses a successful local update; configured errors keep the existing session. */
+  var updateProfileResult: Result<ProfileUpdateResult>? = null
+    set(value) {
+      field = value?.let { validateResult(it) }
+    }
+
   override fun observeAuthState(): Flow<AuthUser?> = authState
 
   override suspend fun signUpWithEmail(email: String, password: String): Result<AuthUser> =
@@ -54,6 +60,33 @@ class FakeAuthRepository(initialUser: AuthUser? = null) : AuthRepository {
 
   override suspend fun signInWithGoogle(credential: Credential): Result<AuthUser> =
       authenticate(signInWithGoogleResult)
+
+  override suspend fun updateProfile(fullName: String, email: String): Result<ProfileUpdateResult> {
+    currentCoroutineContext().ensureActive()
+    ProfileValidation.error(fullName, email)?.let {
+      return Result.failure(it)
+    }
+    val user = currentUser ?: return Result.failure(AuthException.SessionChanged())
+    val requestedEmail = email.trim()
+    val result =
+        updateProfileResult
+            ?: Result.success(
+                ProfileUpdateResult(
+                    user.copy(displayName = fullName.trim()),
+                    requestedEmail.takeUnless { it == user.email },
+                )
+            )
+    return result.fold(
+        onSuccess = { updated ->
+          if (updated.user.uid != user.uid) Result.failure(AuthException.SessionChanged())
+          else {
+            session.value = updated.user
+            Result.success(updated)
+          }
+        },
+        onFailure = { Result.failure(it) },
+    )
+  }
 
   override fun signOut(): Result<Unit> {
     return signOutResult.onSuccess { session.value = null }

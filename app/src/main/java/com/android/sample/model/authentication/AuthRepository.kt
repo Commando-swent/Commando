@@ -25,5 +25,11 @@ interface AuthRepository {
 
   suspend fun signInWithGoogle(credential: Credential): Result<AuthUser>
 
+  /**
+   * Saves the signed-in user's name and requests verification before changing their email.
+   * [ProfileUpdateResult.user] contains confirmed values; a requested email is separate.
+   */
+  suspend fun updateProfile(fullName: String, email: String): Result<ProfileUpdateResult>
+
   fun signOut(): Result<Unit>
 }

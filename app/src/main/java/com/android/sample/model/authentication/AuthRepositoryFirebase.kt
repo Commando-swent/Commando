@@ -12,18 +12,23 @@ import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.auth.auth
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -45,7 +50,11 @@ class AuthRepositoryFirebase(
     SIGN_UP,
     SIGN_IN_EMAIL,
     GOOGLE,
+    PROFILE,
   }
+
+  // Updating profile fields does not reliably trigger Firebase's authentication listener.
+  private val profileUpdates = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
   override val currentUser: AuthUser?
     get() = auth.currentUser?.toAuthUser()
@@ -53,9 +62,16 @@ class AuthRepositoryFirebase(
   override fun observeAuthState(): Flow<AuthUser?> = callbackFlow {
     // Emit the current session immediately; Firebase's own initial callback is deduplicated.
     trySend(auth.currentUser?.toAuthUser())
+    val updates =
+        launch(start = CoroutineStart.UNDISPATCHED) {
+          profileUpdates.collect { trySend(auth.currentUser?.toAuthUser()) }
+        }
     val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.toAuthUser()) }
     auth.addAuthStateListener(listener)
-    awaitClose { auth.removeAuthStateListener(listener) }
+    awaitClose {
+      updates.cancel()
+      auth.removeAuthStateListener(listener)
+    }
   }
       .conflate()
       .distinctUntilChanged()
@@ -91,6 +107,54 @@ class AuthRepositoryFirebase(
         Result.failure(AuthException.Unknown(e))
       }
 
+  override suspend fun updateProfile(fullName: String, email: String): Result<ProfileUpdateResult> {
+    currentCoroutineContext().ensureActive()
+    ProfileValidation.error(fullName, email)?.let {
+      return Result.failure(it)
+    }
+    val user = auth.currentUser ?: return Result.failure(AuthException.SessionChanged())
+    val requestedName = fullName.trim()
+    val requestedEmail = email.trim()
+    return try {
+      ensureSameAccount(user)
+      if (user.displayName != requestedName) {
+        user
+            .updateProfile(UserProfileChangeRequest.Builder().setDisplayName(requestedName).build())
+            .await()
+        currentCoroutineContext().ensureActive()
+        ensureSameAccount(user)
+        profileUpdates.tryEmit(Unit)
+      }
+      val pendingEmail = requestedEmail.takeUnless { it == user.email }
+      if (pendingEmail != null) {
+        user.verifyBeforeUpdateEmail(pendingEmail).await()
+        currentCoroutineContext().ensureActive()
+        ensureSameAccount(user)
+      }
+      val confirmedUser =
+          auth.currentUser?.takeIf { it.uid == user.uid } ?: throw AuthException.SessionChanged()
+      Result.success(
+          ProfileUpdateResult(
+              confirmedUser.toAuthUser(),
+              pendingEmail.takeUnless { it == confirmedUser.email },
+          )
+      )
+    } catch (error: CancellationException) {
+      currentCoroutineContext().ensureActive()
+      Result.failure(AuthException.Unknown(error))
+    } catch (error: Exception) {
+      // Reflect a name update that succeeded even if the separate email request failed.
+      profileUpdates.tryEmit(Unit)
+      Result.failure(
+          if (error is AuthException) error else error.toAuthException(Operation.PROFILE)
+      )
+    }
+  }
+
+  private fun ensureSameAccount(user: FirebaseUser) {
+    if (auth.currentUser?.uid != user.uid) throw AuthException.SessionChanged()
+  }
+
   private suspend fun authenticate(
       operation: Operation,
       request: suspend () -> AuthResult,
@@ -116,9 +180,13 @@ class AuthRepositoryFirebase(
         is GoogleIdTokenParsingException -> AuthException.InvalidGoogleCredential(this)
         is FirebaseNetworkException -> AuthException.Network(this)
         is FirebaseTooManyRequestsException -> AuthException.TooManyRequests(this)
+        is FirebaseAuthRecentLoginRequiredException -> AuthException.RequiresRecentLogin(this)
         is FirebaseAuthWeakPasswordException -> AuthException.Unknown(this)
         is FirebaseAuthUserCollisionException ->
-            if (operation == Operation.SIGN_UP && errorCode == ERROR_EMAIL_ALREADY_IN_USE) {
+            if (
+                (operation == Operation.SIGN_UP || operation == Operation.PROFILE) &&
+                    errorCode == ERROR_EMAIL_ALREADY_IN_USE
+            ) {
               AuthException.EmailAlreadyInUse(this)
             } else {
               AuthException.AccountConflict(this)

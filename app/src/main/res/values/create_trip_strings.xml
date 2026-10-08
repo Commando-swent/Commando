@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="create_trip_stores_label">Stores</string>
-    <string name="create_trip_stores_helper">Choose the stores you\'ll visit on this run.</string>
-    <string name="create_trip_add_store">Add store</string>
-    <string name="create_trip_remove_store">Remove %1$s</string>
+    <string name="create_trip_store_label">Store</string>
+    <string name="create_trip_store_placeholder">e.g. Migros Ecublens</string>
+    <string name="create_trip_store_helper">Where you\'ll do the shopping on this run.</string>
     <string name="create_trip_date_label">Date</string>
     <string name="create_trip_date_placeholder">Select date</string>
     <string name="create_trip_date_helper">Today or later</string>
@@ -16,7 +15,7 @@
     <string name="create_trip_max_orders_label">Maximum number of orders</string>
     <string name="create_trip_max_orders_placeholder">e.g. 3</string>
     <string name="create_trip_max_orders_helper">A whole number, 1 or more.</string>
-    <string name="create_trip_error_stores_required">Select at least one store.</string>
+    <string name="create_trip_error_store_required">Enter the store you\'ll shop at.</string>
     <string name="create_trip_error_date_required">Choose a date.</string>
     <string name="create_trip_error_date_in_past">Choose today or a later date.</string>
     <string name="create_trip_error_time_required">Choose a time.</string>
@@ -24,9 +23,6 @@
     <string name="create_trip_error_handoff_required">Enter where you will hand over the groceries.</string>
     <string name="create_trip_error_max_orders">Enter a whole number of 1 or more.</string>
 
-    <string name="create_trip_store_dialog_title">Add a store</string>
-    <string name="create_trip_store_dialog_name">Store name</string>
-    <string name="create_trip_store_dialog_confirm">Add</string>
     <string name="create_trip_dialog_ok">OK</string>
     <string name="create_trip_dialog_cancel">Cancel</string>
     <string name="create_trip_publish">Publish trip</string>

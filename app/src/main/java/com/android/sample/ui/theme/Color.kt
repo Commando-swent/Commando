@@ -21,8 +21,6 @@ val SurfaceContainer = Color(0xFF252E1D)
 val Error = Color(0xFFFFB4AB)
 
 // Roles used by the trip creation screen; values from the same Figma palette.
-val PrimaryContainer = Color(0xFF3B4D29)
-val OnPrimaryContainer = Color(0xFFD6F0B4)
 val SurfaceContainerLow = Color(0xFF1D2417)
 val SurfaceContainerHigh = Color(0xFF2F3A25)
 val ErrorContainer = Color(0xFF93000A)

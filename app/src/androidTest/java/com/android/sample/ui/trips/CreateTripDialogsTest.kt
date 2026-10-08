@@ -20,31 +20,6 @@ class CreateTripDialogsTest {
   private val events = mutableListOf<Any>()
 
   @Test
-  fun storeDialog_forwardsTheTypedName() {
-    composeTestRule.setContent { StorePickerDialog({ events += "dismiss" }) { events += it } }
-
-    composeTestRule
-        .onNodeWithTag(CreateTripScreenTestTags.STORE_NAME_INPUT)
-        .performTextInput("Coop")
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.STORE_DIALOG_CONFIRM).performClick()
-
-    composeTestRule.runOnIdle { assertEquals(listOf<Any>("Coop"), events) }
-  }
-
-  @Test
-  fun storeDialog_cannotAddABlankNameAndCanBeCancelled() {
-    composeTestRule.setContent { StorePickerDialog({ events += "dismiss" }) { events += it } }
-
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.STORE_NAME_INPUT).performTextInput("   ")
-    composeTestRule
-        .onNodeWithTag(CreateTripScreenTestTags.STORE_DIALOG_CONFIRM)
-        .assertIsNotEnabled()
-    composeTestRule.onNodeWithText("Cancel").performClick()
-
-    composeTestRule.runOnIdle { assertEquals(listOf<Any>("dismiss"), events) }
-  }
-
-  @Test
   fun datePicker_returnsTheSelectedDayWhateverTheTimeZone() {
     val day = LocalDate.of(2026, 12, 24)
     composeTestRule.setContent {

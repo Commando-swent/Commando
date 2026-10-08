@@ -1,7 +1,6 @@
 package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
@@ -53,7 +52,7 @@ class CreateTripComponentsTest {
   fun everyErrorHasAMessage() {
     val messages =
         mapOf(
-            CreateTripError.STORES_REQUIRED to "Select at least one store.",
+            CreateTripError.STORE_REQUIRED to "Enter the store you'll shop at.",
             CreateTripError.DATE_REQUIRED to "Choose a date.",
             CreateTripError.DATE_IN_PAST to "Choose today or a later date.",
             CreateTripError.TIME_REQUIRED to "Choose a time.",
@@ -64,7 +63,7 @@ class CreateTripComponentsTest {
             CreateTripError.MAX_ORDERS_NOT_POSITIVE_INTEGER to "Enter a whole number of 1 or more.",
         )
     assertEquals(CreateTripError.entries.toSet(), messages.keys)
-    var error by mutableStateOf(CreateTripError.STORES_REQUIRED)
+    var error by mutableStateOf(CreateTripError.STORE_REQUIRED)
     composeTestRule.setContent { HandoffField("", error, enabled = true) {} }
 
     messages.forEach { (shown, message) ->
@@ -101,27 +100,6 @@ class CreateTripComponentsTest {
 
     composeTestRule.onNodeWithText("17:30").assertExists()
     composeTestRule.runOnIdle { assertEquals(1, clicks) }
-  }
-
-  @Test
-  fun storeChips_forwardRemoveAndAddOnlyWhenEnabled() {
-    var enabled by mutableStateOf(true)
-    val events = mutableListOf<String>()
-    composeTestRule.setContent {
-      Column {
-        StoreChip("Coop", enabled) { events += "remove" }
-        AddStoreChip(enabled) { events += "add" }
-      }
-    }
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.storeChip("Coop")).assertExists()
-
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.removeStoreButton("Coop")).performClick()
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.ADD_STORE_BUTTON).performClick()
-    enabled = false
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.removeStoreButton("Coop")).performClick()
-    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.ADD_STORE_BUTTON).performClick()
-
-    composeTestRule.runOnIdle { assertEquals(listOf("remove", "add"), events) }
   }
 
   @Composable

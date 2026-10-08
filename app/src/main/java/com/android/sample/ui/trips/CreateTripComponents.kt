@@ -9,14 +9,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +25,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -38,7 +34,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
 
-// Building blocks of the trip creation form: fields, store chips and pickers.
+// Building blocks of the trip creation form: fields and pickers.
 
 internal val FieldShape = RoundedCornerShape(16.dp)
 
@@ -97,7 +93,7 @@ private val CreateTripError.message: Int
   @StringRes
   get() =
       when (this) {
-        CreateTripError.STORES_REQUIRED -> R.string.create_trip_error_stores_required
+        CreateTripError.STORE_REQUIRED -> R.string.create_trip_error_store_required
         CreateTripError.DATE_REQUIRED -> R.string.create_trip_error_date_required
         CreateTripError.DATE_IN_PAST -> R.string.create_trip_error_date_in_past
         CreateTripError.TIME_REQUIRED -> R.string.create_trip_error_time_required
@@ -227,107 +223,6 @@ private fun InputBox(
     )
     content()
   }
-}
-
-@Composable
-internal fun StoreChip(name: String, enabled: Boolean, onRemove: () -> Unit) {
-  Row(
-      modifier =
-          Modifier.background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
-              .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-              .padding(start = 6.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)
-              .testTag(CreateTripScreenTestTags.storeChip(name)),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Box(
-        modifier =
-            Modifier.size(28.dp)
-                .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-      Text(
-          text = name.first().uppercase(),
-          style = tripTextStyle(13, 18, FontWeight.Bold),
-          color = MaterialTheme.colorScheme.onPrimaryContainer,
-      )
-    }
-    Text(
-        text = name,
-        style = tripTextStyle(14, 20, FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.onSecondaryContainer,
-    )
-    Icon(
-        painter = painterResource(R.drawable.ic_trip_close),
-        contentDescription = stringResource(R.string.create_trip_remove_store, name),
-        tint = MaterialTheme.colorScheme.onSecondaryContainer,
-        modifier =
-            Modifier.size(16.dp)
-                .clickable(enabled = enabled, role = Role.Button, onClick = onRemove)
-                .testTag(CreateTripScreenTestTags.removeStoreButton(name)),
-    )
-  }
-}
-
-@Composable
-internal fun AddStoreChip(enabled: Boolean, onClick: () -> Unit) {
-  Row(
-      modifier =
-          Modifier.border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-              .clip(CircleShape)
-              .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-              .padding(start = 14.dp, end = 16.dp, top = 9.dp, bottom = 9.dp)
-              .testTag(CreateTripScreenTestTags.ADD_STORE_BUTTON),
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(8.dp),
-  ) {
-    Icon(
-        painter = painterResource(R.drawable.ic_trip_add),
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.size(18.dp),
-    )
-    Text(
-        text = stringResource(R.string.create_trip_add_store),
-        style = tripTextStyle(14, 20, FontWeight.SemiBold),
-        color = MaterialTheme.colorScheme.primary,
-    )
-  }
-}
-
-/**
- * Asks for a store name. This is the single place to swap in a catalogue picker once stores come
- * from a repository.
- */
-@Composable
-internal fun StorePickerDialog(onDismiss: () -> Unit, onStorePicked: (String) -> Unit) {
-  var name by rememberSaveable { mutableStateOf("") }
-  val canAdd = name.isNotBlank()
-  AlertDialog(
-      onDismissRequest = onDismiss,
-      title = { Text(stringResource(R.string.create_trip_store_dialog_title)) },
-      text = {
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text(stringResource(R.string.create_trip_store_dialog_name)) },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (canAdd) onStorePicked(name) }),
-            modifier = Modifier.testTag(CreateTripScreenTestTags.STORE_NAME_INPUT),
-        )
-      },
-      confirmButton = {
-        TextButton(
-            onClick = { onStorePicked(name) },
-            enabled = canAdd,
-            modifier = Modifier.testTag(CreateTripScreenTestTags.STORE_DIALOG_CONFIRM),
-        ) {
-          Text(stringResource(R.string.create_trip_store_dialog_confirm))
-        }
-      },
-      dismissButton = { CancelButton(onDismiss) },
-  )
 }
 
 /** Lets the user pick today or a later day. */

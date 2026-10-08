@@ -8,7 +8,7 @@ import java.time.LocalTime
 
 /** Reasons a trip creation field is rejected. The screen maps each one to a message. */
 enum class CreateTripError {
-  STORES_REQUIRED,
+  STORE_REQUIRED,
   DATE_REQUIRED,
   DATE_IN_PAST,
   TIME_REQUIRED,
@@ -25,12 +25,12 @@ enum class CreateTripError {
  * untouched form shows no errors. [maxOrders] is kept as typed so invalid input stays visible.
  */
 data class CreateTripUiState(
-    val stores: List<String> = emptyList(),
+    val store: String = "",
     val date: LocalDate? = null,
     val time: LocalTime? = null,
     val handoffLocation: String = "",
     val maxOrders: String = "",
-    val storesError: CreateTripError? = null,
+    val storeError: CreateTripError? = null,
     val dateError: CreateTripError? = null,
     val timeError: CreateTripError? = null,
     val handoffLocationError: CreateTripError? = null,

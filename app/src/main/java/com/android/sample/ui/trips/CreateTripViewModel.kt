@@ -32,7 +32,7 @@ class CreateTripViewModel(
     private val toNewTrip: (TripDraft) -> NewTrip? = TripDraft::toNewTrip,
 ) : ViewModel() {
   private enum class Field {
-    STORES,
+    STORE,
     DATE,
     TIME,
     HANDOFF_LOCATION,
@@ -43,16 +43,7 @@ class CreateTripViewModel(
   private val mutableState = MutableStateFlow(CreateTripUiState())
   val uiState: StateFlow<CreateTripUiState> = mutableState.asStateFlow()
 
-  /** Adds a store by name; blank names and case-insensitive duplicates are ignored. */
-  fun addStore(name: String) {
-    val store = name.trim()
-    edit(Field.STORES) {
-      if (store.isEmpty() || stores.any { it.equals(store, ignoreCase = true) }) this
-      else copy(stores = stores + store)
-    }
-  }
-
-  fun removeStore(name: String) = edit(Field.STORES) { copy(stores = stores - name) }
+  fun setStore(store: String) = edit(Field.STORE) { copy(store = store) }
 
   fun setDate(date: LocalDate) = edit(Field.DATE) { copy(date = date) }
 
@@ -115,7 +106,7 @@ class CreateTripViewModel(
   private fun validate(state: CreateTripUiState, now: Instant): CreateTripUiState {
     val errors =
         mapOf(
-            Field.STORES to storesError(state),
+            Field.STORE to storeError(state),
             Field.DATE to dateError(state, now),
             Field.TIME to timeError(state, now),
             Field.HANDOFF_LOCATION to handoffLocationError(state),
@@ -123,7 +114,7 @@ class CreateTripViewModel(
         )
     fun shown(field: Field) = errors[field]?.takeIf { field in touchedFields }
     return state.copy(
-        storesError = shown(Field.STORES),
+        storeError = shown(Field.STORE),
         dateError = shown(Field.DATE),
         timeError = shown(Field.TIME),
         handoffLocationError = shown(Field.HANDOFF_LOCATION),
@@ -133,8 +124,8 @@ class CreateTripViewModel(
     )
   }
 
-  private fun storesError(state: CreateTripUiState) =
-      if (state.stores.isEmpty()) CreateTripError.STORES_REQUIRED else null
+  private fun storeError(state: CreateTripUiState) =
+      if (state.store.isBlank()) CreateTripError.STORE_REQUIRED else null
 
   private fun dateError(state: CreateTripUiState, now: Instant) =
       when {
@@ -176,6 +167,6 @@ class CreateTripViewModel(
   private fun CreateTripUiState.toDraft(): TripDraft? {
     if (!canPublish || date == null || time == null) return null
     val maxOrders = parseMaxOrders(maxOrders.trim()) ?: return null
-    return TripDraft(stores, scheduledAt(date, time), handoffLocation.trim(), maxOrders)
+    return TripDraft(store.trim(), scheduledAt(date, time), handoffLocation.trim(), maxOrders)
   }
 }

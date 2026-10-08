@@ -50,7 +50,7 @@ class CreateTripViewModelTest {
   fun errorsAreHiddenUntilTheFieldIsEdited() {
     val viewModel = createViewModel()
     assertEquals(CreateTripUiState(), viewModel.uiState.value)
-    viewModel.addStore("Migros")
+    viewModel.setStore("Migros")
     viewModel.setDate(TOMORROW)
     viewModel.setTime(LocalTime.of(18, 30))
     viewModel.setHandoffLocation("EPFL")
@@ -72,7 +72,7 @@ class CreateTripViewModelTest {
 
     assertEquals(
         CreateTripUiState(
-            storesError = CreateTripError.STORES_REQUIRED,
+            storeError = CreateTripError.STORE_REQUIRED,
             dateError = CreateTripError.DATE_REQUIRED,
             timeError = CreateTripError.TIME_REQUIRED,
             handoffLocationError = CreateTripError.HANDOFF_LOCATION_REQUIRED,
@@ -84,17 +84,15 @@ class CreateTripViewModelTest {
   }
 
   @Test
-  fun stores_areTrimmedDeduplicatedAndRemovable() {
+  fun blankStore_isRejectedAndKeptAsTyped() {
     val viewModel = createViewModel()
+    viewModel.fillValidForm()
 
-    listOf("  Migros ", "", "   ", "MIGROS", "Coop").forEach(viewModel::addStore)
-    assertEquals(listOf("Migros", "Coop"), viewModel.uiState.value.stores)
+    viewModel.setStore("   ")
 
-    viewModel.removeStore("Migros")
-    viewModel.removeStore("Coop")
-
-    assertEquals(emptyList<String>(), viewModel.uiState.value.stores)
-    assertEquals(CreateTripError.STORES_REQUIRED, viewModel.uiState.value.storesError)
+    assertEquals("   ", viewModel.uiState.value.store)
+    assertEquals(CreateTripError.STORE_REQUIRED, viewModel.uiState.value.storeError)
+    assertFalse(viewModel.uiState.value.canPublish)
   }
 
   @Test
@@ -164,7 +162,7 @@ class CreateTripViewModelTest {
   @Test
   fun publish_sendsTheDraftOnceAndLocksTheForm() = runTest {
     val viewModel = createViewModel()
-    viewModel.fillValidForm(maxOrders = " 3 ", handoff = "  EPFL ")
+    viewModel.fillValidForm(store = " Migros ", maxOrders = " 3 ", handoff = "  EPFL ")
 
     viewModel.publish()
     advanceUntilIdle()
@@ -176,6 +174,7 @@ class CreateTripViewModelTest {
     assertEquals(listOf(newTripFor(VALID_DRAFT)), repository.published)
     assertEquals(
         VALID_STATE.copy(
+            store = " Migros ",
             maxOrders = " 3 ",
             handoffLocation = "  EPFL ",
             canPublish = false,
@@ -239,7 +238,7 @@ class CreateTripViewModelTest {
     runCurrent()
     viewModel.publish()
     viewModel.setMaxOrders("9")
-    viewModel.removeStore("Migros")
+    viewModel.setStore("Coop")
     gate.complete(Unit)
     advanceUntilIdle()
 
@@ -268,12 +267,13 @@ class CreateTripViewModelTest {
       }
 
   private fun CreateTripViewModel.fillValidForm(
+      store: String = "Migros",
       date: LocalDate = TOMORROW,
       time: LocalTime = LocalTime.of(18, 30),
       handoff: String = "EPFL",
       maxOrders: String = "3",
   ) {
-    addStore("Migros")
+    setStore(store)
     setDate(date)
     setTime(time)
     setHandoffLocation(handoff)
@@ -327,7 +327,7 @@ class CreateTripViewModelTest {
 
     val VALID_STATE =
         CreateTripUiState(
-            stores = listOf("Migros"),
+            store = "Migros",
             date = TOMORROW,
             time = LocalTime.of(18, 30),
             handoffLocation = "EPFL",
@@ -335,12 +335,12 @@ class CreateTripViewModelTest {
             canPublish = true,
         )
 
-    val VALID_DRAFT = TripDraft(listOf("Migros"), Instant.parse("2026-10-06T16:30:00Z"), "EPFL", 3)
+    val VALID_DRAFT = TripDraft("Migros", Instant.parse("2026-10-06T16:30:00Z"), "EPFL", 3)
 
     fun place(name: String) = Location(name, 46.52, 6.57)
 
     fun newTripFor(draft: TripDraft) =
-        NewTrip(place(draft.stores.first()), draft.scheduledAt, place(draft.handoffLocation))
+        NewTrip(place(draft.store), draft.scheduledAt, place(draft.handoffLocation))
 
     val PUBLISHED_TRIP =
         newTripFor(VALID_DRAFT).run {

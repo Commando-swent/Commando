@@ -12,5 +12,5 @@ class MainScreen(semanticsProvider: SemanticsNodeInteractionsProvider) :
         viewBuilderAction = { hasTestTag(C.Tag.main_screen_container) },
     ) {
 
-  val simpleText: KNode = child { hasTestTag(NavigationTestTags.SCREEN_TITLE) }
+  val loginScreen: KNode = child { hasTestTag(NavigationTestTags.LOGIN_SCREEN) }
 }

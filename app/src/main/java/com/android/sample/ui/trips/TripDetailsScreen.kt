@@ -27,7 +27,7 @@ import com.android.sample.model.TripStatus
 fun TripDetailsScreen(
     viewModel: TripDetailsViewModel,
     onBack: () -> Unit,
-    onAddItems: (String) -> Unit,
+    onAddItems: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
   val state by viewModel.uiState.collectAsState()
@@ -39,7 +39,7 @@ fun TripDetailsScreen(
     state: TripDetailsUiState,
     onRetry: () -> Unit,
     onBack: () -> Unit,
-    onAddItems: (String) -> Unit,
+    onAddItems: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
   Column(
@@ -64,14 +64,15 @@ fun TripDetailsScreen(
           TripDetailsContent(state.trip)
           TripDetailsButton(
               text = stringResource(R.string.trip_details_add_items),
-              onClick = { onAddItems(state.trip.id) },
+              onClick = { onAddItems?.invoke(state.trip.id) },
               enabled =
-                  when (state.trip.status) {
-                    TripStatus.PUBLISHED,
-                    TripStatus.IN_PROGRESS -> true
-                    TripStatus.COMPLETED,
-                    TripStatus.CANCELLED -> false
-                  },
+                  onAddItems != null &&
+                      when (state.trip.status) {
+                        TripStatus.PUBLISHED,
+                        TripStatus.IN_PROGRESS -> true
+                        TripStatus.COMPLETED,
+                        TripStatus.CANCELLED -> false
+                      },
           )
         }
         is TripDetailsUiState.Error -> {

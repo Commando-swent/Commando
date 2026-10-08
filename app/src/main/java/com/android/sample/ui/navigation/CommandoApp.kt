@@ -27,7 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.android.sample.R
-import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
@@ -103,8 +103,8 @@ fun CommandoApp(
         composable(route = CommandoScreens.App.name) {
           val userId = requireNotNull(user).uid
           val trips =
-              remember(userId, tripRepository) {
-                tripRepository ?: FakeTripRepository(currentUserId = userId)
+              remember(userId, repository, tripRepository) {
+                tripRepository ?: TripRepositoryFirestore(authRepository = repository)
               }
           AuthenticatedApp(
               tripRepository = trips,

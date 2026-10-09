@@ -502,13 +502,30 @@ class CommandoAppTest {
     click(AppTestTags.TRIPS_BUTTON)
     pressBack()
     assertScreen(NavigationTestTags.HOME_SCREEN)
-    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsEnabled().performClick()
-    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
     click(AppTestTags.PROFILE_BUTTON)
     click(AppTestTags.TRIPS_BUTTON)
     assertAvailableTripsRestored()
     click(AppTestTags.HOME_BUTTON)
     assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun tripsIsDisabledInCommandoModeFromHomeAndProfileAndEnabledAgainForRequester() {
+    show(FakeAuthRepository(alice), twoTrips(alice.uid))
+    click(AppTestTags.COMMANDO_MODE)
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsNotEnabled().performClick()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    click(AppTestTags.PROFILE_BUTTON)
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsNotEnabled().performClick()
+    assertScreen(NavigationTestTags.PROFILE_SCREEN)
+    click(AppTestTags.HOME_BUTTON)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    click(AppTestTags.REQUESTER_MODE)
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsEnabled().performClick()
+    assertAvailableTripsRestored()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
   }
 
   @Test

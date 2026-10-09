@@ -53,7 +53,13 @@ fun AppScaffold(
       },
       bottomBar = {
         if (currentScreen.showBottomBar) {
-          AppBottomBar(currentScreen, onHome, onProfile, onTrips)
+          AppBottomBar(
+              currentScreen,
+              onHome,
+              onProfile,
+              onTrips,
+              tripsEnabled = mode == AppMode.Requester,
+          )
         }
       },
       content = content,
@@ -159,6 +165,7 @@ private fun AppBottomBar(
     onHome: () -> Unit,
     onProfile: () -> Unit,
     onTrips: () -> Unit,
+    tripsEnabled: Boolean,
 ) {
   NavigationBar(
       modifier = Modifier.testTag(AppTestTags.BOTTOM_BAR),
@@ -176,6 +183,7 @@ private fun AppBottomBar(
         R.string.home_trips,
         modifier = Modifier.testTag(AppTestTags.TRIPS_BUTTON),
         selected = currentScreen == CommandoScreens.AvailableTrips,
+        enabled = tripsEnabled,
         onClick = onTrips,
     )
     AppNavigationItem(

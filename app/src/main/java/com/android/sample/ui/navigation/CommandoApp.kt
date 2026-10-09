@@ -166,6 +166,10 @@ private fun AuthenticatedApp(
           launchSingleTop = true
         }
       },
+      onBack = { navController.popBackStack() },
+      onTrips = {
+        navController.navigate(CommandoScreens.AvailableTrips.name) { launchSingleTop = true }
+      },
       onProfile = {
         navController.navigate(CommandoScreens.Profile.name) { launchSingleTop = true }
       },

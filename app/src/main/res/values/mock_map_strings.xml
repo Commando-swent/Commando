@@ -1,0 +1,5 @@
+<resources>
+    <string name="mock_map_marker">Sample trip: %1$s at %2$s</string>
+    <string name="mock_map_empty_title">No trips on the map yet</string>
+    <string name="mock_map_empty_body">No sample trips to display. This prototype uses a static map and local data.</string>
+</resources>

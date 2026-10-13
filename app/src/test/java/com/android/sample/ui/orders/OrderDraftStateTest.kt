@@ -2,6 +2,7 @@ package com.android.sample.ui.orders
 
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderError
+import com.android.sample.data.repository.OrderResult
 import com.android.sample.model.OrderItem
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -61,10 +62,11 @@ class OrderDraftStateTest {
     val fake = FakeOrderRepository({ "requester" })
     shared.addItem(milk)
     fake.forcedError = OrderError.Unknown
-    fake.createOrder(shared.draft.value)
+    assertEquals(OrderResult.Error(OrderError.Unknown), fake.createOrder(shared.draft.value))
     assertEquals(listOf(milk), shared.draft.value.items)
     fake.forcedError = null
-    fake.createOrder(shared.draft.value)
+    val retry = fake.createOrder(shared.draft.value)
+    assertTrue("Retry must succeed before clearing the draft", retry is OrderResult.Success)
     assertEquals(listOf(milk), shared.draft.value.items)
     shared.clear()
     assertTrue(shared.draft.value.items.isEmpty())

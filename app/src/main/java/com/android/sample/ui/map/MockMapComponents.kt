@@ -70,7 +70,7 @@ internal fun MapMarker(
     onClick: () -> Unit,
     modifier: Modifier,
 ) {
-  val description = stringResource(R.string.mock_map_marker, trip.store, trip.time)
+  val description = stringResource(R.string.mock_map_marker, trip.store, time)
   Column(
       modifier
           .width(if (groupSize > 1 && !selected) 124.dp else 96.dp)
@@ -142,7 +142,7 @@ internal fun EmptyMapCard(modifier: Modifier) {
           contentAlignment = Alignment.Center,
       ) {
         Icon(
-            painterResource(R.drawable.map_pin),
+            painterResource(R.drawable.ic_trip_map_pin),
             null,
             Modifier.size(28.dp),
             tint = MaterialTheme.colorScheme.onPrimary,

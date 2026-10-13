@@ -1,24 +1,5 @@
 <resources>
-    <string name="mock_map_title">Trips near you</string>
-    <string name="mock_map_subtitle">Prototype · sample trips only</string>
     <string name="mock_map_marker">Sample trip: %1$s at %2$s</string>
-    <string name="mock_map_time">Sample departure · %1$s</string>
-    <string name="mock_map_handoff">Handoff point</string>
-    <string name="mock_map_details">View trip</string>
-    <string name="mock_map_close">Close trip preview</string>
     <string name="mock_map_empty_title">No trips on the map yet</string>
     <string name="mock_map_empty_body">No sample trips to display. This prototype uses a static map and local data.</string>
-    <string name="mock_map_attribution">Illustrated map · © OpenStreetMap contributors</string>
-    <string name="mock_map_loading">Finding sample trips…</string>
-    <string name="mock_map_error_title">Something went wrong while loading trips.</string>
-    <string name="mock_map_error_body">Simulated error. Retry to show the sample trips.</string>
-    <string name="mock_map_retry">Retry</string>
-    <string name="mock_map_location_off">Location is off</string>
-    <string name="mock_map_location_body">Showing sample trips around EPFL.</string>
-    <string name="mock_map_allow">Allow</string>
-    <string name="mock_map_allow_description">Simulate allowing location</string>
-    <string name="mock_map_sample_location">Sample position — not your device location</string>
-    <string name="mock_map_shared">%1$d TRIPS AT THIS HANDOFF POINT</string>
-    <string name="mock_map_page">Show sample trip %1$d of %2$d: %3$s</string>
-    <string name="mock_map_reset">Reset sample map selection</string>
 </resources>

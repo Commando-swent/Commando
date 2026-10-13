@@ -6,19 +6,20 @@ import org.junit.Test
 
 class MockMapViewModelTest {
   @Test
-  fun retryAndLocationSimulationPreserveInjectedDataAndIgnoreUnavailableSelection() {
-    val sample = MockMapSamples.trips.first()
-    val vm = MockMapViewModel(listOf(sample), MockMapStatus.Error, locationOff = true)
-    vm.selectTrip(sample.id)
-    assertNull(vm.uiState.value.selectedTrip)
-    vm.retry()
-    assertEquals(MockMapStatus.Content, vm.uiState.value.status)
-    assertEquals(listOf(sample), vm.uiState.value.trips)
-    assertTrue(vm.uiState.value.locationOff)
-    vm.enableSampleLocation()
-    assertFalse(vm.uiState.value.locationOff)
-    vm.selectTrip(sample.id)
-    assertEquals(sample, vm.uiState.value.selectedTrip)
+  fun sharedPointsGroupTripsAndFollowSelectionWithoutStaleData() {
+    val vm = MockMapViewModel()
+    assertTrue(vm.uiState.value.selectedGroup.isEmpty())
+    assertEquals(4, vm.uiState.value.markerGroups.size)
+    vm.selectTrip("sample-shared")
+    assertEquals(
+        listOf("sample-denner", "sample-shared"),
+        vm.uiState.value.selectedGroup.map { it.id },
+    )
+    vm.selectTrip("sample-coop")
+    assertEquals(listOf("sample-coop"), vm.uiState.value.selectedGroup.map { it.id })
+    val stale = vm.uiState.value.copy(trips = emptyList())
+    assertNull(stale.selectedTrip)
+    assertTrue(stale.selectedGroup.isEmpty())
   }
 
   @Test

@@ -1,13 +1,11 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex.
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -16,7 +14,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -55,6 +52,8 @@ import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
+import com.android.sample.ui.trips.CreateTripScreen
+import com.android.sample.ui.trips.CreateTripViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsViewModel
 import kotlinx.coroutines.launch
@@ -152,8 +151,8 @@ private fun AuthenticatedApp(
     onSignOut: () -> Unit,
     signOutError: AuthException?,
 ) {
-  val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
   val appViewModel: AppViewModel = viewModel()
+  val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
   val appUiState by appViewModel.uiState.collectAsState()
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
@@ -170,6 +169,10 @@ private fun AuthenticatedApp(
           popUpTo(CommandoScreens.Home.name)
           launchSingleTop = true
         }
+      },
+      onBack = { navController.popBackStack() },
+      onTrips = {
+        navController.navigate(CommandoScreens.AvailableTrips.name) { launchSingleTop = true }
       },
       onProfile = {
         navController.navigate(CommandoScreens.Profile.name) { launchSingleTop = true }
@@ -202,6 +205,21 @@ private fun AuthenticatedApp(
             tripState = tripState,
             onRetry = onRetry,
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
+            onPublishTrip = {
+              navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
+            },
+        )
+      }
+      composable(route = CommandoScreens.CreateTrip.name) { entry ->
+        val createTripViewModel: CreateTripViewModel =
+            viewModel(viewModelStoreOwner = entry) { CreateTripViewModel(tripRepository) }
+        CreateTripScreen(
+            viewModel = createTripViewModel,
+            onBack = { navController.popBackStack() },
+            onTripPublished = {
+              // Resuming Home refreshes its current trip from the shared repository.
+              navController.popBackStack(CommandoScreens.Home.name, inclusive = false)
+            },
         )
       }
       composable(route = CommandoScreens.AvailableTrips.name) { entry ->
@@ -257,7 +275,29 @@ private fun AuthenticatedApp(
         )
       }
       composable(route = CommandoScreens.EditProfile.name) {
-        ProfileEditRoute(profileViewModel) { navController.popBackStack() }
+        val draft by profileViewModel.editState.collectAsState()
+        val profile by profileViewModel.uiState.collectAsState()
+        LaunchedEffect(profile, draft == null) {
+          if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
+        }
+        val onCancel = {
+          if (profileViewModel.editState.value?.isSaving != true) {
+            profileViewModel.cancelEditing()
+            navController.popBackStack()
+          }
+          Unit
+        }
+        BackHandler { onCancel() }
+        draft?.let {
+          EditProfileScreen(
+              it,
+              profileViewModel::updateFullName,
+              profileViewModel::updateEmail,
+              profileViewModel::saveProfile,
+              onCancel,
+              (profile as? ProfileUiState.Content)?.fullName,
+          )
+        } ?: androidx.compose.material3.CircularProgressIndicator()
       }
     }
   }
@@ -265,38 +305,3 @@ private fun AuthenticatedApp(
 
 /** Retains one trip repository for the authenticated App entry, including activity recreation. */
 private class SessionTripRepositoryViewModel(val repository: TripRepository) : ViewModel()
-
-/** Recreates a missing draft after session data loads, without resetting an existing draft. */
-@Composable
-internal fun ProfileEditRoute(model: ProfileViewModel, onReturn: () -> Unit) {
-  val draft by model.editState.collectAsState()
-  val profile by model.uiState.collectAsState()
-  LaunchedEffect(profile, draft == null) {
-    if (profile is ProfileUiState.Content && model.editState.value == null) model.beginEditing()
-  }
-  val onCancel = {
-    if (model.editState.value?.isSaving != true) {
-      model.cancelEditing()
-      onReturn()
-    }
-  }
-  BackHandler { onCancel() }
-  val state = draft
-  if (state == null) {
-    Box(
-        Modifier.fillMaxSize().testTag(com.android.sample.ui.profile.ProfileEditTestTags.LOADING),
-        contentAlignment = Alignment.Center,
-    ) {
-      CircularProgressIndicator()
-    }
-  } else {
-    EditProfileScreen(
-        uiState = state,
-        onFullNameChange = model::updateFullName,
-        onEmailChange = model::updateEmail,
-        onSave = model::saveProfile,
-        onCancel = onCancel,
-        avatarFullName = (profile as? ProfileUiState.Content)?.fullName,
-    )
-  }
-}

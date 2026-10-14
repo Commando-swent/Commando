@@ -25,9 +25,11 @@ enum class FieldError {
 
 data class AuthUiState(
     val mode: AuthMode = AuthMode.LOGIN,
+    val fullName: String = "",
     val email: String = "",
     val password: String = "",
     val confirmation: String = "",
+    val fullNameError: FieldError? = null,
     val emailError: FieldError? = null,
     val passwordError: FieldError? = null,
     val confirmationError: FieldError? = null,
@@ -40,6 +42,8 @@ data class AuthUiState(
 class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
   private val mutableState = MutableStateFlow(AuthUiState())
   val uiState = mutableState.asStateFlow()
+
+  fun updateFullName(fullName: String) = edit { copy(fullName = fullName, fullNameError = null) }
 
   fun updateEmail(email: String) = edit { copy(email = email, emailError = null) }
 
@@ -70,6 +74,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     val email = state.email.trim()
     val checked =
         state.copy(
+            fullNameError =
+                if (state.mode == AuthMode.SIGN_UP && state.fullName.isBlank()) FieldError.REQUIRED
+                else null,
             emailError =
                 when {
                   email.isBlank() -> FieldError.REQUIRED
@@ -88,14 +95,15 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         )
     mutableState.value = checked
     if (
-        checked.emailError != null ||
+        checked.fullNameError != null ||
+            checked.emailError != null ||
             checked.passwordError != null ||
             checked.confirmationError != null
     )
         return
     authenticate {
       if (state.mode == AuthMode.SIGN_UP) {
-        repository.signUpWithEmail(email, state.password).getOrThrow()
+        repository.signUpWithEmail(email, state.password, state.fullName.trim()).getOrThrow()
       } else {
         repository.signInWithEmail(email, state.password).getOrThrow()
       }

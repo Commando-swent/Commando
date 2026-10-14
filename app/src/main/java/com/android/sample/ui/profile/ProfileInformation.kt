@@ -21,8 +21,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.android.sample.R
 
 /** Shows confirmed profile information; editing and photo actions belong to follow-up tasks. */
@@ -58,7 +61,6 @@ internal fun ProfileInformation(
           color = MaterialTheme.colorScheme.onSurfaceVariant,
           style = MaterialTheme.typography.bodySmall,
       )
-      // Editing belongs to the next sub-issue; retain its affordance without a fake action.
       TextButton(
           onClick = { onEdit?.invoke() },
           enabled = onEdit != null,
@@ -101,30 +103,47 @@ internal fun ProfileInformation(
 }
 
 @Composable
-private fun ProfileAvatar(initials: String?) {
+internal fun ProfileAvatar(
+    initials: String?,
+    showPhotoAction: Boolean = true,
+    diameter: Dp = 80.dp,
+) {
   val addPhotoDescription = stringResource(R.string.profile_add_photo_description)
-  Box(Modifier.size(86.dp)) {
+  Box(Modifier.size(diameter + 6.dp)) {
     Box(
-        Modifier.size(80.dp)
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape)
-            .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape),
+        Modifier.size(diameter)
+            .background(
+                if (diameter > 80.dp) MaterialTheme.colorScheme.surfaceContainerHigh
+                else MaterialTheme.colorScheme.surfaceContainerHighest,
+                CircleShape,
+            )
+            .border(
+                if (diameter > 80.dp) diameter * 0.0154f else 3.dp,
+                MaterialTheme.colorScheme.primary,
+                CircleShape,
+            ),
         contentAlignment = Alignment.Center,
     ) {
       if (initials == null) {
         Image(
             painterResource(R.drawable.profile_person),
             contentDescription = stringResource(R.string.profile_neutral_avatar),
-            modifier = Modifier.size(36.dp).testTag(ProfileTestTags.NEUTRAL_AVATAR),
+            modifier = Modifier.size(diameter * 0.45f).testTag(ProfileTestTags.NEUTRAL_AVATAR),
         )
       } else {
         Text(
             initials,
             modifier = Modifier.testTag(ProfileTestTags.INITIALS),
             color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.headlineSmall,
+            style =
+                MaterialTheme.typography.headlineSmall.copy(
+                    fontSize = if (diameter == 80.dp) 24.sp else (diameter.value * 0.277f).sp,
+                    fontWeight = if (diameter > 80.dp) FontWeight.Medium else FontWeight.Normal,
+                ),
         )
       }
     }
+    if (!showPhotoAction) return@Box
     // This disabled badge has no touch target yet; keep its visual size equal to the design.
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
       FilledIconButton(

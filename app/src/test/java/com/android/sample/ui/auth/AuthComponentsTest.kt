@@ -46,7 +46,7 @@ class AuthComponentsTest {
             enabled,
             password = true,
             done = true,
-            onSubmit,
+            onSubmit = onSubmit,
         )
       }
     }

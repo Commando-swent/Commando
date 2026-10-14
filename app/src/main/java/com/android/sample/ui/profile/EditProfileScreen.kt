@@ -1,8 +1,5 @@
 package com.android.sample.ui.profile
 
-import androidx.annotation.StringRes
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -21,43 +18,25 @@ import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.error
-import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.ui.theme.SampleAppTheme
+import com.android.sample.model.authentication.AuthException
 
-/** Renders an editable draft; persistence and navigation are provided by named callbacks. */
 @Composable
 fun EditProfileScreen(
-    uiState: ProfileEditUiState,
+    state: ProfileEditUiState,
     onFullNameChange: (String) -> Unit,
     onEmailChange: (String) -> Unit,
     onSave: () -> Unit,
     onCancel: () -> Unit,
+    avatarFullName: String?,
     modifier: Modifier = Modifier,
-    avatarFullName: String? = uiState.fullName,
 ) {
-  val enabled = !uiState.isSaving && !uiState.saved
-  val backDescription = stringResource(R.string.nav_back)
-  val nameError =
-      if (uiState.fullNameError || uiState.fullName.isBlank()) {
-        stringResource(R.string.profile_edit_name_required)
-      } else null
-  val emailError =
-      when {
-        uiState.email.isBlank() -> stringResource(R.string.profile_edit_email_required)
-        uiState.emailError -> stringResource(R.string.profile_edit_email_invalid)
-        else -> null
-      }
+  val enabled = !state.isSaving && !state.saved
   Column(
       modifier
           .fillMaxSize()
@@ -65,20 +44,18 @@ fun EditProfileScreen(
           .testTag(ProfileEditTestTags.SCREEN)
           .imePadding()
           .verticalScroll(rememberScrollState())
-          .padding(horizontal = 12.dp, vertical = 4.dp),
+          .padding(horizontal = 28.dp, vertical = 4.dp),
   ) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+      val back = stringResource(R.string.nav_back)
       IconButton(
           onClick = onCancel,
-          enabled = !uiState.isSaving,
+          enabled = !state.isSaving,
           modifier = Modifier.testTag(ProfileEditTestTags.BACK),
       ) {
         Text(
             "←",
-            modifier = Modifier.semantics { contentDescription = backDescription },
+            Modifier.semantics { contentDescription = back },
             style = MaterialTheme.typography.titleLarge,
         )
       }
@@ -91,178 +68,142 @@ fun EditProfileScreen(
         Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
-      Box(
-          Modifier.size(96.dp)
-              .background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape)
-              .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape),
-          contentAlignment = Alignment.Center,
-      ) {
-        val initials = profileInitials(avatarFullName)
-        if (initials != null) {
-          Text(
-              initials,
-              modifier = Modifier.testTag(ProfileEditTestTags.INITIALS),
-              color = MaterialTheme.colorScheme.primary,
-              style = MaterialTheme.typography.headlineSmall,
-          )
-        } else {
-          Image(
-              painterResource(R.drawable.profile_person),
-              contentDescription = stringResource(R.string.profile_neutral_avatar),
-              modifier = Modifier.size(28.dp),
-          )
-        }
-      }
+      ProfileAvatar(profileInitials(avatarFullName), showPhotoAction = false)
     }
     Text(
-        stringResource(R.string.profile_edit_personal_information),
-        modifier = Modifier.padding(start = 3.dp, bottom = 8.dp),
+        stringResource(R.string.profile_personal_information),
+        Modifier.padding(start = 4.dp, bottom = 8.dp),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
-    Surface(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
+    Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
       Column {
-        EditProfileField(
-            value = uiState.fullName,
-            onChange = onFullNameChange,
-            label = R.string.profile_full_name,
-            placeholder = R.string.profile_full_name,
-            tag = ProfileEditTestTags.FULL_NAME,
-            errorTag = ProfileEditTestTags.FULL_NAME_ERROR,
-            errorMessage = nameError,
-            enabled = enabled,
-            email = false,
-            onSubmit = { /* The name field advances focus through the Next IME action. */ },
+        ProfileEditField(
+            state.fullName,
+            onFullNameChange,
+            R.string.profile_full_name,
+            R.string.profile_full_name,
+            ProfileEditTestTags.FULL_NAME,
+            enabled,
+            if (state.nameInvalid) R.string.profile_edit_name_required else null,
+            false,
+            onSave,
         )
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
-        EditProfileField(
-            value = uiState.email,
-            onChange = onEmailChange,
-            label = R.string.profile_email,
-            placeholder = R.string.profile_edit_email_hint,
-            tag = ProfileEditTestTags.EMAIL,
-            errorTag = ProfileEditTestTags.EMAIL_ERROR,
-            errorMessage = emailError,
-            enabled = enabled,
-            email = true,
-            onSubmit = { if (uiState.canSave) onSave() },
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        ProfileEditField(
+            state.email,
+            onEmailChange,
+            R.string.profile_email,
+            R.string.profile_edit_email_hint,
+            ProfileEditTestTags.EMAIL,
+            enabled,
+            when {
+              state.email.isBlank() -> R.string.profile_edit_email_required
+              state.emailInvalid -> R.string.profile_edit_email_invalid
+              else -> null
+            },
+            true,
+            { if (state.canSave) onSave() },
         )
       }
     }
-    uiState.error?.let { problem ->
-      Text(
-          stringResource(problem.messageResource()),
-          modifier =
-              Modifier.padding(top = 12.dp).testTag(ProfileEditTestTags.FEEDBACK).semantics {
-                liveRegion = LiveRegionMode.Polite
-              },
-          color = MaterialTheme.colorScheme.error,
-          style = MaterialTheme.typography.bodySmall,
-      )
-    }
-    if (uiState.saved) {
-      Text(
-          if (uiState.pendingEmail != null) {
-            stringResource(R.string.profile_edit_email_verification, uiState.pendingEmail)
-          } else stringResource(R.string.profile_edit_saved),
-          modifier =
-              Modifier.padding(top = 16.dp).testTag(ProfileEditTestTags.FEEDBACK).semantics {
-                liveRegion = LiveRegionMode.Polite
-              },
-          style = MaterialTheme.typography.bodySmall,
-      )
-      Button(
-          onClick = onCancel,
-          modifier =
-              Modifier.fillMaxWidth()
-                  .padding(top = 16.dp)
-                  .heightIn(min = 48.dp)
-                  .testTag(ProfileEditTestTags.DONE),
-          shape = CircleShape,
-      ) {
-        Text(stringResource(R.string.profile_edit_done))
-      }
-    } else {
-      Button(
-          onClick = onSave,
-          enabled = uiState.canSave,
-          modifier =
-              Modifier.fillMaxWidth()
-                  .padding(top = 16.dp)
-                  .heightIn(min = 48.dp)
-                  .testTag(ProfileEditTestTags.SAVE),
-          shape = CircleShape,
-      ) {
-        if (uiState.isSaving) {
-          CircularProgressIndicator(
-              Modifier.size(16.dp).testTag(ProfileEditTestTags.SAVING),
-              strokeWidth = 2.dp,
-          )
-          Spacer(Modifier.width(8.dp))
+    val feedback =
+        when {
+          state.saved && state.pendingEmail != null ->
+              stringResource(R.string.profile_edit_verification, state.pendingEmail)
+          state.saved -> stringResource(R.string.profile_edit_saved)
+          state.error != null ->
+              stringResource(
+                  when (state.error) {
+                    is AuthException.Network -> R.string.profile_edit_network_error
+                    is AuthException.EmailAlreadyInUse,
+                    is AuthException.AccountConflict -> R.string.profile_edit_email_in_use
+                    is AuthException.RequiresRecentLogin -> R.string.profile_edit_recent_login
+                    is AuthException.SessionChanged -> R.string.profile_edit_session_changed
+                    else -> R.string.profile_edit_unknown_error
+                  }
+              )
+          else -> null
         }
-        Text(
-            stringResource(
-                if (uiState.isSaving) R.string.profile_edit_saving else R.string.profile_edit_save
-            ),
-            style = MaterialTheme.typography.labelSmall,
-        )
-      }
-      TextButton(
-          onClick = onCancel,
-          enabled = !uiState.isSaving,
-          modifier =
-              Modifier.align(Alignment.CenterHorizontally).testTag(ProfileEditTestTags.CANCEL),
-      ) {
-        Text(
-            stringResource(R.string.profile_edit_cancel),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-      }
+    feedback?.let {
+      Text(
+          it,
+          Modifier.padding(top = 12.dp).testTag(ProfileEditTestTags.FEEDBACK).semantics {
+            liveRegion = LiveRegionMode.Polite
+          },
+          color =
+              if (state.error != null) MaterialTheme.colorScheme.error
+              else MaterialTheme.colorScheme.onSurface,
+          style = MaterialTheme.typography.bodySmall,
+      )
     }
+    Button(
+        onClick = if (state.saved) onCancel else onSave,
+        enabled = state.saved || state.canSave,
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(top = 16.dp)
+                .heightIn(min = 48.dp)
+                .testTag(ProfileEditTestTags.SAVE),
+        shape = CircleShape,
+    ) {
+      if (state.isSaving) {
+        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.width(8.dp))
+      }
+      Text(
+          stringResource(
+              when {
+                state.saved -> R.string.profile_edit_done
+                state.isSaving -> R.string.profile_edit_saving
+                else -> R.string.profile_edit_save
+              }
+          )
+      )
+    }
+    if (!state.saved)
+        TextButton(
+            onClick = onCancel,
+            enabled = !state.isSaving,
+            modifier =
+                Modifier.align(Alignment.CenterHorizontally).testTag(ProfileEditTestTags.CANCEL),
+        ) {
+          Text(stringResource(R.string.profile_edit_cancel))
+        }
   }
 }
 
 @Composable
-private fun EditProfileField(
+private fun ProfileEditField(
     value: String,
     onChange: (String) -> Unit,
-    @StringRes label: Int,
-    @StringRes placeholder: Int,
+    label: Int,
+    hint: Int,
     tag: String,
-    errorTag: String,
-    errorMessage: String?,
     enabled: Boolean,
+    errorResource: Int?,
     email: Boolean,
     onSubmit: () -> Unit,
 ) {
   val colors = MaterialTheme.colorScheme
   val labelText = stringResource(label)
+  val errorText = errorResource?.let { stringResource(it) }
   val focus = LocalFocusManager.current
-  Column(
-      Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-      verticalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
+  Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
     Text(
         labelText,
-        color =
-            if (errorMessage != null) MaterialTheme.colorScheme.error else colors.onSurfaceVariant,
+        color = if (errorText == null) colors.onSurfaceVariant else colors.error,
         style = MaterialTheme.typography.bodySmall,
     )
     BasicTextField(
-        value = value,
-        onValueChange = onChange,
+        value,
+        onChange,
         enabled = enabled,
         singleLine = true,
         modifier =
-            Modifier.fillMaxWidth().testTag(tag).semantics {
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(tag).semantics {
               contentDescription = labelText
-              errorMessage?.let { error(it) }
+              errorText?.let { error(it) }
             },
         textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface),
         cursorBrush = SolidColor(colors.primary),
@@ -273,73 +214,25 @@ private fun EditProfileField(
             ),
         keyboardActions =
             KeyboardActions(
+                onDone = { if (enabled) onSubmit() },
                 onNext = { focus.moveFocus(FocusDirection.Down) },
-                onDone = {
-                  if (enabled) {
-                    focus.clearFocus()
-                    onSubmit()
-                  }
-                },
             ),
         decorationBox = { inner ->
           Box(
-              Modifier.fillMaxWidth()
-                  .heightIn(min = 48.dp)
-                  .background(MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape)
+              Modifier.background(colors.surfaceContainerHigh, CircleShape)
                   .border(
-                      if (errorMessage != null) 1.5.dp else 1.dp,
-                      if (errorMessage != null) MaterialTheme.colorScheme.error
-                      else colors.outlineVariant,
+                      if (errorText == null) 1.dp else 1.5.dp,
+                      if (errorText == null) colors.outlineVariant else colors.error,
                       CircleShape,
                   )
                   .padding(horizontal = 16.dp, vertical = 12.dp),
               contentAlignment = Alignment.CenterStart,
           ) {
-            if (value.isEmpty()) {
-              Text(
-                  stringResource(placeholder),
-                  color = colors.onSurfaceVariant,
-                  style = MaterialTheme.typography.bodyMedium,
-              )
-            }
+            if (value.isEmpty()) Text(stringResource(hint), color = colors.onSurfaceVariant)
             inner()
           }
         },
     )
-    errorMessage?.let { message ->
-      Text(
-          message,
-          modifier =
-              Modifier.padding(start = 16.dp, top = 2.dp).testTag(errorTag).semantics {
-                liveRegion = LiveRegionMode.Polite
-              },
-          color = MaterialTheme.colorScheme.error,
-          style = MaterialTheme.typography.bodySmall,
-      )
-    }
-  }
-}
-
-@StringRes
-private fun ProfileSaveError.messageResource(): Int =
-    when (this) {
-      ProfileSaveError.NETWORK -> R.string.profile_edit_network_error
-      ProfileSaveError.EMAIL_IN_USE -> R.string.profile_edit_email_in_use
-      ProfileSaveError.RECENT_LOGIN_REQUIRED -> R.string.profile_edit_recent_login
-      ProfileSaveError.SESSION_CHANGED -> R.string.profile_edit_session_changed
-      ProfileSaveError.UNKNOWN -> R.string.profile_edit_unknown_error
-    }
-
-@Preview(name = "Edit Profile", widthDp = 412, heightDp = 830)
-@Composable
-private fun EditProfilePreview() {
-  SampleAppTheme {
-    EditProfileScreen(
-        uiState = ProfileEditUiState(fullName = "Alex Morgan", email = "alex@example.com"),
-        onFullNameChange = {},
-        onEmailChange = {},
-        onSave = {},
-        onCancel = {},
-    )
+    errorText?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodySmall) }
   }
 }

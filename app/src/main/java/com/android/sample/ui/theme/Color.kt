@@ -25,3 +25,5 @@ val SurfaceContainerLow = Color(0xFF1D2417)
 val SurfaceContainerHigh = Color(0xFF2F3A25)
 val ErrorContainer = Color(0xFF93000A)
 val OnErrorContainer = Color(0xFFFFDAD6)
+
+val SurfaceContainerLowest = Color(0xFF10140D)

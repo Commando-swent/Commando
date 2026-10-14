@@ -1,11 +1,11 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex.
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -15,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
@@ -32,6 +33,7 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
@@ -153,7 +155,9 @@ class CommandoAppTest {
       FakeTripRepository(uid, now = { tripTime }, initialTrips = listOf(firstTrip, secondTrip))
 
   private fun assertTripDetails(trip: Trip) {
-    assertTripScaffoldHidden()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.BOTTOM_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.BACK_BUTTON).assertIsDisplayed()
     compose.onNodeWithText("Back").assertIsDisplayed()
     compose.onNodeWithText(trip.store.name).assertIsDisplayed()
     val expectedTime =
@@ -188,7 +192,7 @@ class CommandoAppTest {
     compose.onNodeWithText("Back").assertDoesNotExist()
     compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
     compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
-    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertIsDisplayed()
     assertScreen(AppTestTags.BOTTOM_BAR)
   }
 
@@ -276,7 +280,7 @@ class CommandoAppTest {
     click(HomeTestTags.TRIP_ACTION)
     compose.onNodeWithText(firstTrip.store.name).performClick()
     compose.onNodeWithText("Loading trip details").assertIsDisplayed()
-    compose.onNodeWithText("Back").performClick()
+    compose.onNodeWithTag(AppTestTags.BACK_BUTTON).performClick()
     assertAvailableTripsRestored()
     compose.onNodeWithText(secondTrip.store.name).performClick()
     compose.onNodeWithText("Something went wrong while loading this trip.").assertIsDisplayed()
@@ -401,9 +405,9 @@ class CommandoAppTest {
     compose.onNodeWithText("Injected store").assertIsDisplayed()
     compose.onNodeWithText("Known handoff \u00b7 Handoff point").assertIsDisplayed()
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
-    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
-    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertDoesNotExist()
-    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertIsDisplayed()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsNotSelected()
     assertScreen(AppTestTags.BOTTOM_BAR)
     compose.runOnIdle { assertEquals(1, listLoads) }
     compose.onNodeWithText("Injected store").performClick()
@@ -486,9 +490,53 @@ class CommandoAppTest {
   }
 
   @Test
+  fun tripsBottomBarOpensAvailableTripsAndRepeatedClicksKeepOneDestination() {
+    show(FakeAuthRepository(alice), twoTrips(alice.uid))
+    click(AppTestTags.TRIPS_BUTTON)
+    assertAvailableTripsRestored()
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsNotEnabled()
+    click(AppTestTags.COMMANDO_MODE)
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    assertAvailableTripsRestored()
+    click(AppTestTags.TRIPS_BUTTON)
+    pressBack()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    click(AppTestTags.PROFILE_BUTTON)
+    click(AppTestTags.TRIPS_BUTTON)
+    assertAvailableTripsRestored()
+    click(AppTestTags.HOME_BUTTON)
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+  }
+
+  @Test
+  fun tripsIsDisabledInCommandoModeFromHomeAndProfileAndEnabledAgainForRequester() {
+    show(FakeAuthRepository(alice), twoTrips(alice.uid))
+    click(AppTestTags.COMMANDO_MODE)
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsNotEnabled().performClick()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    click(AppTestTags.PROFILE_BUTTON)
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsNotEnabled().performClick()
+    assertScreen(NavigationTestTags.PROFILE_SCREEN)
+    click(AppTestTags.HOME_BUTTON)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    click(AppTestTags.REQUESTER_MODE)
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsEnabled().performClick()
+    assertAvailableTripsRestored()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+  }
+
+  @Test
   fun bottomBarTracksDestinationAndHomeReturnsWithoutDuplicatingTheStack() {
     show(FakeAuthRepository(alice))
     compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).assertIsNotEnabled().performClick()
+    compose.onNodeWithText("Orders").assertIsDisplayed()
+    compose.onNodeWithText("Map").assertDoesNotExist()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
     click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.PROFILE_BUTTON)
     assertProfile("Alice Smith", "alice@example.com", "AS")
@@ -701,6 +749,52 @@ class CommandoAppTest {
     compose.onNodeWithText("AS").assertDoesNotExist()
   }
 
+  @Test
+  fun profileEditingValidatesCancelsAndShowsConfirmedValuesAfterSave() {
+    val repository = FakeAuthRepository(alice)
+    show(repository)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).assertTextEquals(alice.displayName!!)
+    compose.onNodeWithTag(ProfileEditTestTags.EMAIL).assertTextEquals(alice.email!!)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).performTextReplacement("")
+    compose.onNodeWithText("Please enter your full name.").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileEditTestTags.EMAIL).performTextReplacement("bad")
+    compose.onNodeWithText("Please enter a valid email address.").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileEditTestTags.SAVE).assertIsNotEnabled()
+    click(ProfileEditTestTags.CANCEL)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).performTextReplacement("Alice Brown")
+    click(ProfileEditTestTags.SAVE)
+    compose.onNodeWithText("Your profile has been updated.").assertIsDisplayed()
+    click(ProfileEditTestTags.SAVE)
+    assertProfile("Alice Brown", "alice@example.com", "AB")
+  }
+
+  @Test
+  fun failedProfileSaveCanRetryAndPendingEmailIsNotShownAsConfirmed() {
+    val repository = FakeAuthRepository(alice)
+    repository.updateProfileResult = Result.failure(AuthException.RequiresRecentLogin())
+    show(repository)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.EMAIL).performTextReplacement("new@example.com")
+    click(ProfileEditTestTags.SAVE)
+    compose
+        .onNodeWithText("Please sign out and sign in again before saving your profile.")
+        .assertIsDisplayed()
+    compose.runOnIdle { repository.updateProfileResult = null }
+    click(ProfileEditTestTags.SAVE)
+    compose
+        .onNodeWithTag(ProfileEditTestTags.FEEDBACK)
+        .assertTextEquals(
+            "A verification link was sent to new@example.com. Your current email stays unchanged until you verify the new address."
+        )
+    pressBack()
+    assertProfile("Alice Smith", "alice@example.com", "AS")
+  }
+
   @After
   fun resetProvider() {
     AuthRepositoryProvider.reset()
@@ -744,6 +838,7 @@ class CommandoAppTest {
     repository.signUpWithEmailResult = Result.success(alice)
     show(repository)
     click("auth_tab_signup")
+    compose.onNodeWithTag("auth_full_name").performTextInput("Alice Example")
     fillEmailForm()
     compose.onNodeWithTag("auth_confirmation").performTextInput("secret123")
     click("auth_submit")

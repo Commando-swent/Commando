@@ -1,14 +1,17 @@
 package com.android.sample.ui.orders
 
 // AI assistance: Claude (Anthropic).
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderError
@@ -18,6 +21,7 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
 import java.time.Instant
 import java.time.ZoneId
@@ -113,7 +117,7 @@ class MyOrdersScreenTest {
       onBrowseTrips: () -> Unit = {},
   ) {
     compose.setContent {
-      MaterialTheme { MyOrdersScreen(state, onRetry, onOrderClick, onBrowseTrips) }
+      SampleAppTheme { MyOrdersScreen(state, onRetry, onOrderClick, onBrowseTrips) }
     }
   }
 
@@ -223,6 +227,61 @@ class MyOrdersScreenTest {
     compose.onAllNodesWithTag(MyOrdersTestTags.BROWSE_TRIPS).assertCountEquals(0)
   }
 
+  private fun showInShortViewportWithLargeText(
+      state: MyOrdersUiState,
+      height: Int,
+      onRetry: () -> Unit,
+      onBrowseTrips: () -> Unit,
+  ) {
+    compose.setContent {
+      CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 2f)) {
+        SampleAppTheme { MyOrdersScreen(state, onRetry, {}, onBrowseTrips) }
+      }
+    }
+    compose.onRoot().assertWidthIsEqualTo(640.dp).assertHeightIsEqualTo(height.dp)
+  }
+
+  // The error card has no help text, so Retry still fits at h320dp; h240dp makes it overflow.
+  @Test
+  @Config(qualifiers = "en-rUS-w640dp-h240dp-land-mdpi")
+  fun errorRetryIsReachableInShortViewportWithLargeText() {
+    var retries = 0
+    var browses = 0
+    showInShortViewportWithLargeText(
+        MyOrdersUiState.Error(OrderError.Unknown),
+        height = 240,
+        onRetry = { retries++ },
+        onBrowseTrips = { browses++ },
+    )
+    val retry = compose.onNodeWithTag(MyOrdersTestTags.RETRY)
+    retry.assertIsNotDisplayed()
+    retry.performScrollTo().assertIsDisplayed().assertHasClickAction().performClick()
+    compose.runOnIdle {
+      assertEquals(1, retries)
+      assertEquals(0, browses)
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
+  fun emptyBrowseTripsIsReachableInShortViewportWithLargeText() {
+    var retries = 0
+    var browses = 0
+    showInShortViewportWithLargeText(
+        MyOrdersUiState.Empty,
+        height = 320,
+        onRetry = { retries++ },
+        onBrowseTrips = { browses++ },
+    )
+    val browse = compose.onNodeWithTag(MyOrdersTestTags.BROWSE_TRIPS)
+    browse.assertIsNotDisplayed()
+    browse.performScrollTo().assertIsDisplayed().assertHasClickAction().performClick()
+    compose.runOnIdle {
+      assertEquals(1, browses)
+      assertEquals(0, retries)
+    }
+  }
+
   @Test
   fun connectedScreenShowsRequesterOrdersAndSwitchesOnRequesterChange() {
     var session = "alice"
@@ -234,7 +293,7 @@ class MyOrdersScreenTest {
         )
     var requester by mutableStateOf("alice")
     compose.setContent {
-      MaterialTheme { MyOrdersScreen(viewModel, requester, onOrderClick = {}, onBrowseTrips = {}) }
+      SampleAppTheme { MyOrdersScreen(viewModel, requester, onOrderClick = {}, onBrowseTrips = {}) }
     }
     compose.waitForIdle()
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()
@@ -272,7 +331,7 @@ class MyOrdersScreenTest {
     compose.setContent {
       val current = requester
       SideEffect { composedFor += current }
-      MaterialTheme { MyOrdersScreen(viewModel, current, onOrderClick = {}, onBrowseTrips = {}) }
+      SampleAppTheme { MyOrdersScreen(viewModel, current, onOrderClick = {}, onBrowseTrips = {}) }
     }
     compose.waitForIdle()
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()

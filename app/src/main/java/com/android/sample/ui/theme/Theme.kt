@@ -31,6 +31,7 @@ private val AppColorScheme =
         surfaceContainer = SurfaceContainer,
         error = Error,
         surfaceContainerLow = SurfaceContainerLow,
+        surfaceContainerLowest = SurfaceContainerLowest,
         surfaceContainerHigh = SurfaceContainerHigh,
         errorContainer = ErrorContainer,
         onErrorContainer = OnErrorContainer,

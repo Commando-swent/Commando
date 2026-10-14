@@ -10,8 +10,9 @@ import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Order
 import com.android.sample.model.Trip
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -89,9 +90,9 @@ class MyOrdersViewModel(
             }
           }
         }
-      } catch (cancelled: CancellationException) {
-        throw cancelled
       } catch (_: Exception) {
+        // Rethrows if this load was cancelled; a stray cancellation (e.g. timeout) is an error.
+        currentCoroutineContext().ensureActive()
         MyOrdersUiState.Error(OrderError.Unknown)
       }
 
@@ -99,9 +100,8 @@ class MyOrdersViewModel(
   private suspend fun findTrip(tripId: String): Trip? =
       try {
         (tripRepository.getTripById(tripId) as? TripResult.Success)?.data
-      } catch (cancelled: CancellationException) {
-        throw cancelled
       } catch (_: Exception) {
+        currentCoroutineContext().ensureActive()
         null
       }
 }

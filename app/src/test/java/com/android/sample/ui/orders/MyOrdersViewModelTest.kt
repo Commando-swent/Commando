@@ -253,6 +253,37 @@ class MyOrdersViewModelTest {
   }
 
   @Test
+  fun strayOrderCancellationBecomesUnknownAndRetryRecovers() = runTest {
+    val repository = GatedOrderRepository()
+    val viewModel = MyOrdersViewModel(repository, trips, "alice")
+    runCurrent()
+    // Thrown by the repository (e.g. an internal timeout) while the load job is still active.
+    repository.gates[0].completeExceptionally(CancellationException("timeout"))
+    advanceUntilIdle()
+    assertEquals(MyOrdersUiState.Error(OrderError.Unknown), viewModel.uiState.value)
+
+    viewModel.retry()
+    runCurrent()
+    repository.gates[1].complete(OrderResult.Success(listOf(aliceNew, aliceOld)))
+    advanceUntilIdle()
+    assertEquals(listOf("alice-new", "alice-old"), rowIds(viewModel.uiState.value))
+  }
+
+  @Test
+  fun strayTripCancellationKeepsOrderWithNullTrip() = runTest {
+    val cancellingTrips =
+        object : TripRepository by trips {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> =
+              throw CancellationException("timeout")
+        }
+    val viewModel = MyOrdersViewModel(orders, cancellingTrips, "alice")
+    advanceUntilIdle()
+    val rows = (viewModel.uiState.value as MyOrdersUiState.Content).rows
+    assertEquals(listOf(aliceNew, aliceOld), rows.map { it.order })
+    rows.forEach { assertNull(it.trip) }
+  }
+
+  @Test
   fun unknownTripKeepsOrderWithNullTrip() = runTest {
     val viewModel = MyOrdersViewModel(orders, FakeTripRepository("owner", now = { now }), "alice")
     advanceUntilIdle()

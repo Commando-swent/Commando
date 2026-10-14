@@ -7,8 +7,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -256,8 +258,9 @@ private fun StateCard(
       colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
       border = BorderStroke(1.dp, colors.outlineVariant),
   ) {
+    // Scrolls so the action stays reachable on short screens or with large fonts.
     Column(
-        Modifier.fillMaxWidth().padding(24.dp),
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {

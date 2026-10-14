@@ -27,13 +27,19 @@ class ReviewOrderTest {
   private val time = Instant.EPOCH
   private val trip = Trip("trip-1", "owner", store, time, spot, TripStatus.PUBLISHED, time, time)
 
-  private fun show(repository: OrderRepository = fake) {
+  private fun show(repository: OrderRepository = fake, displayedTrip: Trip = trip) {
     shared.addItem(OrderItem("milk", "Milk", 220, 2))
     shared.updateCommission(150)
     vm = ReviewOrderViewModel(repository, shared)
     compose.setContent {
       SampleAppTheme {
-        ReviewOrderRoute(vm, trip, { events.add("back") }, { events.add("catalogue") }, events::add)
+        ReviewOrderRoute(
+            vm,
+            displayedTrip,
+            { events.add("back") },
+            { events.add("catalogue") },
+            events::add,
+        )
       }
     }
   }
@@ -54,6 +60,9 @@ class ReviewOrderTest {
     compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsEnabled()
     compose.runOnIdle { shared.updateQuantity("milk", Int.MAX_VALUE) }
     compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsNotEnabled()
+    compose
+        .onNodeWithText("The order total is invalid or too large. Reduce the quantities.")
+        .assertExists()
   }
 
   @Test
@@ -89,6 +98,7 @@ class ReviewOrderTest {
           }
         }
     show(repo)
+    val submitted = shared.draft.value
     compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick().assertIsNotEnabled()
     compose.onNodeWithTag(ReviewOrderTags.COMMISSION).assertIsNotEnabled()
     compose.runOnIdle {
@@ -101,10 +111,42 @@ class ReviewOrderTest {
       shared.addItem(OrderItem("bread", "Bread", 340, 1))
       gate.complete(Unit)
     }
+    compose.waitUntil { vm.uiState.value.order != null && !vm.uiState.value.saving }
+    compose.onNodeWithText("Your order is sent").assertExists()
+    compose.onNodeWithTag(ReviewOrderTags.ERROR).assertDoesNotExist()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsEnabled()
     compose.runOnIdle {
+      val saved = checkNotNull(vm.uiState.value.order)
+      assertEquals(submitted.tripId, saved.tripId)
+      assertEquals(submitted.items, saved.items)
+      assertEquals(submitted.commissionCents, saved.commissionCents)
       assertEquals("trip-2", shared.draft.value.tripId)
-      assertEquals("bread", shared.draft.value.items.single().productId)
+      assertEquals(listOf(OrderItem("bread", "Bread", 340, 1)), shared.draft.value.items)
+      assertEquals(0, shared.draft.value.commissionCents)
     }
+  }
+
+  @Test
+  fun switchedEmptyTripBlocksCatalogueAndSubmission() {
+    show()
+    compose.runOnIdle { shared.startTrip("trip-2") }
+    compose.onNodeWithTag(ReviewOrderTags.ERROR).assertExists()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      vm.submit()
+      assertTrue(events.isEmpty())
+      assertNull(vm.uiState.value.order)
+    }
+  }
+
+  @Test
+  fun mismatchedHostTripBlocksSubmissionAndEdits() {
+    show(displayedTrip = trip.copy(id = "wrong-trip"))
+    compose.onNodeWithTag(ReviewOrderTags.ERROR).assertExists()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsNotEnabled().performClick()
+    compose.onNodeWithTag(ReviewOrderTags.COMMISSION).assertIsNotEnabled()
+    compose.onNodeWithTag("increase_milk").assertIsNotEnabled()
+    compose.runOnIdle { assertNull(vm.uiState.value.order) }
   }
 
   @Test

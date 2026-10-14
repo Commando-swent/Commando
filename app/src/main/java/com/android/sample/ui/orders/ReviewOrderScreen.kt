@@ -44,7 +44,8 @@ fun ReviewOrderRoute(
     onViewOrders: (String) -> Unit,
     tripSubtitle: String? = null,
 ) {
-  val state by viewModel.uiState.collectAsState()
+  val observed by viewModel.uiState.collectAsState()
+  val state = observed.copy(tripMatches = observed.tripMatches && trip.id == observed.draft.tripId)
   val c = MaterialTheme.colorScheme
   val success = state.order != null
   val empty = state.draft.items.isEmpty()
@@ -76,7 +77,7 @@ fun ReviewOrderRoute(
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      if (state.error != null || !state.tripMatches) {
+      if (!success && (state.error != null || !state.tripMatches)) {
         val error =
             when {
               !state.tripMatches -> R.string.order_invalid_error
@@ -122,6 +123,8 @@ fun ReviewOrderRoute(
           TotalRow(R.string.order_fee, state.commissionCents)
           TotalRow(R.string.order_total, state.totalCents, true)
         }
+        if (!success && state.commissionCents != null && state.totalCents == null)
+            Label(R.string.order_total_invalid, 11, color = c.error)
         Label(R.string.order_estimate, 11, color = c.onSurfaceVariant)
       }
     }
@@ -140,7 +143,7 @@ fun ReviewOrderRoute(
             state.error != null -> R.string.order_retry
             else -> R.string.order_submit
           }
-      val enabled = success || (!state.saving && (empty || state.canSubmit))
+      val enabled = success || (state.editable && (empty || state.canSubmit))
       Button(
           onClick = {
             when {

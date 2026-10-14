@@ -2,9 +2,11 @@ package com.android.sample.ui.orders
 
 // AI assistance: Claude (Anthropic).
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.data.repository.FakeOrderRepository
@@ -256,5 +258,48 @@ class MyOrdersScreenTest {
     compose.onNodeWithText("4 items · CHF 10.00").assertIsDisplayed()
     compose.onNodeWithText("Migros EPFL").assertIsDisplayed()
     compose.onNodeWithText("Handoff: Rolex Center").assertIsDisplayed()
+  }
+
+  @Test
+  fun switchingRequesterNeverDrawsPreviousRequesterRows() {
+    var session = "alice"
+    val viewModel =
+        MyOrdersViewModel(
+            FakeOrderRepository({ session }, listOf(aliceMigros, aliceCoop, bobMigros)),
+            FakeTripRepository("commando", initialTrips = listOf(migrosTrip, coopTrip)),
+            "alice",
+        )
+    var requester by mutableStateOf("alice")
+    val composedFor = mutableListOf<String>()
+    compose.setContent {
+      val current = requester
+      SideEffect { composedFor += current }
+      MaterialTheme { MyOrdersScreen(viewModel, current, onOrderSelected = {}, onBrowseTrips = {}) }
+    }
+    compose.waitForIdle()
+    compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()
+
+    compose.mainClock.autoAdvance = false
+    compose.runOnUiThread {
+      session = "bob"
+      requester = "bob"
+    }
+    // First frame for the new requester, before the LaunchedEffect's setRequester has published.
+    Snapshot.sendApplyNotifications()
+    compose.mainClock.advanceTimeByFrame()
+    // Proves this frame already composed with the new requester.
+    assertEquals("bob", composedFor.last())
+    compose.onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertCountEquals(0)
+    compose.onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a2").assertCountEquals(0)
+    compose.onAllNodesWithText("Coop Ecublens").assertCountEquals(0)
+    compose.onNodeWithTag(MyOrdersTestTags.LOADING).assertIsDisplayed()
+
+    compose.mainClock.autoAdvance = true
+    compose.waitForIdle()
+    compose.onAllNodesWithTag(MyOrdersTestTags.LOADING).assertCountEquals(0)
+    compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-b1").assertIsDisplayed()
+    compose.onNodeWithText("4 items · CHF 10.00").assertIsDisplayed()
+    compose.onNodeWithText("Handoff: Rolex Center").assertIsDisplayed()
+    compose.onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertCountEquals(0)
   }
 }

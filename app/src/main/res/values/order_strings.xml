@@ -1,0 +1,26 @@
+<resources>
+    <string name="order_review">Review order</string>
+    <string name="order_confirmation">Order confirmation</string>
+    <string name="order_items">YOUR ITEMS</string>
+    <string name="order_handoff">Handoff · %1$s</string>
+    <string name="order_each">%1$s each</string>
+    <string name="order_commission">Commission for the commando</string>
+    <string name="order_commission_invalid">Enter a valid commission of CHF 0.00 or more.</string>
+    <string name="order_products_total">Estimated products</string>
+    <string name="order_fee">Commission</string>
+    <string name="order_total">Estimated total</string>
+    <string name="order_estimate">Product prices are estimates; the final amount may vary.</string>
+    <string name="order_submit">Place order</string>
+    <string name="order_saving">Saving order…</string>
+    <string name="order_retry">Retry saving</string>
+    <string name="order_empty">Your order is empty</string>
+    <string name="order_add">Add products</string>
+    <string name="order_sent">Your order is sent</string>
+    <string name="order_view">View my orders</string>
+    <string name="order_submit_help">Demo only · orders stay in memory</string>
+    <string name="order_failure_help">Your items are kept. Correct your order or retry.</string>
+    <string name="order_increase">Increase %1$s quantity</string>
+    <string name="order_decrease">Decrease %1$s quantity; remove at one</string>
+    <string name="order_session_error">Sign in again before saving your order.</string>
+    <string name="order_invalid_error">Check your trip, items, quantities and commission.</string>
+</resources>

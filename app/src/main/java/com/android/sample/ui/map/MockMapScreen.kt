@@ -71,13 +71,13 @@ fun MockMapScreen(
         }
         if (state.status == MockMapStatus.Content)
             state.markerGroups.forEach { group ->
-              val trip = group.first()
               val selectedInGroup = group.firstOrNull { it.id == state.selectedTrip?.id }
+              val trip = selectedInGroup ?: group.first()
               val markerWidth = if (group.size > 1 && selectedInGroup == null) 124.dp else 96.dp
               MapMarker(
                   trip,
                   selected = selectedInGroup != null,
-                  time = selectedInGroup?.time ?: trip.time,
+                  time = trip.time,
                   groupSize = group.size,
                   onClick = { onSelectTrip(trip.id) },
                   modifier =

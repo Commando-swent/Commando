@@ -68,6 +68,11 @@ class MockMapScreenTest {
     text("2 TRIPS AT THIS HANDOFF POINT").assertIsDisplayed()
     capture("shared")
     tag(Tags.PAGE_PREFIX + "sample-shared").performClick().assertIsSelected()
+    compose
+        .onNodeWithContentDescription("Sample trip: Migros EPFL at 18:15")
+        .assertIsSelected()
+        .performClick()
+    tag(Tags.MARKER_PREFIX + "sample-shared").assertIsSelected()
     text("Sample departure · 18:15").assertIsDisplayed()
     tag(Tags.DETAILS).performClick()
     assertEquals(listOf("sample-migros", "sample-denner", "sample-shared"), calls)

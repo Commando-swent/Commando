@@ -109,11 +109,11 @@ class MyOrdersScreenTest {
   private fun show(
       state: MyOrdersUiState,
       onRetry: () -> Unit = {},
-      onOrderSelected: (String) -> Unit = {},
+      onOrderClick: (String) -> Unit = {},
       onBrowseTrips: () -> Unit = {},
   ) {
     compose.setContent {
-      MaterialTheme { MyOrdersScreen(state, onRetry, onOrderSelected, onBrowseTrips) }
+      MaterialTheme { MyOrdersScreen(state, onRetry, onOrderClick, onBrowseTrips) }
     }
   }
 
@@ -178,7 +178,7 @@ class MyOrdersScreenTest {
             listOf(MyOrderRow(aliceMigros, migrosTrip), MyOrderRow(aliceCoop, coopTrip))
         ),
         onRetry = { retries++ },
-        onOrderSelected = { selected += it },
+        onOrderClick = { selected += it },
         onBrowseTrips = { browses++ },
     )
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a2").performClick()
@@ -234,9 +234,7 @@ class MyOrdersScreenTest {
         )
     var requester by mutableStateOf("alice")
     compose.setContent {
-      MaterialTheme {
-        MyOrdersScreen(viewModel, requester, onOrderSelected = {}, onBrowseTrips = {})
-      }
+      MaterialTheme { MyOrdersScreen(viewModel, requester, onOrderClick = {}, onBrowseTrips = {}) }
     }
     compose.waitForIdle()
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()
@@ -274,7 +272,7 @@ class MyOrdersScreenTest {
     compose.setContent {
       val current = requester
       SideEffect { composedFor += current }
-      MaterialTheme { MyOrdersScreen(viewModel, current, onOrderSelected = {}, onBrowseTrips = {}) }
+      MaterialTheme { MyOrdersScreen(viewModel, current, onOrderClick = {}, onBrowseTrips = {}) }
     }
     compose.waitForIdle()
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()

@@ -53,7 +53,7 @@ object MyOrdersTestTags {
 fun MyOrdersScreen(
     viewModel: MyOrdersViewModel,
     requesterId: String,
-    onOrderSelected: (String) -> Unit,
+    onOrderClick: (String) -> Unit,
     onBrowseTrips: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -63,7 +63,7 @@ fun MyOrdersScreen(
   MyOrdersScreen(
       state.forRequester(requesterId),
       viewModel::retry,
-      onOrderSelected,
+      onOrderClick,
       onBrowseTrips,
       modifier,
   )
@@ -73,7 +73,7 @@ fun MyOrdersScreen(
 fun MyOrdersScreen(
     state: MyOrdersUiState,
     onRetry: () -> Unit,
-    onOrderSelected: (String) -> Unit,
+    onOrderClick: (String) -> Unit,
     onBrowseTrips: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -110,7 +110,7 @@ fun MyOrdersScreen(
               contentPadding = PaddingValues(bottom = 20.dp),
           ) {
             items(state.rows, key = { it.order.id }) { row ->
-              OrderCard(row) { onOrderSelected(row.order.id) }
+              OrderCard(row) { onOrderClick(row.order.id) }
             }
           }
       MyOrdersUiState.Empty ->
@@ -335,5 +335,5 @@ private fun MyOrdersScreenPreview() {
         requester,
     )
   }
-  SampleAppTheme { MyOrdersScreen(viewModel, requester, onOrderSelected = {}, onBrowseTrips = {}) }
+  SampleAppTheme { MyOrdersScreen(viewModel, requester, onOrderClick = {}, onBrowseTrips = {}) }
 }

@@ -39,7 +39,7 @@ internal constructor(private val dataSource: ProductFirestoreDataSource) : Produ
 
 internal data class ProductFirestoreDocument(val data: Map<String, Any?>)
 
-internal interface ProductFirestoreDataSource {
+internal fun interface ProductFirestoreDataSource {
   suspend fun getProducts(storeId: String, limit: Int): List<ProductFirestoreDocument>
 }
 

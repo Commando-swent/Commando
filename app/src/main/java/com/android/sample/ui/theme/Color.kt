@@ -27,3 +27,6 @@ val ErrorContainer = Color(0xFF93000A)
 val OnErrorContainer = Color(0xFFFFDAD6)
 
 val SurfaceContainerLowest = Color(0xFF10140D)
+
+// Product image placeholder tint from the catalogue Figma components.
+val IllustrationCream = Color(0xFFEDE6D0)

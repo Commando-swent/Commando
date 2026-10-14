@@ -1,33 +1,22 @@
 package com.android.sample.emulator.firestore.security
 
 import com.android.sample.data.repository.TripRepositoryFirestore
-import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.android.sample.data.repository.successData
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
-import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.FirebaseFirestoreSettings
-import com.google.firebase.firestore.MemoryCacheSettings
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
-import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 
 @RunWith(RobolectricTestRunner::class)
 class TripFirestoreSecurityRulesEmulatorTest {
@@ -254,68 +243,6 @@ class TripFirestoreSecurityRulesEmulatorTest {
     }
   }
 
-  private suspend fun withClients(
-      vararg configurations: Pair<String, Boolean>,
-      test: suspend (List<EmulatorClient>) -> Unit,
-  ) {
-    val (firestoreEndpoint, authEndpoint) = requireEmulatorEndpoints()
-    val clients = mutableListOf<EmulatorClient>()
-    try {
-      configurations.mapTo(clients) { (name, authenticate) ->
-        createClient(name, firestoreEndpoint, authEndpoint, authenticate)
-      }
-      test(clients)
-    } finally {
-      clients.asReversed().forEach { it.close() }
-    }
-  }
-
-  private fun requireEmulatorEndpoints(): Pair<Pair<String, Int>, Pair<String, Int>> {
-    val firestoreAddress = System.getenv(FIRESTORE_EMULATOR_HOST_ENVIRONMENT_VARIABLE)
-    val authAddress = System.getenv(FIREBASE_AUTH_EMULATOR_HOST_ENVIRONMENT_VARIABLE)
-    assumeTrue(
-        "Start both the Firestore and Auth emulators to run production rules tests",
-        !firestoreAddress.isNullOrBlank() && !authAddress.isNullOrBlank(),
-    )
-    return checkNotNull(firestoreAddress).parseEmulatorHostAndPort() to
-        checkNotNull(authAddress).parseEmulatorHostAndPort()
-  }
-
-  private suspend fun createClient(
-      name: String,
-      firestoreEndpoint: Pair<String, Int>,
-      authEndpoint: Pair<String, Int>,
-      authenticate: Boolean = false,
-  ): EmulatorClient {
-    val app = createFirebaseApp(name)
-    val auth = FirebaseAuth.getInstance(app)
-    auth.useEmulator(authEndpoint.first, authEndpoint.second)
-    if (authenticate) {
-      auth.signInAnonymously().await()
-    }
-    val firestore = FirebaseFirestore.getInstance(app)
-    firestore.firestoreSettings =
-        FirebaseFirestoreSettings.Builder()
-            .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
-            .build()
-    firestore.useEmulator(firestoreEndpoint.first, firestoreEndpoint.second)
-    return EmulatorClient(app, auth, firestore)
-  }
-
-  private fun createFirebaseApp(name: String): FirebaseApp {
-    val options =
-        FirebaseOptions.Builder()
-            .setApplicationId("1:123456789:android:trip-rules-test")
-            .setApiKey("fake-api-key")
-            .setProjectId(PROJECT_ID)
-            .build()
-    return FirebaseApp.initializeApp(
-        RuntimeEnvironment.getApplication(),
-        options,
-        "trip-rules-$name-${UUID.randomUUID()}",
-    )
-  }
-
   private fun storedTrip(
       ownerId: String,
       status: String = "PUBLISHED",
@@ -346,39 +273,8 @@ class TripFirestoreSecurityRulesEmulatorTest {
       longitude: Double = 6.5665,
   ): Map<String, Any> = mapOf("name" to name, "latitude" to latitude, "longitude" to longitude)
 
-  private suspend fun assertPermissionDenied(
-      description: String = "operation",
-      operation: suspend () -> Unit,
-  ) {
-    try {
-      operation()
-      fail("Expected Firestore security rules to deny $description")
-    } catch (exception: FirebaseFirestoreException) {
-      assertEquals(
-          "Unexpected result for $description",
-          FirebaseFirestoreException.Code.PERMISSION_DENIED,
-          exception.code,
-      )
-    }
-  }
-
-  private data class EmulatorClient(
-      val app: FirebaseApp,
-      val auth: FirebaseAuth,
-      val firestore: FirebaseFirestore,
-  ) {
-    suspend fun close() {
-      auth.signOut()
-      firestore.terminate().await()
-      app.delete()
-    }
-  }
-
   private companion object {
     val NOW: Instant = Instant.parse("2026-10-04T12:00:00Z")
-    const val PROJECT_ID = "demo-commando"
     const val TRIPS_COLLECTION = "trips"
-    const val FIRESTORE_EMULATOR_HOST_ENVIRONMENT_VARIABLE = "FIRESTORE_EMULATOR_HOST"
-    const val FIREBASE_AUTH_EMULATOR_HOST_ENVIRONMENT_VARIABLE = "FIREBASE_AUTH_EMULATOR_HOST"
   }
 }

@@ -59,7 +59,14 @@ fun MyOrdersScreen(
 ) {
   LaunchedEffect(viewModel, requesterId) { viewModel.setRequester(requesterId) }
   val state by viewModel.uiState.collectAsState()
-  MyOrdersScreen(state, viewModel::retry, onOrderSelected, onBrowseTrips, modifier)
+  // The effect runs after this frame; never draw the previous requester's rows meanwhile.
+  MyOrdersScreen(
+      state.forRequester(requesterId),
+      viewModel::retry,
+      onOrderSelected,
+      onBrowseTrips,
+      modifier,
+  )
 }
 
 @Composable

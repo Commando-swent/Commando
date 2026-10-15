@@ -1,15 +1,20 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.android.sample.model.Location
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
+import com.android.sample.model.Trip
+import com.android.sample.model.TripStatus
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -260,6 +265,137 @@ class FakeOrderRepositoryTest {
     }
     assertTrue(repository.getMyOrders().data().isEmpty())
     assertEquals("order-demo-1", repository.createOrder(input).data().id)
+  }
+
+  private fun trips(ownerId: String = "commando") =
+      FakeTripRepository(
+          ownerId,
+          initialTrips =
+              listOf(
+                  Trip(
+                      tripId,
+                      ownerId,
+                      Location("Store", 46.5, 6.6),
+                      time,
+                      Location("Campus", 46.5, 6.6),
+                      TripStatus.PUBLISHED,
+                      time,
+                      time,
+                  )
+              ),
+      )
+
+  @Test
+  fun associatedTripOwnerCanReadDetailsButRequesterListStaysScoped() = runTest {
+    val repository = FakeOrderRepository({ userId }, listOf(order()), tripRepository = trips())
+    userId = "commando"
+    assertEquals(OrderResult.Success(order()), repository.getOrderById("order-demo-1"))
+    assertTrue(repository.getMyOrders().data().isEmpty())
+    userId = "unrelated"
+    assertEquals(
+        OrderResult.Error(OrderError.PermissionDenied),
+        repository.getOrderById("order-demo-1"),
+    )
+    userId = null
+    assertEquals(
+        OrderResult.Error(OrderError.NotAuthenticated),
+        repository.getOrderById("order-demo-1"),
+    )
+  }
+
+  @Test
+  fun requesterDoesNotDependOnTripAvailabilityAndLookupFailureNeverGrantsAccess() = runTest {
+    val trips = trips()
+    val repository = FakeOrderRepository({ userId }, listOf(order()), tripRepository = trips)
+    listOf(TripError.NotFound, TripError.NetworkError, TripError.PermissionDenied).forEach {
+      trips.forcedError = it
+      userId = "requester-demo"
+      assertEquals(OrderResult.Success(order()), repository.getOrderById("order-demo-1"))
+      userId = "commando"
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          repository.getOrderById("order-demo-1"),
+      )
+    }
+  }
+
+  @Test
+  fun ownerOfADifferentTripCannotReadThisOrder() = runTest {
+    val repository =
+        FakeOrderRepository(
+            { userId },
+            listOf(order().copy(tripId = "another-trip")),
+            tripRepository = trips(),
+        )
+    userId = "commando"
+    assertEquals(
+        OrderResult.Error(OrderError.PermissionDenied),
+        repository.getOrderById("order-demo-1"),
+    )
+  }
+
+  @Test
+  fun lookupReturningADifferentTripDoesNotGrantItsOwnerAccess() = runTest {
+    val source = trips()
+    val wrongTrip =
+        object : TripRepository by source {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> =
+              source.getTripById(this@FakeOrderRepositoryTest.tripId)
+        }
+    val repository =
+        FakeOrderRepository(
+            { userId },
+            listOf(order().copy(tripId = "another-trip")),
+            tripRepository = wrongTrip,
+        )
+    userId = "commando"
+    assertEquals(
+        OrderResult.Error(OrderError.PermissionDenied),
+        repository.getOrderById("order-demo-1"),
+    )
+  }
+
+  @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+  @Test
+  fun accountChangeDuringLookupDeniesTheOldSession() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    val source = trips()
+    val delayed =
+        object : TripRepository by source {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> {
+            gate.await()
+            return source.getTripById(tripId)
+          }
+        }
+    val repository = FakeOrderRepository({ userId }, listOf(order()), tripRepository = delayed)
+    userId = "commando"
+    val read = async { repository.getOrderById("order-demo-1") }
+    runCurrent()
+    userId = "unrelated"
+    gate.complete(Unit)
+    assertEquals(OrderResult.Error(OrderError.PermissionDenied), read.await())
+  }
+
+  @Test
+  fun lookupExceptionAndCancellationCannotExposeAnOrderOrKeepTheLock() = runTest {
+    var cancelled = false
+    val throwing =
+        object : TripRepository by trips() {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> {
+            if (cancelled) throw CancellationException("cancelled")
+            error("lookup failed")
+          }
+        }
+    val repository = FakeOrderRepository({ userId }, listOf(order()), tripRepository = throwing)
+    userId = "commando"
+    assertEquals(OrderResult.Error(OrderError.Unknown), repository.getOrderById("order-demo-1"))
+    cancelled = true
+    try {
+      repository.getOrderById("order-demo-1")
+      org.junit.Assert.fail("Cancellation must propagate")
+    } catch (_: CancellationException) {}
+    userId = "requester-demo"
+    assertEquals(OrderResult.Success(order()), repository.getOrderById("order-demo-1"))
   }
 
   private fun fake(initial: List<Order> = emptyList()) =

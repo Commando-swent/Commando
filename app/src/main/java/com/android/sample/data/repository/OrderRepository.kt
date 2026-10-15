@@ -11,6 +11,8 @@ interface OrderRepository {
   /** Current requester's orders, newest first; equal timestamps are ordered by ID. */
   suspend fun getMyOrders(): OrderResult<List<Order>>
 
-  /** Requester-only for this slice; no trip-owner access is inferred from an ID. */
+  /**
+   * Allows the requester or authenticated owner of the associated Trip; unrelated users are denied.
+   */
   suspend fun getOrderById(orderId: String): OrderResult<Order>
 }

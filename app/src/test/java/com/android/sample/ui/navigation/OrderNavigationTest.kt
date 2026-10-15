@@ -84,7 +84,11 @@ class OrderNavigationTest {
   private lateinit var content: @Composable () -> Unit
 
   private fun show(tripRepository: TripRepository = trips) {
-    content = { SampleAppTheme { CommandoApp(auth, tripRepository, credentials, factory) } }
+    content = {
+      SampleAppTheme {
+        CommandoApp(auth, tripRepository, credentials, orderRepositoryFactory = factory)
+      }
+    }
     compose.setContent(content)
   }
 

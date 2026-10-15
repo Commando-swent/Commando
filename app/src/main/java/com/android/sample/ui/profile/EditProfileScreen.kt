@@ -35,6 +35,8 @@ fun EditProfileScreen(
     onCancel: () -> Unit,
     avatarFullName: String?,
     modifier: Modifier = Modifier,
+    photo: PhotoUiState? = null,
+    onPhotoClick: (() -> Unit)? = null,
 ) {
   val enabled = !state.isSaving && !state.saved
   Column(
@@ -68,7 +70,16 @@ fun EditProfileScreen(
         Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
-      ProfileAvatar(profileInitials(avatarFullName), showPhotoAction = false)
+      val onPreview =
+          ProfilePhotoPreview(profileInitials(avatarFullName), photo?.image, avatarFullName)
+      ProfileAvatar(
+          profileInitials(avatarFullName),
+          showPhotoAction = onPhotoClick != null,
+          photo = photo?.image,
+          onPhotoClick = onPhotoClick,
+          photoEnabled = photo?.busy != true,
+          onAvatarClick = onPreview,
+      )
     }
     Text(
         stringResource(R.string.profile_personal_information),

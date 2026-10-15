@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.navigation.navArgument
 import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
+import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.model.authentication.AuthException
@@ -61,6 +63,8 @@ import com.android.sample.ui.orders.OrderDetailsScreen
 import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.EditProfileScreen
+import com.android.sample.ui.profile.ProfilePhotoActions
+import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
@@ -79,6 +83,7 @@ fun CommandoApp(
     repository: AuthRepository = AuthRepositoryProvider.repository,
     tripRepository: TripRepository? = null,
     googleCredentials: GoogleCredentialClient? = null,
+    photoRepository: ProfilePhotoRepository? = null,
     orderRepositoryFactory: (() -> String?) -> OrderRepository = { FakeOrderRepository(it) },
 ) {
   val context = LocalContext.current
@@ -142,6 +147,7 @@ fun CommandoApp(
           }
           AuthenticatedApp(
               repository = repository,
+              photoRepository = photoRepository,
               tripRepository = trips,
               orders = orders,
               userId = user.uid,
@@ -168,6 +174,7 @@ fun CommandoApp(
 @Composable
 private fun AuthenticatedApp(
     repository: AuthRepository,
+    photoRepository: ProfilePhotoRepository?,
     tripRepository: TripRepository,
     orders: SessionOrderViewModel,
     userId: String,
@@ -175,8 +182,11 @@ private fun AuthenticatedApp(
     signOutError: AuthException?,
 ) {
   val appViewModel: AppViewModel = viewModel()
-  val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
+  val profileViewModel: ProfileViewModel = viewModel {
+    ProfileViewModel(repository, photoRepository)
+  }
   val appUiState by appViewModel.uiState.collectAsState()
+  val photoSnackbarHost = remember { SnackbarHostState() }
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
   val currentScreen =
@@ -194,6 +204,7 @@ private fun AuthenticatedApp(
         }
       },
       onBack = { navController.popBackStack() },
+      snackbarHost = { ProfilePhotoSnackbarHost(photoSnackbarHost) },
       onTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
       onOrders =
           if (appUiState.mode == AppMode.Requester) {
@@ -366,11 +377,14 @@ private fun AuthenticatedApp(
       }
       composable(route = CommandoScreens.Profile.name) {
         val profileUiState by profileViewModel.uiState.collectAsState()
+        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
             onSignOut = onSignOut,
             signOutError = signOutError,
+            photo = photo,
+            onPhotoClick = onPhotoClick,
             onEdit = {
               profileViewModel.beginEditing()
               navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
@@ -391,6 +405,7 @@ private fun AuthenticatedApp(
           Unit
         }
         BackHandler { onCancel() }
+        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
         draft?.let {
           EditProfileScreen(
               it,
@@ -399,6 +414,8 @@ private fun AuthenticatedApp(
               profileViewModel::saveProfile,
               onCancel,
               (profile as? ProfileUiState.Content)?.fullName,
+              photo = photo,
+              onPhotoClick = onPhotoClick,
           )
         } ?: androidx.compose.material3.CircularProgressIndicator()
       }

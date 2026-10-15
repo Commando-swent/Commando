@@ -85,5 +85,16 @@ service cloud.firestore {
         && request.query.limit <= 50;
       allow create, update, delete: if false;
     }
+
+    match /profilePhotos/{userId} {
+      allow get, delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create, update: if isAuthenticated() && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(["photo", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["photo", "updatedAt"])
+        && request.resource.data.photo is bytes
+        && request.resource.data.photo.size() > 0
+        && request.resource.data.photo.size() <= 204800
+        && request.resource.data.updatedAt == request.time;
+    }
   }
 }

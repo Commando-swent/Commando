@@ -48,7 +48,13 @@ fun AppScaffold(
           AppTopBar(
               mode,
               onSwitchMode,
-              commandoEnabled = currentScreen != CommandoScreens.AvailableTrips,
+              // Each trips list belongs to one mode, so the other mode cannot be selected there.
+              lockedMode =
+                  when (currentScreen) {
+                    CommandoScreens.AvailableTrips -> AppMode.Requester
+                    CommandoScreens.MyTrips -> AppMode.Commando
+                    else -> null
+                  },
           )
         } else if (currentScreen == CommandoScreens.TripDetails && onBack != null) {
           AppBackBar(onBack)
@@ -56,14 +62,7 @@ fun AppScaffold(
       },
       bottomBar = {
         if (currentScreen.showBottomBar) {
-          AppBottomBar(
-              currentScreen,
-              onHome,
-              onProfile,
-              onTrips,
-              tripsEnabled = mode == AppMode.Requester,
-              onOrders = onOrders,
-          )
+          AppBottomBar(currentScreen, onHome, onProfile, onTrips, onOrders = onOrders)
         }
       },
       content = content,
@@ -99,7 +98,7 @@ private fun AppBackBar(onBack: () -> Unit) {
 private fun AppTopBar(
     mode: AppMode,
     onSwitchMode: (AppMode) -> Unit,
-    commandoEnabled: Boolean,
+    lockedMode: AppMode?,
 ) {
   Row(
       Modifier.testTag(AppTestTags.TOP_BAR)
@@ -121,7 +120,7 @@ private fun AppTopBar(
     ) {
       AppMode.entries.forEach { option ->
         val selected = mode == option
-        val enabled = option != AppMode.Commando || commandoEnabled
+        val enabled = lockedMode == null || option == lockedMode
         Row(
             Modifier.weight(1f)
                 .alpha(if (enabled) 1f else 0.38f)
@@ -169,7 +168,6 @@ private fun AppBottomBar(
     onHome: () -> Unit,
     onProfile: () -> Unit,
     onTrips: () -> Unit,
-    tripsEnabled: Boolean,
     onOrders: (() -> Unit)?,
 ) {
   NavigationBar(
@@ -189,8 +187,8 @@ private fun AppBottomBar(
         modifier = Modifier.testTag(AppTestTags.TRIPS_BUTTON),
         selected =
             currentScreen == CommandoScreens.AvailableTrips ||
-                currentScreen == CommandoScreens.MockMap,
-        enabled = tripsEnabled,
+                currentScreen == CommandoScreens.MockMap ||
+                currentScreen == CommandoScreens.MyTrips,
         onClick = onTrips,
     )
     AppNavigationItem(

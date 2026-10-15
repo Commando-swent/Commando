@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="my_trips_title">My Trips</string>
+    <string name="my_trips_subtitle">Trips you have published.</string>
+    <string name="my_trips_loading">Loading your trips</string>
+    <string name="my_trips_empty">No trips published yet.</string>
+    <string name="my_trips_error">Something went wrong while loading your trips.</string>
+    <string name="my_trips_retry">Retry</string>
+    <string name="my_trips_publish">Publish a trip</string>
+    <string name="my_trips_handoff">Handoff: %1$s</string>
+    <string name="my_trips_status_published">Published</string>
+    <string name="my_trips_status_in_progress">In progress</string>
+    <string name="my_trips_status_completed">Completed</string>
+    <string name="my_trips_status_cancelled">Cancelled</string>
+</resources>

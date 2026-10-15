@@ -68,6 +68,8 @@ import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
 import com.android.sample.ui.trips.CreateTripScreen
 import com.android.sample.ui.trips.CreateTripViewModel
+import com.android.sample.ui.trips.MyTripsScreen
+import com.android.sample.ui.trips.MyTripsViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsViewModel
 import kotlinx.coroutines.launch
@@ -201,7 +203,12 @@ private fun AuthenticatedApp(
       },
       onBack = { navController.popBackStack() },
       snackbarHost = { ProfilePhotoSnackbarHost(photoSnackbarHost) },
-      onTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
+      onTrips = {
+        navController.openScreen(
+            if (appUiState.mode == AppMode.Commando) CommandoScreens.MyTrips
+            else CommandoScreens.AvailableTrips
+        )
+      },
       onOrders =
           if (appUiState.mode == AppMode.Requester) {
             { navController.openScreen(CommandoScreens.MyOrders) }
@@ -267,6 +274,20 @@ private fun AuthenticatedApp(
             },
             onOpenMap = {
               navController.navigate(CommandoScreens.MockMap.name) { launchSingleTop = true }
+            },
+        )
+      }
+      composable(route = CommandoScreens.MyTrips.name) { entry ->
+        // The authenticated graph is keyed by account, so this list never outlives its owner.
+        val myTripsViewModel: MyTripsViewModel =
+            viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
+        MyTripsScreen(
+            viewModel = myTripsViewModel,
+            onTripSelected = { tripId ->
+              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
+            },
+            onPublishTrip = {
+              navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
             },
         )
       }

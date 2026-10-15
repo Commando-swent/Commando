@@ -36,6 +36,8 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.android.sample.ui.trips.CreateTripScreenTestTags
+import com.android.sample.ui.trips.MyTripsTestTags
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -511,22 +513,79 @@ class CommandoAppTest {
     assertScreen(NavigationTestTags.HOME_SCREEN)
   }
 
-  @Test
-  fun tripsIsDisabledInCommandoModeFromHomeAndProfileAndEnabledAgainForRequester() {
-    show(FakeAuthRepository(alice), twoTrips(alice.uid))
+  private val aliceTrip =
+      firstTrip.copy(
+          id = "alice-trip",
+          ownerId = "alice",
+          store = Location("Alice store", 46.5, 6.6),
+      )
+
+  /** Includes another owner's trip; My Trips must only display the signed-in commando's. */
+  private fun aliceTrips(): TripRepository =
+      FakeTripRepository("alice", now = { tripTime }, initialTrips = listOf(aliceTrip, firstTrip))
+
+  private fun openMyTrips() {
     click(AppTestTags.COMMANDO_MODE)
-    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsNotEnabled().performClick()
-    assertScreen(NavigationTestTags.HOME_SCREEN)
-    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
-    click(AppTestTags.PROFILE_BUTTON)
-    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsNotEnabled().performClick()
-    assertScreen(NavigationTestTags.PROFILE_SCREEN)
-    click(AppTestTags.HOME_BUTTON)
-    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
-    click(AppTestTags.REQUESTER_MODE)
     compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsEnabled().performClick()
-    assertAvailableTripsRestored()
-    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    assertScreen(MyTripsTestTags.SCREEN)
+  }
+
+  @Test
+  fun tripsOpensMyTripsInCommandoModeAndAvailableTripsForRequester() {
+    show(FakeAuthRepository(alice), aliceTrips())
+    openMyTrips()
+    compose.onNodeWithText("My Trips").assertIsDisplayed()
+    compose.onNodeWithText(aliceTrip.store.name).assertIsDisplayed()
+    compose.onNodeWithText(firstTrip.store.name).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsNotEnabled().performClick()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    click(AppTestTags.TRIPS_BUTTON)
+    pressBack()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    click(AppTestTags.REQUESTER_MODE)
+    click(AppTestTags.TRIPS_BUTTON)
+    compose.onNodeWithTag(MyTripsTestTags.SCREEN).assertDoesNotExist()
+    compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
+  }
+
+  @Test
+  fun myTripsSelectionOpensTripDetailsAndPublishOpensCreateTrip() {
+    show(FakeAuthRepository(alice), aliceTrips())
+    openMyTrips()
+    click(MyTripsTestTags.TRIP_CARD_PREFIX + aliceTrip.id)
+    assertTripDetails(aliceTrip)
+    pressBack()
+    assertScreen(MyTripsTestTags.SCREEN)
+    click(MyTripsTestTags.PUBLISH_TRIP)
+    assertScreen(CreateTripScreenTestTags.STORE_FIELD)
+    pressBack()
+    assertScreen(MyTripsTestTags.SCREEN)
+  }
+
+  @Test
+  fun emptyMyTripsPublishOpensCreateTrip() {
+    show(FakeAuthRepository(alice), FakeTripRepository("alice", now = { tripTime }))
+    openMyTrips()
+    assertScreen(MyTripsTestTags.EMPTY)
+    click(MyTripsTestTags.PUBLISH_TRIP)
+    assertScreen(CreateTripScreenTestTags.STORE_FIELD)
+  }
+
+  @Test
+  fun changingAccountClearsThePreviousAccountsTrips() = runTest {
+    val repository = FakeAuthRepository(alice)
+    // The shared fake keeps answering with Alice's trips after Bob signs in.
+    show(repository, aliceTrips())
+    openMyTrips()
+    compose.onNodeWithText(aliceTrip.store.name).assertIsDisplayed()
+    repository.signInWithEmailResult = Result.success(bob)
+    repository.signInWithEmail("", "")
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    openMyTrips()
+    assertScreen(MyTripsTestTags.EMPTY)
+    compose.onNodeWithText(aliceTrip.store.name).assertDoesNotExist()
   }
 
   @Test

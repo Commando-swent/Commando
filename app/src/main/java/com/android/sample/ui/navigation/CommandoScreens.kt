@@ -17,6 +17,7 @@ enum class CommandoScreens(
   EditProfile(title = R.string.profile_edit_title),
   Profile(title = R.string.nav_profile, showBottomBar = true),
   AvailableTrips(title = R.string.trips_title, showModeSelector = true, showBottomBar = true),
+  MyTrips(title = R.string.my_trips_title, showModeSelector = true, showBottomBar = true),
   TripDetails(title = R.string.trips_title),
   MockMap(title = R.string.nav_mock_map, showBottomBar = true),
   MyOrders(title = R.string.my_orders_title, showBottomBar = true),

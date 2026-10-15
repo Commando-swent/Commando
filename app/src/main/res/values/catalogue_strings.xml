@@ -1,0 +1,37 @@
+<resources>
+    <string name="catalogue_trip_summary">%1$s · %2$s</string>
+    <string name="catalogue_today">Today</string>
+    <string name="catalogue_tomorrow">Tomorrow</string>
+    <string name="catalogue_search_hint">Search products</string>
+    <string name="catalogue_clear_query">Clear search text</string>
+    <string name="catalogue_all_products">ALL PRODUCTS · %1$d</string>
+    <plurals name="catalogue_results">
+        <item quantity="one">%1$d RESULT FOR “%2$s”</item>
+        <item quantity="other">%1$d RESULTS FOR “%2$s”</item>
+    </plurals>
+    <string name="catalogue_loading">LOADING PRODUCTS…</string>
+    <string name="catalogue_add">Add %1$s to order</string>
+    <string name="catalogue_increase">Increase %1$s quantity</string>
+    <string name="catalogue_decrease">Decrease %1$s quantity</string>
+    <string name="catalogue_remove">Remove %1$s from order</string>
+    <string name="catalogue_estimate">Est. %1$s</string>
+    <plurals name="catalogue_item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+    <string name="catalogue_continue">Continue to order</string>
+    <string name="catalogue_select_to_continue">Select items to continue</string>
+    <string name="catalogue_no_match_title">No products match “%1$s”</string>
+    <string name="catalogue_no_match_body">Check the spelling or try a shorter word. Your selected items are kept.</string>
+    <string name="catalogue_clear_search">Clear search</string>
+    <string name="catalogue_empty_title">No products yet</string>
+    <string name="catalogue_empty_body">This store has no products in the catalogue yet.</string>
+    <string name="catalogue_error_title">Couldn’t load the catalogue</string>
+    <string name="catalogue_error_network">Check your connection and try again.</string>
+    <string name="catalogue_error_permission">You don’t have access to this catalogue. Sign in again, then retry.</string>
+    <string name="catalogue_error_unknown">Something went wrong. Try again.</string>
+    <string name="catalogue_trip_not_found">This trip is no longer available.</string>
+    <string name="catalogue_unsupported_title">Store not supported yet</string>
+    <string name="catalogue_unsupported_body">There is no product catalogue for “%1$s” yet.</string>
+    <string name="catalogue_retry">Retry</string>
+</resources>

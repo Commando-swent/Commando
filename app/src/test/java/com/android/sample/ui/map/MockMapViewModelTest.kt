@@ -43,4 +43,19 @@ class MockMapViewModelTest {
     assertTrue(vm.uiState.value.trips.isEmpty())
     assertNull(vm.uiState.value.selectedTrip)
   }
+
+  @Test
+  fun simulatedStatesBlockSelectionUntilRetryAndAllowOnlyTogglesLocation() {
+    val vm = MockMapViewModel(initialStatus = MockMapStatus.Loading, locationOff = true)
+    vm.selectTrip("sample-migros")
+    assertNull(vm.uiState.value.selectedTripId)
+    vm.retry()
+    assertEquals(MockMapStatus.Content, vm.uiState.value.status)
+    vm.selectTrip("sample-migros")
+    assertEquals("sample-migros", vm.uiState.value.selectedTrip?.id)
+    vm.enableSampleLocation()
+    assertFalse(vm.uiState.value.locationOff)
+    assertEquals("sample-migros", vm.uiState.value.selectedTripId)
+    assertNull(vm.uiState.value.copy(status = MockMapStatus.Error).selectedTrip)
+  }
 }

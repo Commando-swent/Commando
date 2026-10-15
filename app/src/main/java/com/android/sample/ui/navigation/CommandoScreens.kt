@@ -18,19 +18,22 @@ enum class CommandoScreens(
   Profile(title = R.string.nav_profile, showBottomBar = true),
   AvailableTrips(title = R.string.trips_title, showModeSelector = true, showBottomBar = true),
   TripDetails(title = R.string.trips_title),
+  OrderDetails(title = R.string.order_details_title),
   AddItems(title = R.string.add_items_title);
 
-  /** Route pattern for destination registration; trip-specific destinations require a string ID. */
+  /** Route pattern for destination registration; detail destinations require a string ID. */
   val route: String
     get() =
         when (this) {
           TripDetails,
           AddItems -> "$name/{$TRIP_ID_ARGUMENT}"
+          OrderDetails -> "$name/{$ORDER_ID_ARGUMENT}"
           else -> name
         }
 
   companion object {
     const val TRIP_ID_ARGUMENT = "tripId"
+    const val ORDER_ID_ARGUMENT = "orderId"
 
     /**
      * Encodes the opaque ID as one path segment without trimming or normalizing it. Navigation
@@ -40,5 +43,8 @@ enum class CommandoScreens(
 
     /** Preserves the opaque trip ID for the future requester flow. */
     fun addItemsRoute(tripId: String): String = "${AddItems.name}/${Uri.encode(tripId)}"
+
+    /** Encodes the opaque order ID once; consumers use Navigation's decoded string argument. */
+    fun orderDetailsRoute(orderId: String): String = "${OrderDetails.name}/${Uri.encode(orderId)}"
   }
 }

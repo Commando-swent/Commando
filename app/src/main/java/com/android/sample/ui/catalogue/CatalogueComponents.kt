@@ -344,10 +344,11 @@ internal fun CatalogueMessage(
     title: String,
     body: String,
     accentIcon: Boolean,
+    modifier: Modifier = Modifier,
     action: String? = null,
     primaryAction: Boolean = false,
     onAction: () -> Unit = {},
-    modifier: Modifier = Modifier,
+
 ) {
   val c = MaterialTheme.colorScheme
   Column(

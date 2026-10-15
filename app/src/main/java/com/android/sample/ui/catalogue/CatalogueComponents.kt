@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -254,7 +255,7 @@ private fun QuantityControl(
     ) { value ->
       Text(
           value.toString(),
-          modifier = Modifier.width(24.dp).testTag(CatalogueTestTags.quantity(product.id)),
+          modifier = Modifier.widthIn(min = 24.dp).testTag(CatalogueTestTags.quantity(product.id)),
           style = catalogueText(16, FontWeight.Medium),
           color = c.onSurface,
           textAlign = TextAlign.Center,

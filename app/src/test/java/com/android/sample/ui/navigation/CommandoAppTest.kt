@@ -1,6 +1,5 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex.
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -16,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
@@ -33,6 +33,7 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
@@ -746,6 +747,52 @@ class CommandoAppTest {
     compose.onNodeWithText("Alice Smith").assertDoesNotExist()
     compose.onNodeWithText("alice@example.com").assertDoesNotExist()
     compose.onNodeWithText("AS").assertDoesNotExist()
+  }
+
+  @Test
+  fun profileEditingValidatesCancelsAndShowsConfirmedValuesAfterSave() {
+    val repository = FakeAuthRepository(alice)
+    show(repository)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).assertTextEquals(alice.displayName!!)
+    compose.onNodeWithTag(ProfileEditTestTags.EMAIL).assertTextEquals(alice.email!!)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).performTextReplacement("")
+    compose.onNodeWithText("Please enter your full name.").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileEditTestTags.EMAIL).performTextReplacement("bad")
+    compose.onNodeWithText("Please enter a valid email address.").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileEditTestTags.SAVE).assertIsNotEnabled()
+    click(ProfileEditTestTags.CANCEL)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).performTextReplacement("Alice Brown")
+    click(ProfileEditTestTags.SAVE)
+    compose.onNodeWithText("Your profile has been updated.").assertIsDisplayed()
+    click(ProfileEditTestTags.SAVE)
+    assertProfile("Alice Brown", "alice@example.com", "AB")
+  }
+
+  @Test
+  fun failedProfileSaveCanRetryAndPendingEmailIsNotShownAsConfirmed() {
+    val repository = FakeAuthRepository(alice)
+    repository.updateProfileResult = Result.failure(AuthException.RequiresRecentLogin())
+    show(repository)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.EMAIL).performTextReplacement("new@example.com")
+    click(ProfileEditTestTags.SAVE)
+    compose
+        .onNodeWithText("Please sign out and sign in again before saving your profile.")
+        .assertIsDisplayed()
+    compose.runOnIdle { repository.updateProfileResult = null }
+    click(ProfileEditTestTags.SAVE)
+    compose
+        .onNodeWithTag(ProfileEditTestTags.FEEDBACK)
+        .assertTextEquals(
+            "A verification link was sent to new@example.com. Your current email stays unchanged until you verify the new address."
+        )
+    pressBack()
+    assertProfile("Alice Smith", "alice@example.com", "AS")
   }
 
   @After

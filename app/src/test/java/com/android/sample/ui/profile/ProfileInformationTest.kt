@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File
 import org.junit.Rule
@@ -35,6 +36,18 @@ class ProfileInformationTest {
         }
       }
     }
+  }
+
+  @Test
+  fun avatarSupportsTheEnlargedLayoutWithoutTheAddBadge() {
+    compose.setContent {
+      SampleAppTheme { ProfileAvatar("AM", showPhotoAction = false, diameter = 240.dp) }
+    }
+    compose
+        .onNodeWithTag(ProfileTestTags.INITIALS)
+        .assertTextEquals("AM")
+        .assertHeightIsAtLeast(70.dp)
+    compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).assertDoesNotExist()
   }
 
   @Test

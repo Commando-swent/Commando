@@ -2,7 +2,11 @@ package com.android.sample.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
+import com.android.sample.model.authentication.AuthUser
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,12 +22,21 @@ class ProfileViewModel(private val repository: AuthRepository) : ViewModel() {
 
   // The screen can observe this state, but it cannot change it directly.
   val uiState: StateFlow<ProfileUiState> = mutableState.asStateFlow()
+  private val mutableEditState = MutableStateFlow<ProfileEditUiState?>(null)
+  val editState = mutableEditState.asStateFlow()
+  private var activeUser: AuthUser? = null
+  private var saveJob: Job? = null
 
   init {
     // Observation stops automatically when this ViewModel is cleared.
     viewModelScope.launch {
       // Collect future changes as well as the initial user, rather than reading a single snapshot.
       repository.observeAuthState().collect { user ->
+        if (activeUser?.uid != user?.uid) {
+          saveJob?.cancel()
+          mutableEditState.value = null
+        }
+        activeUser = user
         mutableState.value =
             if (user == null) {
               // Replacing the state removes any information belonging to the previous user.
@@ -36,6 +49,68 @@ class ProfileViewModel(private val repository: AuthRepository) : ViewModel() {
                   email = user.email,
               )
             }
+      }
+    }
+  }
+
+  fun beginEditing() {
+    val user = activeUser ?: return
+    if (mutableEditState.value == null) {
+      mutableEditState.value = ProfileEditUiState(user.displayName.orEmpty(), user.email.orEmpty())
+    }
+  }
+
+  fun updateFullName(value: String) = edit { it.copy(fullName = value) }
+
+  fun updateEmail(value: String) = edit { it.copy(email = value) }
+
+  private fun edit(change: (ProfileEditUiState) -> ProfileEditUiState) {
+    val draft = mutableEditState.value ?: return
+    if (!draft.isSaving)
+        mutableEditState.value =
+            change(draft).copy(error = null, saved = false, pendingEmail = null)
+  }
+
+  fun cancelEditing() {
+    if (mutableEditState.value?.isSaving != true) mutableEditState.value = null
+  }
+
+  fun saveProfile() {
+    val user = activeUser ?: return
+    val draft = mutableEditState.value ?: return
+    if (!draft.canSave) return
+    mutableEditState.value = draft.copy(isSaving = true, error = null)
+    saveJob = viewModelScope.launch {
+      try {
+        val result = repository.updateProfile(draft.fullName.trim(), draft.email.trim())
+        if (activeUser?.uid != user.uid) return@launch
+        val current = mutableEditState.value ?: return@launch
+        result.fold(
+            onSuccess = { updated ->
+              if (updated.user.uid == user.uid) {
+                mutableState.value =
+                    ProfileUiState.Content(updated.user.displayName, updated.user.email)
+                mutableEditState.value =
+                    current.copy(
+                        isSaving = false,
+                        saved = true,
+                        pendingEmail = updated.pendingEmail,
+                    )
+              } else mutableEditState.value = null
+            },
+            onFailure = {
+              mutableEditState.value =
+                  current.copy(
+                      isSaving = false,
+                      error = it as? AuthException ?: AuthException.Unknown(it),
+                  )
+            },
+        )
+      } catch (error: CancellationException) {
+        throw error
+      } finally {
+        if (activeUser?.uid == user.uid)
+            mutableEditState.value = mutableEditState.value?.copy(isSaving = false)
       }
     }
   }

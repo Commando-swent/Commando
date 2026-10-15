@@ -1,13 +1,14 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex.
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -44,7 +45,9 @@ import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileScreen
+import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
@@ -149,6 +152,7 @@ private fun AuthenticatedApp(
     signOutError: AuthException?,
 ) {
   val appViewModel: AppViewModel = viewModel()
+  val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
   val appUiState by appViewModel.uiState.collectAsState()
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
@@ -258,14 +262,42 @@ private fun AuthenticatedApp(
         AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
       }
       composable(route = CommandoScreens.Profile.name) {
-        val profileViewModel: ProfileViewModel = viewModel { ProfileViewModel(repository) }
         val profileUiState by profileViewModel.uiState.collectAsState()
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
             onSignOut = onSignOut,
             signOutError = signOutError,
+            onEdit = {
+              profileViewModel.beginEditing()
+              navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
+            },
         )
+      }
+      composable(route = CommandoScreens.EditProfile.name) {
+        val draft by profileViewModel.editState.collectAsState()
+        val profile by profileViewModel.uiState.collectAsState()
+        LaunchedEffect(profile, draft == null) {
+          if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
+        }
+        val onCancel = {
+          if (profileViewModel.editState.value?.isSaving != true) {
+            profileViewModel.cancelEditing()
+            navController.popBackStack()
+          }
+          Unit
+        }
+        BackHandler { onCancel() }
+        draft?.let {
+          EditProfileScreen(
+              it,
+              profileViewModel::updateFullName,
+              profileViewModel::updateEmail,
+              profileViewModel::saveProfile,
+              onCancel,
+              (profile as? ProfileUiState.Content)?.fullName,
+          )
+        } ?: androidx.compose.material3.CircularProgressIndicator()
       }
     }
   }

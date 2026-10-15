@@ -1,10 +1,12 @@
 package com.android.sample.ui.profile
 
-// AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
+import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.model.authentication.ProfileUpdateResult
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -202,6 +204,97 @@ class ProfileViewModelTest {
         ProfileUiState.Content("Alice Martin", "alice@epfl.ch"),
         viewModel.uiState.value,
     )
+  }
+
+  @Test
+  fun editValidationCancellationAndReopeningPreserveConfirmedValues() = runTest {
+    val fake = FakeAuthRepository(alice)
+    val model = createViewModel(fake)
+    runCurrent()
+    model.beginEditing()
+    assertEquals(alice.displayName, model.editState.value!!.fullName)
+    assertEquals(alice.email, model.editState.value!!.email)
+    model.updateFullName(" ")
+    model.updateEmail("invalid")
+    model.saveProfile()
+    runCurrent()
+    assertFalse(model.editState.value!!.canSave)
+    assertEquals(alice, fake.currentUser)
+    model.cancelEditing()
+    assertNull(model.editState.value)
+    model.beginEditing()
+    model.updateFullName(" Alice Dupont ")
+    model.updateEmail(" new@epfl.ch ")
+    model.saveProfile()
+    runCurrent()
+    assertTrue(model.editState.value!!.saved)
+    assertEquals("new@epfl.ch", model.editState.value!!.pendingEmail)
+    assertEquals(ProfileUiState.Content("Alice Dupont", alice.email), model.uiState.value)
+  }
+
+  @Test
+  fun saveFailuresKeepDraftAndCorrectionAllowsRetry() = runTest {
+    val fake = FakeAuthRepository(alice)
+    val model = createViewModel(fake)
+    runCurrent()
+    model.beginEditing()
+    for (error in
+        listOf(
+            AuthException.Network(),
+            AuthException.RequiresRecentLogin(),
+            AuthException.EmailAlreadyInUse(),
+            AuthException.InvalidEmail(),
+            AuthException.Unknown(),
+        )) {
+      fake.updateProfileResult = Result.failure(error)
+      model.updateEmail(alice.email!!)
+      model.updateFullName("Draft name")
+      model.saveProfile()
+      runCurrent()
+      assertSame(error, model.editState.value!!.error)
+      assertEquals("Draft name", model.editState.value!!.fullName)
+      assertEquals(alice, fake.currentUser)
+    }
+    fake.updateProfileResult = null
+    model.updateEmail(alice.email!!)
+    model.saveProfile()
+    runCurrent()
+    assertTrue(model.editState.value!!.saved)
+    assertNull(model.editState.value!!.pendingEmail)
+  }
+
+  @Test
+  fun savingGuardsDuplicateClicksAndAccountChangeCancelsTheOldDraft() = runTest {
+    val fake = FakeAuthRepository(alice)
+    val pending = CompletableDeferred<Result<ProfileUpdateResult>>()
+    var calls = 0
+    val repository =
+        object : AuthRepository by fake {
+          override suspend fun updateProfile(
+              fullName: String,
+              email: String,
+          ): Result<ProfileUpdateResult> {
+            calls++
+            return pending.await()
+          }
+        }
+    val model = createViewModel(repository)
+    runCurrent()
+    model.beginEditing()
+    model.saveProfile()
+    model.saveProfile()
+    model.cancelEditing()
+    model.updateFullName("Ignored")
+    runCurrent()
+    assertEquals(1, calls)
+    assertEquals(alice.displayName, model.editState.value!!.fullName)
+    fake.signInWithEmailResult = Result.success(AuthUser("bob", "Bob", "bob@epfl.ch"))
+    fake.signInWithEmail("", "")
+    runCurrent()
+    pending.complete(Result.success(ProfileUpdateResult(alice)))
+    runCurrent()
+    assertNull(model.editState.value)
+    assertEquals(ProfileUiState.Content("Bob", "bob@epfl.ch"), model.uiState.value)
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

@@ -9,5 +9,8 @@ object ProfileTestTags {
   const val LOADING = "profile_loading"
   const val MISSING_USER = "profile_missing_user"
   const val ADD_PHOTO = "profile_add_photo"
+  const val PHOTO_IMAGE = "profile_photo_image"
+  const val PHOTO_PREVIEW = "profile_photo_preview"
+  const val PHOTO_CLOSE = "profile_photo_close"
   const val EDIT = "profile_edit"
 }

@@ -1,6 +1,8 @@
 package com.android.sample.ui.profile
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
@@ -9,6 +11,7 @@ import com.android.sample.model.authentication.ProfileUpdateResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
@@ -17,6 +20,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -295,6 +299,92 @@ class ProfileViewModelTest {
     runCurrent()
     assertNull(model.editState.value)
     assertEquals(ProfileUiState.Content("Bob", "bob@epfl.ch"), model.uiState.value)
+  }
+
+  @Test
+  fun photoFailuresAndStaleSelectionsPreserveTheAccount() = runTest {
+    val fake = FakeAuthRepository(alice)
+    val bytes = byteArrayOf(1, 2, 3)
+    val image = java.util.Base64.getEncoder().encodeToString(bytes)
+    var fail = false
+    var pending = CompletableDeferred<ByteArray?>(bytes)
+    val photos =
+        object : ProfilePhotoRepository {
+          override suspend fun load(userId: String): ByteArray? = null
+
+          override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? {
+            if (fail) error("Offline")
+            return pending.await()
+          }
+        }
+    val model = ProfileViewModel(fake, photos).also { store.put("photo", it) }
+    runCurrent()
+    assertNull(model.photoState.value.image)
+    val source = ProfilePhotoSource.Gallery(io.mockk.mockk())
+    model.savePhoto(alice.uid, source)
+    runCurrent()
+    assertEquals(image, model.photoState.value.image)
+    fail = true
+    for (selection in listOf(null, source)) {
+      model.savePhoto(alice.uid, selection)
+      runCurrent()
+      assertEquals(PhotoUiState(image, failed = true), model.photoState.value)
+    }
+    fail = false
+    fake.signInWithEmailResult = Result.success(AuthUser("bob"))
+    fake.signInWithEmail("", "")
+    runCurrent()
+    model.savePhoto(alice.uid, source)
+    assertEquals(PhotoUiState(), model.photoState.value)
+    pending = CompletableDeferred()
+    model.savePhoto("bob", source)
+    model.savePhoto("bob", source)
+    runCurrent()
+    assertTrue(model.photoState.value.busy)
+    fake.signOut()
+    runCurrent()
+    model.savePhoto(alice.uid, source)
+    pending.complete(bytes)
+    runCurrent()
+    assertEquals(PhotoUiState(), model.photoState.value)
+    assertNull(model.photoOwner())
+    model.refreshPhoto()
+    assertEquals(PhotoUiState(), model.photoState.value)
+  }
+
+  @Test
+  fun previousAccountsLatePhotoCannotReplaceTheCurrentAvatar() = verifyLatePhotoLoad(fails = false)
+
+  @Test
+  fun previousAccountsLateFailureCannotShowAnErrorForTheCurrentAccount() =
+      verifyLatePhotoLoad(fails = true)
+
+  private fun verifyLatePhotoLoad(fails: Boolean) = runTest {
+    val auth = FakeAuthRepository(alice)
+    val previousLoad = CompletableDeferred<ByteArray?>()
+    val currentPhoto = byteArrayOf(4, 5, 6)
+    val photos =
+        object : ProfilePhotoRepository {
+          override suspend fun load(userId: String): ByteArray? =
+              if (userId == alice.uid) withContext(NonCancellable) { previousLoad.await() }
+              else currentPhoto
+
+          override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? = null
+        }
+    val model = ProfileViewModel(auth, photos).also { store.put("photo", it) }
+    runCurrent()
+    auth.signInWithEmailResult = Result.success(AuthUser("bob"))
+    auth.signInWithEmail("", "")
+    runCurrent()
+    val confirmed = PhotoUiState(java.util.Base64.getEncoder().encodeToString(currentPhoto))
+    assertEquals(confirmed, model.photoState.value)
+
+    if (fails) previousLoad.completeExceptionally(IllegalStateException("Offline"))
+    else previousLoad.complete(byteArrayOf(1, 2, 3))
+    runCurrent()
+
+    assertEquals(confirmed, model.photoState.value)
+    assertEquals("bob", model.photoOwner())
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

@@ -42,6 +42,8 @@ fun ProfileScreen(
     modifier: Modifier = Modifier,
     signOutError: AuthException? = null,
     onEdit: (() -> Unit)? = null,
+    photo: PhotoUiState? = null,
+    onPhotoClick: (() -> Unit)? = null,
 ) {
   Column(
       modifier
@@ -90,7 +92,8 @@ fun ProfileScreen(
               textAlign = TextAlign.Center,
           )
         }
-        is ProfileUiState.Content -> ProfileInformation(uiState, onEdit = onEdit)
+        is ProfileUiState.Content ->
+            ProfileInformation(uiState, onEdit = onEdit, photo = photo, onPhotoClick = onPhotoClick)
       }
     }
     if (signOutError != null) {

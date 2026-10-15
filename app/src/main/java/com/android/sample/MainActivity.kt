@@ -11,16 +11,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
+import com.android.sample.data.repository.ProfilePhotoRepositoryFirestore
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.resources.C
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
@@ -42,7 +45,9 @@ class MainActivity : ComponentActivity() {
             modifier = Modifier.fillMaxSize().semantics { testTag = C.Tag.main_screen_container },
             color = MaterialTheme.colorScheme.background,
         ) {
-          CommandoApp()
+          val auth = remember { AuthRepositoryProvider.repository }
+          val photos = remember { ProfilePhotoRepositoryFirestore(contentResolver, auth) }
+          CommandoApp(repository = auth, photoRepository = photos)
         }
       }
     }

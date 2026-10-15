@@ -1,0 +1,10 @@
+<resources>
+    <string name="profile_photo_title">Profile photo</string>
+    <string name="profile_photo_camera">Take a photo</string>
+    <string name="profile_photo_gallery">Choose from gallery</string>
+    <string name="profile_photo_remove">Remove photo</string>
+    <string name="profile_photo_description">Your profile photo</string>
+    <string name="profile_photo_close">Close photo preview</string>
+    <string name="profile_photo_error">Could not load or update your photo.</string>
+    <string name="profile_photo_reload">Reload photo</string>
+</resources>

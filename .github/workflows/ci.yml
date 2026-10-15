@@ -99,11 +99,28 @@ jobs:
         run: |
           ./gradlew ktfmtCheck
 
+      # Use the team keystore (SHA-1 registered in Firebase) when the secret is available
+      - name: Decode signing keystore
+        env:
+          KS: ${{ secrets.CI_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/ci.keystore"
+            echo "CI_KEYSTORE_PATH=$RUNNER_TEMP/ci.keystore" >> "$GITHUB_ENV"
+          fi
+
       # This step runs gradle commands to build the application
       - name: Assemble
         run: |
           # To run the CI with debug information, add --info
           ./gradlew assemble lint --parallel --build-cache
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: commando-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
       - name: Run Firebase emulator tests
         run: bash scripts/ci/run-firebase-emulator-tests.sh

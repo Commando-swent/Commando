@@ -33,6 +33,10 @@ sealed class MyOrdersUiState {
   data object Empty : MyOrdersUiState()
 
   data class Error(val error: OrderError) : MyOrdersUiState()
+
+  /** Rows of another requester are never shown; they are replaced by Loading until reloaded. */
+  fun forRequester(requesterId: String): MyOrdersUiState =
+      if (this is Content && rows.any { it.order.requesterId != requesterId }) Loading else this
 }
 
 /**

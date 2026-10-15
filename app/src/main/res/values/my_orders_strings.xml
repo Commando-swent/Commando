@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="my_orders_title">My Orders</string>
+    <string name="my_orders_subtitle">Orders you have placed on trips.</string>
+    <string name="my_orders_loading">Loading your orders</string>
+    <string name="my_orders_empty">No orders yet.</string>
+    <string name="my_orders_empty_help">Orders you place on a trip will appear here with their status.</string>
+    <string name="my_orders_browse_trips">Browse trips</string>
+    <string name="my_orders_error">Something went wrong while loading your orders.</string>
+    <string name="my_orders_retry">Retry</string>
+    <string name="my_orders_handoff">Handoff: %1$s</string>
+    <string name="my_orders_trip_unavailable">Trip unavailable</string>
+    <plurals name="my_orders_items">
+        <item quantity="one">%1$d item · %2$s</item>
+        <item quantity="other">%1$d items · %2$s</item>
+    </plurals>
+</resources>

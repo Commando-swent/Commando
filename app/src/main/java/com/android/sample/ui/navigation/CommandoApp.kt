@@ -16,6 +16,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -35,6 +36,8 @@ import androidx.navigation.navArgument
 import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
+import com.android.sample.data.repository.ProductRepository
+import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
@@ -47,6 +50,8 @@ import com.android.sample.ui.auth.AuthRoute
 import com.android.sample.ui.auth.AuthViewModel
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
+import com.android.sample.ui.catalogue.CatalogueRoute
+import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
@@ -56,6 +61,8 @@ import com.android.sample.ui.orders.MyOrdersScreen
 import com.android.sample.ui.orders.MyOrdersViewModel
 import com.android.sample.ui.orders.OrderDetailsScreen
 import com.android.sample.ui.orders.OrderDetailsViewModel
+import com.android.sample.ui.orders.ReviewOrderRoute
+import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfilePhotoActions
@@ -71,7 +78,9 @@ import com.android.sample.ui.trips.CreateTripViewModel
 import com.android.sample.ui.trips.MyTripsScreen
 import com.android.sample.ui.trips.MyTripsViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
+import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
+import com.android.sample.ui.trips.formatTripDeparture
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
@@ -81,8 +90,8 @@ fun CommandoApp(
     tripRepository: TripRepository? = null,
     googleCredentials: GoogleCredentialClient? = null,
     photoRepository: ProfilePhotoRepository? = null,
-    // TODO(#126): Inject the session TripRepository when wiring trip-owner order access.
-    orderRepositoryFactory: (() -> String?) -> OrderRepository = { FakeOrderRepository(it) },
+    productRepository: ProductRepository? = null,
+    orderRepositoryFactory: ((() -> String?) -> OrderRepository)? = null,
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -141,12 +150,16 @@ fun CommandoApp(
           }
           val trips = tripRepositoryViewModel.repository
           val orders: SessionOrderViewModel = viewModel {
-            SessionOrderViewModel(user.uid, repository, orderRepositoryFactory)
+            SessionOrderViewModel(user.uid, repository) { currentUserId ->
+              orderRepositoryFactory?.invoke(currentUserId)
+                  ?: FakeOrderRepository(currentUserId, tripRepository = trips)
+            }
           }
           AuthenticatedApp(
               repository = repository,
               photoRepository = photoRepository,
               tripRepository = trips,
+              productRepository = productRepository,
               orders = orders,
               userId = user.uid,
               onSignOut = {
@@ -174,6 +187,7 @@ private fun AuthenticatedApp(
     repository: AuthRepository,
     photoRepository: ProfilePhotoRepository?,
     tripRepository: TripRepository,
+    productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
     userId: String,
     onSignOut: () -> Unit,
@@ -194,7 +208,16 @@ private fun AuthenticatedApp(
   AppScaffold(
       currentScreen = currentScreen,
       mode = appUiState.mode,
-      onSwitchMode = appViewModel::switchMode,
+      onSwitchMode = { mode ->
+        if (currentScreen == CommandoScreens.Profile && mode != appUiState.mode) {
+          // Back must not restore a trips list belonging to the previous mode.
+          navController.navigate(CommandoScreens.Profile.name) {
+            popUpTo(CommandoScreens.Home.name)
+            launchSingleTop = true
+          }
+        }
+        appViewModel.switchMode(mode)
+      },
       onHome = {
         navController.navigate(CommandoScreens.Home.name) {
           popUpTo(CommandoScreens.Home.name)
@@ -308,20 +331,90 @@ private fun AuthenticatedApp(
             onAddItems =
                 if (appUiState.mode == AppMode.Requester) {
                   { selectedTripId ->
-                    navController.navigate(CommandoScreens.addItemsRoute(selectedTripId))
+                    navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
                   }
                 } else null,
         )
       }
       composable(
-          route = CommandoScreens.AddItems.route,
+          route = CommandoScreens.Catalogue.route,
           arguments =
               listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
       ) { entry ->
-        requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-          "Add Items requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Catalogue requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        // This entry stays on the back stack behind Review, so returning keeps the selection.
+        val catalogueViewModel: CatalogueViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              CatalogueViewModel(
+                  tripId,
+                  tripRepository,
+                  productRepository ?: ProductRepositoryFirestore(),
+                  orders.draftFor(tripId),
+              )
+            }
+        CatalogueRoute(
+            viewModel = catalogueViewModel,
+            onBack = { navController.popBackStack() },
+            onContinue = { trip ->
+              navController.navigate(CommandoScreens.reviewOrderRoute(trip.id)) {
+                launchSingleTop = true
+              }
+            },
+        )
+      }
+      composable(
+          route = CommandoScreens.ReviewOrder.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Review Order requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        // Review renders the whole Trip, so the destination reloads it from its own ID rather
+        // than carrying a Trip that activity recreation would lose.
+        val tripViewModel: TripDetailsViewModel =
+            viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
+        val tripState by tripViewModel.uiState.collectAsState()
+        // The same draft holder as the Catalogue entry; there is no second editable cart.
+        val reviewOrderViewModel: ReviewOrderViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              ReviewOrderViewModel(orders.repository, orders.draftFor(tripId))
+            }
+        val openOrders = {
+          navController.navigate(CommandoScreens.MyOrders.name) {
+            popUpTo(CommandoScreens.Home.name)
+            launchSingleTop = true
+          }
         }
-        AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
+        val locale = LocalConfiguration.current.locales[0]
+        when (val state = tripState) {
+          // Before submission, Back and Add Products return to the retained Catalogue.
+          is TripDetailsUiState.Content ->
+              ReviewOrderRoute(
+                  viewModel = reviewOrderViewModel,
+                  trip = state.trip,
+                  onBack = {
+                    if (reviewOrderViewModel.uiState.value.order != null) openOrders()
+                    else navController.popBackStack()
+                  },
+                  onAddProducts = { navController.popBackStack() },
+                  // Both exits from confirmation discard the submitted draft's screens.
+                  onViewOrders = { openOrders() },
+                  tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
+              )
+          // Reuse Trip Details for the loading and failure states of the same lookup.
+          else ->
+              TripDetailsScreen(
+                  state = state,
+                  onRetry = tripViewModel::retry,
+                  onBack = { navController.popBackStack() },
+                  onAddItems = null,
+              )
+        }
       }
       composable(route = CommandoScreens.MockMap.name) {
         val map: MockMapViewModel = viewModel { MockMapViewModel() }

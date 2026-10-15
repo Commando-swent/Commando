@@ -88,15 +88,28 @@ class CommandoScreensTest {
       assertEquals(destination.name, destination.route)
     }
     assertEquals("TripDetails/{tripId}", CommandoScreens.TripDetails.route)
-    assertEquals("AddItems/{tripId}", CommandoScreens.AddItems.route)
+    assertEquals("Catalogue/{tripId}", CommandoScreens.Catalogue.route)
+    assertEquals("ReviewOrder/{tripId}", CommandoScreens.ReviewOrder.route)
   }
 
   @Test
-  fun addItemsHasARequiredTripIdAndEncodesOpaqueIdsAsOneSegment() {
-    assertEquals("AddItems/{tripId}", CommandoScreens.AddItems.route)
-    assertEquals("AddItems/trip123", CommandoScreens.addItemsRoute("trip123"))
+  fun catalogueAndReviewKeepTheirOwnTitlesAndDrawTheirOwnChrome() {
+    assertEquals(R.string.add_items_title, CommandoScreens.Catalogue.title)
+    assertEquals(R.string.order_review, CommandoScreens.ReviewOrder.title)
+    // Both screens own their top and bottom bars, so the shared scaffold adds none.
+    for (screen in listOf(CommandoScreens.Catalogue, CommandoScreens.ReviewOrder)) {
+      assertFalse(screen.showBottomBar)
+      assertFalse(screen.showModeSelector)
+    }
+  }
+
+  @Test
+  fun catalogueAndReviewHaveARequiredTripIdAndEncodeOpaqueIdsAsOneSegment() {
+    assertEquals("Catalogue/trip123", CommandoScreens.catalogueRoute("trip123"))
+    assertEquals("ReviewOrder/trip123", CommandoScreens.reviewOrderRoute("trip123"))
     for ((id, encoded) in opaqueIds) {
-      assertEquals("AddItems/$encoded", CommandoScreens.addItemsRoute(id))
+      assertEquals("Catalogue/$encoded", CommandoScreens.catalogueRoute(id))
+      assertEquals("ReviewOrder/$encoded", CommandoScreens.reviewOrderRoute(id))
     }
   }
 
@@ -152,7 +165,14 @@ class CommandoScreensTest {
                   ),
           ) {}
           composable(
-              CommandoScreens.AddItems.route,
+              CommandoScreens.Catalogue.route,
+              arguments =
+                  listOf(
+                      navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }
+                  ),
+          ) {}
+          composable(
+              CommandoScreens.ReviewOrder.route,
               arguments =
                   listOf(
                       navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }
@@ -174,11 +194,16 @@ class CommandoScreensTest {
       val entry = controller.currentBackStackEntry
       assertNotNull("Route must match for ID: $id", entry)
       assertEquals(id, entry!!.arguments!!.getString(CommandoScreens.TRIP_ID_ARGUMENT))
-      controller.navigate(CommandoScreens.addItemsRoute(id))
-      val addItemsEntry = controller.currentBackStackEntry
-      assertNotNull("Add Items route must match for ID: $id", addItemsEntry)
-      assertEquals(CommandoScreens.AddItems.route, addItemsEntry!!.destination.route)
-      assertEquals(id, addItemsEntry.arguments!!.getString(CommandoScreens.TRIP_ID_ARGUMENT))
+      controller.navigate(CommandoScreens.catalogueRoute(id))
+      val catalogueEntry = controller.currentBackStackEntry
+      assertNotNull("Catalogue route must match for ID: $id", catalogueEntry)
+      assertEquals(CommandoScreens.Catalogue.route, catalogueEntry!!.destination.route)
+      assertEquals(id, catalogueEntry.arguments!!.getString(CommandoScreens.TRIP_ID_ARGUMENT))
+      controller.navigate(CommandoScreens.reviewOrderRoute(id))
+      val reviewEntry = controller.currentBackStackEntry!!
+      assertEquals(CommandoScreens.ReviewOrder.route, reviewEntry.destination.route)
+      assertEquals(id, reviewEntry.arguments!!.getString(CommandoScreens.TRIP_ID_ARGUMENT))
+      assertTrue(controller.popBackStack())
       assertTrue(controller.popBackStack())
       assertSame(entry, controller.currentBackStackEntry)
       controller.navigate(CommandoScreens.orderDetailsRoute(id))

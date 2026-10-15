@@ -2,6 +2,8 @@ package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
 object NavigationTestTags {
+  const val OPEN_MAP = "open_mock_map"
+  const val MAP_LIST = "mock_map_list"
   const val SCREEN_TITLE = "screen_title"
   const val LOGIN_SCREEN = "login_screen"
   const val SIGN_UP_SCREEN = "sign_up_screen"

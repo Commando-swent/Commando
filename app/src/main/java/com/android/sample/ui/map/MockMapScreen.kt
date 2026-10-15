@@ -26,7 +26,7 @@ import com.android.sample.ui.map.MockMapTestTags as Tags
 @Composable
 fun MockMapScreen(
     viewModel: MockMapViewModel,
-    onTripDetails: (String) -> Unit,
+    onTripDetails: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
   val state by viewModel.uiState.collectAsState()
@@ -47,7 +47,7 @@ fun MockMapScreen(
     state: MockMapUiState,
     onSelectTrip: (String) -> Unit,
     onClearSelection: () -> Unit,
-    onTripDetails: (String) -> Unit,
+    onTripDetails: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
     onEnableSampleLocation: (() -> Unit)? = null,
@@ -139,7 +139,7 @@ fun MockMapScreen(
               state.selectedGroup,
               onSelectTrip,
               onClearSelection,
-              { onTripDetails(trip.id) },
+              onTripDetails?.let { action -> { action(trip.id) } },
               Modifier.align(Alignment.BottomCenter)
                   .fillMaxWidth()
                   .padding(start = 16.dp, end = 16.dp, bottom = 40.dp),
@@ -156,7 +156,7 @@ private fun TripPreview(
     group: List<MockMapTrip>,
     onSelectTrip: (String) -> Unit,
     onClose: () -> Unit,
-    onDetails: () -> Unit,
+    onDetails: (() -> Unit)?,
     modifier: Modifier,
 ) {
   MapPanel(modifier.testTag(Tags.SUMMARY).semantics { liveRegion = LiveRegionMode.Polite }) {
@@ -186,10 +186,16 @@ private fun TripPreview(
             ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
     )
     Button(
-        onDetails,
-        Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag(Tags.DETAILS),
+        onClick = { onDetails?.invoke() },
+        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).testTag(Tags.DETAILS),
+        enabled = onDetails != null,
     ) {
-      Text(stringResource(R.string.mock_map_details))
+      Text(
+          stringResource(
+              if (onDetails == null) R.string.mock_map_details_unavailable
+              else R.string.mock_map_details
+          )
+      )
     }
   }
 }

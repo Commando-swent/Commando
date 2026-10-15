@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.Product
+import com.android.sample.model.SUPPORTED_STORE_IDS
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -129,7 +130,6 @@ private fun Exception.toProductError(): ProductError =
       else -> ProductError.Unknown
     }
 
-internal val SUPPORTED_STORE_IDS = setOf("migros", "coop", "denner", "aldi", "lidl")
 internal const val MAX_PRODUCT_QUERY_LIMIT = 50
 private const val STORES_COLLECTION = "stores"
 private const val PRODUCTS_COLLECTION = "products"

@@ -348,7 +348,6 @@ internal fun CatalogueMessage(
     action: String? = null,
     primaryAction: Boolean = false,
     onAction: () -> Unit = {},
-
 ) {
   val c = MaterialTheme.colorScheme
   Column(

@@ -9,11 +9,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.createGraph
 import androidx.navigation.navArgument
 import androidx.test.core.app.ApplicationProvider
+import com.android.sample.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +46,42 @@ class CommandoScreensTest {
   fun tripDetailsHasExactlyOneRequiredPathArgument() {
     assertEquals("tripId", CommandoScreens.TRIP_ID_ARGUMENT)
     assertEquals("TripDetails/{tripId}", CommandoScreens.TripDetails.route)
+  }
+
+  @Test
+  fun orderDetailsHasItsOwnRequiredOrderIdAndTitle() {
+    assertEquals("orderId", CommandoScreens.ORDER_ID_ARGUMENT)
+    assertEquals("OrderDetails/{orderId}", CommandoScreens.OrderDetails.route)
+    assertEquals(R.string.order_details_title, CommandoScreens.OrderDetails.title)
+  }
+
+  @Test
+  fun orderDetailsEncodesNormalAndOpaqueIdsOnceWithoutAlteration() {
+    for (id in listOf("order123", "order-123_ABC", "123")) {
+      assertEquals("OrderDetails/$id", CommandoScreens.orderDetailsRoute(id))
+    }
+    for ((id, encoded) in opaqueIds) {
+      assertEquals("OrderDetails/$encoded", CommandoScreens.orderDetailsRoute(id))
+    }
+    assertEquals("OrderDetails/%20order", CommandoScreens.orderDetailsRoute(" order"))
+    assertEquals("OrderDetails/order%20", CommandoScreens.orderDetailsRoute("order "))
+  }
+
+  @Test
+  fun existingDestinationsKeepTheirRouteContracts() {
+    for (destination in
+        listOf(
+            CommandoScreens.Auth,
+            CommandoScreens.App,
+            CommandoScreens.Home,
+            CommandoScreens.CreateTrip,
+            CommandoScreens.Profile,
+            CommandoScreens.AvailableTrips,
+        )) {
+      assertEquals(destination.name, destination.route)
+    }
+    assertEquals("TripDetails/{tripId}", CommandoScreens.TripDetails.route)
+    assertEquals("AddItems/{tripId}", CommandoScreens.AddItems.route)
   }
 
   @Test
@@ -88,6 +126,7 @@ class CommandoScreensTest {
     // This faithfully constructs a route, but supplies no nonempty required path segment.
     // Whether the app should allow selecting an empty ID belongs to the navigation integration.
     assertEquals("TripDetails/", CommandoScreens.tripDetailsRoute(""))
+    assertEquals("OrderDetails/", CommandoScreens.orderDetailsRoute(""))
   }
 
   @Test
@@ -112,7 +151,17 @@ class CommandoScreensTest {
                       navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }
                   ),
           ) {}
+          composable(
+              CommandoScreens.OrderDetails.route,
+              arguments =
+                  listOf(
+                      navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }
+                  ),
+          ) {}
         }
+    assertThrows(IllegalArgumentException::class.java) {
+      controller.navigate(CommandoScreens.OrderDetails.name)
+    }
     for (id in opaqueIds.map { it.first } + "trip123") {
       controller.navigate(CommandoScreens.tripDetailsRoute(id))
       val entry = controller.currentBackStackEntry
@@ -123,6 +172,16 @@ class CommandoScreensTest {
       assertNotNull("Add Items route must match for ID: $id", addItemsEntry)
       assertEquals(CommandoScreens.AddItems.route, addItemsEntry!!.destination.route)
       assertEquals(id, addItemsEntry.arguments!!.getString(CommandoScreens.TRIP_ID_ARGUMENT))
+      assertTrue(controller.popBackStack())
+      assertSame(entry, controller.currentBackStackEntry)
+      controller.navigate(CommandoScreens.orderDetailsRoute(id))
+      val orderEntry = controller.currentBackStackEntry!!
+      assertEquals(CommandoScreens.OrderDetails.route, orderEntry.destination.route)
+      assertEquals(id, orderEntry.arguments!!.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+      val argument = orderEntry.destination.arguments.getValue(CommandoScreens.ORDER_ID_ARGUMENT)
+      assertEquals(NavType.StringType, argument.type)
+      assertFalse(argument.isNullable)
+      assertFalse(argument.isDefaultValuePresent)
       assertTrue(controller.popBackStack())
       assertSame(entry, controller.currentBackStackEntry)
     }

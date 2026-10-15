@@ -6,6 +6,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +49,7 @@ import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfilePhotoActions
+import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
@@ -161,6 +163,7 @@ private fun AuthenticatedApp(
     ProfileViewModel(repository, photoRepository)
   }
   val appUiState by appViewModel.uiState.collectAsState()
+  val photoSnackbarHost = remember { SnackbarHostState() }
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
   val currentScreen =
@@ -178,6 +181,7 @@ private fun AuthenticatedApp(
         }
       },
       onBack = { navController.popBackStack() },
+      snackbarHost = { ProfilePhotoSnackbarHost(photoSnackbarHost) },
       onTrips = {
         navController.navigate(CommandoScreens.AvailableTrips.name) { launchSingleTop = true }
       },
@@ -270,7 +274,7 @@ private fun AuthenticatedApp(
       }
       composable(route = CommandoScreens.Profile.name) {
         val profileUiState by profileViewModel.uiState.collectAsState()
-        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel)
+        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
@@ -298,7 +302,7 @@ private fun AuthenticatedApp(
           Unit
         }
         BackHandler { onCancel() }
-        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel)
+        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
         draft?.let {
           EditProfileScreen(
               it,

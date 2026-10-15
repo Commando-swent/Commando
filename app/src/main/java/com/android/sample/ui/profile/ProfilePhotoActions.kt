@@ -11,20 +11,52 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
 import com.android.sample.R
 import com.android.sample.model.ProfilePhotoSource
 
+@Composable
+fun ProfilePhotoSnackbarHost(state: SnackbarHostState) {
+  val colors = MaterialTheme.colorScheme
+  val shape = RoundedCornerShape(13.dp)
+  SnackbarHost(state) { data ->
+    Snackbar(
+        snackbarData = data,
+        shape = shape,
+        containerColor = colors.secondaryContainer,
+        contentColor = colors.onSurface,
+        actionColor = colors.primary,
+        dismissActionContentColor = colors.onSurfaceVariant,
+    )
+  }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfilePhotoActions(model: ProfileViewModel): Pair<PhotoUiState, () -> Unit> {
+fun ProfilePhotoActions(
+    model: ProfileViewModel,
+    snackbarHost: SnackbarHostState,
+): Pair<PhotoUiState, () -> Unit> {
   val state by model.photoState.collectAsState()
+  val errorMessage = stringResource(R.string.profile_photo_error)
+  val reloadLabel = stringResource(R.string.profile_photo_reload)
+  LaunchedEffect(state.failed) {
+    if (state.failed) {
+      val result =
+          snackbarHost.showSnackbar(
+              message = errorMessage,
+              actionLabel = reloadLabel,
+              withDismissAction = true,
+              duration = SnackbarDuration.Long,
+          )
+      if (result == SnackbarResult.ActionPerformed) model.refreshPhoto()
+      else model.dismissPhotoError()
+    }
+  }
   var open by remember { mutableStateOf(false) }
   var owner by rememberSaveable { mutableStateOf<String?>(null) }
   fun acceptPhoto(source: ProfilePhotoSource?) {
@@ -52,24 +84,6 @@ fun ProfilePhotoActions(model: ProfileViewModel): Pair<PhotoUiState, () -> Unit>
       owner = null
     }
   }
-  if (state.failed)
-      Popup(alignment = Alignment.BottomCenter) {
-        Snackbar(
-            modifier = Modifier.padding(16.dp),
-            action = {
-              TextButton(onClick = model::refreshPhoto) {
-                Text(stringResource(R.string.profile_photo_reload))
-              }
-            },
-            dismissAction = {
-              TextButton(onClick = model::dismissPhotoError) {
-                Text(stringResource(android.R.string.ok))
-              }
-            },
-        ) {
-          Text(stringResource(R.string.profile_photo_error))
-        }
-      }
   if (open)
       ModalBottomSheet(
           onDismissRequest = { open = false },

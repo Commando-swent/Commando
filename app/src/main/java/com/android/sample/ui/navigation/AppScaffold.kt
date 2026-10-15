@@ -35,11 +35,13 @@ fun AppScaffold(
     onProfile: () -> Unit,
     onTrips: () -> Unit = {},
     onBack: (() -> Unit)? = null,
+    snackbarHost: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
   Scaffold(
       modifier = Modifier.testTag(AppTestTags.APP_SCAFFOLD),
       containerColor = MaterialTheme.colorScheme.background,
+      snackbarHost = snackbarHost,
       topBar = {
         if (currentScreen.showModeSelector) {
           AppTopBar(

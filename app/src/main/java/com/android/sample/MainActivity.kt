@@ -59,6 +59,7 @@ fun Greeting(name: String, modifier: Modifier = Modifier) {
   Text(text = "Hello $name!", modifier = modifier.semantics { testTag = C.Tag.greeting })
 }
 
+// AI assistance: OpenAI Codex. Preview the screens without requiring an authenticated session.
 @Preview(name = "Home · Requester", group = "Home", widthDp = 412, heightDp = 915)
 @Composable
 private fun RequesterHomePreview() {

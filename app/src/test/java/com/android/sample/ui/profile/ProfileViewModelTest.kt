@@ -11,6 +11,7 @@ import com.android.sample.model.authentication.ProfileUpdateResult
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
@@ -19,6 +20,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -348,6 +350,41 @@ class ProfileViewModelTest {
     assertNull(model.photoOwner())
     model.refreshPhoto()
     assertEquals(PhotoUiState(), model.photoState.value)
+  }
+
+  @Test
+  fun previousAccountsLatePhotoCannotReplaceTheCurrentAvatar() = verifyLatePhotoLoad(fails = false)
+
+  @Test
+  fun previousAccountsLateFailureCannotShowAnErrorForTheCurrentAccount() =
+      verifyLatePhotoLoad(fails = true)
+
+  private fun verifyLatePhotoLoad(fails: Boolean) = runTest {
+    val auth = FakeAuthRepository(alice)
+    val previousLoad = CompletableDeferred<ByteArray?>()
+    val currentPhoto = byteArrayOf(4, 5, 6)
+    val photos =
+        object : ProfilePhotoRepository {
+          override suspend fun load(userId: String): ByteArray? =
+              if (userId == alice.uid) withContext(NonCancellable) { previousLoad.await() }
+              else currentPhoto
+
+          override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? = null
+        }
+    val model = ProfileViewModel(auth, photos).also { store.put("photo", it) }
+    runCurrent()
+    auth.signInWithEmailResult = Result.success(AuthUser("bob"))
+    auth.signInWithEmail("", "")
+    runCurrent()
+    val confirmed = PhotoUiState(java.util.Base64.getEncoder().encodeToString(currentPhoto))
+    assertEquals(confirmed, model.photoState.value)
+
+    if (fails) previousLoad.completeExceptionally(IllegalStateException("Offline"))
+    else previousLoad.complete(byteArrayOf(1, 2, 3))
+    runCurrent()
+
+    assertEquals(confirmed, model.photoState.value)
+    assertEquals("bob", model.photoOwner())
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

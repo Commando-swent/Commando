@@ -135,8 +135,8 @@ class OrderDetailsScreenTest {
         )) {
       compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
     }
-    compose.onAllNodesWithText("PENDING").assertCountEquals(2)
-    compose.onAllNodesWithText("PENDING")[1].performScrollTo().assertIsDisplayed()
+    compose.onAllNodesWithText("PENDING").assertCountEquals(1)
+    compose.onNodeWithText("PENDING").assertIsDisplayed()
     // Exhaustive action checks also exclude editing, Accept/Reject and submission controls.
     compose.onAllNodes(hasClickAction()).assertCountEquals(1)
     compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.SetText)).assertCountEquals(0)

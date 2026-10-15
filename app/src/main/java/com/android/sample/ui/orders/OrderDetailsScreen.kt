@@ -152,10 +152,6 @@ private fun OrderDetailsContent(order: Order, trip: Trip) {
         style = MaterialTheme.typography.titleMedium.copy(fontSize = 26.sp, lineHeight = 35.sp),
     )
   }
-  OrderDetailsCard {
-    OrderDetailsSection(stringResource(R.string.order_details_status))
-    OrderDetailsStatus(order.status)
-  }
 }
 
 @Composable
@@ -346,10 +342,6 @@ private fun OrderDetailsSkeleton() {
     OrderDetailsCard {
       OrderDetailsPlaceholder(Modifier.width(104.dp).height(17.dp))
       OrderDetailsPlaceholder(Modifier.width(140.dp).height(35.dp))
-    }
-    OrderDetailsCard {
-      OrderDetailsPlaceholder(Modifier.width(54.dp).height(17.dp))
-      OrderDetailsPlaceholder(Modifier.width(92.dp).height(30.dp))
     }
   }
 }

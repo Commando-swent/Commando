@@ -88,7 +88,7 @@ kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
 
 sonar {
   properties {
-    property("sonar.projectKey", "Commando-project_Commando")
+    property("sonar.projectKey", "Commando-swent_Commando")
     property("sonar.projectName", "Commando")
     property("sonar.organization", "commando-swent")
     property("sonar.host.url", "https://sonarcloud.io")

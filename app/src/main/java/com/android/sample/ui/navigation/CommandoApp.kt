@@ -4,13 +4,9 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -23,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -84,6 +79,7 @@ fun CommandoApp(
     tripRepository: TripRepository? = null,
     googleCredentials: GoogleCredentialClient? = null,
     photoRepository: ProfilePhotoRepository? = null,
+    // TODO(#126): Inject the session TripRepository when wiring trip-owner order access.
     orderRepositoryFactory: (() -> String?) -> OrderRepository = { FakeOrderRepository(it) },
 ) {
   val context = LocalContext.current
@@ -264,22 +260,15 @@ private fun AuthenticatedApp(
       composable(route = CommandoScreens.AvailableTrips.name) { entry ->
         val availableTripsViewModel: AvailableTripsViewModel =
             viewModel(viewModelStoreOwner = entry) { AvailableTripsViewModel(tripRepository) }
-        Column {
-          TextButton(
-              onClick = {
-                navController.navigate(CommandoScreens.MockMap.name) { launchSingleTop = true }
-              },
-              modifier = Modifier.testTag(NavigationTestTags.OPEN_MAP),
-          ) {
-            Text(stringResource(R.string.nav_mock_map))
-          }
-          AvailableTripsScreen(
-              viewModel = availableTripsViewModel,
-              onTripSelected = { tripId ->
-                navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
-              },
-          )
-        }
+        AvailableTripsScreen(
+            viewModel = availableTripsViewModel,
+            onTripSelected = { tripId ->
+              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
+            },
+            onOpenMap = {
+              navController.navigate(CommandoScreens.MockMap.name) { launchSingleTop = true }
+            },
+        )
       }
       composable(
           route = CommandoScreens.TripDetails.route,
@@ -315,21 +304,17 @@ private fun AuthenticatedApp(
       }
       composable(route = CommandoScreens.MockMap.name) {
         val map: MockMapViewModel = viewModel { MockMapViewModel() }
-        Column {
-          TextButton(
-              onClick = { navController.popBackStack() },
-              modifier = Modifier.testTag(NavigationTestTags.MAP_LIST),
-          ) {
-            Text(stringResource(R.string.nav_trip_list))
-          }
-          // These marker IDs are UI fixtures, not keys in the production TripRepository.
-          MockMapScreen(viewModel = map, onTripDetails = null)
-        }
+        // These marker IDs are UI fixtures, not keys in the production TripRepository.
+        MockMapScreen(
+            viewModel = map,
+            onTripDetails = null,
+            onBack = { navController.popBackStack() },
+        )
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->
         val model: MyOrdersViewModel =
             viewModel(viewModelStoreOwner = entry) {
-              MyOrdersViewModel(orders.repository, tripRepository, userId)
+              MyOrdersViewModel(orders.repository, tripRepository, userId, loadImmediately = false)
             }
         val lifecycleOwner = LocalLifecycleOwner.current
         DisposableEffect(lifecycleOwner, model) {
@@ -339,24 +324,17 @@ private fun AuthenticatedApp(
           lifecycleOwner.lifecycle.addObserver(observer)
           onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
-        Column {
-          Text(
-              stringResource(R.string.nav_orders_demo),
-              modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-              style = MaterialTheme.typography.labelSmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-          MyOrdersScreen(
-              viewModel = model,
-              requesterId = userId,
-              onOrderClick = { orderId ->
-                navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
-                  launchSingleTop = true
-                }
-              },
-              onBrowseTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
-          )
-        }
+        MyOrdersScreen(
+            viewModel = model,
+            requesterId = userId,
+            onOrderClick = { orderId ->
+              navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
+                launchSingleTop = true
+              }
+            },
+            onBrowseTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
+            isDemo = true,
+        )
       }
       composable(
           route = CommandoScreens.OrderDetails.route,

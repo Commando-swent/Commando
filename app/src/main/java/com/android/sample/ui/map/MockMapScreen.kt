@@ -22,23 +22,32 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import com.android.sample.R
 import com.android.sample.ui.map.MockMapTestTags as Tags
+import com.android.sample.ui.navigation.NavigationTestTags
 
 @Composable
 fun MockMapScreen(
     viewModel: MockMapViewModel,
     onTripDetails: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
-  MockMapScreen(
-      state,
-      viewModel::selectTrip,
-      viewModel::clearSelection,
-      onTripDetails,
-      modifier,
-      viewModel::retry,
-      viewModel::enableSampleLocation,
-  )
+  Column(modifier.fillMaxSize()) {
+    onBack?.let {
+      TextButton(onClick = it, modifier = Modifier.testTag(NavigationTestTags.MAP_LIST)) {
+        Text(stringResource(R.string.nav_trip_list))
+      }
+    }
+    MockMapScreen(
+        state,
+        viewModel::selectTrip,
+        viewModel::clearSelection,
+        onTripDetails,
+        Modifier.weight(1f),
+        viewModel::retry,
+        viewModel::enableSampleLocation,
+    )
+  }
 }
 
 /** Stateless screen. The host decides what to do with sample IDs; no real details lookup occurs. */

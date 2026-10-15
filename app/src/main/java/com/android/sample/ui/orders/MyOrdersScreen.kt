@@ -58,6 +58,7 @@ fun MyOrdersScreen(
     onOrderClick: (String) -> Unit,
     onBrowseTrips: () -> Unit,
     modifier: Modifier = Modifier,
+    isDemo: Boolean = false,
 ) {
   LaunchedEffect(viewModel, requesterId) { viewModel.setRequester(requesterId) }
   val state by viewModel.uiState.collectAsState()
@@ -68,6 +69,7 @@ fun MyOrdersScreen(
       onOrderClick,
       onBrowseTrips,
       modifier,
+      isDemo,
   )
 }
 
@@ -78,6 +80,7 @@ fun MyOrdersScreen(
     onOrderClick: (String) -> Unit,
     onBrowseTrips: () -> Unit,
     modifier: Modifier = Modifier,
+    isDemo: Boolean = false,
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -85,6 +88,13 @@ fun MyOrdersScreen(
       verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     Column(Modifier.padding(start = 4.dp, top = 16.dp)) {
+      if (isDemo)
+          Text(
+              stringResource(R.string.nav_orders_demo),
+              modifier = Modifier.padding(bottom = 8.dp),
+              style = MaterialTheme.typography.labelSmall,
+              color = colors.onSurfaceVariant,
+          )
       Text(
           stringResource(R.string.my_orders_title),
           color = colors.onBackground,

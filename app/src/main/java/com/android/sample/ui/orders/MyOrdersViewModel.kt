@@ -47,6 +47,7 @@ class MyOrdersViewModel(
     private val orderRepository: OrderRepository,
     private val tripRepository: TripRepository,
     private var requesterId: String,
+    loadImmediately: Boolean = true,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<MyOrdersUiState>(MyOrdersUiState.Loading)
   val uiState: StateFlow<MyOrdersUiState> = mutableState.asStateFlow()
@@ -54,7 +55,8 @@ class MyOrdersViewModel(
   private var latestLoad = 0
 
   init {
-    load()
+    // Navigation may own the first load through ON_RESUME, as well as refreshes on return.
+    if (loadImmediately) load()
   }
 
   fun setRequester(requesterId: String) {

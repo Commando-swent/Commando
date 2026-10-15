@@ -2,11 +2,9 @@ package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
 import android.content.Context
-import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
@@ -19,7 +17,6 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.MockMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.theme.SampleAppTheme
-import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
@@ -29,10 +26,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
-@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w412dp-h917dp-mdpi")
 class OrderNavigationTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -98,17 +93,6 @@ class OrderNavigationTest {
     compose.activity.onBackPressedDispatcher.onBackPressed()
   }
 
-  private fun capture(name: String) {
-    val file = File("build/reports/integration130/$name.png").apply { parentFile?.mkdirs() }
-    file.outputStream().use {
-      compose
-          .onRoot()
-          .captureToImage()
-          .asAndroidBitmap()
-          .compress(Bitmap.CompressFormat.PNG, 100, it)
-    }
-  }
-
   private fun card() = compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id)
 
   @Test
@@ -116,11 +100,9 @@ class OrderNavigationTest {
     show()
     repeat(2) { click(AppTestTags.ORDERS_BUTTON) }
     card().assertIsDisplayed()
-    capture("my-orders")
     card().performClick()
     compose.onNodeWithText("Order details").assertIsDisplayed()
     compose.onNodeWithText("Milk", substring = true).assertExists()
-    capture("order-details")
     compose.onNodeWithContentDescription("Back").performClick()
     card().assertIsDisplayed().performClick()
     back()
@@ -203,7 +185,6 @@ class OrderNavigationTest {
     click(MockMapTestTags.MARKER_PREFIX + "sample-migros")
     compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().assertIsNotEnabled()
     assertTrue(lookups.isEmpty())
-    capture("mock-map")
     click(NavigationTestTags.MAP_LIST)
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).assertIsDisplayed()
     back()
@@ -223,6 +204,28 @@ class OrderNavigationTest {
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertIsDisplayed()
     click(AppTestTags.COMMANDO_MODE)
     compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).assertIsNotEnabled()
+  }
+
+  @Test
+  fun ordersLoadOnceOnEntryAndRefreshOnceOnReturn() {
+    var reads = 0
+    decorate = { delegate ->
+      object : OrderRepository by delegate {
+        override suspend fun getMyOrders(): OrderResult<List<Order>> {
+          reads++
+          return delegate.getMyOrders()
+        }
+      }
+    }
+    show()
+    click(AppTestTags.ORDERS_BUTTON)
+    card().assertIsDisplayed()
+    compose.runOnIdle { assertEquals(1, reads) }
+    card().performClick()
+    compose.onNodeWithText("Order details").assertIsDisplayed()
+    back()
+    card().assertIsDisplayed()
+    compose.runOnIdle { assertEquals(2, reads) }
   }
 
   @Test

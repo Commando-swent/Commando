@@ -5,17 +5,22 @@ import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderStatus
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Shares orders within one instance only; never persists data or enforces Firebase security. */
+/**
+ * Shares orders within one instance only; never persists data or enforces Firebase security. Inject
+ * the shared [tripRepository] to enable associated-trip owner reads; absent lookup denies them.
+ */
 class FakeOrderRepository(
     private val currentUserId: () -> String?,
     initialOrders: List<Order> = emptyList(),
     private val now: () -> Instant = Instant::now,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val tripRepository: TripRepository? = null,
 ) : OrderRepository {
   private val mutex = Mutex()
   private val orders = linkedMapOf<String, Order>()
@@ -66,12 +71,26 @@ class FakeOrderRepository(
     if (orderId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
     if (userId != order.requesterId) {
-      return@withSession OrderResult.Error(OrderError.PermissionDenied)
+      // Resolve ownership from the associated Trip, never from UI role or caller-supplied owner ID.
+      val trip =
+          try {
+            (tripRepository?.getTripById(order.tripId) as? TripResult.Success)?.data
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            return@withSession OrderResult.Error(OrderError.Unknown)
+          }
+      currentCoroutineContext().ensureActive()
+      // A lookup can suspend while the authenticated account changes.
+      if (currentUserId() != userId || trip?.id != order.tripId || trip.ownerId != userId) {
+        return@withSession OrderResult.Error(OrderError.PermissionDenied)
+      }
     }
     OrderResult.Success(order.snapshot())
   }
 
-  private suspend fun <T> withSession(action: (String) -> OrderResult<T>): OrderResult<T> {
+  private suspend fun <T> withSession(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
     currentCoroutineContext().ensureActive()
     return mutex.withLock {
       currentCoroutineContext().ensureActive()

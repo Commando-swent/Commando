@@ -48,7 +48,7 @@ class ProfileViewModel(
           mutableEditState.value = null
           photoJob?.cancel()
           mutablePhotoState.value = PhotoUiState()
-          if (user != null && photos != null) photoOperation(user.uid) { photos.load(user.uid) }
+          refreshPhoto()
         }
         mutableState.value =
             if (user == null) {
@@ -68,25 +68,27 @@ class ProfileViewModel(
 
   fun photoOwner(): String? = activeUser?.uid
 
-  fun savePhoto(owner: String, source: ProfilePhotoSource?) {
-    val photos = photos ?: return
-    if (activeUser?.uid != owner || mutablePhotoState.value.busy) return
-    photoOperation(owner) { photos.save(owner, source) }
+  fun refreshPhoto() = photoOwner()?.let { owner -> updatePhoto(owner) { it.load(owner) } }
+
+  fun dismissPhotoError() {
+    mutablePhotoState.value = mutablePhotoState.value.copy(failed = false)
   }
 
-  private fun photoOperation(owner: String, operation: suspend () -> ByteArray?) {
-    mutablePhotoState.value = mutablePhotoState.value.copy(busy = true)
+  fun savePhoto(uid: String, photo: ProfilePhotoSource?) = updatePhoto(uid) { it.save(uid, photo) }
+
+  private fun updatePhoto(owner: String, action: suspend (ProfilePhotoRepository) -> ByteArray?) {
+    val photos = photos ?: return
+    if (activeUser?.uid != owner || mutablePhotoState.value.busy) return
+    mutablePhotoState.value = mutablePhotoState.value.copy(busy = true, failed = false)
     photoJob = viewModelScope.launch {
       try {
-        val image = operation()?.let { Base64.getEncoder().encodeToString(it) }
+        val image = action(photos)?.let { Base64.getEncoder().encodeToString(it) }
         if (activeUser?.uid == owner) mutablePhotoState.value = PhotoUiState(image)
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (_: Exception) {
-        // Keep the last confirmed photo when loading, replacing or removing fails.
-      } finally {
         if (activeUser?.uid == owner)
-            mutablePhotoState.value = mutablePhotoState.value.copy(busy = false)
+            mutablePhotoState.value = mutablePhotoState.value.copy(busy = false, failed = true)
       }
     }
   }

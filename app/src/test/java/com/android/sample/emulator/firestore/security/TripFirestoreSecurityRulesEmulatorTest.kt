@@ -59,11 +59,8 @@ class TripFirestoreSecurityRulesEmulatorTest {
       assertPermissionDenied { otherPhoto.delete().await() }
       for (invalid in
           listOf(Blob.fromBytes(ByteArray(0)), Blob.fromBytes(ByteArray(204801)), "not bytes")) {
-        assertPermissionDenied {
-          document
-              .set(mapOf("photo" to invalid, "updatedAt" to FieldValue.serverTimestamp()))
-              .await()
-        }
+        val data = mapOf("photo" to invalid, "updatedAt" to FieldValue.serverTimestamp())
+        assertPermissionDenied { document.set(data).await() }
       }
       assertEquals(null, repository.save(uid, null))
       assertEquals(null, repository.load(uid))

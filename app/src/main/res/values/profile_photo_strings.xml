@@ -5,4 +5,6 @@
     <string name="profile_photo_remove">Remove photo</string>
     <string name="profile_photo_description">Your profile photo</string>
     <string name="profile_photo_close">Close photo preview</string>
+    <string name="profile_photo_error">Could not load or update your photo.</string>
+    <string name="profile_photo_reload">Reload photo</string>
 </resources>

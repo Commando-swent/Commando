@@ -38,23 +38,36 @@ class ProfileInformationTest {
   private val profile = mutableStateOf(ProfileUiState.Content("Alice Martin", "alice@epfl.ch"))
 
   @Test
-  fun plusOpensCameraAndGalleryAndRemovalRestoresInitials() {
+  fun photoLoadRecoversWithoutSigningOutAndFailedRemovalKeepsTheAvatar() {
     val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
     val output = ByteArrayOutputStream()
     bitmap.compress(Bitmap.CompressFormat.JPEG, 80, output)
     val image = output.toByteArray()
-    var stored: ByteArray? = null
+    var stored: ByteArray? = image
+    var failed = true
     val photos =
         object : ProfilePhotoRepository {
-          override suspend fun load(userId: String) = stored
+          override suspend fun load(userId: String) = stored.also { check(!failed) }
 
           override suspend fun save(userId: String, source: ProfilePhotoSource?) =
-              (if (source == null) null else image).also { stored = it }
+              (if (source == null) null else image).also {
+                check(!failed)
+                stored = it
+              }
         }
-    fun choose(label: String): Intent {
-      compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).performClick()
+    fun node(tag: String) = compose.onNodeWithTag(tag)
+    fun preview(tag: String) {
+      node(tag).performClick()
+      val inPreview = hasAnyAncestor(hasTestTag(ProfileTestTags.PHOTO_PREVIEW))
+      compose.onNode(hasTestTag(tag) and inPreview).assertIsDisplayed()
+      node(ProfileTestTags.PHOTO_CLOSE).performClick()
+      node(ProfileTestTags.PHOTO_PREVIEW).assertDoesNotExist()
+    }
+    fun choose(label: String, data: Intent?, result: Int = Activity.RESULT_OK) {
+      node(ProfileTestTags.ADD_PHOTO).performClick()
       compose.onNodeWithText(label).performClick()
-      return shadowOf(compose.activity).nextStartedActivityForResult.intent
+      val intent = shadowOf(compose.activity).nextStartedActivityForResult.intent
+      compose.runOnIdle { shadowOf(compose.activity).receiveResult(intent, result, data) }
     }
     val model = ProfileViewModel(FakeAuthRepository(AuthUser("alice", "Alice Martin")), photos)
     compose.setContent {
@@ -63,62 +76,53 @@ class ProfileInformationTest {
         ProfileInformation(profile.value, photo = photo, onPhotoClick = onPhotoClick)
       }
     }
-    compose.onNodeWithTag(ProfileTestTags.INITIALS).performClick()
-    compose.onNodeWithTag(ProfilePhotoTestTags.PREVIEW).assertIsDisplayed()
-    compose
-        .onNode(
-            hasTestTag(ProfileTestTags.INITIALS) and
-                hasAnyAncestor(hasTestTag(ProfilePhotoTestTags.PREVIEW))
-        )
-        .assertTextEquals("AM")
-    compose.onNodeWithTag(ProfilePhotoTestTags.CLOSE).performClick()
-    compose.onNodeWithTag(ProfilePhotoTestTags.PREVIEW).assertDoesNotExist()
-    compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).assertIsEnabled().performClick()
-    compose.onNodeWithTag(ProfilePhotoTestTags.PREVIEW).assertDoesNotExist()
+    val error = compose.onNodeWithText("Could not load or update your photo.")
+    error.assertIsDisplayed()
+    node(ProfileTestTags.INITIALS).assertIsDisplayed()
+    compose.runOnIdle { failed = false }
+    compose.onNodeWithText("Reload photo").performClick()
+    error.assertDoesNotExist()
+    node(ProfileTestTags.PHOTO_IMAGE).assertIsDisplayed()
+    node(ProfileTestTags.ADD_PHOTO).performClick()
+    compose.onNodeWithText("Remove photo").assertIsEnabled().performClick()
+    preview(ProfileTestTags.INITIALS)
+    node(ProfileTestTags.INITIALS).assertTextEquals("AM")
+    node(ProfileTestTags.ADD_PHOTO).assertIsEnabled().performClick()
+    node(ProfileTestTags.PHOTO_PREVIEW).assertDoesNotExist()
     compose.onNodeWithText("Choose from gallery").assertIsDisplayed()
     compose.onNodeWithText("Remove photo").assertIsNotEnabled()
     compose.onNodeWithText("Cancel").performClick()
-    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertTextEquals("AM")
-    val retryCamera = choose("Take a photo")
-    compose.runOnIdle {
-      shadowOf(compose.activity)
-          .receiveResult(retryCamera, Activity.RESULT_OK, Intent().putExtra("data", bitmap))
-    }
-    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertIsDisplayed()
-    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertDoesNotExist()
-    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).performClick()
-    compose
-        .onNode(
-            hasTestTag(ProfilePhotoTestTags.IMAGE) and
-                hasAnyAncestor(hasTestTag(ProfilePhotoTestTags.PREVIEW))
-        )
-        .assertIsDisplayed()
-    compose.onNodeWithTag(ProfilePhotoTestTags.CLOSE).performClick()
+    node(ProfileTestTags.INITIALS).assertTextEquals("AM")
+    choose("Take a photo", Intent().putExtra("data", bitmap))
+    node(ProfileTestTags.PHOTO_IMAGE).assertIsDisplayed()
+    node(ProfileTestTags.INITIALS).assertDoesNotExist()
+    preview(ProfileTestTags.PHOTO_IMAGE)
     for (label in listOf("Take a photo", "Choose from gallery")) {
-      val cancelled = choose(label)
-      compose.runOnIdle {
-        shadowOf(compose.activity).receiveResult(cancelled, Activity.RESULT_CANCELED, null)
-      }
-      compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertIsDisplayed()
+      choose(label, null, Activity.RESULT_CANCELED)
+      node(ProfileTestTags.PHOTO_IMAGE).assertIsDisplayed()
     }
-    val selection = choose("Choose from gallery")
-    val data = Intent().setData(Uri.parse("content://photos/selection"))
-    compose.runOnIdle {
-      shadowOf(compose.activity).receiveResult(selection, Activity.RESULT_OK, data)
-    }
-    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertIsDisplayed()
-    compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).performClick()
+    choose("Choose from gallery", Intent().setData(Uri.parse("content://photos/selection")))
+    node(ProfileTestTags.PHOTO_IMAGE).assertIsDisplayed()
+    compose.runOnIdle { failed = true }
+    node(ProfileTestTags.ADD_PHOTO).performClick()
     compose.onNodeWithText("Remove photo").performClick()
-    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertDoesNotExist()
-    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertTextEquals("AM")
+    error.assertIsDisplayed()
+    node(ProfileTestTags.PHOTO_IMAGE).assertIsDisplayed()
+    compose.onNodeWithText("OK").performClick()
+    error.assertDoesNotExist()
+    compose.runOnIdle { failed = false }
+    node(ProfileTestTags.ADD_PHOTO).performClick()
+    compose.onNodeWithText("Remove photo").performClick()
+    node(ProfileTestTags.PHOTO_IMAGE).assertDoesNotExist()
+    node(ProfileTestTags.INITIALS).assertTextEquals("AM")
+    compose.runOnIdle { profile.value = profile.value.copy(fullName = null) }
+    preview(ProfileTestTags.NEUTRAL_AVATAR)
   }
 
   @Test
   fun savingPhotoDisablesTheBadge() {
     compose.setContent {
-      SampleAppTheme {
-        ProfileInformation(profile.value, photo = PhotoUiState(busy = true), onPhotoClick = {})
-      }
+      ProfileInformation(profile.value, photo = PhotoUiState(busy = true), onPhotoClick = {})
     }
     compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).assertIsNotEnabled()
   }

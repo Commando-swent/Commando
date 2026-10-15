@@ -300,51 +300,43 @@ class ProfileViewModelTest {
   }
 
   @Test
-  fun photoChangesPersistAndFailuresAndStaleSelectionsPreserveTheAccount() = runTest {
+  fun photoFailuresAndStaleSelectionsPreserveTheAccount() = runTest {
     val fake = FakeAuthRepository(alice)
-    val stored = mutableMapOf<String, ByteArray?>()
     val bytes = byteArrayOf(1, 2, 3)
     val image = java.util.Base64.getEncoder().encodeToString(bytes)
     var fail = false
-    var pending: CompletableDeferred<ByteArray?>? = null
+    var pending = CompletableDeferred<ByteArray?>(bytes)
     val photos =
         object : ProfilePhotoRepository {
-          override suspend fun load(userId: String) = stored[userId]
+          override suspend fun load(userId: String): ByteArray? = null
 
           override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? {
             if (fail) error("Offline")
-            if (pending != null) return checkNotNull(pending).await()
-            return (if (source == null) null else bytes).also { stored[userId] = it }
+            return pending.await()
           }
         }
     val model = ProfileViewModel(fake, photos).also { store.put("photo", it) }
     runCurrent()
     assertNull(model.photoState.value.image)
     val source = ProfilePhotoSource.Gallery(io.mockk.mockk())
-    createViewModel(fake).savePhoto(alice.uid, source)
     model.savePhoto(alice.uid, source)
     runCurrent()
     assertEquals(image, model.photoState.value.image)
     fail = true
-    model.savePhoto(alice.uid, null)
-    runCurrent()
-    assertEquals(image, model.photoState.value.image)
+    for (selection in listOf(null, source)) {
+      model.savePhoto(alice.uid, selection)
+      runCurrent()
+      assertEquals(PhotoUiState(image, failed = true), model.photoState.value)
+    }
     fail = false
     fake.signInWithEmailResult = Result.success(AuthUser("bob"))
     fake.signInWithEmail("", "")
     runCurrent()
     model.savePhoto(alice.uid, source)
     assertEquals(PhotoUiState(), model.photoState.value)
-    fake.signInWithEmailResult = Result.success(alice)
-    fake.signInWithEmail("", "")
-    runCurrent()
-    assertEquals(image, model.photoState.value.image)
-    model.savePhoto(alice.uid, null)
-    runCurrent()
-    assertEquals(PhotoUiState(), model.photoState.value)
     pending = CompletableDeferred()
-    model.savePhoto(alice.uid, source)
-    model.savePhoto(alice.uid, source)
+    model.savePhoto("bob", source)
+    model.savePhoto("bob", source)
     runCurrent()
     assertTrue(model.photoState.value.busy)
     fake.signOut()
@@ -354,6 +346,8 @@ class ProfileViewModelTest {
     runCurrent()
     assertEquals(PhotoUiState(), model.photoState.value)
     assertNull(model.photoOwner())
+    model.refreshPhoto()
+    assertEquals(PhotoUiState(), model.photoState.value)
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

@@ -40,7 +40,6 @@ import androidx.compose.ui.window.DialogProperties
 import com.android.sample.R
 import java.util.Base64
 
-/** Shows confirmed profile information and delegates editing actions to the route. */
 @Composable
 internal fun ProfileInformation(
     profile: ProfileUiState.Content,
@@ -143,9 +142,9 @@ internal fun ProfileAvatar(
   Box(Modifier.size(diameter + 6.dp)) {
     Box(
         Modifier.size(diameter)
-            .clickable(enabled = onAvatarClick != null) { onAvatarClick?.invoke() }
+            .clickable(enabled = onAvatarClick != null, onClick = onAvatarClick ?: {})
             .testTag(
-                if (image != null) ProfilePhotoTestTags.IMAGE
+                if (image != null) ProfileTestTags.PHOTO_IMAGE
                 else if (initials == null) ProfileTestTags.NEUTRAL_AVATAR
                 else ProfileTestTags.INITIALS
             )
@@ -187,10 +186,9 @@ internal fun ProfileAvatar(
       }
     }
     if (!showPhotoAction) return@Box
-    // Keep the badge aligned with the existing design.
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
       FilledIconButton(
-          onClick = { onPhotoClick?.invoke() },
+          onClick = onPhotoClick ?: {},
           enabled = onPhotoClick != null && photoEnabled,
           modifier =
               Modifier.align(Alignment.BottomEnd)
@@ -253,7 +251,6 @@ private fun ProfileField(
   }
 }
 
-/** A preview of confirmed data; closing it never changes the profile or the photo. */
 @Composable
 internal fun ProfilePhotoPreview(initials: String?, photo: String?, name: String?): () -> Unit {
   var open by remember { mutableStateOf(false) }
@@ -265,23 +262,21 @@ internal fun ProfilePhotoPreview(initials: String?, photo: String?, name: String
         BoxWithConstraints(
             Modifier.fillMaxSize()
                 .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
-                .testTag(ProfilePhotoTestTags.PREVIEW)
+                .testTag(ProfileTestTags.PHOTO_PREVIEW)
         ) {
           val diameter = maxWidth * 0.73f
-          val topSpacing = (maxHeight - diameter) / 4
           Column(
-              Modifier.fillMaxWidth(),
+              Modifier.fillMaxWidth().padding(top = (maxHeight - diameter) / 4),
               horizontalAlignment = Alignment.CenterHorizontally,
               verticalArrangement = Arrangement.spacedBy(24.dp),
           ) {
-            Spacer(Modifier.height(topSpacing))
             val close = stringResource(R.string.profile_photo_close)
             IconButton(
                 onClick = { open = false },
                 modifier =
                     Modifier.align(Alignment.End)
                         .padding(end = 12.dp)
-                        .testTag(ProfilePhotoTestTags.CLOSE)
+                        .testTag(ProfileTestTags.PHOTO_CLOSE)
                         .semantics { contentDescription = close },
             ) {
               Text("✕", style = MaterialTheme.typography.headlineSmall)
@@ -290,11 +285,9 @@ internal fun ProfilePhotoPreview(initials: String?, photo: String?, name: String
             name?.let {
               Text(
                   it,
-                  style =
-                      MaterialTheme.typography.titleMedium.copy(
-                          fontSize = (diameter.value * 0.077f).sp,
-                          fontWeight = FontWeight.Medium,
-                      ),
+                  style = MaterialTheme.typography.titleMedium,
+                  fontSize = (diameter.value * 0.077f).sp,
+                  fontWeight = FontWeight.Medium,
               )
             }
           }

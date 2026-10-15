@@ -11,15 +11,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import com.android.sample.R
 import com.android.sample.model.ProfilePhotoSource
 
-/** Platform launchers stay in the route; screens only receive state and named actions. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfilePhotoActions(model: ProfileViewModel): Pair<PhotoUiState, () -> Unit> {
@@ -51,6 +52,24 @@ fun ProfilePhotoActions(model: ProfileViewModel): Pair<PhotoUiState, () -> Unit>
       owner = null
     }
   }
+  if (state.failed)
+      Popup(alignment = Alignment.BottomCenter) {
+        Snackbar(
+            modifier = Modifier.padding(16.dp),
+            action = {
+              TextButton(onClick = model::refreshPhoto) {
+                Text(stringResource(R.string.profile_photo_reload))
+              }
+            },
+            dismissAction = {
+              TextButton(onClick = model::dismissPhotoError) {
+                Text(stringResource(android.R.string.ok))
+              }
+            },
+        ) {
+          Text(stringResource(R.string.profile_photo_error))
+        }
+      }
   if (open)
       ModalBottomSheet(
           onDismissRequest = { open = false },
@@ -65,27 +84,26 @@ fun ProfilePhotoActions(model: ProfileViewModel): Pair<PhotoUiState, () -> Unit>
               stringResource(R.string.profile_photo_title),
               style = MaterialTheme.typography.titleMedium,
           )
-          PhotoOption(R.string.profile_photo_camera, R.drawable.profile_camera, { launch(true) })
-          PhotoOption(R.string.profile_photo_gallery, R.drawable.profile_gallery, { launch(false) })
+          PhotoOption(R.string.profile_photo_camera, R.drawable.profile_camera) { launch(true) }
+          PhotoOption(R.string.profile_photo_gallery, R.drawable.profile_gallery) { launch(false) }
           PhotoOption(
               R.string.profile_photo_remove,
               R.drawable.profile_remove,
-              {
-                open = false
-                model.photoOwner()?.let { model.savePhoto(it, null) }
-              },
               enabled = state.image != null,
-          )
+          ) {
+            open = false
+            model.photoOwner()?.let { model.savePhoto(it, null) }
+          }
           TextButton(onClick = { open = false }, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.profile_edit_cancel))
           }
         }
       }
-  return state to { if (!state.busy) open = true }
+  return state to { open = true }
 }
 
 @Composable
-private fun PhotoOption(label: Int, icon: Int, onClick: () -> Unit, enabled: Boolean = true) {
+private fun PhotoOption(label: Int, icon: Int, enabled: Boolean = true, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
   val tint = if (label == R.string.profile_photo_remove) colors.error else colors.onSurface
   OutlinedButton(
@@ -96,19 +114,10 @@ private fun PhotoOption(label: Int, icon: Int, onClick: () -> Unit, enabled: Boo
       contentPadding = PaddingValues(14.dp),
       border = BorderStroke(1.dp, colors.outlineVariant),
       colors =
-          ButtonDefaults.outlinedButtonColors(
-              contentColor = tint,
-              disabledContentColor = tint.copy(alpha = 0.4f),
-          ),
+          ButtonDefaults.outlinedButtonColors(contentColor = tint)
+              .copy(disabledContentColor = tint.copy(alpha = 0.4f)),
   ) {
     Image(painterResource(icon), null, Modifier.size(24.dp).alpha(if (enabled) 1f else 0.4f))
-    Spacer(Modifier.width(12.dp))
-    Text(stringResource(label), Modifier.weight(1f))
+    Text(stringResource(label), Modifier.weight(1f).padding(start = 12.dp))
   }
-}
-
-object ProfilePhotoTestTags {
-  const val IMAGE = "profile_photo_image"
-  const val PREVIEW = "profile_photo_preview"
-  const val CLOSE = "profile_photo_close"
 }

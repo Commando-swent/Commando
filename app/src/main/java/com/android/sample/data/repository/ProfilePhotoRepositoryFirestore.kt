@@ -14,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
-/** Stores a bounded avatar, rather than the original photo, in the owner's private document. */
 class ProfilePhotoRepositoryFirestore(
     private val resolver: ContentResolver,
     private val auth: AuthRepository,
@@ -35,13 +34,13 @@ class ProfilePhotoRepositoryFirestore(
     checkSession(userId)
     val bytes = source?.let { withContext(Dispatchers.IO) { encode(it) } }
     checkSession(userId)
-    if (bytes == null) document(userId).delete().await()
-    else
-        document(userId)
-            .set(
-                mapOf("photo" to Blob.fromBytes(bytes), "updatedAt" to FieldValue.serverTimestamp())
-            )
-            .await()
+    val document = document(userId)
+    if (bytes == null) document.delete().await()
+    else {
+      val data =
+          mapOf("photo" to Blob.fromBytes(bytes), "updatedAt" to FieldValue.serverTimestamp())
+      document.set(data).await()
+    }
     checkSession(userId)
     return bytes
   }

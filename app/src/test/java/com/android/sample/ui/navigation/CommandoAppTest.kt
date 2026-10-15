@@ -592,7 +592,7 @@ class CommandoAppTest {
   fun bottomBarTracksDestinationAndHomeReturnsWithoutDuplicatingTheStack() {
     show(FakeAuthRepository(alice))
     compose.onNodeWithTag(AppTestTags.HOME_BUTTON).assertIsSelected()
-    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).assertIsNotEnabled().performClick()
+    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).assertIsEnabled()
     compose.onNodeWithText("Orders").assertIsDisplayed()
     compose.onNodeWithText("Map").assertDoesNotExist()
     assertScreen(NavigationTestTags.HOME_SCREEN)

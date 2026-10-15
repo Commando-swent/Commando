@@ -35,6 +35,7 @@ fun AppScaffold(
     onProfile: () -> Unit,
     onTrips: () -> Unit = {},
     onBack: (() -> Unit)? = null,
+    onOrders: (() -> Unit)? = null,
     snackbarHost: @Composable () -> Unit = {},
     content: @Composable (PaddingValues) -> Unit,
 ) {
@@ -61,7 +62,7 @@ fun AppScaffold(
       },
       bottomBar = {
         if (currentScreen.showBottomBar) {
-          AppBottomBar(currentScreen, onHome, onProfile, onTrips)
+          AppBottomBar(currentScreen, onHome, onProfile, onTrips, onOrders = onOrders)
         }
       },
       content = content,
@@ -167,6 +168,7 @@ private fun AppBottomBar(
     onHome: () -> Unit,
     onProfile: () -> Unit,
     onTrips: () -> Unit,
+    onOrders: (() -> Unit)?,
 ) {
   NavigationBar(
       modifier = Modifier.testTag(AppTestTags.BOTTOM_BAR),
@@ -185,6 +187,7 @@ private fun AppBottomBar(
         modifier = Modifier.testTag(AppTestTags.TRIPS_BUTTON),
         selected =
             currentScreen == CommandoScreens.AvailableTrips ||
+                currentScreen == CommandoScreens.MockMap ||
                 currentScreen == CommandoScreens.MyTrips,
         onClick = onTrips,
     )
@@ -192,8 +195,9 @@ private fun AppBottomBar(
         R.drawable.nav_orders,
         R.string.nav_orders,
         modifier = Modifier.testTag(AppTestTags.ORDERS_BUTTON),
-        enabled = false,
-        onClick = {},
+        selected = currentScreen == CommandoScreens.MyOrders,
+        enabled = onOrders != null,
+        onClick = { onOrders?.invoke() },
     )
     AppNavigationItem(
         R.drawable.nav_profile,

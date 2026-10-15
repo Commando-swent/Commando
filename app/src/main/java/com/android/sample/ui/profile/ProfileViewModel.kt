@@ -2,9 +2,12 @@ package com.android.sample.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
+import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +19,10 @@ import kotlinx.coroutines.launch
  * Converts authentication updates into state for the Profile screen. The repository supplies user
  * information; the existing session ViewModel and app root remain responsible for navigation.
  */
-class ProfileViewModel(private val repository: AuthRepository) : ViewModel() {
+class ProfileViewModel(
+    private val repository: AuthRepository,
+    private val photos: ProfilePhotoRepository? = null,
+) : ViewModel() {
   // Keep state updates private and wait for the first repository emission before showing data.
   private val mutableState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
 
@@ -26,17 +32,24 @@ class ProfileViewModel(private val repository: AuthRepository) : ViewModel() {
   val editState = mutableEditState.asStateFlow()
   private var activeUser: AuthUser? = null
   private var saveJob: Job? = null
+  private var photoJob: Job? = null
+  private val mutablePhotoState = MutableStateFlow(PhotoUiState())
+  val photoState = mutablePhotoState.asStateFlow()
 
   init {
     // Observation stops automatically when this ViewModel is cleared.
     viewModelScope.launch {
       // Collect future changes as well as the initial user, rather than reading a single snapshot.
       repository.observeAuthState().collect { user ->
-        if (activeUser?.uid != user?.uid) {
+        val accountChanged = activeUser?.uid != user?.uid
+        activeUser = user
+        if (accountChanged) {
           saveJob?.cancel()
           mutableEditState.value = null
+          photoJob?.cancel()
+          mutablePhotoState.value = PhotoUiState()
+          if (user != null && photos != null) photoOperation(user.uid) { photos.load(user.uid) }
         }
-        activeUser = user
         mutableState.value =
             if (user == null) {
               // Replacing the state removes any information belonging to the previous user.
@@ -49,6 +62,31 @@ class ProfileViewModel(private val repository: AuthRepository) : ViewModel() {
                   email = user.email,
               )
             }
+      }
+    }
+  }
+
+  fun photoOwner(): String? = activeUser?.uid
+
+  fun savePhoto(owner: String, source: ProfilePhotoSource?) {
+    val photos = photos ?: return
+    if (activeUser?.uid != owner || mutablePhotoState.value.busy) return
+    photoOperation(owner) { photos.save(owner, source) }
+  }
+
+  private fun photoOperation(owner: String, operation: suspend () -> ByteArray?) {
+    mutablePhotoState.value = mutablePhotoState.value.copy(busy = true)
+    photoJob = viewModelScope.launch {
+      try {
+        val image = operation()?.let { Base64.getEncoder().encodeToString(it) }
+        if (activeUser?.uid == owner) mutablePhotoState.value = PhotoUiState(image)
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        // Keep the last confirmed photo when loading, replacing or removing fails.
+      } finally {
+        if (activeUser?.uid == owner)
+            mutablePhotoState.value = mutablePhotoState.value.copy(busy = false)
       }
     }
   }

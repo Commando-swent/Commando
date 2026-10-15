@@ -1,5 +1,6 @@
 package com.android.sample.ui.profile
 
+import android.graphics.BitmapFactory
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
@@ -7,15 +8,23 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -26,22 +35,34 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.android.sample.R
+import java.util.Base64
 
-/** Shows confirmed profile information; editing and photo actions belong to follow-up tasks. */
+/** Shows confirmed profile information and delegates editing actions to the route. */
 @Composable
 internal fun ProfileInformation(
     profile: ProfileUiState.Content,
     modifier: Modifier = Modifier,
     onEdit: (() -> Unit)? = null,
+    photo: PhotoUiState? = null,
+    onPhotoClick: (() -> Unit)? = null,
 ) {
   Column(modifier) {
     val fullName = profile.fullName?.takeUnless { it.isBlank() }
+    val onPreview = ProfilePhotoPreview(profileInitials(fullName), photo?.image, fullName)
     Column(
         Modifier.fillMaxWidth().heightIn(min = 148.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      ProfileAvatar(profileInitials(fullName))
+      ProfileAvatar(
+          profileInitials(fullName),
+          photo = photo?.image,
+          onPhotoClick = onPhotoClick,
+          photoEnabled = photo?.busy != true,
+          onAvatarClick = onPreview,
+      )
       if (fullName != null) {
         Text(
             fullName,
@@ -106,12 +127,28 @@ internal fun ProfileInformation(
 internal fun ProfileAvatar(
     initials: String?,
     showPhotoAction: Boolean = true,
+    photo: String? = null,
+    onPhotoClick: (() -> Unit)? = null,
+    photoEnabled: Boolean = true,
     diameter: Dp = 80.dp,
+    onAvatarClick: (() -> Unit)? = null,
 ) {
   val addPhotoDescription = stringResource(R.string.profile_add_photo_description)
+  val image =
+      remember(photo) {
+        photo
+            ?.let { Base64.getDecoder().decode(it) }
+            ?.let { BitmapFactory.decodeByteArray(it, 0, it.size)?.asImageBitmap() }
+      }
   Box(Modifier.size(diameter + 6.dp)) {
     Box(
         Modifier.size(diameter)
+            .clickable(enabled = onAvatarClick != null) { onAvatarClick?.invoke() }
+            .testTag(
+                if (image != null) ProfilePhotoTestTags.IMAGE
+                else if (initials == null) ProfileTestTags.NEUTRAL_AVATAR
+                else ProfileTestTags.INITIALS
+            )
             .background(
                 if (diameter > 80.dp) MaterialTheme.colorScheme.surfaceContainerHigh
                 else MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -124,16 +161,22 @@ internal fun ProfileAvatar(
             ),
         contentAlignment = Alignment.Center,
     ) {
-      if (initials == null) {
+      if (image != null) {
+        Image(
+            image,
+            stringResource(R.string.profile_photo_description),
+            Modifier.size(diameter - 6.dp).clip(CircleShape),
+            contentScale = ContentScale.Crop,
+        )
+      } else if (initials == null) {
         Image(
             painterResource(R.drawable.profile_person),
             contentDescription = stringResource(R.string.profile_neutral_avatar),
-            modifier = Modifier.size(diameter * 0.45f).testTag(ProfileTestTags.NEUTRAL_AVATAR),
+            modifier = Modifier.size(diameter * 0.45f),
         )
       } else {
         Text(
             initials,
-            modifier = Modifier.testTag(ProfileTestTags.INITIALS),
             color = MaterialTheme.colorScheme.primary,
             style =
                 MaterialTheme.typography.headlineSmall.copy(
@@ -144,11 +187,11 @@ internal fun ProfileAvatar(
       }
     }
     if (!showPhotoAction) return@Box
-    // This disabled badge has no touch target yet; keep its visual size equal to the design.
+    // Keep the badge aligned with the existing design.
     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
       FilledIconButton(
-          onClick = {},
-          enabled = false,
+          onClick = { onPhotoClick?.invoke() },
+          enabled = onPhotoClick != null && photoEnabled,
           modifier =
               Modifier.align(Alignment.BottomEnd)
                   .offset(x = (-3).dp, y = (-3).dp)
@@ -208,4 +251,54 @@ private fun ProfileField(
       )
     }
   }
+}
+
+/** A preview of confirmed data; closing it never changes the profile or the photo. */
+@Composable
+internal fun ProfilePhotoPreview(initials: String?, photo: String?, name: String?): () -> Unit {
+  var open by remember { mutableStateOf(false) }
+  if (open)
+      Dialog(
+          onDismissRequest = { open = false },
+          properties = DialogProperties(usePlatformDefaultWidth = false),
+      ) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.85f))
+                .testTag(ProfilePhotoTestTags.PREVIEW)
+        ) {
+          val diameter = maxWidth * 0.73f
+          val topSpacing = (maxHeight - diameter) / 4
+          Column(
+              Modifier.fillMaxWidth(),
+              horizontalAlignment = Alignment.CenterHorizontally,
+              verticalArrangement = Arrangement.spacedBy(24.dp),
+          ) {
+            Spacer(Modifier.height(topSpacing))
+            val close = stringResource(R.string.profile_photo_close)
+            IconButton(
+                onClick = { open = false },
+                modifier =
+                    Modifier.align(Alignment.End)
+                        .padding(end = 12.dp)
+                        .testTag(ProfilePhotoTestTags.CLOSE)
+                        .semantics { contentDescription = close },
+            ) {
+              Text("✕", style = MaterialTheme.typography.headlineSmall)
+            }
+            ProfileAvatar(initials, showPhotoAction = false, photo = photo, diameter = diameter)
+            name?.let {
+              Text(
+                  it,
+                  style =
+                      MaterialTheme.typography.titleMedium.copy(
+                          fontSize = (diameter.value * 0.077f).sp,
+                          fontWeight = FontWeight.Medium,
+                      ),
+              )
+            }
+          }
+        }
+      }
+  return { open = true }
 }

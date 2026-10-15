@@ -1,6 +1,8 @@
 package com.android.sample.ui.profile
 
 import androidx.lifecycle.ViewModelStore
+import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
@@ -295,6 +297,63 @@ class ProfileViewModelTest {
     runCurrent()
     assertNull(model.editState.value)
     assertEquals(ProfileUiState.Content("Bob", "bob@epfl.ch"), model.uiState.value)
+  }
+
+  @Test
+  fun photoChangesPersistAndFailuresAndStaleSelectionsPreserveTheAccount() = runTest {
+    val fake = FakeAuthRepository(alice)
+    val stored = mutableMapOf<String, ByteArray?>()
+    val bytes = byteArrayOf(1, 2, 3)
+    val image = java.util.Base64.getEncoder().encodeToString(bytes)
+    var fail = false
+    var pending: CompletableDeferred<ByteArray?>? = null
+    val photos =
+        object : ProfilePhotoRepository {
+          override suspend fun load(userId: String) = stored[userId]
+
+          override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? {
+            if (fail) error("Offline")
+            if (pending != null) return checkNotNull(pending).await()
+            return (if (source == null) null else bytes).also { stored[userId] = it }
+          }
+        }
+    val model = ProfileViewModel(fake, photos).also { store.put("photo", it) }
+    runCurrent()
+    assertNull(model.photoState.value.image)
+    val source = ProfilePhotoSource.Gallery(io.mockk.mockk())
+    createViewModel(fake).savePhoto(alice.uid, source)
+    model.savePhoto(alice.uid, source)
+    runCurrent()
+    assertEquals(image, model.photoState.value.image)
+    fail = true
+    model.savePhoto(alice.uid, null)
+    runCurrent()
+    assertEquals(image, model.photoState.value.image)
+    fail = false
+    fake.signInWithEmailResult = Result.success(AuthUser("bob"))
+    fake.signInWithEmail("", "")
+    runCurrent()
+    model.savePhoto(alice.uid, source)
+    assertEquals(PhotoUiState(), model.photoState.value)
+    fake.signInWithEmailResult = Result.success(alice)
+    fake.signInWithEmail("", "")
+    runCurrent()
+    assertEquals(image, model.photoState.value.image)
+    model.savePhoto(alice.uid, null)
+    runCurrent()
+    assertEquals(PhotoUiState(), model.photoState.value)
+    pending = CompletableDeferred()
+    model.savePhoto(alice.uid, source)
+    model.savePhoto(alice.uid, source)
+    runCurrent()
+    assertTrue(model.photoState.value.busy)
+    fake.signOut()
+    runCurrent()
+    model.savePhoto(alice.uid, source)
+    pending.complete(bytes)
+    runCurrent()
+    assertEquals(PhotoUiState(), model.photoState.value)
+    assertNull(model.photoOwner())
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

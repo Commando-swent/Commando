@@ -1,6 +1,9 @@
 package com.android.sample.ui.profile
 
+import android.app.Activity
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.MaterialTheme
@@ -12,12 +15,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
+import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.model.ProfilePhotoSource
+import com.android.sample.model.authentication.AuthUser
+import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.theme.SampleAppTheme
+import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
@@ -27,6 +36,92 @@ import org.robolectric.annotation.GraphicsMode
 class ProfileInformationTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val profile = mutableStateOf(ProfileUiState.Content("Alice Martin", "alice@epfl.ch"))
+
+  @Test
+  fun plusOpensCameraAndGalleryAndRemovalRestoresInitials() {
+    val bitmap = Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888)
+    val output = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 80, output)
+    val image = output.toByteArray()
+    var stored: ByteArray? = null
+    val photos =
+        object : ProfilePhotoRepository {
+          override suspend fun load(userId: String) = stored
+
+          override suspend fun save(userId: String, source: ProfilePhotoSource?) =
+              (if (source == null) null else image).also { stored = it }
+        }
+    fun choose(label: String): Intent {
+      compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).performClick()
+      compose.onNodeWithText(label).performClick()
+      return shadowOf(compose.activity).nextStartedActivityForResult.intent
+    }
+    val model = ProfileViewModel(FakeAuthRepository(AuthUser("alice", "Alice Martin")), photos)
+    compose.setContent {
+      SampleAppTheme {
+        val (photo, onPhotoClick) = ProfilePhotoActions(model)
+        ProfileInformation(profile.value, photo = photo, onPhotoClick = onPhotoClick)
+      }
+    }
+    compose.onNodeWithTag(ProfileTestTags.INITIALS).performClick()
+    compose.onNodeWithTag(ProfilePhotoTestTags.PREVIEW).assertIsDisplayed()
+    compose
+        .onNode(
+            hasTestTag(ProfileTestTags.INITIALS) and
+                hasAnyAncestor(hasTestTag(ProfilePhotoTestTags.PREVIEW))
+        )
+        .assertTextEquals("AM")
+    compose.onNodeWithTag(ProfilePhotoTestTags.CLOSE).performClick()
+    compose.onNodeWithTag(ProfilePhotoTestTags.PREVIEW).assertDoesNotExist()
+    compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).assertIsEnabled().performClick()
+    compose.onNodeWithTag(ProfilePhotoTestTags.PREVIEW).assertDoesNotExist()
+    compose.onNodeWithText("Choose from gallery").assertIsDisplayed()
+    compose.onNodeWithText("Remove photo").assertIsNotEnabled()
+    compose.onNodeWithText("Cancel").performClick()
+    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertTextEquals("AM")
+    val retryCamera = choose("Take a photo")
+    compose.runOnIdle {
+      shadowOf(compose.activity)
+          .receiveResult(retryCamera, Activity.RESULT_OK, Intent().putExtra("data", bitmap))
+    }
+    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertDoesNotExist()
+    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).performClick()
+    compose
+        .onNode(
+            hasTestTag(ProfilePhotoTestTags.IMAGE) and
+                hasAnyAncestor(hasTestTag(ProfilePhotoTestTags.PREVIEW))
+        )
+        .assertIsDisplayed()
+    compose.onNodeWithTag(ProfilePhotoTestTags.CLOSE).performClick()
+    for (label in listOf("Take a photo", "Choose from gallery")) {
+      val cancelled = choose(label)
+      compose.runOnIdle {
+        shadowOf(compose.activity).receiveResult(cancelled, Activity.RESULT_CANCELED, null)
+      }
+      compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertIsDisplayed()
+    }
+    val selection = choose("Choose from gallery")
+    val data = Intent().setData(Uri.parse("content://photos/selection"))
+    compose.runOnIdle {
+      shadowOf(compose.activity).receiveResult(selection, Activity.RESULT_OK, data)
+    }
+    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).performClick()
+    compose.onNodeWithText("Remove photo").performClick()
+    compose.onNodeWithTag(ProfilePhotoTestTags.IMAGE).assertDoesNotExist()
+    compose.onNodeWithTag(ProfileTestTags.INITIALS).assertTextEquals("AM")
+  }
+
+  @Test
+  fun savingPhotoDisablesTheBadge() {
+    compose.setContent {
+      SampleAppTheme {
+        ProfileInformation(profile.value, photo = PhotoUiState(busy = true), onPhotoClick = {})
+      }
+    }
+    compose.onNodeWithTag(ProfileTestTags.ADD_PHOTO).assertIsNotEnabled()
+  }
 
   private fun show() {
     compose.setContent {

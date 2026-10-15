@@ -25,6 +25,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -32,6 +33,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
+import com.android.sample.data.repository.FakeOrderRepository
+import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
@@ -47,6 +50,13 @@ import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.map.MockMapScreen
+import com.android.sample.ui.map.MockMapViewModel
+import com.android.sample.ui.orders.MyOrdersScreen
+import com.android.sample.ui.orders.MyOrdersViewModel
+import com.android.sample.ui.orders.OrderDetailsScreen
+import com.android.sample.ui.orders.OrderDetailsViewModel
+import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfilePhotoActions
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
@@ -69,6 +79,8 @@ fun CommandoApp(
     tripRepository: TripRepository? = null,
     googleCredentials: GoogleCredentialClient? = null,
     photoRepository: ProfilePhotoRepository? = null,
+    // TODO(#126): Inject the session TripRepository when wiring trip-owner order access.
+    orderRepositoryFactory: (() -> String?) -> OrderRepository = { FakeOrderRepository(it) },
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -126,10 +138,15 @@ fun CommandoApp(
             )
           }
           val trips = tripRepositoryViewModel.repository
+          val orders: SessionOrderViewModel = viewModel {
+            SessionOrderViewModel(user.uid, repository, orderRepositoryFactory)
+          }
           AuthenticatedApp(
               repository = repository,
               photoRepository = photoRepository,
               tripRepository = trips,
+              orders = orders,
+              userId = user.uid,
               onSignOut = {
                 if (sessionViewModel.signOut()) {
                   scope.launch {
@@ -155,6 +172,8 @@ private fun AuthenticatedApp(
     repository: AuthRepository,
     photoRepository: ProfilePhotoRepository?,
     tripRepository: TripRepository,
+    orders: SessionOrderViewModel,
+    userId: String,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
 ) {
@@ -182,12 +201,12 @@ private fun AuthenticatedApp(
       },
       onBack = { navController.popBackStack() },
       snackbarHost = { ProfilePhotoSnackbarHost(photoSnackbarHost) },
-      onTrips = {
-        navController.navigate(CommandoScreens.AvailableTrips.name) { launchSingleTop = true }
-      },
-      onProfile = {
-        navController.navigate(CommandoScreens.Profile.name) { launchSingleTop = true }
-      },
+      onTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
+      onOrders =
+          if (appUiState.mode == AppMode.Requester) {
+            { navController.openScreen(CommandoScreens.MyOrders) }
+          } else null,
+      onProfile = { navController.openScreen(CommandoScreens.Profile) },
   ) { padding ->
     NavHost(
         navController = navController,
@@ -216,6 +235,11 @@ private fun AuthenticatedApp(
             tripState = tripState,
             onRetry = onRetry,
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
+            onManageTrip = { tripId ->
+              navController.navigate(CommandoScreens.tripDetailsRoute(tripId)) {
+                launchSingleTop = true
+              }
+            },
             onPublishTrip = {
               navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
             },
@@ -241,6 +265,9 @@ private fun AuthenticatedApp(
             onTripSelected = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },
+            onOpenMap = {
+              navController.navigate(CommandoScreens.MockMap.name) { launchSingleTop = true }
+            },
         )
       }
       composable(
@@ -257,9 +284,12 @@ private fun AuthenticatedApp(
         TripDetailsScreen(
             viewModel = tripDetailsViewModel,
             onBack = { navController.popBackStack() },
-            onAddItems = { selectedTripId ->
-              navController.navigate(CommandoScreens.addItemsRoute(selectedTripId))
-            },
+            onAddItems =
+                if (appUiState.mode == AppMode.Requester) {
+                  { selectedTripId ->
+                    navController.navigate(CommandoScreens.addItemsRoute(selectedTripId))
+                  }
+                } else null,
         )
       }
       composable(
@@ -271,6 +301,57 @@ private fun AuthenticatedApp(
           "Add Items requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
         }
         AddItemsPlaceholderScreen(onBack = { navController.popBackStack() })
+      }
+      composable(route = CommandoScreens.MockMap.name) {
+        val map: MockMapViewModel = viewModel { MockMapViewModel() }
+        // These marker IDs are UI fixtures, not keys in the production TripRepository.
+        MockMapScreen(
+            viewModel = map,
+            onTripDetails = null,
+            onBack = { navController.popBackStack() },
+        )
+      }
+      composable(route = CommandoScreens.MyOrders.name) { entry ->
+        val model: MyOrdersViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              MyOrdersViewModel(orders.repository, tripRepository, userId, loadImmediately = false)
+            }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, model) {
+          val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) model.retry()
+          }
+          lifecycleOwner.lifecycle.addObserver(observer)
+          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        MyOrdersScreen(
+            viewModel = model,
+            requesterId = userId,
+            onOrderClick = { orderId ->
+              navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
+                launchSingleTop = true
+              }
+            },
+            onBrowseTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
+            isDemo = true,
+        )
+      }
+      composable(
+          route = CommandoScreens.OrderDetails.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+        val model: OrderDetailsViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              OrderDetailsViewModel(orderId, orders.repository, tripRepository)
+            }
+        val state by model.uiState.collectAsState()
+        OrderDetailsScreen(
+            state = state,
+            onBack = { navController.popBackStack() },
+            onRetry = model::retry,
+        )
       }
       composable(route = CommandoScreens.Profile.name) {
         val profileUiState by profileViewModel.uiState.collectAsState()
@@ -322,3 +403,10 @@ private fun AuthenticatedApp(
 
 /** Retains one trip repository for the authenticated App entry, including activity recreation. */
 private class SessionTripRepositoryViewModel(val repository: TripRepository) : ViewModel()
+
+/** Reuse an existing top-level destination rather than stacking copies when switching tabs. */
+private fun NavHostController.openScreen(screen: CommandoScreens) {
+  if (!popBackStack(screen.name, inclusive = false)) {
+    navigate(screen.name) { launchSingleTop = true }
+  }
+}

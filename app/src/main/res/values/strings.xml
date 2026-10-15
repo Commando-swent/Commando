@@ -21,4 +21,8 @@
     <string name="home_publish_trip">Publish a trip</string>
     <string name="home_trips">Trips</string>
     <string name="home_map">Map</string>
+    <string name="nav_mock_map">Mock map · sample trips</string>
+    <string name="nav_trip_list">Back to trip list</string>
+    <string name="mock_map_details_unavailable">Sample trip · details unavailable</string>
+    <string name="nav_orders_demo">Demo orders · stored only for this session</string>
 </resources>

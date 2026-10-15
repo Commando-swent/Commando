@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -28,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.model.Trip
+import com.android.sample.ui.navigation.NavigationTestTags
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -47,9 +49,10 @@ fun AvailableTripsScreen(
     viewModel: AvailableTripsViewModel,
     onTripSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenMap: (() -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
-  AvailableTripsScreen(state, viewModel::retry, onTripSelected, modifier)
+  AvailableTripsScreen(state, viewModel::retry, onTripSelected, modifier, onOpenMap)
 }
 
 @Composable
@@ -58,11 +61,17 @@ fun AvailableTripsScreen(
     onRetry: () -> Unit,
     onTripSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenMap: (() -> Unit)? = null,
 ) {
   Column(
       modifier.fillMaxSize().background(runsBackground).padding(20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
+    onOpenMap?.let {
+      TextButton(onClick = it, modifier = Modifier.testTag(NavigationTestTags.OPEN_MAP)) {
+        Text(stringResource(R.string.nav_mock_map))
+      }
+    }
     Text(
         stringResource(R.string.trips_title),
         color = runsText,

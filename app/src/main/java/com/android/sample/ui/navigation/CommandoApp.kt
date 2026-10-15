@@ -54,6 +54,8 @@ import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
 import com.android.sample.ui.trips.CreateTripScreen
 import com.android.sample.ui.trips.CreateTripViewModel
+import com.android.sample.ui.trips.MyTripsScreen
+import com.android.sample.ui.trips.MyTripsViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsViewModel
 import kotlinx.coroutines.launch
@@ -123,6 +125,7 @@ fun CommandoApp(
           val trips = tripRepositoryViewModel.repository
           AuthenticatedApp(
               repository = repository,
+              userId = checkNotNull(user).uid,
               tripRepository = trips,
               onSignOut = {
                 if (sessionViewModel.signOut()) {
@@ -147,6 +150,7 @@ fun CommandoApp(
 @Composable
 private fun AuthenticatedApp(
     repository: AuthRepository,
+    userId: String,
     tripRepository: TripRepository,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
@@ -172,7 +176,10 @@ private fun AuthenticatedApp(
       },
       onBack = { navController.popBackStack() },
       onTrips = {
-        navController.navigate(CommandoScreens.AvailableTrips.name) { launchSingleTop = true }
+        val trips =
+            if (appUiState.mode == AppMode.Commando) CommandoScreens.MyTrips
+            else CommandoScreens.AvailableTrips
+        navController.navigate(trips.name) { launchSingleTop = true }
       },
       onProfile = {
         navController.navigate(CommandoScreens.Profile.name) { launchSingleTop = true }
@@ -229,6 +236,20 @@ private fun AuthenticatedApp(
             viewModel = availableTripsViewModel,
             onTripSelected = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
+            },
+        )
+      }
+      composable(route = CommandoScreens.MyTrips.name) { entry ->
+        // The authenticated graph is keyed by account, so this list never outlives its owner.
+        val myTripsViewModel: MyTripsViewModel =
+            viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
+        MyTripsScreen(
+            viewModel = myTripsViewModel,
+            onTripSelected = { tripId ->
+              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
+            },
+            onPublishTrip = {
+              navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
             },
         )
       }

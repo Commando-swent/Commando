@@ -43,6 +43,12 @@ class CommandoScreensTest {
   }
 
   @Test
+  fun myTripsHasAStableRouteAndItsOwnTitle() {
+    assertEquals("MyTrips", CommandoScreens.MyTrips.route)
+    assertEquals(R.string.my_trips_title, CommandoScreens.MyTrips.title)
+  }
+
+  @Test
   fun tripDetailsHasExactlyOneRequiredPathArgument() {
     assertEquals("tripId", CommandoScreens.TRIP_ID_ARGUMENT)
     assertEquals("TripDetails/{tripId}", CommandoScreens.TripDetails.route)
@@ -77,6 +83,7 @@ class CommandoScreensTest {
             CommandoScreens.CreateTrip,
             CommandoScreens.Profile,
             CommandoScreens.AvailableTrips,
+            CommandoScreens.MyTrips,
         )) {
       assertEquals(destination.name, destination.route)
     }

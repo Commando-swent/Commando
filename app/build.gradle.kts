@@ -27,6 +27,12 @@ android {
     vectorDrawables { useSupportLibrary = true }
   }
 
+  // CI signs the debug APK with the team keystore whose SHA-1 is registered in Firebase,
+  // so Google Sign-In works on the published APK. Local builds keep each developer's key.
+  signingConfigs {
+    getByName("debug") { System.getenv("CI_KEYSTORE_PATH")?.let { storeFile = file(it) } }
+  }
+
   buildTypes {
     release {
       isMinifyEnabled = false

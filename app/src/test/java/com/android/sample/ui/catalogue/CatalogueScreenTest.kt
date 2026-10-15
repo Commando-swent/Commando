@@ -3,6 +3,7 @@ package com.android.sample.ui.catalogue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -90,6 +91,7 @@ class CatalogueScreenTest {
   @Test
   fun searchShowsResultsAndEmptyStateWhileKeepingSelection() {
     show()
+    compose.onNodeWithContentDescription("Search products").assertIsDisplayed()
     compose.onNodeWithTag(CatalogueTestTags.add(bread.id)).performClick()
     compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("oat")
     compose.onNodeWithText("1 RESULT FOR “OAT”").assertIsDisplayed()
@@ -141,7 +143,11 @@ class CatalogueScreenTest {
         .performClick()
     compose.onNodeWithContentDescription("Remove Oat drink from order").assert48dp()
     compose.onNodeWithTag(CatalogueTestTags.increase(milk.id)).assert48dp()
-    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsDisplayed().assertIsEnabled()
+    compose
+        .onNodeWithTag(CatalogueTestTags.CONTINUE)
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .assertHeightIsAtLeast(56.dp)
 
     list.performScrollToNode(hasTestTag(CatalogueTestTags.SEARCH))
     compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("oat")

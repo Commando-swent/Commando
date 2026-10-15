@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
@@ -52,6 +53,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -84,6 +88,7 @@ internal fun CatalogueSearchField(
   val interaction = remember { MutableInteractionSource() }
   val focused by interaction.collectIsFocusedAsState()
   val focusManager = LocalFocusManager.current
+  val searchLabel = stringResource(R.string.catalogue_search_hint)
   val border =
       when {
         !enabled -> c.outlineVariant
@@ -101,7 +106,10 @@ internal fun CatalogueSearchField(
       interactionSource = interaction,
       keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
       keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-      modifier = modifier.fillMaxWidth().testTag(CatalogueTestTags.SEARCH),
+      modifier =
+          modifier.fillMaxWidth().testTag(CatalogueTestTags.SEARCH).semantics {
+            contentDescription = searchLabel
+          },
       decorationBox = { field ->
         Row(
             Modifier.height(52.dp)
@@ -120,7 +128,7 @@ internal fun CatalogueSearchField(
           Box(Modifier.weight(1f)) {
             if (query.isEmpty()) {
               Text(
-                  stringResource(R.string.catalogue_search_hint),
+                  searchLabel,
                   style = catalogueText(16),
                   color = c.onSurfaceVariant.copy(alpha = contentAlpha),
                   maxLines = 1,
@@ -187,7 +195,7 @@ internal fun CatalogueProductRow(
           product.name,
           style = catalogueText(16, FontWeight.Medium),
           color = c.onSurface,
-          maxLines = 1,
+          maxLines = 2,
           overflow = TextOverflow.Ellipsis,
       )
       Text(money(product.priceCents), style = catalogueText(14), color = c.onSurfaceVariant)
@@ -360,6 +368,7 @@ internal fun CatalogueMessage(
     }
     Text(
         title,
+        modifier = Modifier.semantics { heading() },
         style = catalogueText(22, FontWeight.Bold),
         color = c.onSurface,
         textAlign = TextAlign.Center,
@@ -371,7 +380,10 @@ internal fun CatalogueMessage(
     } else {
       OutlinedButton(
           onClick = onAction,
-          modifier = Modifier.width(200.dp).height(48.dp).testTag(CatalogueTestTags.MESSAGE_ACTION),
+          modifier =
+              Modifier.width(200.dp)
+                  .heightIn(min = 48.dp)
+                  .testTag(CatalogueTestTags.MESSAGE_ACTION),
           shape = RoundedCornerShape(24.dp),
           border = BorderStroke(1.dp, c.outline),
       ) {
@@ -406,7 +418,7 @@ internal fun PrimaryPillButton(
       modifier =
           modifier
               .fillMaxWidth()
-              .height(56.dp)
+              .heightIn(min = 56.dp)
               .then(
                   if (enabled) Modifier.shadow(12.dp, shape, ambientColor = glow, spotColor = glow)
                   else Modifier

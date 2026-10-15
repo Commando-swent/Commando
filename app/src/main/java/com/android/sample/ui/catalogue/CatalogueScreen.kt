@@ -178,7 +178,7 @@ private fun TripSummary(trip: Trip) {
         stringResource(R.string.catalogue_trip_summary, trip.store.name, departure),
         style = catalogueText(13, FontWeight.Medium),
         color = c.onSurfaceVariant,
-        maxLines = 1,
+        maxLines = 2,
         overflow = TextOverflow.Ellipsis,
     )
   }

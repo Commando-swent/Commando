@@ -7,25 +7,18 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
@@ -37,8 +30,10 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.ui.components.SkeletonCard
+import com.android.sample.ui.components.StateCard
+import com.android.sample.ui.components.TripDepartureRow
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.formatTripDeparture
 import java.time.Instant
 
 object MyOrdersTestTags {
@@ -142,7 +137,6 @@ fun MyOrdersScreen(
 @Composable
 private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
-  val locale = LocalConfiguration.current.locales[0]
   val trip = row.trip
   // Plural category only; the displayed count stays exact.
   val quantity = row.itemCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
@@ -178,22 +172,7 @@ private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
         )
       }
       if (trip != null) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-          Icon(
-              painterResource(R.drawable.ic_trip_calendar),
-              contentDescription = null,
-              modifier = Modifier.size(20.dp),
-              tint = colors.onSurfaceVariant,
-          )
-          Text(
-              formatTripDeparture(trip.scheduledAt, locale),
-              color = colors.onSurface,
-              style = MaterialTheme.typography.bodySmall,
-          )
-        }
+        TripDepartureRow(trip.scheduledAt)
         Text(
             stringResource(R.string.my_orders_handoff, trip.handoffLocation.name),
             color = colors.onSurfaceVariant,
@@ -217,91 +196,6 @@ private fun StatusBadge(status: OrderStatus) {
       color = colors.onSecondaryContainer,
       style = MaterialTheme.typography.labelSmall,
   )
-}
-
-@Composable
-private fun SkeletonCard() {
-  val colors = MaterialTheme.colorScheme
-  Card(
-      modifier = Modifier.fillMaxWidth(),
-      shape = RoundedCornerShape(16.dp),
-      colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
-      border = BorderStroke(1.dp, colors.outlineVariant),
-  ) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      listOf(0.6f, 0.25f, 0.5f, 0.65f).forEach { width ->
-        Box(
-            Modifier.fillMaxWidth(width)
-                .height(16.dp)
-                .background(colors.surfaceContainerHigh, RoundedCornerShape(8.dp))
-        )
-      }
-    }
-  }
-}
-
-@Composable
-private fun StateCard(
-    tag: String,
-    icon: Int,
-    message: String,
-    help: String?,
-    action: String,
-    actionTag: String,
-    onAction: () -> Unit,
-) {
-  val colors = MaterialTheme.colorScheme
-  Card(
-      modifier =
-          Modifier.fillMaxWidth().testTag(tag).semantics { liveRegion = LiveRegionMode.Polite },
-      shape = RoundedCornerShape(16.dp),
-      colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
-      border = BorderStroke(1.dp, colors.outlineVariant),
-  ) {
-    // Scrolls so the action stays reachable on short screens or with large fonts.
-    Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-      Box(
-          Modifier.size(88.dp).background(colors.primary, CircleShape),
-          contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-            painterResource(icon),
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = colors.onPrimary,
-        )
-      }
-      Text(
-          message,
-          color = colors.onSurface,
-          style = MaterialTheme.typography.titleLarge,
-          textAlign = TextAlign.Center,
-      )
-      if (help != null) {
-        Text(
-            help,
-            color = colors.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-        )
-      }
-      Button(
-          onClick = onAction,
-          modifier = Modifier.fillMaxWidth().height(56.dp).testTag(actionTag),
-          colors =
-              ButtonDefaults.buttonColors(
-                  containerColor = colors.primary,
-                  contentColor = colors.onPrimary,
-              ),
-      ) {
-        Text(action)
-      }
-    }
-  }
 }
 
 /** Interactive preview backed by the shared in-memory fakes; no Firestore involved. */

@@ -72,3 +72,25 @@ The security profile is enabled only when `firebase.json` explicitly points to t
 ## Figma
 
 The application's mockups and wireframes are available on [Figma](https://www.figma.com/design/WPmz3r0efh7jF2BQmUTfRt/Command-o-%E2%80%93-App-Mockups?node-id=0-1&t=NffdyAdRoARsGMDX-1).
+
+## App navigation journey test
+
+`AppJourneyTest` runs on an Android device or emulator and follows the connected #130 journey:
+email sign-in → available trips → mock map and back → trip details → catalogue → review and
+cart retention on Back → submission → My Orders → Order Details → profile editing → mode
+switch → trip publication → My Trips → trip details → requester orders → sign-out.
+
+It uses the real navigation graph, screens and ViewModels with in-memory authentication, trip
+and product fixtures, and the app's default session Orders fake. It checks the demo journey;
+it does not validate Firebase persistence, Google OAuth or profile photo uploads. Those
+integrations have separate tests. No production account or network connection is needed.
+
+With a device or emulator connected, run only this journey with:
+
+```bash
+./gradlew connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.android.sample.ui.navigation.AppJourneyTest
+```
+
+The existing CI `connectedCheck` step also discovers it automatically. The instrumented report
+is generated under `app/build/reports/androidTests/connected/debug/`.

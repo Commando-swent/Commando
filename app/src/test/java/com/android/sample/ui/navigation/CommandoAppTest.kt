@@ -32,6 +32,8 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
+import com.android.sample.ui.catalogue.CatalogueTestTags
+import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
@@ -80,13 +82,11 @@ class CommandoAppTest {
     }
   }
 
+  // These fixtures use unsupported store names, so the catalogue never queries this stub.
+  private val products = StubProductRepository()
+
   private fun show(repository: FakeAuthRepository, picker: Picker = Picker()) {
-    val trips = FakeTripRepository(currentUserId = "alice")
-    compose.setContent {
-      SampleAppTheme {
-        CommandoApp(repository = repository, tripRepository = trips, googleCredentials = picker)
-      }
-    }
+    show(repository, FakeTripRepository(currentUserId = "alice"), picker)
   }
 
   private fun show(
@@ -94,7 +94,9 @@ class CommandoAppTest {
       trips: TripRepository,
       picker: Picker = Picker(),
   ) {
-    compose.setContent { SampleAppTheme { CommandoApp(repository, trips, picker) } }
+    compose.setContent {
+      SampleAppTheme { CommandoApp(repository, trips, picker, productRepository = products) }
+    }
   }
 
   private fun seededTrips(uid: String, storeName: String): TripRepository {
@@ -178,15 +180,12 @@ class CommandoAppTest {
     compose.onNodeWithTag(AppTestTags.BOTTOM_BAR).assertDoesNotExist()
   }
 
-  private fun assertAddItemsPlaceholder() {
+  private fun assertCatalogue() {
     compose.onNodeWithText("Add items").assertIsDisplayed().assertTextEquals("Add items")
-    compose
-        .onNodeWithText("This feature will be available in Sprint 2.")
-        .assertIsDisplayed()
-        .assertTextEquals("This feature will be available in Sprint 2.")
-    compose.onNodeWithText("Back").assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.BACK).assertIsDisplayed()
+    // An unsupported chain has nothing to select, so the trip cannot be continued either.
+    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsDisplayed().assertIsNotEnabled()
     compose.onNodeWithText("Add items to this run").assertDoesNotExist()
-    compose.onNodeWithText(secondTrip.store.name).assertDoesNotExist()
     assertTripScaffoldHidden()
   }
 
@@ -232,22 +231,24 @@ class CommandoAppTest {
         .assertIsDisplayed()
         .assertIsEnabled()
         .performClick()
-    assertAddItemsPlaceholder()
-    compose.onNodeWithText("Back").performClick()
+    assertCatalogue()
+    click(CatalogueTestTags.BACK)
     assertTripDetails(secondTrip)
     compose.onNodeWithText("Add items").assertDoesNotExist()
-    // Returning must preserve the Details ViewModel rather than loading another entry.
-    compose.runOnIdle { assertEquals(listOf(secondTrip.id), requestedIds) }
+    // Returning must preserve the Details ViewModel rather than loading another entry; the
+    // Catalogue loads the same trip once for its own header.
+    compose.runOnIdle { assertEquals(listOf(secondTrip.id, secondTrip.id), requestedIds) }
     compose
         .onNodeWithText("Add items to this run")
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
-    assertAddItemsPlaceholder()
+    assertCatalogue()
     pressBack()
     assertTripDetails(secondTrip)
     compose.onNodeWithText("Add items").assertDoesNotExist()
-    compose.runOnIdle { assertEquals(listOf(secondTrip.id), requestedIds) }
+    // Reopening the Catalogue creates a new entry, which loads the same trip once more.
+    compose.runOnIdle { assertEquals(List(3) { secondTrip.id }, requestedIds) }
     compose.onNodeWithText("Back").performClick()
     assertAvailableTripsRestored()
 
@@ -261,7 +262,8 @@ class CommandoAppTest {
     pressBack()
     assertAvailableTripsRestored()
     compose.runOnIdle {
-      assertEquals(listOf(secondTrip.id, firstTrip.id, secondTrip.id), requestedIds)
+      // The first three are the Details and the two Catalogue lookups of the opaque trip.
+      assertEquals(List(3) { secondTrip.id } + listOf(firstTrip.id, secondTrip.id), requestedIds)
       assertEquals(1, listLoads)
     }
   }
@@ -291,10 +293,10 @@ class CommandoAppTest {
   }
 
   @Test
-  fun accountReplacementFromAddItemsStartsNewAccountOnHomeAndBackCannotRestoreProtectedScreens() =
+  fun accountReplacementFromCatalogueStartsNewAccountOnHomeAndBackCannotRestoreProtectedScreens() =
       runTest {
         val repository = FakeAuthRepository(alice)
-        showAddItemsForSession(repository)
+        showCatalogueForSession(repository)
         repository.signInWithEmailResult = Result.success(bob)
         repository.signInWithEmail("", "")
         assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -306,9 +308,9 @@ class CommandoAppTest {
       }
 
   @Test
-  fun signOutFromAddItemsShowsLoginAndBackCannotRestoreProtectedScreens() {
+  fun signOutFromCatalogueShowsLoginAndBackCannotRestoreProtectedScreens() {
     val repository = FakeAuthRepository(alice)
-    showAddItemsForSession(repository)
+    showCatalogueForSession(repository)
     compose.runOnIdle { repository.signOut() }
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.runOnIdle { assertNull(repository.currentUser) }
@@ -318,19 +320,19 @@ class CommandoAppTest {
     assertTripScreensAbsent()
   }
 
-  private fun showAddItemsForSession(repository: FakeAuthRepository) {
+  private fun showCatalogueForSession(repository: FakeAuthRepository) {
     show(repository, twoTrips(requireNotNull(repository.currentUser).uid))
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(HomeTestTags.TRIP_ACTION)
     compose.onNodeWithText(secondTrip.store.name).performClick()
     assertTripDetails(secondTrip)
     compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
-    assertAddItemsPlaceholder()
+    assertCatalogue()
   }
 
   private fun assertTripScreensAbsent() {
     compose.onNodeWithText("Add items").assertDoesNotExist()
-    compose.onNodeWithText("This feature will be available in Sprint 2.").assertDoesNotExist()
+    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertDoesNotExist()
     compose.onNodeWithText("Add items to this run").assertDoesNotExist()
     compose.onNodeWithText(secondTrip.store.name).assertDoesNotExist()
   }
@@ -600,7 +602,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     assertProfile("Alice Smith", "alice@example.com", "AS")
     compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).assertIsSelected()
-    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertIsDisplayed()
     click(AppTestTags.PROFILE_BUTTON)
     click(AppTestTags.HOME_BUTTON)
     assertScreen(NavigationTestTags.HOME_SCREEN)
@@ -625,11 +627,28 @@ class CommandoAppTest {
         .assertTextEquals("Heading to the shop soon?")
     assertEquals(alice, repository.currentUser)
     click(AppTestTags.PROFILE_BUTTON)
-    pressBack()
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
     click(AppTestTags.REQUESTER_MODE)
+    pressBack()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
     compose.onNodeWithTag(HomeTestTags.EMPTY_STATE_TITLE).assertTextEquals("Need a few things?")
     assertEquals(alice, repository.currentUser)
+  }
+
+  @Test
+  fun profileModeChangeDoesNotRestoreThePreviousModesTripsList() {
+    show(FakeAuthRepository(alice))
+    click(AppTestTags.COMMANDO_MODE)
+    click(AppTestTags.TRIPS_BUTTON)
+    click(AppTestTags.PROFILE_BUTTON)
+    click(AppTestTags.REQUESTER_MODE)
+    assertProfile("Alice Smith", "alice@example.com", "AS")
+    pressBack()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    click(AppTestTags.TRIPS_BUTTON)
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsNotEnabled()
   }
 
   @Test

@@ -78,6 +78,33 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
+    // Orders are immutable until the decision transition in #148 adds narrow update rules.
+    function ownsOrderTrip(data) {
+      return get(/databases/$(database)/documents/trips/$(data.tripId)).data.ownerId == request.auth.uid;
+    }
+
+    match /orders/{orderId} {
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasAll(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
+        && request.resource.data.keys().hasOnly(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.tripId is string
+        && request.resource.data.tripId.matches('[^/]+')
+        && request.resource.data.items is list && request.resource.data.items.size() > 0
+        && request.resource.data.commissionCents is int
+        && request.resource.data.commissionCents >= 0
+        && request.resource.data.commissionCents <= 2147483647
+        && request.resource.data.status == "PENDING"
+        && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "PUBLISHED"
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time;
+      allow get: if isAuthenticated() && (resource == null
+        || resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
+      // #147 adds the separately tested trip-owner list query.
+      allow list: if isAuthenticated() && resource.data.requesterId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /stores/{storeId}/products/{productId} {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated()

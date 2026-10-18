@@ -21,7 +21,7 @@ enum class OrderStatus {
   PENDING,
 }
 
-/** In-memory snapshot; product prices do not track later catalogue changes. */
+/** Immutable order snapshot; product prices do not track later catalogue changes. */
 data class Order(
     val id: String,
     val tripId: String,

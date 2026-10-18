@@ -122,6 +122,11 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
   testImplementation(dep)
 }
 
+// Espresso-contrib's legacy protobuf shadows Firestore's runtime in the instrumentation APK.
+configurations.named("androidTestImplementation") {
+  exclude(group = "com.google.protobuf", module = "protobuf-lite")
+}
+
 dependencies {
   val composeBom = platform(libs.compose.bom)
 

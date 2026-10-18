@@ -34,8 +34,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
-import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
+import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
@@ -152,7 +152,7 @@ fun CommandoApp(
           val orders: SessionOrderViewModel = viewModel {
             SessionOrderViewModel(user.uid, repository) { currentUserId ->
               orderRepositoryFactory?.invoke(currentUserId)
-                  ?: FakeOrderRepository(currentUserId, tripRepository = trips)
+                  ?: OrderRepositoryFirestore(currentUserId)
             }
           }
           AuthenticatedApp(
@@ -405,6 +405,7 @@ private fun AuthenticatedApp(
                   // Both exits from confirmation discard the submitted draft's screens.
                   onViewOrders = { openOrders() },
                   tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
+                  isDemo = orders.isDemo,
               )
           // Reuse Trip Details for the loading and failure states of the same lookup.
           else ->
@@ -447,7 +448,7 @@ private fun AuthenticatedApp(
               }
             },
             onBrowseTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
-            isDemo = true,
+            isDemo = orders.isDemo,
         )
       }
       composable(

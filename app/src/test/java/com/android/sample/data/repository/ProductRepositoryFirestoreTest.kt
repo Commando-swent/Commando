@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.Product
+import com.android.sample.model.ProductPage
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
@@ -9,6 +10,7 @@ import java.io.IOException
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -213,6 +215,163 @@ class ProductRepositoryFirestoreTest {
     }
   }
 
+  @Test
+  fun productSearchTerms_normalizeFrenchAccentsLigaturesAndPunctuation() {
+    // Shared vectors with the catalogue importer's (#153) searchTerms; keep both lists in sync.
+    assertEquals(listOf("creme", "brulee"), productSearchTerms("  Crème BRÛLÉE "))
+    assertEquals(listOf("oeufs", "plein", "air"), productSearchTerms("Œufs plein-air"))
+    assertEquals(listOf("eau", "minerale", "5l"), productSearchTerms("l'eau minérale, 1 x 5l"))
+    assertEquals(listOf("huile", "hiver"), productSearchTerms("Huile d’hiver"))
+    assertEquals(listOf("straciatellaama"), productSearchTerms("Straciatellaamaretto"))
+    assertEquals(listOf("lait"), productSearchTerms("lait LAIT Lait"))
+    assertEquals(listOf("aa", "bb", "cc", "dd", "ee"), productSearchTerms("aa bb cc dd ee ff"))
+    assertEquals(emptyList<String>(), productSearchTerms("   "))
+    assertNull(productSearchTerms("a ! é"))
+    assertNull(productSearchTerms("x".repeat(101)))
+  }
+
+  @Test
+  fun searchProducts_requiresEveryNormalizedWordAsANamePrefix() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            productDocument("migros:1", name = "Crème brûlée"),
+            productDocument("migros:2", name = "Crémant 55%"),
+            productDocument("migros:3", name = "Lait entier UHT"),
+            productDocument("migros:4", name = "Lait demi-écrémé"),
+            productDocument("migros:5", name = "Crème entière", removedAt = REMOVED_AT),
+        )
+    val repository = ProductRepositoryFirestore(dataSource)
+    suspend fun idsFor(query: String) =
+        repository.searchProducts("migros", query).successData().products.map(Product::id)
+
+    assertEquals(listOf("migros:1", "migros:2"), idsFor("CRÉ"))
+    assertEquals(listOf("migros:1"), idsFor("creme"))
+    assertEquals(listOf("migros:3"), idsFor("entier lait"))
+    assertEquals(listOf("entier", "lait"), dataSource.lastTerms)
+    assertEquals(listOf("migros:4"), idsFor("lait écrémé"))
+    assertEquals(emptyList<String>(), idsFor("lait chocolat"))
+  }
+
+  @Test
+  fun searchProducts_matchesTheLastCategorySegmentButNotParentCategories() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            productDocument("migros:1", "Nature", category = "Produits laitiers > Yogourts nature"),
+            productDocument("migros:2", "Noisettes", category = "Tablettes de chocolat > Lait"),
+            productDocument("migros:3", "Lait entier UHT"),
+        )
+    val repository = ProductRepositoryFirestore(dataSource)
+    suspend fun idsFor(query: String) =
+        repository.searchProducts("migros", query).successData().products.map(Product::id)
+
+    assertEquals(listOf("migros:1"), idsFor("yogourt nature"))
+    assertEquals(listOf("migros:2", "migros:3"), idsFor("lait"))
+    assertEquals(emptyList<String>(), idsFor("produits laitiers"))
+  }
+
+  @Test
+  fun searchProducts_pagesWithCursorsAndKeepsStoresIsolated() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        (1..5).map { productDocument("migros:$it", name = "Milk $it") }
+    dataSource.documentsByStore["coop"] = listOf(productDocument("coop:9"))
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val first = repository.searchProducts("migros", "milk", limit = 2).successData()
+    val second = repository.searchProducts("migros", "milk", first.nextCursor, 2).successData()
+    val third = repository.searchProducts("migros", "milk", second.nextCursor, 2).successData()
+
+    assertEquals(listOf("migros:1", "migros:2"), first.products.map(Product::id))
+    assertEquals("2", first.nextCursor)
+    assertEquals(listOf("migros:3", "migros:4"), second.products.map(Product::id))
+    assertEquals(ProductPage(listOf(productOf("migros:5", "Milk 5")), null), third)
+    assertEquals("4", dataSource.lastCursor)
+    assertEquals(
+        ProductPage(emptyList(), null),
+        repository.searchProducts("aldi", "milk").successData(),
+    )
+  }
+
+  @Test
+  fun searchProducts_cursorOfADeletedProductStillPagesForward() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        (1..4).map { productDocument("migros:$it", name = "Milk $it") }
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val first = repository.searchProducts("migros", "milk", limit = 2).successData()
+    dataSource.documentsByStore["migros"] =
+        dataSource.documentsByStore.getValue("migros").filterNot { it.documentId == "2" }
+    val second = repository.searchProducts("migros", "milk", first.nextCursor, 2).successData()
+
+    assertEquals("2", first.nextCursor)
+    assertEquals(listOf("migros:3", "migros:4"), second.products.map(Product::id))
+  }
+
+  @Test
+  fun searchProducts_fullPageCursorAdvancesPastMalformedDocuments() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["coop"] =
+        listOf(
+            productDocument("coop:1"),
+            productDocument("coop:2", price = -1),
+            productDocument("coop:3"),
+        )
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val page = repository.searchProducts("coop", "", limit = 2).successData()
+
+    assertEquals(ProductPage(listOf(productOf("coop:1")), "2"), page)
+    assertEquals(
+        ProductPage(listOf(productOf("coop:3")), null),
+        repository.searchProducts("coop", "", page.nextCursor, 2).successData(),
+    )
+  }
+
+  @Test
+  fun searchProducts_rejectsInvalidArgumentsWithoutQuerying() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    assertProductError(ProductError.InvalidStore, repository.searchProducts("carrefour", "milk"))
+    assertProductError(
+        ProductError.InvalidLimit,
+        repository.searchProducts("coop", "milk", limit = 0),
+    )
+    listOf("a", "?!", "é", "x".repeat(101)).forEach { query ->
+      assertProductError(ProductError.InvalidQuery, repository.searchProducts("coop", query), query)
+    }
+    listOf("", " ", " 2", "a/b", ".", "..", "x".repeat(1_501)).forEach { cursor ->
+      assertProductError(
+          ProductError.InvalidCursor,
+          repository.searchProducts("coop", "milk", cursor),
+          cursor,
+      )
+    }
+    assertEquals(0, dataSource.queryCalls)
+  }
+
+  @Test
+  fun searchProducts_mapsFailuresAndPreservesCancellation() = runTest {
+    val dataSource =
+        InMemoryProductFirestoreDataSource().apply { failure = firebaseException(Code.UNAVAILABLE) }
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    assertProductError(ProductError.NetworkError, repository.searchProducts("coop", "milk", "1"))
+    dataSource.failure = CancellationException()
+    try {
+      repository.searchProducts("coop", "milk")
+      fail("Expected CancellationException")
+    } catch (_: CancellationException) {
+      // Expected: callers must retain structured cancellation.
+    }
+  }
+
+  private fun productOf(id: String, name: String = "Milk") =
+      Product(id, id.substringBefore(':'), name, 250)
+
   private fun firebaseException(code: Code) = FirebaseFirestoreException(code.name, code)
 
   private fun assertProductError(
@@ -228,8 +387,10 @@ class ProductRepositoryFirestoreTest {
       price: Any? = 2.5,
       imageUrl: Any? = null,
       removedAt: Any? = null,
+      category: String = "",
   ) =
       ProductFirestoreDocument(
+          documentId = (id as? String)?.substringAfter(':') ?: "$id",
           data =
               mapOf(
                   "id" to id,
@@ -237,8 +398,13 @@ class ProductRepositoryFirestoreTest {
                   "price" to price,
                   "image_url" to imageUrl,
                   "removed_at" to removedAt,
+                  "search_prefixes" to productSearchPrefixes(name, category),
               ),
       )
+
+  private companion object {
+    val REMOVED_AT = Timestamp(1_760_000_000, 0)
+  }
 
   private class InMemoryProductFirestoreDataSource : ProductFirestoreDataSource {
     val documentsByStore = mutableMapOf<String, List<ProductFirestoreDocument>>()
@@ -246,16 +412,33 @@ class ProductRepositoryFirestoreTest {
     var queryCalls = 0
     var lastStoreId: String? = null
     var lastLimit: Int? = null
+    var lastTerms: List<String>? = null
+    var lastCursor: String? = null
 
-    override suspend fun getProducts(
+    /**
+     * Stored order stands in for document ID order and, as in Firestore, the cursor is a position:
+     * it need not be a stored document. Removed products reach the mapper.
+     */
+    override suspend fun queryProducts(
         storeId: String,
+        terms: List<String>,
+        afterDocumentId: String?,
         limit: Int,
     ): List<ProductFirestoreDocument> {
       queryCalls++
       lastStoreId = storeId
       lastLimit = limit
+      lastTerms = terms
+      lastCursor = afterDocumentId
       failure?.let { throw it }
-      return documentsByStore[storeId].orEmpty().take(limit)
+      return documentsByStore[storeId]
+          .orEmpty()
+          .filter { afterDocumentId == null || it.documentId > afterDocumentId }
+          .filter { document ->
+            val prefixes = document.data["search_prefixes"] as? Map<*, *>
+            terms.all { prefixes?.get(it) == true }
+          }
+          .take(limit)
     }
   }
 }

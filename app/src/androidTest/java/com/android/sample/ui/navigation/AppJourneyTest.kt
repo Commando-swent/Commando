@@ -58,6 +58,13 @@ class AppJourneyTest {
         object : ProductRepository {
           override suspend fun getProducts(storeId: String, limit: Int) =
               ProductResult.Success(listOf(oat).filter { it.storeId == storeId }.take(limit))
+
+          override suspend fun searchProducts(
+              storeId: String,
+              query: String,
+              cursor: String?,
+              limit: Int,
+          ) = ProductResult.Error(ProductError.Unknown)
         }
     val google =
         object : GoogleCredentialClient {

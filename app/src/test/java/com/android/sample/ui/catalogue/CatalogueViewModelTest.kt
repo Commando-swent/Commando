@@ -39,6 +39,9 @@ internal class StubProductRepository(
     gate?.await()
     return result
   }
+
+  override suspend fun searchProducts(storeId: String, query: String, cursor: String?, limit: Int) =
+      ProductResult.Error(ProductError.Unknown)
 }
 
 internal fun catalogueTrip(id: String, store: String) =

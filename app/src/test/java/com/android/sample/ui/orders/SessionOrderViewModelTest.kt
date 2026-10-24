@@ -38,6 +38,13 @@ class SessionOrderViewModelTest {
       object : ProductRepository {
         override suspend fun getProducts(storeId: String, limit: Int) =
             ProductResult.Success(listOf(Product("milk", "migros", "Milk", 220)))
+
+        override suspend fun searchProducts(
+            storeId: String,
+            query: String,
+            cursor: String?,
+            limit: Int,
+        ) = ProductResult.Error(ProductError.Unknown)
       }
 
   @Before

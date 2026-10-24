@@ -5,6 +5,10 @@ sealed class ProductError {
 
   data object InvalidLimit : ProductError()
 
+  data object InvalidQuery : ProductError()
+
+  data object InvalidCursor : ProductError()
+
   data object NetworkError : ProductError()
 
   data object PermissionDenied : ProductError()

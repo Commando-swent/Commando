@@ -4,7 +4,11 @@ package com.android.sample.emulator.firestore.security
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProductResult
+import com.android.sample.data.repository.productSearchPrefixes
 import com.android.sample.data.repository.successData
+import com.android.sample.model.Product
+import com.android.sample.model.ProductPage
+import com.google.firebase.firestore.FieldPath
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -70,6 +74,68 @@ class ProductFirestoreSecurityRulesEmulatorTest {
           ProductResult.Error(ProductError.PermissionDenied),
           ProductRepositoryFirestore(unauthenticated.firestore).getProducts("migros"),
       )
+    }
+  }
+
+  @Test
+  fun searchQueries_areAcceptedOnlyWhenAuthenticatedAndBounded() = runTest {
+    withClients("authenticated" to true, "unauthenticated" to false) {
+        (authenticated, unauthenticated) ->
+      assertEquals(
+          ProductResult.Success(ProductPage(emptyList(), null)),
+          ProductRepositoryFirestore(authenticated.firestore)
+              .searchProducts("migros", "crème entière", cursor = "100014192", limit = 50),
+      )
+      assertEquals(
+          ProductResult.Error(ProductError.PermissionDenied),
+          ProductRepositoryFirestore(unauthenticated.firestore).searchProducts("migros", "lait"),
+      )
+      val search =
+          authenticated.firestore
+              .collection(MIGROS_PRODUCTS)
+              .whereEqualTo("removed_at", null)
+              .whereEqualTo(FieldPath.of("search_prefixes", "lait"), true)
+      assertPermissionDenied("an unbounded search") { search.get().await() }
+      assertPermissionDenied("a search of 51 products") { search.limit(51).get().await() }
+    }
+  }
+
+  @Test
+  fun searchQueries_returnAnExistingMatchingProductToAuthenticatedClients() = runTest {
+    withClients("authenticated" to true) { (authenticated) ->
+      // Clients may not write products, so the importer's document is created as the owner.
+      createDocumentAsOwner(
+          MIGROS_PRODUCTS,
+          "100014100",
+          mapOf(
+              "id" to "migros:100014100",
+              "name" to "Crème entière",
+              "price" to 2.5,
+              "image_url" to null,
+              "removed_at" to null,
+              "search_prefixes" to productSearchPrefixes("Crème entière"),
+          ),
+      )
+      try {
+        assertEquals(
+            ProductResult.Success(
+                ProductPage(
+                    listOf(Product("migros:100014100", "migros", "Crème entière", 250)),
+                    null,
+                )
+            ),
+            ProductRepositoryFirestore(authenticated.firestore)
+                .searchProducts("migros", "creme ENTIÈRE", limit = 50),
+        )
+      } catch (failure: Throwable) {
+        // A cleanup failure must not hide why the test failed.
+        runCatching { deleteDocumentAsOwner("$MIGROS_PRODUCTS/100014100") }
+            .exceptionOrNull()
+            ?.let(failure::addSuppressed)
+        throw failure
+      }
+      // The other tests expect an empty catalogue.
+      deleteDocumentAsOwner("$MIGROS_PRODUCTS/100014100")
     }
   }
 

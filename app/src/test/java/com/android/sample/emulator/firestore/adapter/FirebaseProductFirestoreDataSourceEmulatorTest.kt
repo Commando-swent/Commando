@@ -3,6 +3,7 @@ package com.android.sample.emulator.firestore.adapter
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.parseEmulatorHostAndPort
+import com.android.sample.data.repository.productSearchPrefixes
 import com.android.sample.data.repository.successData
 import com.android.sample.model.Product
 import com.google.firebase.FirebaseApp
@@ -63,6 +64,49 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
     }
   }
 
+  @Test
+  fun concreteAdapter_searchesAccentedMultiwordNamesAndPagesByDocumentId() = runTest {
+    withFirestoreEmulator { firestore ->
+      val stores = firestore.collection("stores")
+      val migros = stores.document("migros").collection("products")
+      listOf(
+              "103" to "Lait entier UHT",
+              "101" to "Crème brûlée",
+              "104" to "Crémant 55%",
+              "102" to "Lait demi-écrémé",
+              "105" to "Crème entière",
+          )
+          .forEach { (id, name) ->
+            migros.document(id).set(storedProduct("migros:$id", name, 2.5)).await()
+          }
+      migros.document("100").set(storedProduct("migros:100", "Crème gone", 1.0, REMOVED_AT)).await()
+      stores
+          .document("coop")
+          .collection("products")
+          .document("1")
+          .set(storedProduct("coop:1", "Crème coop", 1.0))
+          .await()
+      val repository = ProductRepositoryFirestore(firestore)
+      suspend fun ids(query: String, cursor: String? = null, limit: Int = 50) =
+          repository.searchProducts("migros", query, cursor, limit).successData()
+
+      assertEquals(
+          listOf("migros:101", "migros:104", "migros:105"),
+          ids("CRÉ").products.map(Product::id),
+      )
+      assertEquals(listOf("migros:105"), ids("entière crème").products.map(Product::id))
+      assertEquals(listOf("migros:102"), ids("lait ecreme").products.map(Product::id))
+      val first = ids("cr", limit = 2)
+      assertEquals(listOf("migros:101", "migros:104"), first.products.map(Product::id))
+      assertEquals("104", first.nextCursor)
+      // A cursor is a position, so it still works once its product is deleted.
+      migros.document("104").delete().await()
+      val second = ids("cr", first.nextCursor, limit = 2)
+      assertEquals(listOf("migros:105"), second.products.map(Product::id))
+      assertEquals(null, second.nextCursor)
+    }
+  }
+
   private suspend fun withFirestoreEmulator(test: suspend (FirebaseFirestore) -> Unit) {
     val emulatorAddress = System.getenv("FIRESTORE_EMULATOR_HOST")
     assumeTrue(
@@ -106,6 +150,7 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           "price" to price,
           "image_url" to "https://example.com/product.jpg",
           "removed_at" to removedAt,
+          "search_prefixes" to productSearchPrefixes(name),
       )
 
   private companion object {

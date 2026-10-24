@@ -1,8 +1,9 @@
 package com.android.sample
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.os.LocaleListCompat
 import com.android.sample.data.repository.ProfilePhotoRepositoryFirestore
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
@@ -35,7 +37,8 @@ import com.android.sample.ui.theme.SampleAppTheme
 import java.time.LocalDate
 import java.time.ZoneId
 
-class MainActivity : ComponentActivity() {
+/** Hosts Compose and Android's persisted, installation-wide language preference. */
+class MainActivity : AppCompatActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
@@ -47,7 +50,15 @@ class MainActivity : ComponentActivity() {
         ) {
           val auth = remember { AuthRepositoryProvider.repository }
           val photos = remember { ProfilePhotoRepositoryFirestore(contentResolver, auth) }
-          CommandoApp(repository = auth, photoRepository = photos)
+          CommandoApp(
+              repository = auth,
+              photoRepository = photos,
+              onLanguageSelected = { language ->
+                AppCompatDelegate.setApplicationLocales(
+                    LocaleListCompat.forLanguageTags(language.tag)
+                )
+              },
+          )
         }
       }
     }

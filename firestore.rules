@@ -78,6 +78,66 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
+    // Orders are immutable until the decision transition in #148 adds narrow update rules.
+    function ownsOrderTrip(data) {
+      return get(/databases/$(database)/documents/trips/$(data.tripId)).data.ownerId == request.auth.uid;
+    }
+
+    // Bounded lists allow exhaustive item, uniqueness and Int-total validation without loops.
+    function validOrderItem(item) {
+      let id = item.productId;
+      let name = item.name;
+      let price = item.unitPriceCents;
+      let quantity = item.quantity;
+      // Missing fields or wrong map/string types fail closed during evaluation.
+      return item.keys().hasOnly(["productId", "name", "unitPriceCents", "quantity"])
+        && id.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*') && name.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
+        && price is int && price >= 0 && price <= 2147483647
+        && quantity is int && quantity > 0 && quantity <= 2147483647
+        && price * quantity <= 2147483647;
+    }
+
+    function checkedTotal(items, index) {
+      let item = items.size() > index ? items[index] : null;
+      return items.size() <= index ? 0 : validOrderItem(item)
+        ? item.unitPriceCents * item.quantity : 2147483648;
+    }
+
+    function productAt(items, index) {
+      return items.size() <= index ? null : items[index].productId;
+    }
+
+    function validOrderItems(items, fee) {
+      return fee + checkedTotal(items, 0) + checkedTotal(items, 1) + checkedTotal(items, 2)
+          + checkedTotal(items, 3) + checkedTotal(items, 4) <= 2147483647
+        && [productAt(items, 0), productAt(items, 1), productAt(items, 2),
+          productAt(items, 3), productAt(items, 4)].removeAll([null]).toSet().size() == items.size();
+    }
+
+    match /orders/{orderId} {
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasAll(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
+        && request.resource.data.keys().hasOnly(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.tripId is string
+        && request.resource.data.tripId.matches('[^/]+')
+        && request.resource.data.commissionCents is int
+        && request.resource.data.commissionCents >= 0
+        && request.resource.data.commissionCents <= 2147483647
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 5
+        && validOrderItems(request.resource.data.items, request.resource.data.commissionCents)
+        && request.resource.data.status == "PENDING"
+        && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "PUBLISHED"
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time;
+      allow get: if isAuthenticated() && (resource == null
+        || resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
+      // #147 adds the separately tested trip-owner list query.
+      allow list: if isAuthenticated() && resource.data.requesterId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /stores/{storeId}/products/{productId} {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated()

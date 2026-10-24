@@ -45,6 +45,40 @@ class ReviewOrderTest {
   }
 
   @Test
+  fun oversizedDraftCannotReachRepositoryAndCanBeCorrectedWithoutLosingItems() {
+    repeat(MAX_ORDER_PRODUCTS) { shared.addItem(OrderItem("p$it", "Product $it", 100, 1)) }
+    var calls = 0
+    val repo =
+        object : OrderRepository by fake {
+          override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> {
+            calls++
+            return fake.createOrder(draft)
+          }
+        }
+    show(repo) // Adds milk: six different products, including a quantity of two.
+    compose
+        .onNodeWithTag(ReviewOrderTags.ERROR)
+        .assertTextEquals("Maximum distinct products per order: 5. Remove a product to continue.")
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      vm.submit()
+      assertEquals(0, calls)
+      assertEquals(6, shared.draft.value.items.size)
+    }
+    compose.onNodeWithTag("decrease_p4").performScrollTo().performClick()
+    compose.onNodeWithTag(ReviewOrderTags.ERROR).assertDoesNotExist()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsEnabled().performClick()
+    compose.waitUntil { vm.uiState.value.order != null && !vm.uiState.value.saving }
+    compose.runOnIdle {
+      val saved = checkNotNull(vm.uiState.value.order)
+      assertEquals(1, calls)
+      assertEquals(5, saved.items.size)
+      assertEquals(2, saved.items.single { it.productId == "milk" }.quantity)
+      assertTrue(shared.draft.value.items.isEmpty())
+    }
+  }
+
+  @Test
   fun editingAndBackUseTheCatalogueDraftAndCheckedTotals() {
     show()
     compose.onNodeWithTag("increase_milk").performClick()

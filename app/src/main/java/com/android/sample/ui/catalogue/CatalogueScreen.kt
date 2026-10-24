@@ -41,6 +41,7 @@ import com.android.sample.R
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
+import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
 import com.android.sample.model.Trip
@@ -375,9 +376,12 @@ private fun CatalogueBottomBar(state: CatalogueUiState, onContinue: () -> Unit) 
         )
       }
     }
+    if (state.hasTooManyProducts) {
+      Text(stringResource(R.string.order_product_limit, MAX_ORDER_PRODUCTS), color = c.error)
+    }
     PrimaryPillButton(
         stringResource(
-            if (state.canContinue) R.string.catalogue_continue
+            if (state.canContinue || state.hasTooManyProducts) R.string.catalogue_continue
             else R.string.catalogue_select_to_continue
         ),
         enabled = state.canContinue,

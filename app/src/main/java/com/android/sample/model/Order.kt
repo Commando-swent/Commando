@@ -2,6 +2,9 @@ package com.android.sample.model
 
 import java.time.Instant
 
+/** Maximum distinct products per order; mirrored by the production Firestore rules. */
+const val MAX_ORDER_PRODUCTS = 5
+
 /** Product snapshot; CHF prices use integer cents, never floating point. */
 data class OrderItem(
     val productId: String,
@@ -21,7 +24,7 @@ enum class OrderStatus {
   PENDING,
 }
 
-/** In-memory snapshot; product prices do not track later catalogue changes. */
+/** Immutable order snapshot; product prices do not track later catalogue changes. */
 data class Order(
     val id: String,
     val tripId: String,

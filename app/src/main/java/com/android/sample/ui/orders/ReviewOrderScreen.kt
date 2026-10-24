@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
+import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Trip
 
@@ -77,14 +78,20 @@ fun ReviewOrderRoute(
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      if (!success && (state.error != null || !state.tripMatches)) {
+      if (!success && (state.error != null || !state.tripMatches || state.hasTooManyProducts)) {
         val error =
             when {
               !state.tripMatches -> R.string.order_invalid_error
               state.error == OrderError.NotAuthenticated -> R.string.order_session_error
               else -> R.string.order_failure_help
             }
-        Text(stringResource(error), Modifier.testTag(ReviewOrderTags.ERROR), color = c.error)
+        Text(
+            if (state.tripMatches && state.hasTooManyProducts)
+                stringResource(R.string.order_product_limit, MAX_ORDER_PRODUCTS)
+            else stringResource(error),
+            Modifier.testTag(ReviewOrderTags.ERROR),
+            color = c.error,
+        )
       }
       if (trip.id == state.draft.tripId)
           Panel(c.primaryContainer) {

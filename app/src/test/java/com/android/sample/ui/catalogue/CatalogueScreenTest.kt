@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
+import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
 import com.android.sample.model.Trip
@@ -61,6 +62,34 @@ class CatalogueScreenTest {
         SampleAppTheme { CatalogueRoute(vm, onBack = { backs++ }, onContinue = continued::add) }
       }
     }
+  }
+
+  @Test
+  fun sixDifferentProductsExplainTheLimitAndRemovingOneRestoresContinue() {
+    val selection =
+        List(MAX_ORDER_PRODUCTS + 1) { Product("migros:$it", "migros", "Product $it", 100) }
+    products.result = ProductResult.Success(selection)
+    show()
+    selection.forEach { product ->
+      compose
+          .onNodeWithTag(CatalogueTestTags.PRODUCT_LIST)
+          .performScrollToNode(hasTestTag(CatalogueTestTags.row(product.id)))
+      compose.onNodeWithTag(CatalogueTestTags.add(product.id)).performClick()
+    }
+    val message = "Maximum distinct products per order: 5. Remove a product to continue."
+    compose.onNodeWithText(message).assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(6, draft.draft.value.items.size)
+      assertTrue(continued.isEmpty())
+    }
+    compose
+        .onNodeWithTag(CatalogueTestTags.PRODUCT_LIST)
+        .performScrollToNode(hasTestTag(CatalogueTestTags.row(selection.last().id)))
+    compose.onNodeWithContentDescription("Remove Product 5 from order").performClick()
+    compose.onNodeWithText(message).assertDoesNotExist()
+    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsEnabled().performClick()
+    compose.runOnIdle { assertEquals(listOf(trip), continued) }
   }
 
   @Test

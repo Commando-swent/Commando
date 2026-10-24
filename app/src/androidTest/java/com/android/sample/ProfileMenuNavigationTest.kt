@@ -79,6 +79,15 @@ class ProfileMenuNavigationTest {
       compose.onNodeWithTag(category).performClick()
       if (category == ProfileTestTags.HELP) {
         compose.onNodeWithText("Popular questions").assertIsDisplayed()
+        val question = compose.onNodeWithTag("${ProfileTestTags.FAQ_QUESTION}_0")
+        question.assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed")
+        )
+        question.performClick()
+        question.assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded")
+        )
+        question.performClick()
         compose.onNodeWithTag(ProfileTestTags.SETTINGS_BACK).performClick()
       } else {
         compose.onNodeWithText("My Orders").assertIsDisplayed()

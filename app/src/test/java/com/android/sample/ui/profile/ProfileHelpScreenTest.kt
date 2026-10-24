@@ -3,6 +3,7 @@ package com.android.sample.ui.profile
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -35,10 +36,13 @@ class ProfileHelpScreenTest {
     compose.setContent { SampleAppTheme { ProfileHelpScreen({}) } }
     val answer = compose.activity.getString(R.string.profile_faq_payments_answer)
     val row = compose.onNodeWithTag("${ProfileTestTags.FAQ_QUESTION}_2")
+    row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
     compose.onNodeWithText(answer).assertDoesNotExist()
     row.performScrollTo().performClick()
+    row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
     compose.onNodeWithText(answer).assertIsDisplayed()
     row.performClick()
+    row.assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
     compose.onNodeWithText(answer).assertDoesNotExist()
   }
 
@@ -48,6 +52,9 @@ class ProfileHelpScreenTest {
     restoration.setContent { SampleAppTheme { ProfileHelpScreen({}) } }
     compose.onNodeWithTag("${ProfileTestTags.FAQ_QUESTION}_0").performClick()
     restoration.emulateSavedInstanceStateRestore()
+    compose
+        .onNodeWithTag("${ProfileTestTags.FAQ_QUESTION}_0")
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
     compose
         .onNodeWithText(compose.activity.getString(R.string.profile_faq_trips_answer))
         .assertExists()

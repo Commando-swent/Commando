@@ -4,6 +4,8 @@
     <string name="profile_support">Support</string>
     <string name="profile_help">Help &amp; FAQ</string>
     <string name="profile_popular_questions">Popular questions</string>
+    <string name="profile_faq_expanded">Expanded</string>
+    <string name="profile_faq_collapsed">Collapsed</string>
     <string name="profile_faq_trips">How do trips work?</string>
     <string name="profile_faq_trips_answer">In Requester mode, find a trip from Home and open it to see the store, shopping time and handoff point. In Commando mode, publish your own trip from Home.</string>
     <string name="profile_faq_orders">How do orders work?</string>

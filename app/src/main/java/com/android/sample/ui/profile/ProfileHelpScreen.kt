@@ -8,6 +8,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 
@@ -30,13 +32,21 @@ fun ProfileHelpScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
   ) {
     ProfileMenuSection(R.string.profile_popular_questions) {
       questions.forEachIndexed { index, (title, answer) ->
+        val isExpanded = expanded == index
+        val stateLabel =
+            stringResource(
+                if (isExpanded) R.string.profile_faq_expanded else R.string.profile_faq_collapsed
+            )
         if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         ProfileMenuRow(
             title,
-            onClick = { expanded = if (expanded == index) -1 else index },
-            modifier = Modifier.testTag("${ProfileTestTags.FAQ_QUESTION}_$index"),
+            onClick = { expanded = if (isExpanded) -1 else index },
+            modifier =
+                Modifier.testTag("${ProfileTestTags.FAQ_QUESTION}_$index").semantics {
+                  stateDescription = stateLabel
+                },
         )
-        if (expanded == index) {
+        if (isExpanded) {
           Text(
               stringResource(answer),
               Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),

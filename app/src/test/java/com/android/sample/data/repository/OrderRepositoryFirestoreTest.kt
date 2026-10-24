@@ -16,7 +16,7 @@ class OrderRepositoryFirestoreTest {
   private val draft = OrderDraft("trip", listOf(item), 150)
   private var uid: String? = "alice"
   private val source = MemorySource()
-  private val repository = OrderRepositoryFirestore(source, { uid }, { time })
+  private val repository = OrderRepositoryFirestore(source, { uid }, { time }, { "b" })
 
   private fun error(error: OrderError) = OrderResult.Error(error)
 
@@ -58,6 +58,7 @@ class OrderRepositoryFirestoreTest {
     listOf(
             draft.copy(items = emptyList()),
             draft.copy(items = listOf(item, item)),
+            draft.copy(items = List(6) { item.copy(productId = "$it") }),
             draft.copy(commissionCents = -1),
             draft.copy(items = listOf(item.copy(quantity = Int.MAX_VALUE))),
             draft.copy(tripId = "path/trip"),
@@ -118,9 +119,43 @@ class OrderRepositoryFirestoreTest {
     }
   }
 
+  @Test
+  fun retryRecoversCommittedOrderAfterConfirmationFailure() = runTest {
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.createOrder(draft))
+    assertEquals(1, source.documents.size)
+    // Eligibility may have changed after the write; recovery must not resubmit or revalidate it.
+    source.trip = null
+    source.confirmationFails = false
+    val recovered = repository.createOrder(draft.copy(items = draft.items.toList()))
+    assertEquals(OrderResult.Success(source.documents.getValue("b").toOrder()!!), recovered)
+    assertEquals(1, source.writes)
+  }
+
+  @Test
+  fun uncertainWritesKeepTheirIdButConfirmedPurchasesAndAccountsAreDistinct() = runTest {
+    var sequence = 0
+    val repo = OrderRepositoryFirestore(source, { uid }, { time }, { "order-${sequence++}" })
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repo.createOrder(draft))
+    source.beforeRead = { throw IllegalStateException("Still offline") }
+    assertEquals(error(OrderError.Unknown), repo.createOrder(draft))
+    assertEquals(1, source.writes)
+    source.beforeRead = {}
+    source.confirmationFails = false
+    uid = "bob"
+    assertEquals("bob", (repo.createOrder(draft) as OrderResult.Success).data.requesterId)
+    uid = "alice"
+    assertEquals("order-0", (repo.createOrder(draft) as OrderResult.Success).data.id)
+    assertEquals("order-2", (repo.createOrder(draft) as OrderResult.Success).data.id)
+    assertEquals(3, source.writes)
+  }
+
   private inner class MemorySource : OrderFirestoreDataSource {
     val documents = linkedMapOf<String, OrderFirestoreDocument>()
     var beforeRead: suspend () -> Unit = {}
+    var confirmationFails = false
+    var writes = 0
     var trip: Map<String, Any?>? =
         mapOf(
             "ownerId" to "owner",
@@ -143,9 +178,12 @@ class OrderRepositoryFirestoreTest {
       return documents.values.toList()
     }
 
-    override suspend fun create(data: Map<String, Any?>) =
-        OrderFirestoreDocument("b", data + ("createdAt" to Timestamp(time.epochSecond, 0))).also {
+    override suspend fun create(id: String, data: Map<String, Any?>) =
+        OrderFirestoreDocument(id, data + ("createdAt" to Timestamp(time.epochSecond, 0))).also {
+          check(!documents.containsKey(it.id)) { "Immutable order cannot be overwritten" }
           documents[it.id] = it
+          writes++
+          if (confirmationFails) throw IllegalStateException("Confirmation unavailable")
         }
   }
 }

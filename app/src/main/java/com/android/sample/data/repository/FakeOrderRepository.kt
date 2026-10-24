@@ -71,23 +71,39 @@ class FakeOrderRepository(
     if (orderId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
     if (userId != order.requesterId) {
-      // Resolve ownership from the associated Trip, never from UI role or caller-supplied owner ID.
-      val trip =
-          try {
-            (tripRepository?.getTripById(order.tripId) as? TripResult.Success)?.data
-          } catch (cancelled: CancellationException) {
-            throw cancelled
-          } catch (_: Exception) {
-            currentCoroutineContext().ensureActive()
-            return@withSession OrderResult.Error(OrderError.Unknown)
-          }
-      currentCoroutineContext().ensureActive()
-      // A lookup can suspend while the authenticated account changes.
-      if (currentUserId() != userId || trip?.id != order.tripId || trip.ownerId != userId) {
-        return@withSession OrderResult.Error(OrderError.PermissionDenied)
-      }
+      val error = tripOwnerAccessError(order, userId)
+      if (error != null) return@withSession OrderResult.Error(error)
     }
     OrderResult.Success(order.snapshot())
+  }
+
+  private suspend fun tripOwnerAccessError(order: Order, userId: String): OrderError? {
+    // Resolve ownership from the associated Trip, never from UI role or caller-supplied owner ID.
+    val trip =
+        try {
+          tripRepository?.getTripById(order.tripId)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          currentCoroutineContext().ensureActive()
+          return OrderError.Unknown
+        }
+    currentCoroutineContext().ensureActive()
+    val associatedTrip =
+        when (trip) {
+          is TripResult.Success -> trip.data
+          else -> return OrderError.PermissionDenied
+        }
+    // A lookup can suspend while the authenticated account changes.
+    return if (
+        currentUserId() != userId ||
+            associatedTrip.id != order.tripId ||
+            associatedTrip.ownerId != userId
+    ) {
+      OrderError.PermissionDenied
+    } else {
+      null
+    }
   }
 
   private suspend fun <T> withSession(action: suspend (String) -> OrderResult<T>): OrderResult<T> {

@@ -48,8 +48,16 @@ data class ReviewOrderState(
   val editable
     get() = !saving && order == null && tripMatches
 
+  val hasTooManyProducts: Boolean
+    get() = draft.items.size > MAX_ORDER_PRODUCTS
+
   val canSubmit
-    get() = editable && draft.tripId.isNotBlank() && draft.items.isNotEmpty() && totalCents != null
+    get() =
+        editable &&
+            draft.tripId.isNotBlank() &&
+            draft.items.isNotEmpty() &&
+            !hasTooManyProducts &&
+            totalCents != null
 }
 
 /** Catalogue and Review receive the SAME draft holder. There is no second editable cart. */

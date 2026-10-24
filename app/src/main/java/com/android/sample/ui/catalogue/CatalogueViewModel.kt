@@ -10,6 +10,7 @@ import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
+import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
@@ -65,8 +66,11 @@ data class CatalogueUiState(
     }
         .getOrNull()
 
+  val hasTooManyProducts: Boolean
+    get() = items.size > MAX_ORDER_PRODUCTS
+
   val canContinue: Boolean
-    get() = trip != null && items.isNotEmpty() && estimatedCents != null
+    get() = trip != null && items.isNotEmpty() && !hasTooManyProducts && estimatedCents != null
 
   fun quantityOf(productId: String): Int = items.find { it.productId == productId }?.quantity ?: 0
 }

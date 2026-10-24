@@ -112,6 +112,54 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               "status" to "PENDING",
               "createdAt" to FieldValue.serverTimestamp(),
           )
+      val item = (data.getValue("items") as List<*>).single() as Map<*, *>
+      val five = List(5) { item + ("productId" to "product-$it") }
+      val invalidItems =
+          listOf(
+              listOf("malformed"),
+              listOf(item - "name"),
+              listOf(item + ("extra" to true)),
+              listOf(item + ("productId" to " ")),
+              listOf(item + ("name" to " ")),
+              listOf(item + ("name" to "\u00a0\u2003")),
+              listOf(item + ("productId" to 1)),
+              listOf(item + ("name" to true)),
+              listOf(item + ("quantity" to 0)),
+              listOf(item + ("quantity" to -1)),
+              listOf(item + ("quantity" to 1.5)),
+              listOf(item + ("quantity" to Long.MAX_VALUE)),
+              listOf(item + ("unitPriceCents" to -1)),
+              listOf(item + ("unitPriceCents" to 1.5)),
+              listOf(item + ("unitPriceCents" to Long.MAX_VALUE)),
+              listOf(item + mapOf("unitPriceCents" to Long.MAX_VALUE, "quantity" to 2)),
+              listOf(item + mapOf("unitPriceCents" to 0, "quantity" to 2147483648L)),
+              listOf(item + mapOf("unitPriceCents" to Int.MAX_VALUE, "quantity" to 2)),
+              listOf(item + ("unitPriceCents" to Int.MAX_VALUE), item + ("productId" to "other")),
+              five.dropLast(1) + (item + ("quantity" to -1)),
+              five.dropLast(1) + five.first(),
+              five + (item + ("productId" to "sixth")),
+          )
+      for (items in invalidItems) assertPermissionDenied {
+        requester.firestore.collection("orders").add(data + ("items" to items)).await()
+      }
+      assertPermissionDenied {
+        requester.firestore
+            .collection("orders")
+            .add(
+                data +
+                    mapOf(
+                        "items" to listOf(item + ("unitPriceCents" to Int.MAX_VALUE)),
+                        "commissionCents" to 1,
+                    )
+            )
+            .await()
+      }
+      // Exercise the last permitted index and the inclusive Int boundary with direct writes.
+      requester.firestore.collection("orders").add(data + ("items" to five)).await()
+      requester.firestore
+          .collection("orders")
+          .add(data + ("items" to listOf(item + ("unitPriceCents" to Int.MAX_VALUE))))
+          .await()
       val malformed =
           listOf(
               data + ("requesterId" to "spoofed"),

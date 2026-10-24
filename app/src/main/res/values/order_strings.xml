@@ -25,4 +25,5 @@
     <string name="order_session_error">Sign in again before saving your order.</string>
     <string name="order_invalid_error">Check your trip, items, quantities and commission.</string>
     <string name="order_total_invalid">The order total is invalid or too large. Reduce the quantities.</string>
+    <string name="order_product_limit">Maximum distinct products per order: %1$d. Remove a product to continue.</string>
 </resources>

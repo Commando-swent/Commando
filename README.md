@@ -69,6 +69,12 @@ bash scripts/ci/run-firebase-emulator-tests.sh
 The security profile is enabled only when `firebase.json` explicitly points to the production
 `firestore.rules` file at the repository root.
 
+## Profile support
+
+Profile → Help & FAQ displays expandable answers and the support email address
+`info.commando@gmail.com`, which users can select and copy.
+FAQ answers describe the implemented functionality and need team content review.
+
 ## Figma
 
 The application's mockups and wireframes are available on [Figma](https://www.figma.com/design/WPmz3r0efh7jF2BQmUTfRt/Command-o-%E2%80%93-App-Mockups?node-id=0-1&t=NffdyAdRoARsGMDX-1).

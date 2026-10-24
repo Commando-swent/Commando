@@ -5,9 +5,12 @@ import com.android.sample.model.*
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.*
 import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /** Server-confirmed orders. Inject the session-bound identity supplied by SessionOrderViewModel. */
@@ -16,42 +19,63 @@ internal constructor(
     private val source: OrderFirestoreDataSource,
     private val currentUserId: () -> String?,
     private val now: () -> Instant = Instant::now,
+    private val newId: () -> String = { UUID.randomUUID().toString() },
 ) : OrderRepository {
   constructor(
       currentUserId: () -> String?,
       firestore: FirebaseFirestore? = null,
   ) : this(FirebaseOrderFirestoreDataSource(firestore), currentUserId)
 
-  override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = session { uid ->
+  private val submissions = Mutex()
+  private val pending = mutableMapOf<Pair<String, OrderDraft>, String>()
+
+  override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = submissions.withLock {
+    session { uid -> createForSession(draft, uid) }
+  }
+
+  private suspend fun createForSession(draft: OrderDraft, uid: String): OrderResult<Order> {
     val input = draft.copy(items = draft.items.toList())
-    if (!input.isValid() || !input.tripId.isDocumentId())
-        return@session failure(OrderError.InvalidData)
-    val trip = source.getTrip(input.tripId) ?: return@session failure(OrderError.NotFound)
-    if (!sameSession(uid)) return@session failure(OrderError.NotAuthenticated)
+    if (!input.isValid() || !input.tripId.isDocumentId()) return failure(OrderError.InvalidData)
+    val key = uid to input
+    // Retain the ID across uncertain writes/confirmation failures, including cancellation.
+    pending[key]?.let { id ->
+      source.get(id)?.let { document ->
+        val result = decode(document)
+        if (result is OrderResult.Success && sameSession(uid)) pending.remove(key)
+        return result
+      }
+    }
+    val trip = source.getTrip(input.tripId) ?: return failure(OrderError.NotFound)
+    if (!sameSession(uid)) return failure(OrderError.NotAuthenticated)
     val departure = trip["scheduledAt"] as? Timestamp
     if (trip["status"] != "PUBLISHED" || departure == null || departure.toInstant() <= now()) {
-      return@session failure(OrderError.InvalidData)
+      return failure(OrderError.InvalidData)
     }
-    decode(
-        source.create(
-            mapOf(
-                "tripId" to input.tripId,
-                "requesterId" to uid,
-                "items" to
-                    input.items.map {
-                      mapOf(
-                          "productId" to it.productId,
-                          "name" to it.name,
-                          "unitPriceCents" to it.unitPriceCents,
-                          "quantity" to it.quantity,
-                      )
-                    },
-                "commissionCents" to input.commissionCents,
-                "status" to OrderStatus.PENDING.name,
-                "createdAt" to FieldValue.serverTimestamp(),
+    val id = pending.getOrPut(key, newId)
+    val result =
+        decode(
+            source.create(
+                id,
+                mapOf(
+                    "tripId" to input.tripId,
+                    "requesterId" to uid,
+                    "items" to
+                        input.items.map {
+                          mapOf(
+                              "productId" to it.productId,
+                              "name" to it.name,
+                              "unitPriceCents" to it.unitPriceCents,
+                              "quantity" to it.quantity,
+                          )
+                        },
+                    "commissionCents" to input.commissionCents,
+                    "status" to OrderStatus.PENDING.name,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                ),
             )
         )
-    )
+    if (result is OrderResult.Success && sameSession(uid)) pending.remove(key)
+    return result
   }
 
   override suspend fun getMyOrders(): OrderResult<List<Order>> = session { uid ->
@@ -109,7 +133,7 @@ internal constructor(
 internal data class OrderFirestoreDocument(val id: String, val data: Map<String, Any?>)
 
 internal interface OrderFirestoreDataSource {
-  suspend fun create(data: Map<String, Any?>): OrderFirestoreDocument
+  suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument
 
   suspend fun get(id: String): OrderFirestoreDocument?
 
@@ -126,8 +150,8 @@ internal class FirebaseOrderFirestoreDataSource(private val instance: FirebaseFi
   private val orders
     get() = firestore.collection("orders")
 
-  override suspend fun create(data: Map<String, Any?>): OrderFirestoreDocument {
-    val ref = orders.document()
+  override suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument {
+    val ref = orders.document(id)
     ref.set(data).await()
     return checkNotNull(get(ref.id))
   }

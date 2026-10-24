@@ -76,7 +76,7 @@ class CatalogueScreenTest {
           .performScrollToNode(hasTestTag(CatalogueTestTags.row(product.id)))
       compose.onNodeWithTag(CatalogueTestTags.add(product.id)).performClick()
     }
-    val message = "Orders can contain at most 5 different products. Remove a product to continue."
+    val message = "Maximum distinct products per order: 5. Remove a product to continue."
     compose.onNodeWithText(message).assertIsDisplayed()
     compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsNotEnabled().performClick()
     compose.runOnIdle {

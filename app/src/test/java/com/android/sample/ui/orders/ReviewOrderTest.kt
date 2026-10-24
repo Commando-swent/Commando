@@ -58,9 +58,7 @@ class ReviewOrderTest {
     show(repo) // Adds milk: six different products, including a quantity of two.
     compose
         .onNodeWithTag(ReviewOrderTags.ERROR)
-        .assertTextEquals(
-            "Orders can contain at most 5 different products. Remove a product to continue."
-        )
+        .assertTextEquals("Maximum distinct products per order: 5. Remove a product to continue.")
     compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsNotEnabled().performClick()
     compose.runOnIdle {
       vm.submit()

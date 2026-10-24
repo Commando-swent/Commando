@@ -74,7 +74,7 @@ class FakeOrderRepository(
       // Resolve ownership from the associated Trip, never from UI role or caller-supplied owner ID.
       val trip =
           try {
-            (tripRepository?.getTripById(order.tripId) as? TripResult.Success)?.data
+            tripRepository?.getTripById(order.tripId)
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {
@@ -83,7 +83,11 @@ class FakeOrderRepository(
           }
       currentCoroutineContext().ensureActive()
       // A lookup can suspend while the authenticated account changes.
-      val associatedTrip = trip ?: return@withSession OrderResult.Error(OrderError.PermissionDenied)
+      val associatedTrip =
+          when (trip) {
+            is TripResult.Success -> trip.data
+            else -> return@withSession OrderResult.Error(OrderError.PermissionDenied)
+          }
       if (
           currentUserId() != userId ||
               associatedTrip.id != order.tripId ||

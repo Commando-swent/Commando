@@ -8,8 +8,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
@@ -47,6 +50,25 @@ internal suspend fun assertPermissionDenied(
     )
   }
 }
+
+/**
+ * Creates `[collectionPath]/[documentId]` as the emulator owner, bypassing the security rules, for
+ * documents that clients may not write.
+ */
+internal fun createDocumentAsOwner(
+    collectionPath: String,
+    documentId: String,
+    fields: Map<String, Any?>,
+) =
+    firestoreOwnerRequest(
+        "POST",
+        "$collectionPath?documentId=$documentId",
+        JSONObject().put("fields", fields.toFirestoreFields()),
+    )
+
+/** Deletes the document at [documentPath] as the emulator owner, bypassing the security rules. */
+internal fun deleteDocumentAsOwner(documentPath: String) =
+    firestoreOwnerRequest("DELETE", documentPath, body = null)
 
 internal data class EmulatorClient(
     val app: FirebaseApp,
@@ -106,6 +128,55 @@ private fun createFirebaseApp(name: String): FirebaseApp {
   )
 }
 
+private fun firestoreOwnerRequest(method: String, path: String, body: JSONObject?) {
+  val (host, port) =
+      checkNotNull(System.getenv(FIRESTORE_EMULATOR_HOST_ENVIRONMENT_VARIABLE))
+          .parseEmulatorHostAndPort()
+  val url = URL("http://$host:$port/v1/projects/$PROJECT_ID/databases/(default)/documents/$path")
+  val connection = url.openConnection() as HttpURLConnection
+  try {
+    connection.requestMethod = method
+    connection.connectTimeout = OWNER_REQUEST_TIMEOUT_MS
+    connection.readTimeout = OWNER_REQUEST_TIMEOUT_MS
+    // The emulator accepts this fixed admin token; it is not a secret.
+    connection.setRequestProperty("Authorization", "Bearer owner")
+    if (body != null) {
+      connection.doOutput = true
+      connection.setRequestProperty("Content-Type", "application/json")
+      connection.outputStream.use { it.write(body.toString().toByteArray()) }
+    }
+    val code = connection.responseCode
+    check(code in 200..299) { "Firestore emulator $method $path failed (HTTP $code)." }
+  } finally {
+    connection.disconnect()
+  }
+}
+
+/** Encodes [this] in the Firestore REST format for the values that the tests store. */
+private fun Map<String, Any?>.toFirestoreFields(): JSONObject =
+    JSONObject().also { fields ->
+      forEach { (name, value) -> fields.put(name, value.toFirestoreValue()) }
+    }
+
+private fun Any?.toFirestoreValue(): JSONObject =
+    when (this) {
+      null -> JSONObject().put("nullValue", JSONObject.NULL)
+      is Boolean -> JSONObject().put("booleanValue", this)
+      is String -> JSONObject().put("stringValue", this)
+      is Int,
+      is Long -> JSONObject().put("integerValue", toString())
+      is Number -> JSONObject().put("doubleValue", toDouble())
+      is Map<*, *> ->
+          JSONObject()
+              .put(
+                  "mapValue",
+                  JSONObject()
+                      .put("fields", entries.associate { (k, v) -> "$k" to v }.toFirestoreFields()),
+              )
+      else -> error("Unsupported Firestore test value: $this")
+    }
+
 private const val PROJECT_ID = "demo-commando"
+private const val OWNER_REQUEST_TIMEOUT_MS = 10_000
 private const val FIRESTORE_EMULATOR_HOST_ENVIRONMENT_VARIABLE = "FIRESTORE_EMULATOR_HOST"
 private const val FIREBASE_AUTH_EMULATOR_HOST_ENVIRONMENT_VARIABLE = "FIREBASE_AUTH_EMULATOR_HOST"

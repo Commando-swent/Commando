@@ -16,6 +16,7 @@ enum class CommandoScreens(
   CreateTrip(title = R.string.create_trip_title),
   EditProfile(title = R.string.profile_edit_title),
   Profile(title = R.string.nav_profile, showModeSelector = true, showBottomBar = true),
+  ProfileHelp(title = R.string.profile_help),
   AvailableTrips(title = R.string.trips_title, showModeSelector = true, showBottomBar = true),
   MyTrips(title = R.string.my_trips_title, showModeSelector = true, showBottomBar = true),
   TripDetails(title = R.string.trips_title),

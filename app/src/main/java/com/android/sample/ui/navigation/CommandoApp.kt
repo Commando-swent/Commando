@@ -65,6 +65,7 @@ import com.android.sample.ui.orders.ReviewOrderRoute
 import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.EditProfileScreen
+import com.android.sample.ui.profile.ProfileHelpScreen
 import com.android.sample.ui.profile.ProfilePhotoActions
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileScreen
@@ -446,7 +447,10 @@ private fun AuthenticatedApp(
                 launchSingleTop = true
               }
             },
-            onBrowseTrips = { navController.openScreen(CommandoScreens.AvailableTrips) },
+            onBrowseTrips = {
+              appViewModel.switchMode(AppMode.Requester)
+              navController.openScreen(CommandoScreens.AvailableTrips)
+            },
             isDemo = true,
         )
       }
@@ -477,11 +481,19 @@ private fun AuthenticatedApp(
             signOutError = signOutError,
             photo = photo,
             onPhotoClick = onPhotoClick,
+            onOrderHistory = {
+              // History is a child of Profile even when My Orders was opened earlier from a tab.
+              navController.navigate(CommandoScreens.MyOrders.name) { launchSingleTop = true }
+            },
+            onHelp = { navController.openScreen(CommandoScreens.ProfileHelp) },
             onEdit = {
               profileViewModel.beginEditing()
               navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
             },
         )
+      }
+      composable(route = CommandoScreens.ProfileHelp.name) {
+        ProfileHelpScreen(onBack = { navController.popBackStack() })
       }
       composable(route = CommandoScreens.EditProfile.name) {
         val draft by profileViewModel.editState.collectAsState()

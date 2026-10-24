@@ -13,4 +13,9 @@ object ProfileTestTags {
   const val PHOTO_PREVIEW = "profile_photo_preview"
   const val PHOTO_CLOSE = "profile_photo_close"
   const val EDIT = "profile_edit"
+  const val ORDER_HISTORY = "profile_order_history"
+  const val HELP = "profile_help"
+  const val HELP_SCREEN = "profile_help_screen"
+  const val FAQ_QUESTION = "profile_faq_question"
+  const val SETTINGS_BACK = "profile_settings_back"
 }

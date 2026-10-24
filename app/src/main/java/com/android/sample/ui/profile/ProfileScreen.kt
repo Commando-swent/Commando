@@ -2,14 +2,20 @@ package com.android.sample.ui.profile
 
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -20,6 +26,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.Credential
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.android.sample.R
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthException
@@ -44,6 +53,8 @@ fun ProfileScreen(
     onEdit: (() -> Unit)? = null,
     photo: PhotoUiState? = null,
     onPhotoClick: (() -> Unit)? = null,
+    onOrderHistory: (() -> Unit)? = null,
+    onHelp: (() -> Unit)? = null,
 ) {
   Column(
       modifier
@@ -67,7 +78,7 @@ fun ProfileScreen(
       }
     }
     Column(
-        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberProfileScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
       when (uiState) {
@@ -92,8 +103,26 @@ fun ProfileScreen(
               textAlign = TextAlign.Center,
           )
         }
-        is ProfileUiState.Content ->
-            ProfileInformation(uiState, onEdit = onEdit, photo = photo, onPhotoClick = onPhotoClick)
+        is ProfileUiState.Content -> {
+          ProfileInformation(uiState, onEdit = onEdit, photo = photo, onPhotoClick = onPhotoClick)
+          ProfileMenuSection(R.string.profile_account) {
+            ProfileMenuRow(
+                R.string.profile_order_history,
+                onOrderHistory,
+                Modifier.testTag(ProfileTestTags.ORDER_HISTORY),
+                R.drawable.profile_order_history,
+            )
+          }
+          ProfileMenuSection(R.string.profile_support) {
+            ProfileMenuRow(
+                R.string.profile_help,
+                onHelp,
+                Modifier.testTag(ProfileTestTags.HELP),
+                R.drawable.profile_help,
+            )
+          }
+          Spacer(Modifier.height(16.dp))
+        }
       }
     }
     if (signOutError != null) {
@@ -119,6 +148,21 @@ fun ProfileScreen(
       Text(stringResource(R.string.nav_sign_out), style = MaterialTheme.typography.labelSmall)
     }
   }
+}
+
+/** Keeps transition-time scaffold resizing from overwriting the last visible profile offset. */
+@Composable
+private fun rememberProfileScrollState(): ScrollState {
+  var offset by rememberSaveable { mutableIntStateOf(0) }
+  val state = remember { ScrollState(offset) }
+  val lifecycle = LocalLifecycleOwner.current.lifecycle
+  LaunchedEffect(lifecycle, state) {
+    lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+      state.scrollTo(offset)
+      snapshotFlow { state.value }.collect { offset = it }
+    }
+  }
+  return state
 }
 
 @Preview(name = "Home / Profile · demo account", widthDp = 412, heightDp = 830)

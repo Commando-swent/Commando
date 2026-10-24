@@ -3,12 +3,16 @@ package com.android.sample.ui.navigation
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -55,6 +59,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
@@ -62,6 +67,71 @@ class CommandoAppTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val alice = AuthUser("alice", displayName = "Alice Smith", email = "alice@example.com")
   private val bob = AuthUser("bob", displayName = "Bob Jones", email = "bob@example.com")
+
+  @Test
+  @Config(qualifiers = "en-rUS-w412dp-h830dp-mdpi")
+  fun profileKeepsItsScrollPositionAfterReturningFromEveryMenuCategory() {
+    show(FakeAuthRepository(alice))
+    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).performClick()
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    val scroll =
+        compose.onNode(
+            hasScrollAction() and hasAnyAncestor(hasTestTag(NavigationTestTags.PROFILE_SCREEN))
+        )
+    for (category in listOf(ProfileTestTags.HELP, ProfileTestTags.ORDER_HISTORY)) {
+      compose.onNodeWithTag(ProfileTestTags.HELP).performScrollTo()
+      val before =
+          scroll.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+      assertTrue("The profile must be scrolled before opening a category", before > 0f)
+      compose.onNodeWithTag(category).performClick()
+      if (category == ProfileTestTags.ORDER_HISTORY) {
+        compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+      } else {
+        compose.onNodeWithTag(ProfileTestTags.SETTINGS_BACK).performClick()
+      }
+      val after =
+          scroll.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
+      assertEquals("Returning from $category must restore the profile position", before, after, 1f)
+    }
+  }
+
+  @Test
+  fun profileHistoryReusesMyOrdersAndBackReturnsToProfile() {
+    show(FakeAuthRepository(alice))
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    compose.onNodeWithTag(ProfileTestTags.ORDER_HISTORY).performScrollTo().performClick()
+    compose.onNodeWithText("My Orders").assertIsDisplayed()
+    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+    compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals("Alice Smith")
+  }
+
+  @Test
+  fun commandoCanReadHistoryAndBrowseTripsInRequesterMode() {
+    show(FakeAuthRepository(alice))
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
+    compose.onNodeWithTag(ProfileTestTags.ORDER_HISTORY).performScrollTo().performClick()
+    compose.onNodeWithText("My Orders").assertIsDisplayed()
+    compose.onNodeWithText("Browse trips").performClick()
+    compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
+    compose.onNodeWithText("Available runs").assertIsDisplayed()
+  }
+
+  @Test
+  fun helpBackReturnsToProfileAndSignOutClearsTheHelpDestination() {
+    val repository = FakeAuthRepository(alice)
+    show(repository)
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    compose.onNodeWithTag(ProfileTestTags.HELP).performScrollTo().performClick()
+    compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileTestTags.SETTINGS_BACK).performClick()
+    compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals("Alice Smith")
+    compose.onNodeWithTag(ProfileTestTags.HELP).performScrollTo().performClick()
+    compose.runOnIdle { repository.signOut() }
+    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+    compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertDoesNotExist()
+  }
 
   private class Picker : GoogleCredentialClient {
     var credential: Credential? = null

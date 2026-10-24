@@ -83,7 +83,12 @@ class FakeOrderRepository(
           }
       currentCoroutineContext().ensureActive()
       // A lookup can suspend while the authenticated account changes.
-      if (currentUserId() != userId || trip?.id != order.tripId || trip.ownerId != userId) {
+      val associatedTrip = trip ?: return@withSession OrderResult.Error(OrderError.PermissionDenied)
+      if (
+          currentUserId() != userId ||
+              associatedTrip.id != order.tripId ||
+              associatedTrip.ownerId != userId
+      ) {
         return@withSession OrderResult.Error(OrderError.PermissionDenied)
       }
     }

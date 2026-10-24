@@ -30,51 +30,52 @@ internal constructor(
   private val pending = mutableMapOf<Pair<String, OrderDraft>, String>()
 
   override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = submissions.withLock {
-    session { uid ->
-      val input = draft.copy(items = draft.items.toList())
-      if (!input.isValid() || !input.tripId.isDocumentId())
-          return@session failure(OrderError.InvalidData)
-      val key = uid to input
-      // Retain the ID across uncertain writes/confirmation failures, including cancellation.
-      pending[key]?.let { id ->
-        source.get(id)?.let { document ->
-          val result = decode(document)
-          if (result is OrderResult.Success && sameSession(uid)) pending.remove(key)
-          return@session result
-        }
+    session { uid -> createForSession(draft, uid) }
+  }
+
+  private suspend fun createForSession(draft: OrderDraft, uid: String): OrderResult<Order> {
+    val input = draft.copy(items = draft.items.toList())
+    if (!input.isValid() || !input.tripId.isDocumentId()) return failure(OrderError.InvalidData)
+    val key = uid to input
+    // Retain the ID across uncertain writes/confirmation failures, including cancellation.
+    pending[key]?.let { id ->
+      source.get(id)?.let { document ->
+        val result = decode(document)
+        if (result is OrderResult.Success && sameSession(uid)) pending.remove(key)
+        return result
       }
-      val trip = source.getTrip(input.tripId) ?: return@session failure(OrderError.NotFound)
-      if (!sameSession(uid)) return@session failure(OrderError.NotAuthenticated)
-      val departure = trip["scheduledAt"] as? Timestamp
-      if (trip["status"] != "PUBLISHED" || departure == null || departure.toInstant() <= now()) {
-        return@session failure(OrderError.InvalidData)
-      }
-      val id = pending.getOrPut(key, newId)
-      val result =
-          decode(
-              source.create(
-                  id,
-                  mapOf(
-                      "tripId" to input.tripId,
-                      "requesterId" to uid,
-                      "items" to
-                          input.items.map {
-                            mapOf(
-                                "productId" to it.productId,
-                                "name" to it.name,
-                                "unitPriceCents" to it.unitPriceCents,
-                                "quantity" to it.quantity,
-                            )
-                          },
-                      "commissionCents" to input.commissionCents,
-                      "status" to OrderStatus.PENDING.name,
-                      "createdAt" to FieldValue.serverTimestamp(),
-                  ),
-              )
-          )
-      if (result is OrderResult.Success && sameSession(uid)) pending.remove(key)
-      result
     }
+    val trip = source.getTrip(input.tripId) ?: return failure(OrderError.NotFound)
+    if (!sameSession(uid)) return failure(OrderError.NotAuthenticated)
+    val departure = trip["scheduledAt"] as? Timestamp
+    if (trip["status"] != "PUBLISHED" || departure == null || departure.toInstant() <= now()) {
+      return failure(OrderError.InvalidData)
+    }
+    val id = pending.getOrPut(key, newId)
+    val result =
+        decode(
+            source.create(
+                id,
+                mapOf(
+                    "tripId" to input.tripId,
+                    "requesterId" to uid,
+                    "items" to
+                        input.items.map {
+                          mapOf(
+                              "productId" to it.productId,
+                              "name" to it.name,
+                              "unitPriceCents" to it.unitPriceCents,
+                              "quantity" to it.quantity,
+                          )
+                        },
+                    "commissionCents" to input.commissionCents,
+                    "status" to OrderStatus.PENDING.name,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                ),
+            )
+        )
+    if (result is OrderResult.Success && sameSession(uid)) pending.remove(key)
+    return result
   }
 
   override suspend fun getMyOrders(): OrderResult<List<Order>> = session { uid ->

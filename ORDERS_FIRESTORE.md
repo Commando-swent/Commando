@@ -5,7 +5,9 @@ AI assistance: OpenAI Codex. Shared-contract choices below remain subject to tea
 `orders/{id}` stores `tripId`, `requesterId`, `items` (productId/name/unitPriceCents/quantity),
 `commissionCents`, `status` and `createdAt`. The document ID is the Order ID.
 Money uses integer CHF cents; Kotlin and rules reject duplicate products, invalid quantities and Int
-overflow. Orders contain 1–5 distinct products, permitting exhaustive rules validation without loops.
+overflow. Orders contain 1–5 distinct products (MAX_ORDER_PRODUCTS), permitting exhaustive rules
+validation without loops. Catalogue and Review explain oversized drafts and disable continuation or
+submission until a product is removed; quantities do not count toward this distinct-product limit.
 Creation derives the requester from the session, writes PENDING and a server timestamp, and confirms
 the saved snapshot through a SERVER read. The trip must be PUBLISHED with a strictly future departure;
 the rules enforce eligibility at write time, independently of the preliminary application lookup.

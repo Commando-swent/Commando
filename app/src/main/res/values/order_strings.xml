@@ -17,6 +17,7 @@
     <string name="order_add">Add products</string>
     <string name="order_sent">Your order is sent</string>
     <string name="order_view">View my orders</string>
+    <string name="order_persistent_help">Orders are saved to your account.</string>
     <string name="order_submit_help">Demo only · orders stay in memory</string>
     <string name="order_failure_help">Your items are kept. Correct your order or retry.</string>
     <string name="order_increase">Increase %1$s quantity</string>

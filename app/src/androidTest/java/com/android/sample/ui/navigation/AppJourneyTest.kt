@@ -29,8 +29,8 @@ import org.junit.runner.RunWith
 
 /**
  * Device-level UI journey through the real app graph, screens and ViewModels. Authentication, trips
- * and products use deterministic in-memory fixtures; Orders uses the app's default session fake.
- * This tests the demo user flow, not Firebase authentication or backend persistence.
+ * and products and orders use explicitly injected, deterministic in-memory fixtures. This tests the
+ * demo user flow, not Firebase authentication or backend persistence.
  */
 @RunWith(AndroidJUnit4::class)
 class AppJourneyTest {
@@ -73,7 +73,15 @@ class AppJourneyTest {
           override suspend fun clearSession() {}
         }
     compose.setContent {
-      SampleAppTheme { CommandoApp(auth, trips, google, productRepository = products) }
+      SampleAppTheme {
+        CommandoApp(
+            auth,
+            trips,
+            google,
+            productRepository = products,
+            orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+        )
+      }
     }
 
     // Start signed out and enter through the real login form.

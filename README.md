@@ -69,7 +69,13 @@ bash scripts/ci/run-firebase-emulator-tests.sh
 The security profile is enabled only when `firebase.json` explicitly points to the production
 `firestore.rules` file at the repository root.
 
-## Profile support
+## App language and Profile support
+
+Profile → Language offers English and French. The choice uses Android app locales
+(`AppCompatDelegate`), with AndroidX automatic storage on Android 12 and earlier.
+It applies to this app installation, across accounts, and survives recreation and
+restart. Android 13+ also exposes these languages in system app settings. Product
+names and user-entered data are not translated.
 
 Profile → Help & FAQ displays expandable answers and the support email address
 `info.commando@gmail.com`, which users can select and copy.

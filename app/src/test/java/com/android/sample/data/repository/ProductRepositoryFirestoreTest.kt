@@ -34,7 +34,7 @@ class ProductRepositoryFirestoreTest {
     dataSource.documentsByStore["coop"] =
         listOf(
             example,
-            example.copy(data = example.data + ("removed_at" to Timestamp(1_760_000_000, 0))),
+            productDocument("coop:4446521", name = "Example product", removedAt = REMOVED_AT),
             productDocument(
                 "coop:42",
                 name = "  Whole milk  ",
@@ -45,8 +45,10 @@ class ProductRepositoryFirestoreTest {
 
     val products = ProductRepositoryFirestore(dataSource).getProducts(" COOP ", 3).successData()
 
+    // Document IDs are ordered as strings: "42" precedes "4446520".
     assertEquals(
         listOf(
+            Product("coop:42", "coop", "Whole milk", 300, "https://e.test/m.png"),
             Product(
                 "coop:4446520",
                 "coop",
@@ -54,7 +56,6 @@ class ProductRepositoryFirestoreTest {
                 395,
                 "https://example.com/product.jpg",
             ),
-            Product("coop:42", "coop", "Whole milk", 300, "https://e.test/m.png"),
         ),
         products,
     )
@@ -78,7 +79,11 @@ class ProductRepositoryFirestoreTest {
             productDocument(" coop:4446520"),
         )
     val dataSource = InMemoryProductFirestoreDataSource()
-    dataSource.documentsByStore["coop"] = invalidIds + valid
+    // Each malformed `id` belongs to its own document, as Firestore document IDs are unique.
+    dataSource.documentsByStore["coop"] =
+        invalidIds.mapIndexed { index, document ->
+          document.copy(documentId = "${4446521 + index}")
+        } + valid
 
     val products =
         ProductRepositoryFirestore(dataSource)
@@ -93,7 +98,7 @@ class ProductRepositoryFirestoreTest {
     val valid = productDocument("migros:valid", price = 1.25)
     val invalidPrices =
         listOf(
-            valid.copy(data = valid.data - "price"),
+            productDocument("migros:missing").let { it.copy(data = it.data - "price") },
             productDocument("migros:negative", price = -0.01),
             productDocument("migros:invalid", price = "2.50"),
             productDocument("migros:nan", price = Double.NaN),
@@ -114,8 +119,7 @@ class ProductRepositoryFirestoreTest {
 
   @Test
   fun getProducts_filtersRemovedAndMalformedDocumentsAfterTheBoundedQuery() = runTest {
-    val dataSource = InMemoryProductFirestoreDataSource()
-    dataSource.documentsByStore["denner"] =
+    val documents =
         listOf(
             productDocument("denner:removed", removedAt = Timestamp(1_760_000_000, 0)),
             productDocument("denner:blank-name", name = "  "),
@@ -123,7 +127,8 @@ class ProductRepositoryFirestoreTest {
             productDocument("denner:bad-removed", removedAt = "2026-01-01T00:00:00Z"),
             productDocument("denner:valid"),
         )
-    val repository = ProductRepositoryFirestore(dataSource)
+    // Unlike the Firestore query, this source returns removed documents for the mapper to skip.
+    val repository = ProductRepositoryFirestore { _, _, _, limit -> documents.take(limit) }
 
     assertTrue(repository.getProducts("denner", 1).successData().isEmpty())
     assertEquals(
@@ -311,6 +316,27 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun searchProducts_removedProductsDoNotUseUpThePageLimit() = runTest {
+    val removed = setOf(2, 4, 5, 8)
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        (1..8).map { id ->
+          productDocument("migros:$id", "Milk $id", removedAt = REMOVED_AT.takeIf { id in removed })
+        }
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val first = repository.searchProducts("migros", "milk", limit = 3).successData()
+    val second = repository.searchProducts("migros", "milk", first.nextCursor, 3).successData()
+
+    assertEquals(
+        ProductPage(listOf(1, 3, 6).map { productOf("migros:$it", "Milk $it") }, "6"),
+        first,
+    )
+    // The trailing removed product "8" leaves a short page, so paging ends without a duplicate.
+    assertEquals(ProductPage(listOf(productOf("migros:7", "Milk 7")), null), second)
+  }
+
+  @Test
   fun searchProducts_fullPageCursorAdvancesPastMalformedDocuments() = runTest {
     val dataSource = InMemoryProductFirestoreDataSource()
     dataSource.documentsByStore["coop"] =
@@ -416,8 +442,9 @@ class ProductRepositoryFirestoreTest {
     var lastCursor: String? = null
 
     /**
-     * Stored order stands in for document ID order and, as in Firestore, the cursor is a position:
-     * it need not be a stored document. Removed products reach the mapper.
+     * Mirrors the Firestore query: `removed_at == null` (the field must be present) and every term
+     * prefix are filtered before the limit, in document ID order. As in Firestore, the cursor is a
+     * position: it need not be a stored document.
      */
     override suspend fun queryProducts(
         storeId: String,
@@ -433,7 +460,9 @@ class ProductRepositoryFirestoreTest {
       failure?.let { throw it }
       return documentsByStore[storeId]
           .orEmpty()
+          .sortedBy { it.documentId }
           .filter { afterDocumentId == null || it.documentId > afterDocumentId }
+          .filter { "removed_at" in it.data && it.data["removed_at"] == null }
           .filter { document ->
             val prefixes = document.data["search_prefixes"] as? Map<*, *>
             terms.all { prefixes?.get(it) == true }

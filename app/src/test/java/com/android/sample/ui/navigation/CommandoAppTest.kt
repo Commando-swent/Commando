@@ -23,6 +23,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
@@ -78,7 +79,8 @@ class CommandoAppTest {
         compose.onNode(
             hasScrollAction() and hasAnyAncestor(hasTestTag(NavigationTestTags.PROFILE_SCREEN))
         )
-    for (category in listOf(ProfileTestTags.HELP, ProfileTestTags.ORDER_HISTORY)) {
+    for (category in
+        listOf(ProfileTestTags.HELP, ProfileTestTags.LANGUAGE, ProfileTestTags.ORDER_HISTORY)) {
       compose.onNodeWithTag(ProfileTestTags.HELP).performScrollTo()
       val before =
           scroll.fetchSemanticsNode().config[SemanticsProperties.VerticalScrollAxisRange].value()
@@ -165,7 +167,15 @@ class CommandoAppTest {
       picker: Picker = Picker(),
   ) {
     compose.setContent {
-      SampleAppTheme { CommandoApp(repository, trips, picker, productRepository = products) }
+      SampleAppTheme {
+        CommandoApp(
+            repository,
+            trips,
+            picker,
+            productRepository = products,
+            orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+        )
+      }
     }
   }
 

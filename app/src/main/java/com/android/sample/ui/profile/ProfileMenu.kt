@@ -43,13 +43,14 @@ internal fun ProfileMenuSection(
   }
 }
 
-/** A named action with an optional icon; its caller owns navigation. */
+/** A named action with an optional icon and value; its caller owns navigation. */
 @Composable
 internal fun ProfileMenuRow(
     @StringRes title: Int,
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     @DrawableRes icon: Int? = null,
+    value: String? = null,
 ) {
   Row(
       modifier
@@ -62,6 +63,13 @@ internal fun ProfileMenuRow(
   ) {
     icon?.let { ProfileMenuIcon(it) }
     Text(stringResource(title), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+    value?.let {
+      Text(
+          it,
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          style = MaterialTheme.typography.bodySmall,
+      )
+    }
     Text("›", Modifier.clearAndSetSemantics {}, color = MaterialTheme.colorScheme.onSurfaceVariant)
   }
 }

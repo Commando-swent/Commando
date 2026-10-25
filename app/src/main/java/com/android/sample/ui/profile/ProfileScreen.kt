@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -30,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.sample.R
+import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthUser
@@ -55,6 +57,7 @@ fun ProfileScreen(
     onPhotoClick: (() -> Unit)? = null,
     onOrderHistory: (() -> Unit)? = null,
     onHelp: (() -> Unit)? = null,
+    onLanguage: (() -> Unit)? = null,
 ) {
   Column(
       modifier
@@ -111,6 +114,17 @@ fun ProfileScreen(
                 onOrderHistory,
                 Modifier.testTag(ProfileTestTags.ORDER_HISTORY),
                 R.drawable.profile_order_history,
+            )
+          }
+          ProfileMenuSection(R.string.profile_preferences) {
+            ProfileMenuRow(
+                R.string.profile_language,
+                onLanguage,
+                Modifier.testTag(ProfileTestTags.LANGUAGE),
+                R.drawable.profile_language,
+                stringResource(
+                    AppLanguage.fromLanguage(LocalConfiguration.current.locales[0].language).label
+                ),
             )
           }
           ProfileMenuSection(R.string.profile_support) {
@@ -206,6 +220,7 @@ internal fun ProfilePreview() {
             repository = previewRepository,
             tripRepository = previewTrips,
             googleCredentials = previewCredentials,
+            orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = previewTrips) },
         )
       }
     }

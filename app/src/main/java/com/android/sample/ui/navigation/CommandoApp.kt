@@ -34,8 +34,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
-import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
+import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
@@ -64,8 +64,10 @@ import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.ReviewOrderRoute
 import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
+import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileHelpScreen
+import com.android.sample.ui.profile.ProfileLanguageScreen
 import com.android.sample.ui.profile.ProfilePhotoActions
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileScreen
@@ -93,6 +95,7 @@ fun CommandoApp(
     photoRepository: ProfilePhotoRepository? = null,
     productRepository: ProductRepository? = null,
     orderRepositoryFactory: ((() -> String?) -> OrderRepository)? = null,
+    onLanguageSelected: (AppLanguage) -> Unit = {},
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -153,7 +156,7 @@ fun CommandoApp(
           val orders: SessionOrderViewModel = viewModel {
             SessionOrderViewModel(user.uid, repository) { currentUserId ->
               orderRepositoryFactory?.invoke(currentUserId)
-                  ?: FakeOrderRepository(currentUserId, tripRepository = trips)
+                  ?: OrderRepositoryFirestore(currentUserId)
             }
           }
           AuthenticatedApp(
@@ -175,6 +178,7 @@ fun CommandoApp(
                 }
               },
               signOutError = sessionUiState.signOutError,
+              onLanguageSelected = onLanguageSelected,
           )
         }
       }
@@ -193,6 +197,7 @@ private fun AuthenticatedApp(
     userId: String,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
+    onLanguageSelected: (AppLanguage) -> Unit,
 ) {
   val appViewModel: AppViewModel = viewModel()
   val profileViewModel: ProfileViewModel = viewModel {
@@ -406,6 +411,7 @@ private fun AuthenticatedApp(
                   // Both exits from confirmation discard the submitted draft's screens.
                   onViewOrders = { openOrders() },
                   tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
+                  isDemo = orders.isDemo,
               )
           // Reuse Trip Details for the loading and failure states of the same lookup.
           else ->
@@ -451,7 +457,7 @@ private fun AuthenticatedApp(
               appViewModel.switchMode(AppMode.Requester)
               navController.openScreen(CommandoScreens.AvailableTrips)
             },
-            isDemo = true,
+            isDemo = orders.isDemo,
         )
       }
       composable(
@@ -486,6 +492,7 @@ private fun AuthenticatedApp(
               navController.navigate(CommandoScreens.MyOrders.name) { launchSingleTop = true }
             },
             onHelp = { navController.openScreen(CommandoScreens.ProfileHelp) },
+            onLanguage = { navController.openScreen(CommandoScreens.ProfileLanguage) },
             onEdit = {
               profileViewModel.beginEditing()
               navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
@@ -494,6 +501,13 @@ private fun AuthenticatedApp(
       }
       composable(route = CommandoScreens.ProfileHelp.name) {
         ProfileHelpScreen(onBack = { navController.popBackStack() })
+      }
+      composable(route = CommandoScreens.ProfileLanguage.name) {
+        ProfileLanguageScreen(
+            selected = AppLanguage.fromLanguage(LocalConfiguration.current.locales[0].language),
+            onSelectLanguage = onLanguageSelected,
+            onBack = { navController.popBackStack() },
+        )
       }
       composable(route = CommandoScreens.EditProfile.name) {
         val draft by profileViewModel.editState.collectAsState()

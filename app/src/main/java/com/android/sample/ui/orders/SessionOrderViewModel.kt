@@ -2,10 +2,11 @@ package com.android.sample.ui.orders
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModel
+import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.model.authentication.AuthRepository
 
-/** One in-memory order store and draft per authenticated App entry, retained on rotation. */
+/** One order repository and draft per authenticated App entry, retained on rotation. */
 class SessionOrderViewModel(
     private val userId: String,
     private val auth: AuthRepository,
@@ -13,6 +14,9 @@ class SessionOrderViewModel(
 ) : ViewModel() {
   private var active = true
   val repository = createRepository { auth.currentUser?.uid?.takeIf { active && it == userId } }
+  val isDemo: Boolean
+    get() = repository is FakeOrderRepository
+
   private var sharedDraft: OrderDraftState? = null
 
   /** Catalogue and Review must use this same instance, including when returning with Back. */

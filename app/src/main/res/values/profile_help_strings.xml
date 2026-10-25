@@ -9,7 +9,7 @@
     <string name="profile_faq_trips">How do trips work?</string>
     <string name="profile_faq_trips_answer">In Requester mode, find a trip from Home and open it to see the store, shopping time and handoff point. In Commando mode, publish your own trip from Home.</string>
     <string name="profile_faq_orders">How do orders work?</string>
-    <string name="profile_faq_orders_answer">Open a trip, choose products, then review the quantities and commission before placing your order. Open Order history in Profile to see your orders. In this version, orders are kept during your signed-in session.</string>
+    <string name="profile_faq_orders_answer">Open a trip, choose products, then review the quantities and commission before placing your order. Open Order history in Profile to see your orders. Confirmed orders are saved and can be reloaded when you sign in again.</string>
     <string name="profile_faq_payments">How do payments work?</string>
     <string name="profile_faq_payments_answer">The order review shows estimated product prices and the commission. In-app payments are not available in this version.</string>
     <string name="profile_faq_cancel">Can I cancel an order?</string>

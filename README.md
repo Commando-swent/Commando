@@ -69,7 +69,16 @@ bash scripts/ci/run-firebase-emulator-tests.sh
 The security profile is enabled only when `firebase.json` explicitly points to the production
 `firestore.rules` file at the repository root.
 
-## Profile support
+## App language and Profile support
+
+Profile → Language offers English and French. The choice uses Android app locales
+(`AppCompatDelegate`), with AndroidX automatic storage on Android 12 and earlier.
+It applies to this app installation, across accounts, and survives recreation and
+restart. Android 13+ also exposes these languages in system app settings. Product
+names and user-entered data are not translated.
+
+With both debug APKs installed on a dedicated Android API 28–32 emulator, verify
+AndroidX storage across process restart with `bash scripts/ci/check-app-language-restart.sh SERIAL`.
 
 Profile → Help & FAQ displays expandable answers and the support email address
 `info.commando@gmail.com`, which users can select and copy.
@@ -87,7 +96,7 @@ cart retention on Back → submission → My Orders → Order Details → profil
 switch → trip publication → My Trips → trip details → requester orders → sign-out.
 
 It uses the real navigation graph, screens and ViewModels with in-memory authentication, trip
-and product fixtures, and the app's default session Orders fake. It checks the demo journey;
+and product fixtures, with an explicitly injected Orders fake. It checks the demo journey;
 it does not validate Firebase persistence, Google OAuth or profile photo uploads. Those
 integrations have separate tests. No production account or network connection is needed.
 
@@ -100,3 +109,29 @@ With a device or emulator connected, run only this journey with:
 
 The existing CI `connectedCheck` step also discovers it automatically. The instrumented report
 is generated under `app/build/reports/androidTests/connected/debug/`.
+
+## Persistent Orders Android check (#145)
+
+The authenticated app uses `OrderRepositoryFirestore` by default; tests may inject a fake.
+`PersistentOrderJourneyTest` uses named Firebase clients in `demo-commando`, production rules,
+and a fresh authenticated client to check save → My Orders → Details and server persistence.
+It skips unless explicitly enabled; it does not test a deployed Firebase project.
+CI starts the Auth/Firestore emulators around `connectedCheck` and supplies
+`firebaseEmulatorHost=10.0.2.2`, so this persistence journey runs alongside the other Android tests.
+
+With Auth/Firestore emulators running and an Android emulator connected:
+
+```bash
+./gradlew connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.android.sample.ui.navigation.PersistentOrderJourneyTest \
+  -Pandroid.testInstrumentationRunnerArguments.firebaseEmulatorHost=10.0.2.2 \
+  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+```
+
+Use `firebase emulators:exec --project demo-commando --only auth,firestore '<command above>'`
+to run with the checked-in rules. HTTP is allowed only for local emulator hosts in debug builds.
+The test saves `cache/persistent-order.png` in the target app for visual inspection.
+See `ORDERS_FIRESTORE.md` for schema, error semantics and production deployment prerequisites.
+
+The instrumentation configuration excludes legacy `protobuf-lite` from Espresso-contrib, which
+otherwise shadows Firestore's runtime ([Android Test issue #999](https://github.com/android/android-test/issues/999)).

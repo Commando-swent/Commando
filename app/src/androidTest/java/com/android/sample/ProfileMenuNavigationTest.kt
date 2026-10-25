@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.Credential
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
@@ -52,6 +53,7 @@ class ProfileMenuNavigationTest {
   fun menuReturnsPreservePositionAndSignOutClearsHelp() {
     val user = AuthUser("profile-menu-test", "Alex Morgan", "alex@example.com")
     val auth = FakeAuthRepository(user)
+    val trips = FakeTripRepository(user.uid)
     val credentials =
         object : GoogleCredentialClient {
           override suspend fun request(context: Context): Credential? = null
@@ -61,7 +63,12 @@ class ProfileMenuNavigationTest {
     compose.setContent {
       SampleAppTheme {
         Box(Modifier.height(640.dp)) {
-          CommandoApp(auth, FakeTripRepository(user.uid), credentials)
+          CommandoApp(
+              auth,
+              trips,
+              credentials,
+              orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+          )
         }
       }
     }

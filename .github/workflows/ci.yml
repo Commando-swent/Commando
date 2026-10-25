@@ -52,6 +52,9 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Catalogue import tests
+        run: node --test tools/catalog-import/import.test.mjs
+
       # Caching is a very useful part of a CI, as a workflow is executed in a clean environment every time,
       # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
       #

@@ -18,4 +18,7 @@ object ProfileTestTags {
   const val HELP_SCREEN = "profile_help_screen"
   const val FAQ_QUESTION = "profile_faq_question"
   const val SETTINGS_BACK = "profile_settings_back"
+  const val LANGUAGE = "profile_language"
+  const val LANGUAGE_SCREEN = "profile_language_screen"
+  const val LANGUAGE_OPTION = "profile_language_option"
 }

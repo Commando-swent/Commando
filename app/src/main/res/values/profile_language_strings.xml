@@ -1,0 +1,10 @@
+<resources>
+    <string name="profile_preferences">Preferences</string>
+    <string name="profile_language">Language</string>
+    <string name="profile_app_language">App language</string>
+    <string name="profile_language_english">English</string>
+    <string name="profile_language_french">French</string>
+    <string name="profile_language_english_alternate">Anglais</string>
+    <string name="profile_language_french_alternate">Français</string>
+    <string name="profile_language_scope">Applies immediately and stays selected when you reopen the app on this device, for all accounts. Product names and other users’ text keep their original language.</string>
+</resources>

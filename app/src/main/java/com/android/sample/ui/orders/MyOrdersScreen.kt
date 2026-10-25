@@ -193,13 +193,17 @@ private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
   }
 }
 
-/** Shows the stored status as is; no status is derived or invented here. */
+/** Localizes the stored status without deriving or inventing a new status. */
 @Composable
 private fun StatusBadge(status: OrderStatus) {
   val colors = MaterialTheme.colorScheme
   // ponytail: one badge style while the contract only has PENDING; per-status colors with more.
   Text(
-      status.name,
+      stringResource(
+          when (status) {
+            OrderStatus.PENDING -> R.string.order_details_pending
+          }
+      ),
       Modifier.background(colors.secondaryContainer, CircleShape)
           .border(1.dp, colors.outline, CircleShape)
           .padding(horizontal = 10.dp, vertical = 2.dp),

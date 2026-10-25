@@ -197,11 +197,12 @@ private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
 @Composable
 private fun StatusBadge(status: OrderStatus) {
   val colors = MaterialTheme.colorScheme
-  // ponytail: one badge style while the contract only has PENDING; per-status colors with more.
   Text(
       stringResource(
           when (status) {
             OrderStatus.PENDING -> R.string.order_details_pending
+            OrderStatus.ACCEPTED -> R.string.order_details_accepted
+            OrderStatus.REJECTED -> R.string.order_details_rejected
           }
       ),
       Modifier.background(colors.secondaryContainer, CircleShape)

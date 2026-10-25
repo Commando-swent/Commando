@@ -162,6 +162,18 @@ class MyOrdersScreenTest {
   }
 
   @Test
+  fun finalStatusesRenderOnTheirOrderCards() {
+    val rows =
+        listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED).map {
+          MyOrderRow(aliceMigros.copy(id = it.name, status = it), migrosTrip)
+        }
+    show(MyOrdersUiState.Content(rows))
+    for (label in listOf("ACCEPTED", "REJECTED")) {
+      compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + label).assert(hasText(label))
+    }
+  }
+
+  @Test
   fun missingTripKeepsRowVisibleWithoutHandoff() {
     show(MyOrdersUiState.Content(listOf(MyOrderRow(aliceMigros, null))))
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()

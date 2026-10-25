@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.core.os.LocaleListCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.screen.MainScreen
@@ -41,8 +42,10 @@ class MainActivityTest : TestCase() {
 
   @Test
   fun frenchAndEnglishSurviveActivityRecreation() {
+    val persistLanguage = InstrumentationRegistry.getArguments().getString("persistLanguage")
+    val languages = listOf("fr" to "Heureux de vous revoir.", "en" to "Welcome back.")
     try {
-      for ((tag, title) in listOf("fr" to "Heureux de vous revoir.", "en" to "Welcome back.")) {
+      for ((tag, title) in languages.sortedBy { it.first == persistLanguage }) {
         composeTestRule.runOnUiThread {
           AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(tag))
         }
@@ -55,7 +58,11 @@ class MainActivityTest : TestCase() {
       }
     } finally {
       composeTestRule.runOnUiThread {
-        AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+        // The host restart check retains its final locale; ordinary test runs clear it.
+        AppCompatDelegate.setApplicationLocales(
+            if (persistLanguage == null) LocaleListCompat.getEmptyLocaleList()
+            else AppCompatDelegate.getApplicationLocales()
+        )
       }
     }
   }

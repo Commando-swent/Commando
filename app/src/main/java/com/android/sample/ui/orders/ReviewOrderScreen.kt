@@ -44,6 +44,7 @@ fun ReviewOrderRoute(
     onAddProducts: () -> Unit,
     onViewOrders: (String) -> Unit,
     tripSubtitle: String? = null,
+    isDemo: Boolean = false,
 ) {
   val observed by viewModel.uiState.collectAsState()
   val state = observed.copy(tripMatches = observed.tripMatches && trip.id == observed.draft.tripId)
@@ -188,7 +189,11 @@ fun ReviewOrderRoute(
         }
         Text(stringResource(title), style = MaterialTheme.typography.labelLarge)
       }
-      Label(R.string.order_submit_help, 11, color = c.onSurfaceVariant)
+      Label(
+          if (isDemo) R.string.order_submit_help else R.string.order_persistent_help,
+          11,
+          color = c.onSurfaceVariant,
+      )
     }
   }
 }

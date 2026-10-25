@@ -193,6 +193,7 @@
     <string name="order_sent">Votre commande est envoyée</string>
     <string name="order_view">Voir mes commandes</string>
     <string name="order_submit_help">Démonstration · commandes conservées en mémoire</string>
+    <string name="order_persistent_help">Vos commandes sont enregistrées dans votre compte.</string>
     <string name="order_failure_help">Vos articles sont conservés. Corrigez votre commande ou réessayez.</string>
     <string name="order_increase">Augmenter la quantité de %1$s</string>
     <string name="order_decrease">Diminuer la quantité de %1$s ; retirer à une unité</string>
@@ -223,7 +224,7 @@
     <string name="profile_faq_trips">Comment fonctionnent les trajets ?</string>
     <string name="profile_faq_trips_answer">En mode Demandeur, cherchez un trajet depuis l’accueil et ouvrez-le pour voir le magasin, l’heure des courses et le point de remise. En mode Commando, publiez votre trajet depuis l’accueil.</string>
     <string name="profile_faq_orders">Comment fonctionnent les commandes ?</string>
-    <string name="profile_faq_orders_answer">Ouvrez un trajet, choisissez vos produits, puis vérifiez les quantités et la commission avant de commander. L’historique du profil permet de retrouver vos commandes. Dans cette version, elles sont conservées pendant votre session connectée.</string>
+    <string name="profile_faq_orders_answer">Ouvrez un trajet, choisissez vos produits, puis vérifiez les quantités et la commission avant de commander. L’historique du profil permet de retrouver vos commandes. Les commandes confirmées sont enregistrées et peuvent être rechargées lorsque vous vous reconnectez.</string>
     <string name="profile_faq_payments">Comment fonctionnent les paiements ?</string>
     <string name="profile_faq_payments_answer">Le récapitulatif de commande affiche les prix estimés et la commission. Le paiement dans l’application n’est pas disponible dans cette version.</string>
     <string name="profile_faq_cancel">Puis-je annuler une commande ?</string>

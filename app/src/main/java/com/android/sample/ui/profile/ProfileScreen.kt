@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.sample.R
+import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthUser
@@ -219,6 +220,7 @@ internal fun ProfilePreview() {
             repository = previewRepository,
             tripRepository = previewTrips,
             googleCredentials = previewCredentials,
+            orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = previewTrips) },
         )
       }
     }

@@ -107,6 +107,8 @@ The authenticated app uses `OrderRepositoryFirestore` by default; tests may inje
 `PersistentOrderJourneyTest` uses named Firebase clients in `demo-commando`, production rules,
 and a fresh authenticated client to check save → My Orders → Details and server persistence.
 It skips unless explicitly enabled; it does not test a deployed Firebase project.
+CI starts the Auth/Firestore emulators around `connectedCheck` and supplies
+`firebaseEmulatorHost=10.0.2.2`, so this persistence journey runs alongside the other Android tests.
 
 With Auth/Firestore emulators running and an Android emulator connected:
 

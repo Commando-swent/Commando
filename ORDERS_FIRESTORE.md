@@ -14,14 +14,23 @@ the rules enforce eligibility at write time, independently of the preliminary ap
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
-Detail reads allow the requester or the associated trip's current owner. Baseline trip-wide lists,
-updates and deletes are denied. #147 owns the future trip query; #148 owns atomic decisions and statuses.
-No placeholder methods or decision writes are introduced here.
+Detail reads allow the requester or the associated trip's current owner. Trip-wide lists and deletes
+remain denied; #147 owns the future trip query.
+
+`decideOrder(id, ACCEPT/REJECT)` requires the authenticated associated trip owner, including for final
+orders. A Firestore transaction reads and validates the order, reads its trip, verifies ownership,
+and updates only status from PENDING to ACCEPTED/REJECTED. It returns the committed result; concurrent
+edits trigger SDK retries; a rules denial reconciles through an owner-checked read-only transaction.
+Only confirmed final orders resolve that denial. Identical final decisions return Success without writing;
+opposite decisions return AlreadyDecided(persistedOrder) without writing. Rules forbid all other
+updates. Decisions impose no trip status/time restriction; legacy self-orders remain readable but cannot be decided.
 
 All operations check session identity before/after suspension. Cancellation propagates. Missing documents
 return NotFound when readable; a lookup denied by rules remains PermissionDenied (including an
-unreadable/missing trip). Unavailable/network failures use the existing Unknown result. No errors or
-statuses were added to the shared API. After an account change a committed write can remain stored,
+unreadable/missing trip). Unavailable/network failures use the existing Unknown result. Retry an
+uncertain decision with the same ID and decision to recover the stored outcome, even from a fresh
+repository. Cancellation or session loss cannot roll back an already committed write.
+After an account change a committed write can remain stored,
 but its result is not delivered to the previous session. Server reads intentionally fail offline.
 
 Rules enforce identity, eligible trip, exact order/item fields, nonblank product IDs/names, integer

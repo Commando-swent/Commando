@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
 import com.android.sample.model.Order
+import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderStatus
 import java.time.Instant
@@ -75,6 +76,29 @@ class FakeOrderRepository(
       if (error != null) return@withSession OrderResult.Error(error)
     }
     OrderResult.Success(order.snapshot())
+  }
+
+  override suspend fun decideOrder(
+      orderId: String,
+      decision: OrderDecision,
+  ): OrderResult<Order> = withSession { userId ->
+    if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
+    val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
+    // Requester access never bypasses trip ownership, including for final decisions.
+    val error = tripOwnerAccessError(order, userId)
+    currentCoroutineContext().ensureActive()
+    if (currentUserId() != userId) return@withSession OrderResult.Error(OrderError.NotAuthenticated)
+    if (error != null || order.requesterId == userId) {
+      return@withSession OrderResult.Error(error ?: OrderError.PermissionDenied)
+    }
+    val target = decision.targetStatus()
+    val persisted =
+        if (order.status == OrderStatus.PENDING) {
+          order.copy(status = target).also { orders[orderId] = it }
+        } else order
+    val snapshot = persisted.snapshot()
+    if (snapshot.status == target) OrderResult.Success(snapshot)
+    else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
   }
 
   private suspend fun tripOwnerAccessError(order: Order, userId: String): OrderError? {

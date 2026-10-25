@@ -22,6 +22,13 @@ data class OrderDraft(
 
 enum class OrderStatus {
   PENDING,
+  ACCEPTED,
+  REJECTED,
+}
+
+enum class OrderDecision {
+  ACCEPT,
+  REJECT,
 }
 
 /** Immutable order snapshot; product prices do not track later catalogue changes. */

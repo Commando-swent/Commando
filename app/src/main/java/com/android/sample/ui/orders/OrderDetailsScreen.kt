@@ -189,6 +189,8 @@ private fun OrderDetailsStatus(status: OrderStatus) {
   val label =
       when (status) {
         OrderStatus.PENDING -> R.string.order_details_pending
+        OrderStatus.ACCEPTED -> R.string.order_details_accepted
+        OrderStatus.REJECTED -> R.string.order_details_rejected
       }
   Surface(
       shape = CircleShape,

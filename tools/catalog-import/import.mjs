@@ -36,17 +36,23 @@ const isDocumentId = (id) => /^[^\s/]+$/.test(id) && !/^(\.\.?|__.*__)$/.test(id
 // The app reads whole cents (ProductRepositoryFirestore.toPriceCents).
 const isPrice = (value) => typeof value === 'number' && value > 0 && Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
 
-/** Maps one export row to `{ path, data, removedAt }`, or `{ error }` naming why it is skipped. */
+/**
+ * Maps one export row to `{ path, data, removedAt }`, or `{ error }` naming why it is skipped. A
+ * delisted row only needs its id and `removed_at` and has `data: null`: it can only mark an existing
+ * product removed, and swiss-cli may export it without a price (its prices are a LEFT JOIN).
+ */
 export function toProduct(row, store) {
   if (row?.store !== store) return { error: `not a ${store} product` };
   const number = typeof row.id === 'string' && row.id.startsWith(`${store}:`) ? row.id.slice(store.length + 1) : '';
   if (!isDocumentId(number)) return { error: 'invalid id' };
+  if (row.removed_at != null && Number.isNaN(Date.parse(row.removed_at))) return { error: 'invalid removed_at' };
+  const path = `stores/${store}/products/${number}`;
+  if (row.removed_at != null) return { path, data: null, removedAt: row.removed_at };
   if (typeof row.name !== 'string' || !row.name.trim()) return { error: 'blank name' };
   if (!isPrice(row.price)) return { error: 'invalid price' };
   const imageUrl = typeof row.image_url === 'string' ? row.image_url.trim() : row.image_url ?? null;
   if (imageUrl && !/^https?:\/\/\S+$/.test(imageUrl)) return { error: 'invalid image_url' };
   if (row.category != null && typeof row.category !== 'string') return { error: 'invalid category' };
-  if (row.removed_at != null && Number.isNaN(Date.parse(row.removed_at))) return { error: 'invalid removed_at' };
   const name = row.name.trim();
   const data = {
     id: row.id,
@@ -56,7 +62,7 @@ export function toProduct(row, store) {
     removed_at: null,
     search_prefixes: searchPrefixes(name, row.category ?? ''),
   };
-  return { path: `stores/${store}/products/${number}`, data, removedAt: row.removed_at ?? null };
+  return { path, data, removedAt: null };
 }
 
 /** Valid products of one store's JSON Lines export, and one diagnostic per skipped line. */
@@ -73,7 +79,7 @@ export function parseExport(text, store) {
       row = null;
     }
     const product = row ? toProduct(row, store) : { error: 'not JSON' };
-    if (!product.error && products.has(product.path)) product.error = `duplicate of ${product.data.id}`;
+    if (!product.error && products.has(product.path)) product.error = `duplicate of ${row.id}`;
     if (product.error) skipped.push(`line ${index + 1}: ${product.error}`);
     else products.set(product.path, product);
   });

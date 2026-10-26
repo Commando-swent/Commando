@@ -14,31 +14,42 @@ deploy the `search_prefixes` field override of `firestore.indexes.json` before a
 
 ## Input
 
-A JSON Lines export of one store from [swiss-cli](https://github.com/othmanehousni/swiss-cli) (one
-product per line), for example with French names:
+A JSON Lines file of one store's products, exported from swiss-cli, a tool maintained in a separate
+repository. Each line is one JSON object with `id` (`migros:<number>` or `coop:<number>`), `store`
+(`migros` or `coop`), `name`, `price` (CHF), `image_url` (optional), `category` (optional, for
+example `Lait > Lait UHT`) and `removed_at` (`null` or absent for listed products). Keep exports in
+`tools/catalog-import/` (for example `tools/catalog-import/coop.jsonl`), whose `.gitignore` keeps
+them out of Git.
 
-```bash
-swiss-grocery fetch coop --lang fr
-swiss-grocery export coop.jsonl --store coop --fields id,store,name,price,image_url,category,removed_at
-```
-
-Add `--include-removed` to also mark delisted products as removed (see below). Invalid lines (another
-store, bad id, blank name, a price that is not a positive CHF amount in cents, a non-HTTP image URL,
-duplicates) are skipped and listed with their line numbers.
+Invalid lines (another store, bad id, blank name, a price that is not a positive CHF amount in cents,
+a non-HTTP image URL, duplicates) are skipped and listed with their line numbers. The importer marks
+a product removed only if the export contains it with a valid `removed_at` timestamp; such a line
+only needs a valid `id` and `removed_at`, and may have no price.
 
 ## Run (from the repository root)
 
-- Tests: `node --test tools/catalog-import/import.test.mjs`. With the emulator, the end-to-end test
-  also runs: `firebase emulators:exec --only firestore "node --test tools/catalog-import/import.test.mjs"`.
-- Dry run (default, reads only): `node tools/catalog-import/import.mjs coop.jsonl --store coop`. It
-  checks the project and database, reads the export's documents only (one read each) and prints how
-  many would be created, updated, marked removed or left unchanged.
-- Approved import, after reviewing the dry run:
-  `node tools/catalog-import/import.mjs coop.jsonl --store coop --write --project command-o`.
-  Writes go in atomic batches of 400; `--max-writes N` stops after N writes (Spark allows 20,000 a
-  day). With a local `FIRESTORE_EMULATOR_HOST`, every run targets the emulator instead.
-- Verify: run the dry run again; it must report only `unchanged` products. Then search for a product
-  in the app's catalogue.
+`command-o` is on the free Spark plan: 50,000 Firestore reads and 20,000 writes a day, shared with
+the app. Every run against it, dry runs included, first reads one document per export line, so try
+an export on the emulator first and run the production commands once.
+
+- Tests: `node --test tools/catalog-import/import.test.mjs`. The end-to-end test also runs, as in CI,
+  against a Firestore emulator of the demo project:
+  `npx firebase-tools@15.32.1 emulators:exec --project demo-commando --config firebase.firestore-open-test.json --only firestore "node --test tools/catalog-import/import.test.mjs"`.
+  With `CATALOG_IMPORT_REQUIRE_EMULATOR=true`, it fails instead of skipping without the emulator.
+- Emulator import (no production access): lists the skipped lines and imports the export into an
+  empty emulator, discarded afterwards:
+  `npx firebase-tools@15.32.1 emulators:exec --project demo-commando --config firebase.firestore-open-test.json --only firestore "node tools/catalog-import/import.mjs tools/catalog-import/coop.jsonl --store coop --write"`.
+- Optional production dry run (no writes, but one read per export line):
+  `node tools/catalog-import/import.mjs tools/catalog-import/coop.jsonl --store coop`. It checks the
+  project and database and prints how many products would be created, updated, marked removed or
+  left unchanged.
+- Approved import:
+  `node tools/catalog-import/import.mjs tools/catalog-import/coop.jsonl --store coop --write --project command-o`.
+  Writes go in atomic batches of 400. `--max-writes N` stops after N writes, to leave the app part
+  of the daily write allowance; it does not reduce reads, as every run first reads all the export's
+  documents. With a local `FIRESTORE_EMULATOR_HOST`, every run targets the emulator instead.
+- Verify: in the app's catalogue, search for a few imported products, and for one marked removed,
+  which must not appear. Do not rerun a full dry run to check the import.
 
 ## Reruns and removals
 
@@ -48,5 +59,5 @@ above, keeps any other field, and fails if the document changed since it was rea
 The tool only reads and writes the documents named in the export, all under `stores/{store}`: one
 store's import never touches another store, and products missing from a partial export are never
 deleted. A product exported with `removed_at` gets that `removed_at` if it exists and is active, and
-is never created; a product listed again is reactivated. Do not run swiss-cli's `sync --to firebase`
-on `command-o`: it replaces whole documents and drops `search_prefixes`.
+is never created; only `removed_at` is written, so its stored price and other fields are kept. A
+product listed again is reactivated.

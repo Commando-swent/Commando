@@ -1,7 +1,7 @@
 // AI assistance: Claude Code. Run with: node --test tools/catalog-import/import.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { firestoreClient, importProducts, parseArgs, parseExport, searchPrefixes, toProduct } from './import.mjs';
+import { emulatorHost, firestoreClient, importProducts, parseArgs, parseExport, searchPrefixes, toProduct } from './import.mjs';
 
 const row = (number, overrides = {}) =>
   ({ id: `migros:${number}`, store: 'migros', name: 'Lait entier', price: 1.95, image_url: null, category: 'Lait > Lait UHT', ...overrides });
@@ -141,6 +141,40 @@ test('delisted products are only marked removed when active in Firestore, and re
   assert.equal(client.documents.get(path('1')).data.removed_at, null);
 });
 
+test('delisted rows need only an id and removed_at, while listed rows still need a valid price', () => {
+  const removedAt = '2026-10-20T08:00:00Z';
+  for (const price of [undefined, null, 0, -1, '2.50', 1.955]) {
+    const delisted = row('1', { price, name: null, image_url: 'ftp://x', category: 3, removed_at: removedAt });
+    assert.deepEqual(toProduct(delisted, 'migros'), { path: path('1'), data: null, removedAt }, `delisted, price ${price}`);
+    assert.deepEqual(toProduct(row('1', { price }), 'migros'), { error: 'invalid price' }, `listed, price ${price}`);
+  }
+  assert.deepEqual(toProduct(row('1', { price: null, removed_at: 'yesterday' }), 'migros'), { error: 'invalid removed_at' });
+  const lines = [{ id: 'migros:2', store: 'migros', removed_at: removedAt }, { id: 'migros:3', store: 'migros', name: 'Pain' }];
+  const { products, skipped } = parseExport(lines.map((item) => JSON.stringify(item)).join('\n'), 'migros');
+  assert.deepEqual([products.map((product) => product.path), skipped], [[path('2')], ['line 2: invalid price']]);
+});
+
+test('a delisted product without a price is marked removed, keeps its other fields and reruns without writes', async () => {
+  const listed = { ...toProduct(row('1'), 'migros').data, price_history: [1.9] };
+  const client = fakeClient(new Map([[path('1'), { data: structuredClone(listed), updateTime: 'old' }]]));
+  const removedAt = '2026-10-20T08:00:00Z';
+  const products = exportOf(
+    row('1', { price: undefined, removed_at: removedAt }),
+    row('2', { price: null, removed_at: removedAt }),
+    row('3', { price: 'n/a', removed_at: removedAt }),
+  );
+  const removal = await importProducts(products, { client, write: true, log: () => {} });
+  assert.deepEqual(removal.counts, { create: 0, update: 0, remove: 1, unchanged: 0, removedNotInFirestore: 2 });
+  assert.equal(removal.written, 1);
+  assert.deepEqual(client.documents.get(path('1')).data, { ...listed, removed_at: '2026-10-20T08:00:00.000Z' });
+  assert.deepEqual([...client.documents.keys()], [path('1')], 'a delisted product is never created');
+
+  const updateTime = client.documents.get(path('1')).updateTime;
+  const rerun = await importProducts(products, { client, write: true, log: () => {} });
+  assert.deepEqual([rerun.counts.unchanged, rerun.written, client.commits.length], [1, 0, 1]);
+  assert.equal(client.documents.get(path('1')).updateTime, updateTime);
+});
+
 test('writes go in batches of at most 400 and stop at --max-writes', async () => {
   const products = exportOf(...Array.from({ length: 900 }, (_, index) => row(String(index))));
   const client = fakeClient();
@@ -192,12 +226,26 @@ test('parseArgs is a dry run unless --write, and production writes need --projec
   }
 });
 
-test('imports into the Firestore emulator and reruns without writes', { skip: !process.env.FIRESTORE_EMULATOR_HOST && 'needs FIRESTORE_EMULATOR_HOST' }, async () => {
-  const client = await firestoreClient();
+// CI sets CATALOG_IMPORT_REQUIRE_EMULATOR, so a missing emulator fails the run instead of skipping it.
+const requireEmulator = process.env.CATALOG_IMPORT_REQUIRE_EMULATOR === 'true';
+const emulatorSkip = !requireEmulator && !process.env.FIRESTORE_EMULATOR_HOST && 'needs FIRESTORE_EMULATOR_HOST';
+
+test('imports into the Firestore emulator, marks a delisted product removed and reruns without writes', { skip: emulatorSkip }, async () => {
+  // Without an emulator host, firestoreClient would target command-o: never let this test get there.
+  const host = emulatorHost();
+  assert.ok(host, 'FIRESTORE_EMULATOR_HOST is not set: run this test with the Firestore emulator (see README.md)');
+  const client = await firestoreClient(host);
   const number = `test-${Date.now()}`;
   const products = exportOf(row(number, { name: 'Œufs frais', price: 4.6 }));
   assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 1);
   const [[, document]] = await client.get([path(number)]);
   assert.deepEqual(document.data, { ...products[0].data, price: 4.6 });
   assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 0);
+
+  const removedAt = '2026-10-20T08:00:00Z';
+  const removal = exportOf(row(number, { price: null, removed_at: removedAt }));
+  assert.equal((await importProducts(removal, { client, write: true, log: () => {} })).written, 1);
+  const [[, removed]] = await client.get([path(number)]);
+  assert.deepEqual({ ...removed.data, removed_at: Date.parse(removed.data.removed_at) }, { ...document.data, removed_at: Date.parse(removedAt) });
+  assert.equal((await importProducts(removal, { client, write: true, log: () => {} })).written, 0);
 });

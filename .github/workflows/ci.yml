@@ -52,9 +52,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Catalogue import tests
-        run: node --test tools/catalog-import/import.test.mjs
-
       # Caching is a very useful part of a CI, as a workflow is executed in a clean environment every time,
       # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
       #
@@ -69,6 +66,17 @@ jobs:
           key: ${{ runner.os }}-firebase-emulators-${{ env.FIREBASE_TOOLS_VERSION }}
           restore-keys: |
             ${{ runner.os }}-firebase-emulators-
+
+      # Unit tests and the end-to-end test of the catalogue importer, against a local Firestore emulator
+      # of the demo project (the importer never targets command-o when FIRESTORE_EMULATOR_HOST is set).
+      # CATALOG_IMPORT_REQUIRE_EMULATOR makes the end-to-end test fail instead of skipping without it.
+      - name: Catalogue import tests with Firestore emulator
+        env:
+          CATALOG_IMPORT_REQUIRE_EMULATOR: "true"
+        run: >-
+          npx --yes "firebase-tools@${FIREBASE_TOOLS_VERSION}" emulators:exec
+          --non-interactive --project demo-commando --config firebase.firestore-open-test.json --only firestore
+          'node --test tools/catalog-import/import.test.mjs'
 
       # Cache the Emulator, if the cache does not hit, create the emulator.
       # API 34 matches targetSdk. compileSdk 37 is only the compile platform.

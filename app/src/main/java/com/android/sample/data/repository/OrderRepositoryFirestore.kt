@@ -205,6 +205,7 @@ internal class FirebaseOrderFirestoreDataSource(
   ): OrderFirestoreDocument {
     val context = currentCoroutineContext()
     val database = firestore
+    // Decisions verify session and Firebase identities; creation uses repository guards and rules.
     fun ensureSession() {
       context.ensureActive()
       if (
@@ -260,8 +261,6 @@ private fun failure(error: OrderError) = OrderResult.Error(error)
 
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)
-
-internal fun String.isDocumentId() = isNotBlank() && !contains('/') && this != "." && this != ".."
 
 private fun Any?.cents(): Int? =
     when (this) {

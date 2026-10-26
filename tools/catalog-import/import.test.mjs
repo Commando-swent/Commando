@@ -83,6 +83,9 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
   assert.equal(toProduct(row('1', { price: 3, image_url: '' }), 'migros').data.price, 3);
   assert.equal(toProduct(row('1', { image_url: '  ' }), 'migros').data.image_url, null);
   assert.equal(toProduct(row('1', { price: 0.1 + 0.2 }), 'migros').data.price, 0.3);
+  // Boundaries of the app's Int cents: CHF 0.01 and Int.MAX_VALUE cents.
+  assert.equal(toProduct(row('1', { price: 0.01 }), 'migros').data.price, 0.01);
+  assert.equal(toProduct(row('1', { price: 21_474_836.47 }), 'migros').data.price, 21_474_836.47);
 });
 
 test('parseExport skips invalid and duplicate lines with their line numbers', () => {
@@ -143,15 +146,28 @@ test('delisted products are only marked removed when active in Firestore, and re
 
 test('delisted rows need only an id and removed_at, while listed rows still need a valid price', () => {
   const removedAt = '2026-10-20T08:00:00Z';
-  for (const price of [undefined, null, 0, -1, '2.50', 1.955]) {
+  // Below one cent, CHF 0.00, a fraction of a cent, or above Int.MAX_VALUE cents.
+  for (const price of [undefined, null, 0, -1, '2.50', 1.955, 0.000000001, 0.004, 0.001, 21_474_836.48, 1e300, Infinity, NaN]) {
     const delisted = row('1', { price, name: null, image_url: 'ftp://x', category: 3, removed_at: removedAt });
     assert.deepEqual(toProduct(delisted, 'migros'), { path: path('1'), data: null, removedAt }, `delisted, price ${price}`);
     assert.deepEqual(toProduct(row('1', { price }), 'migros'), { error: 'invalid price' }, `listed, price ${price}`);
   }
-  assert.deepEqual(toProduct(row('1', { price: null, removed_at: 'yesterday' }), 'migros'), { error: 'invalid removed_at' });
-  const lines = [{ id: 'migros:2', store: 'migros', removed_at: removedAt }, { id: 'migros:3', store: 'migros', name: 'Pain' }];
+  // removed_at must be a timestamp string as toISOString() writes it, not anything Date.parse takes.
+  const malformed = [0, 1, true, false, '', '0', '2026', '2026-10-20', 'yesterday', 'Tue Oct 20 2026', '2026-10-20 08:00:00Z',
+    '2026-02-30T08:00:00Z', '2026-13-01T08:00:00Z', [], {}];
+  for (const removed of malformed) {
+    assert.deepEqual(toProduct(row('1', { price: null, removed_at: removed }), 'migros'), { error: 'invalid removed_at' }, `removed_at ${JSON.stringify(removed)}`);
+  }
+  for (const removed of ['2026-10-20T08:00:00.000Z', '2026-10-20T10:00:00+02:00']) {
+    assert.deepEqual(toProduct(row('1', { price: null, removed_at: removed }), 'migros'), { path: path('1'), data: null, removedAt: removed });
+  }
+  const lines = [
+    { id: 'migros:2', store: 'migros', removed_at: removedAt },
+    { id: 'migros:3', store: 'migros', name: 'Pain' },
+    { id: 'migros:4', store: 'migros', name: 'Pain', price: 2, removed_at: 0 },
+  ];
   const { products, skipped } = parseExport(lines.map((item) => JSON.stringify(item)).join('\n'), 'migros');
-  assert.deepEqual([products.map((product) => product.path), skipped], [[path('2')], ['line 2: invalid price']]);
+  assert.deepEqual([products.map((product) => product.path), skipped], [[path('2')], ['line 2: invalid price', 'line 3: invalid removed_at']]);
 });
 
 test('a delisted product without a price is marked removed, keeps its other fields and reruns without writes', async () => {

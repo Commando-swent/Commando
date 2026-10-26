@@ -33,8 +33,18 @@ export function searchPrefixes(name, categoryPath = '') {
 
 // A Firestore document ID the app accepts: no whitespace or `/`, not `.`, `..` or `__…__`.
 const isDocumentId = (id) => /^[^\s/]+$/.test(id) && !/^(\.\.?|__.*__)$/.test(id) && Buffer.byteLength(id) <= 1500;
-// The app reads whole cents (ProductRepositoryFirestore.toPriceCents).
-const isPrice = (value) => typeof value === 'number' && value > 0 && Math.abs(value * 100 - Math.round(value * 100)) < 1e-6;
+// The app reads whole cents into an Int (ProductRepositoryFirestore.toPriceCents), so the rounded
+// amount must be 1 to Int.MAX_VALUE cents.
+const MAX_PRICE_CENTS = 2_147_483_647;
+const isPrice = (value) => {
+  const cents = typeof value === 'number' ? Math.round(value * 100) : NaN;
+  return cents >= 1 && cents <= MAX_PRICE_CENTS && Math.abs(value * 100 - cents) < 1e-6;
+};
+// swiss-cli writes removed_at with toISOString(). Date.parse alone also takes 0, "2026" or a 30 February.
+const isTimestamp = (value) => {
+  const date = typeof value === 'string' && /^(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/.exec(value)?.[1];
+  return Boolean(date) && !Number.isNaN(Date.parse(value)) && new Date(`${date}T00:00:00Z`).toISOString().startsWith(date);
+};
 
 /**
  * Maps one export row to `{ path, data, removedAt }`, or `{ error }` naming why it is skipped. A
@@ -45,7 +55,7 @@ export function toProduct(row, store) {
   if (row?.store !== store) return { error: `not a ${store} product` };
   const number = typeof row.id === 'string' && row.id.startsWith(`${store}:`) ? row.id.slice(store.length + 1) : '';
   if (!isDocumentId(number)) return { error: 'invalid id' };
-  if (row.removed_at != null && Number.isNaN(Date.parse(row.removed_at))) return { error: 'invalid removed_at' };
+  if (row.removed_at != null && !isTimestamp(row.removed_at)) return { error: 'invalid removed_at' };
   const path = `stores/${store}/products/${number}`;
   if (row.removed_at != null) return { path, data: null, removedAt: row.removed_at };
   if (typeof row.name !== 'string' || !row.name.trim()) return { error: 'blank name' };

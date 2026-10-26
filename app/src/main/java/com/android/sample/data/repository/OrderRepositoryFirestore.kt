@@ -205,34 +205,23 @@ internal class FirebaseOrderFirestoreDataSource(
   ): OrderFirestoreDocument {
     val context = currentCoroutineContext()
     val database = firestore
-    fun fail(code: FirebaseFirestoreException.Code): Nothing =
-        throw FirebaseFirestoreException("Order decision failed", code)
     fun ensureSession() {
       context.ensureActive()
       if (
           FirebaseAuth.getInstance(database.app).currentUser?.uid != ownerId ||
               (currentUserId != null && currentUserId.invoke() != ownerId)
       ) {
-        fail(FirebaseFirestoreException.Code.UNAUTHENTICATED)
+        throw decisionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
       }
     }
     ensureSession()
     fun attempt(write: Boolean) = database.runTransaction { transaction ->
       ensureSession()
       val ref = database.collection("orders").document(id)
-      val stored = transaction.get(ref)
-      if (!stored.exists()) {
-        fail(FirebaseFirestoreException.Code.NOT_FOUND)
-      }
-      val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
-      val order = document.toOrder() ?: fail(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
-      val trip = transaction.get(database.collection("trips").document(order.tripId))
-      if (!trip.exists() || trip.getString("ownerId") != ownerId || order.requesterId == ownerId) {
-        fail(FirebaseFirestoreException.Code.PERMISSION_DENIED)
-      }
+      val document = transaction.readOrder(ref, ownerId)
       // Retried callbacks read both documents before writing and recheck session/cancellation.
       ensureSession()
-      if (write && order.status == OrderStatus.PENDING) {
+      if (write && document.data["status"] == OrderStatus.PENDING.name) {
         val status = decision.targetStatus().name
         transaction.update(ref, "status", status)
         document.copy(data = document.data + ("status" to status))
@@ -249,6 +238,22 @@ internal class FirebaseOrderFirestoreDataSource(
       }
     }
   }
+
+  private fun Transaction.readOrder(ref: DocumentReference, uid: String): OrderFirestoreDocument {
+    val stored = get(ref)
+    if (!stored.exists()) throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
+    val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
+    val order =
+        document.toOrder() ?: throw decisionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+    val trip = get(ref.firestore.collection("trips").document(order.tripId))
+    if (!trip.exists() || trip.getString("ownerId") != uid || order.requesterId == uid) {
+      throw decisionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    }
+    return document
+  }
+
+  private fun decisionError(code: FirebaseFirestoreException.Code) =
+      FirebaseFirestoreException("Order decision failed", code)
 }
 
 private fun failure(error: OrderError) = OrderResult.Error(error)

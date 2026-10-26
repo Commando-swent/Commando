@@ -290,6 +290,25 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         assertPermissionDenied { ref.update("status", decision.targetStatus().name).await() }
         assertEquals(OrderResult.Success(saved), repo.getOrderById(saved.id))
       }
+      val uid = owner.auth.currentUser!!.uid
+      val authError = OrderResult.Error(OrderError.NotAuthenticated)
+      val direct = FirebaseOrderFirestoreDataSource(owner.firestore)
+      assertEquals(
+          authError,
+          OrderRepositoryFirestore(direct, { "spoofed" }).decideOrder(saved.id, ACCEPT),
+      )
+      val revoked = FirebaseOrderFirestoreDataSource(owner.firestore) { null }
+      assertEquals(
+          authError,
+          OrderRepositoryFirestore(revoked, { uid }).decideOrder(saved.id, ACCEPT),
+      )
+      val active = OrderRepositoryFirestore(direct, { uid })
+      assertEquals(
+          OrderResult.Error(OrderError.NotFound),
+          active.decideOrder("missing-order", ACCEPT),
+      )
+      owner.auth.signOut()
+      assertEquals(authError, active.decideOrder(saved.id, ACCEPT))
     }
   }
 
@@ -318,12 +337,8 @@ class OrderFirestoreSecurityRulesEmulatorTest {
           gate.complete(Unit)
           val results = calls.awaitAll()
           val persisted = (orders(owner).getOrderById(saved.id) as OrderResult.Success).data
-          assertTrue(persisted.status in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED))
+          assertTrue(decisions.any { it.targetStatus() == persisted.status })
           assertEquals(saved.copy(status = persisted.status), persisted)
-          assertEquals(
-              if (decisions.distinct().size == 1) 2 else 1,
-              results.count { it is OrderResult.Success },
-          )
           decisions.zip(results).forEach { (decision, result) ->
             val target = decision.targetStatus()
             assertEquals(

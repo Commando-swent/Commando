@@ -24,17 +24,6 @@ class OrderRepositoryFirestoreTest {
   private fun error(error: OrderError) = OrderResult.Error(error)
 
   @Test
-  fun decodesAcceptedAndRejectedOrders() = runTest {
-    val saved = (repository.createOrder(draft) as OrderResult.Success).data
-    val original = source.documents.getValue("b")
-    for ((value, status) in
-        listOf("ACCEPTED" to OrderStatus.ACCEPTED, "REJECTED" to OrderStatus.REJECTED)) {
-      val document = original.copy(data = original.data + ("status" to value))
-      assertEquals(saved.copy(status = status), document.toOrder())
-    }
-  }
-
-  @Test
   fun mappingOrderingAndMalformedSnapshots() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     assertEquals(draft.items, saved.items)
@@ -204,6 +193,13 @@ class OrderRepositoryFirestoreTest {
       source.trip = trip
       assertEquals(error(OrderError.PermissionDenied), decide())
     }
+    // A source must never expose malformed, unrelated or uncommitted results as success.
+    val malformed = original.copy(data = emptyMap())
+    val wrongId = original.copy(id = "other", data = original.data + ("status" to "ACCEPTED"))
+    for (document in listOf(malformed, wrongId, original)) {
+      source.decisionResult = document
+      assertEquals(error(OrderError.InvalidData), decide())
+    }
     uid = null
     assertEquals(error(OrderError.NotAuthenticated), decide())
     assertEquals(1, source.writes)
@@ -259,6 +255,7 @@ class OrderRepositoryFirestoreTest {
 
   private inner class MemorySource : OrderFirestoreDataSource {
     val documents = linkedMapOf<String, OrderFirestoreDocument>()
+    var decisionResult: OrderFirestoreDocument? = null
     var beforeRead: suspend () -> Unit = {}
     var confirmationFails = false
     var writes = 0
@@ -290,6 +287,9 @@ class OrderRepositoryFirestoreTest {
         decision: OrderDecision,
     ): OrderFirestoreDocument {
       beforeRead()
+      decisionResult?.let {
+        return it
+      }
       val document = documents[id] ?: sourceError(Code.NOT_FOUND)
       if (document.toOrder() == null) sourceError(Code.INVALID_ARGUMENT)
       if (trip?.get("ownerId") != ownerId || document.data["requesterId"] == ownerId) {

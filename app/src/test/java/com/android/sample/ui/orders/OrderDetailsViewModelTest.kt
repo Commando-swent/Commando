@@ -450,6 +450,9 @@ class OrderDetailsViewModelTest {
     override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = error("Not used")
 
     override suspend fun getMyOrders(): OrderResult<List<Order>> = error("Not used")
+
+    override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> =
+        error("Not used")
   }
 
   private inner class RecordingTrips : TripRepository {

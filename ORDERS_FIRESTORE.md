@@ -14,9 +14,12 @@ the rules enforce eligibility at write time, independently of the preliminary ap
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
-Detail reads allow the requester or the associated trip's current owner. Baseline trip-wide lists,
-updates and deletes are denied. #147 owns the future trip query; #148 owns atomic decisions and statuses.
-No placeholder methods or decision writes are introduced here.
+Detail reads allow the requester or the associated trip's current owner. Updates and deletes are
+denied; #148 owns atomic decisions and statuses.
+
+#147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
+like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered
+or foreign-trip query is denied. The automatic single-field index suffices.
 
 All operations check session identity before/after suspension. Cancellation propagates. Missing documents
 return NotFound when readable; a lookup denied by rules remains PermissionDenied (including an

@@ -54,7 +54,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
           client.firestore.collection("orders").document(saved.id).get(Source.SERVER).await()
         }
       }
-      // A requester filter is mandatory; trip-wide list access belongs to #147.
+      // Lists must filter by requester or owned trip; an unfiltered list is denied to everyone.
       for (client in listOf(requester, owner, other, signedOut)) {
         assertPermissionDenied { client.firestore.collection("orders").get(Source.SERVER).await() }
         assertPermissionDenied {
@@ -182,6 +182,53 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       assertPermissionDenied { requester.firestore.collection("orders").add(data).await() }
       ref.update(mapOf("status" to "PUBLISHED", "scheduledAt" to Timestamp(0, 0))).await()
       assertPermissionDenied { requester.firestore.collection("orders").add(data).await() }
+    }
+  }
+
+  @Test
+  fun tripOwnerListsOnlyTheirTripsOrdersAndOthersAreDenied() = runTest {
+    withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
+        (requester, owner, other, signedOut) ->
+      val trip = publish(owner)
+      val otherTrip = publish(other)
+      val requesterOrders =
+          OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      val items = listOf(OrderItem("milk", "Milk", 220, 2))
+      val drafts = listOf(150, 300).map { OrderDraft(trip, items, it) }
+      val saved = drafts.map { (requesterOrders.createOrder(it) as OrderResult.Success).data }
+      requesterOrders.createOrder(OrderDraft(otherTrip, items, 150))
+      // A fresh owner repository reads through the production rules from the server.
+      val ownerOrders = OrderRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+      assertEquals(
+          OrderResult.Success(saved.sortedWith(NEWEST_ORDER_FIRST)),
+          ownerOrders.getOrdersForTrip(trip),
+      )
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          ownerOrders.getOrdersForTrip(otherTrip),
+      )
+      for (client in listOf(requester, other)) {
+        assertEquals(
+            OrderResult.Error(OrderError.PermissionDenied),
+            OrderRepositoryFirestore({ client.auth.currentUser?.uid }, client.firestore)
+                .getOrdersForTrip(trip),
+        )
+      }
+      // Direct SDK queries cannot bypass the repository's owner check.
+      for (client in listOf(requester, other, signedOut)) assertPermissionDenied {
+        client.firestore
+            .collection("orders")
+            .whereEqualTo("tripId", trip)
+            .get(Source.SERVER)
+            .await()
+      }
+      assertPermissionDenied {
+        owner.firestore
+            .collection("orders")
+            .whereEqualTo("tripId", otherTrip)
+            .get(Source.SERVER)
+            .await()
+      }
     }
   }
 

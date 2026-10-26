@@ -82,9 +82,7 @@ internal constructor(
     val orders =
         source.getMine(uid).map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
     if (orders.any { it.requesterId != uid }) return@session failure(OrderError.PermissionDenied)
-    OrderResult.Success(
-        orders.sortedWith(compareByDescending<Order> { it.createdAt }.thenBy { it.id })
-    )
+    OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = session { uid ->
@@ -96,6 +94,19 @@ internal constructor(
       return@session failure(OrderError.PermissionDenied)
     }
     OrderResult.Success(order)
+  }
+
+  override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> = session { uid ->
+    if (!tripId.isDocumentId()) return@session failure(OrderError.InvalidData)
+    // Rules enforce ownership independently; this check also covers a readable PUBLISHED trip.
+    if (source.getTrip(tripId)?.get("ownerId") != uid) {
+      return@session failure(OrderError.PermissionDenied)
+    }
+    if (!sameSession(uid)) return@session failure(OrderError.NotAuthenticated)
+    val documents = source.getForTrip(tripId)
+    val orders = documents.map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
+    if (orders.any { it.tripId != tripId }) return@session failure(OrderError.PermissionDenied)
+    OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
   private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
@@ -139,6 +150,8 @@ internal interface OrderFirestoreDataSource {
 
   suspend fun getMine(uid: String): List<OrderFirestoreDocument>
 
+  suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument>
+
   suspend fun getTrip(id: String): Map<String, Any?>?
 }
 
@@ -164,8 +177,12 @@ internal class FirebaseOrderFirestoreDataSource(private val instance: FirebaseFi
           .takeIf { it.exists() }
           ?.let { OrderFirestoreDocument(it.id, it.data.orEmpty()) }
 
-  override suspend fun getMine(uid: String) =
-      orders.whereEqualTo("requesterId", uid).get(Source.SERVER).await().documents.map {
+  override suspend fun getMine(uid: String) = whereEqualTo("requesterId", uid)
+
+  override suspend fun getForTrip(tripId: String) = whereEqualTo("tripId", tripId)
+
+  private suspend fun whereEqualTo(field: String, value: String) =
+      orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {
         OrderFirestoreDocument(it.id, it.data.orEmpty())
       }
 

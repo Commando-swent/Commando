@@ -398,6 +398,62 @@ class FakeOrderRepositoryTest {
     assertEquals(OrderResult.Success(order()), repository.getOrderById("order-demo-1"))
   }
 
+  @Test
+  fun tripQueryListsOnlyThatTripForItsOwnerNewestFirst() = runTest {
+    val older = order("older", time.minusSeconds(1))
+    val a = order("a")
+    val b = order("b").copy(requesterId = "another-requester")
+    val elsewhere = order("elsewhere").copy(tripId = "another-trip")
+    val repository =
+        FakeOrderRepository({ userId }, listOf(b, older, elsewhere, a), tripRepository = trips())
+    userId = "commando"
+    assertEquals(listOf(a, b, older), repository.getOrdersForTrip(tripId).data())
+    assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getOrdersForTrip(" "))
+    // A trip the lookup cannot resolve is never treated as owned.
+    assertEquals(
+        OrderResult.Error(OrderError.PermissionDenied),
+        repository.getOrdersForTrip("another-trip"),
+    )
+    // Placing an order on the trip does not grant access to the trip's other orders.
+    listOf("requester-demo", "unrelated").forEach {
+      userId = it
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          repository.getOrdersForTrip(tripId),
+      )
+    }
+    userId = null
+    assertEquals(
+        OrderResult.Error(OrderError.NotAuthenticated),
+        repository.getOrdersForTrip(tripId),
+    )
+  }
+
+  @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+  @Test
+  fun tripQueryWithoutLookupOrAfterAnAccountChangeIsDenied() = runTest {
+    userId = "commando"
+    assertEquals(
+        OrderResult.Error(OrderError.PermissionDenied),
+        fake(listOf(order())).getOrdersForTrip(tripId),
+    )
+    val gate = CompletableDeferred<Unit>()
+    val source = trips()
+    val delayed =
+        object : TripRepository by source {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> {
+            gate.await()
+            return source.getTripById(tripId)
+          }
+        }
+    val repository = FakeOrderRepository({ userId }, listOf(order()), tripRepository = delayed)
+    val read = async { repository.getOrdersForTrip(tripId) }
+    runCurrent()
+    userId = "unrelated"
+    gate.complete(Unit)
+    assertEquals(OrderResult.Error(OrderError.PermissionDenied), read.await())
+  }
+
   private fun fake(initial: List<Order> = emptyList()) =
       FakeOrderRepository({ userId }, initial, { time }, { "order-demo-1" })
 

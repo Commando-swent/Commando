@@ -65,6 +65,7 @@ class OrderDetailsScreenTest {
   private val state = mutableStateOf<OrderDetailsUiState>(OrderDetailsUiState.Content(order, trip))
   private var backs = 0
   private var retries = 0
+  private val decisions = mutableListOf<OrderDecision>()
 
   @Before
   fun setUp() {
@@ -91,7 +92,12 @@ class OrderDetailsScreenTest {
           LocalDensity provides Density(density.density, fontScale ?: density.fontScale)
       ) {
         SampleAppTheme {
-          OrderDetailsScreen(state.value, onBack = { backs++ }, onRetry = { retries++ })
+          OrderDetailsScreen(
+              state.value,
+              onBack = { backs++ },
+              onRetry = { retries++ },
+              onDecision = { decisions += it },
+          )
         }
       }
     }
@@ -119,6 +125,71 @@ class OrderDetailsScreenTest {
         )) {
       compose.onAllNodesWithText(text, substring = true).assertCountEquals(0)
     }
+  }
+
+  @Test
+  fun ownerActionsDispatchBothDecisionsAndSavingDisablesThem() {
+    val content = OrderDetailsUiState.Content(order, trip, viewerId = trip.ownerId)
+    show(content)
+    compose.onNodeWithText("Accept").performScrollTo().assertIsEnabled().performClick()
+    compose.onNodeWithText("Reject").performScrollTo().assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(listOf(OrderDecision.ACCEPT, OrderDecision.REJECT), decisions)
+      state.value = content.copy(isSaving = true)
+    }
+    compose.onNodeWithText("Accept").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithText("Reject").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithText("Saving decision\u2026").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle {
+      state.value =
+          content.copy(order = order.copy(status = OrderStatus.ACCEPTED), decisionSaved = true)
+    }
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+    compose.onNodeWithText("Reject").assertDoesNotExist()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("ACCEPTED").assertExists()
+  }
+
+  @Test
+  fun requesterUnrelatedAndFinalizedOwnerContentHaveNoDecisionActions() {
+    show()
+    for (content in
+        listOf(
+            OrderDetailsUiState.Content(order, trip, "requester"),
+            OrderDetailsUiState.Content(order, trip, "stranger"),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.REJECTED),
+                trip,
+                trip.ownerId,
+            ),
+            OrderDetailsUiState.Content(order.copy(requesterId = trip.ownerId), trip, trip.ownerId),
+        )) {
+      compose.runOnIdle { state.value = content }
+      compose.onNodeWithText("Accept").assertDoesNotExist()
+      compose.onNodeWithText("Reject").assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun conflictShowsLatestStatusAndFeedbackWhileFailureKeepsActions() {
+    val content = OrderDetailsUiState.Content(order, trip, trip.ownerId)
+    show(content.copy(decisionError = OrderError.Unknown))
+    compose
+        .onNodeWithText("Could not save the decision. Check your connection and try again.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    compose.onNodeWithText("Accept").performScrollTo().assertIsEnabled()
+    val persisted = order.copy(status = OrderStatus.REJECTED)
+    compose.runOnIdle {
+      state.value =
+          content.copy(order = persisted, decisionError = OrderError.AlreadyDecided(persisted))
+    }
+    compose
+        .onNodeWithText("This order was already decided. Its latest status is shown.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    compose.onNodeWithText("REJECTED").assertExists()
+    compose.onNodeWithText("Accept").assertDoesNotExist()
   }
 
   @Test
@@ -185,8 +256,37 @@ class OrderDetailsScreenTest {
   }
 
   @Test
+  fun endedSessionRemovesSavingContentAndOffersOnlyBack() {
+    show(OrderDetailsUiState.Content(order, trip, trip.ownerId, isSaving = true))
+    compose.onNodeWithText("Saving decision\u2026").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose
+        .onNodeWithText("This session has ended. Sign in again to view your orders.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertProtectedContentAbsent()
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+    compose.onNodeWithText("Reject").assertDoesNotExist()
+    compose.onNodeWithText("Saving decision\u2026").assertDoesNotExist()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    backWorks()
+  }
+
+  @Test
+  fun authenticationFailureExplainsHowToRecoverWithoutProtectedContent() {
+    assertErrorActions(
+        OrderDetailsUiState.Error.OrderFailure(OrderError.NotAuthenticated),
+        "Authentication is required. Sign in again to view this order.",
+    )
+  }
+
+  @Test
   fun orderFailureOffersWorkingRetryAndBack() {
-    assertErrorActions(OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied))
+    assertErrorActions(
+        OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied),
+        "You no longer have access to update this order.",
+    )
   }
 
   @Test
@@ -194,9 +294,12 @@ class OrderDetailsScreenTest {
     assertErrorActions(OrderDetailsUiState.Error.TripFailure(TripError.NetworkError))
   }
 
-  private fun assertErrorActions(error: OrderDetailsUiState.Error) {
+  private fun assertErrorActions(
+      error: OrderDetailsUiState.Error,
+      message: String = "Something went wrong while loading this order.",
+  ) {
     show(error)
-    compose.onNodeWithText("Something went wrong while loading this order.").assertIsDisplayed()
+    compose.onNodeWithText(message).assertIsDisplayed()
     assertProtectedContentAbsent()
     compose.runOnIdle {
       assertEquals(0, retries)
@@ -223,7 +326,7 @@ class OrderDetailsScreenTest {
             OrderDetailsUiState.Loading to null,
             OrderDetailsUiState.NotFound to "This order could not be found.",
             OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied) to
-                "Something went wrong while loading this order.",
+                "You no longer have access to update this order.",
         )) {
       compose.runOnIdle { state.value = OrderDetailsUiState.Content(order, trip) }
       compose.onNodeWithText("2 × Stored oat milk").performScrollTo().assertIsDisplayed()

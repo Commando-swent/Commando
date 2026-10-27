@@ -19,6 +19,42 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class OrderFirestoreSecurityRulesEmulatorTest {
   @Test
+  fun selfOrdersAreRejectedByTheAdapterAndDirectWrites() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publish(owner)
+      val ownerId = owner.auth.currentUser!!.uid
+      val ownerOrders = OrderRepositoryFirestore({ ownerId }, owner.firestore)
+      val draft = OrderDraft(trip, listOf(OrderItem("milk", "Milk", 220, 1)))
+      assertEquals(OrderResult.Error(OrderError.InvalidData), ownerOrders.createOrder(draft))
+      val requesterOrders =
+          OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      val saved = (requesterOrders.createOrder(draft) as OrderResult.Success).data
+      val data =
+          requester.firestore
+              .collection("orders")
+              .document(saved.id)
+              .get(Source.SERVER)
+              .await()
+              .data!!
+      // Bypass the Kotlin guard with an otherwise valid document belonging to the trip owner.
+      assertPermissionDenied {
+        owner.firestore
+            .collection("orders")
+            .add(
+                data +
+                    mapOf(
+                        "requesterId" to ownerId,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                    )
+            )
+            .await()
+      }
+      assertEquals(OrderResult.Success(emptyList<Order>()), ownerOrders.getMyOrders())
+      assertEquals(OrderResult.Success(listOf(saved)), requesterOrders.getMyOrders())
+    }
+  }
+
+  @Test
   fun persistentSnapshotRequesterQueriesAndOwnerDetailAccess() = runTest {
     withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
         (requester, owner, other, signedOut) ->

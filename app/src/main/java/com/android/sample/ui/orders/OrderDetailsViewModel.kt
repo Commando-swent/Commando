@@ -9,20 +9,41 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Order
+import com.android.sample.model.OrderDecision
+import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 sealed class OrderDetailsUiState {
   data object Loading : OrderDetailsUiState()
 
-  data class Content(val order: Order, val trip: Trip) : OrderDetailsUiState()
+  data class Content(
+      val order: Order,
+      val trip: Trip,
+      val viewerId: String? = null,
+      val isSaving: Boolean = false,
+      val decisionError: OrderError? = null,
+      val decisionSaved: Boolean = false,
+  ) : OrderDetailsUiState() {
+    val canDecide: Boolean
+      get() =
+          viewerId != null &&
+              viewerId == trip.ownerId &&
+              order.tripId == trip.id &&
+              order.requesterId != trip.ownerId &&
+              order.status == OrderStatus.PENDING
+  }
 
   data object NotFound : OrderDetailsUiState()
+
+  data object SessionEnded : OrderDetailsUiState()
 
   sealed class Error : OrderDetailsUiState() {
     data class OrderFailure(val error: OrderError) : Error()
@@ -36,12 +57,25 @@ class OrderDetailsViewModel(
     private val orderId: String,
     private val orderRepository: OrderRepository,
     private val tripRepository: TripRepository,
+    private val currentUserId: () -> String? = { null },
+    sessionChanges: Flow<String?> = emptyFlow(),
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<OrderDetailsUiState>(OrderDetailsUiState.Loading)
   val uiState: StateFlow<OrderDetailsUiState> = mutableState.asStateFlow()
   private var isLoading = false
 
+  private val sessionId = currentUserId()
+  private var sessionEnded = false
+
   init {
+    viewModelScope.launch {
+      sessionChanges.collect { userId ->
+        if (userId != sessionId) {
+          sessionEnded = true
+          mutableState.value = OrderDetailsUiState.SessionEnded
+        }
+      }
+    }
     load()
   }
 
@@ -50,7 +84,12 @@ class OrderDetailsViewModel(
   }
 
   private fun load() {
-    if (isLoading) return
+    if (
+        isLoading ||
+            sessionEnded ||
+            (mutableState.value as? OrderDetailsUiState.Content)?.isSaving == true
+    )
+        return
     // Set before launching so rapid retries cannot start simultaneous loads.
     isLoading = true
     mutableState.value = OrderDetailsUiState.Loading
@@ -59,10 +98,50 @@ class OrderDetailsViewModel(
         val state = fetchOrder()
         // A repository may return even after the destination's coroutine was cancelled.
         currentCoroutineContext().ensureActive()
-        mutableState.value = state
+        if (sessionIsValid()) mutableState.value = state
       } finally {
         isLoading = false
       }
+    }
+  }
+
+  private fun sessionIsValid(): Boolean {
+    if (sessionEnded || currentUserId() != sessionId) {
+      sessionEnded = true
+      mutableState.value = OrderDetailsUiState.SessionEnded
+      return false
+    }
+    return true
+  }
+
+  fun decide(decision: OrderDecision) {
+    if (!sessionIsValid()) return
+    val content = mutableState.value as? OrderDetailsUiState.Content ?: return
+    if (!content.canDecide || content.isSaving || isLoading) return
+    mutableState.value = content.copy(isSaving = true, decisionError = null, decisionSaved = false)
+    viewModelScope.launch {
+      val result =
+          try {
+            orderRepository.decideOrder(orderId, decision)
+          } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            OrderResult.Error(OrderError.Unknown)
+          }
+      currentCoroutineContext().ensureActive()
+      if (!sessionIsValid()) return@launch
+      mutableState.value =
+          when (result) {
+            is OrderResult.Success -> content.copy(order = result.data, decisionSaved = true)
+            is OrderResult.Error ->
+                when (val error = result.error) {
+                  OrderError.NotFound -> OrderDetailsUiState.NotFound
+                  OrderError.NotAuthenticated,
+                  OrderError.PermissionDenied -> OrderDetailsUiState.Error.OrderFailure(error)
+                  is OrderError.AlreadyDecided ->
+                      content.copy(order = error.persistedOrder, decisionError = error)
+                  else -> content.copy(decisionError = error)
+                }
+          }
     }
   }
 
@@ -93,7 +172,7 @@ class OrderDetailsViewModel(
         }
     currentCoroutineContext().ensureActive()
     return when (result) {
-      is TripResult.Success -> OrderDetailsUiState.Content(order, result.data)
+      is TripResult.Success -> OrderDetailsUiState.Content(order, result.data, sessionId)
       is TripResult.Error -> OrderDetailsUiState.Error.TripFailure(result.error)
     }
   }

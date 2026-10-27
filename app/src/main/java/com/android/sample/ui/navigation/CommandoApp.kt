@@ -468,13 +468,20 @@ private fun AuthenticatedApp(
         val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
         val model: OrderDetailsViewModel =
             viewModel(viewModelStoreOwner = entry) {
-              OrderDetailsViewModel(orderId, orders.repository, tripRepository)
+              OrderDetailsViewModel(
+                  orderId,
+                  orders.repository,
+                  tripRepository,
+                  orders::currentUserId,
+                  orders.sessionChanges,
+              )
             }
         val state by model.uiState.collectAsState()
         OrderDetailsScreen(
             state = state,
             onBack = { navController.popBackStack() },
             onRetry = model::retry,
+            onDecision = model::decide,
         )
       }
       composable(route = CommandoScreens.Profile.name) {

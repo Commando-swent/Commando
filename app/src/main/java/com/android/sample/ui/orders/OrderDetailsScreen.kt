@@ -30,13 +30,14 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
 import java.time.Instant
 
-/** Shared read-only presentation; the caller owns loading, authorization and navigation. */
+/** Shared presentation; the caller owns loading, authorization and navigation. */
 @Composable
 fun OrderDetailsScreen(
     state: OrderDetailsUiState,
     onBack: () -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onDecision: (OrderDecision) -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -92,11 +93,76 @@ fun OrderDetailsScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       when (state) {
-        is OrderDetailsUiState.Content -> OrderDetailsContent(state.order, state.trip)
+        is OrderDetailsUiState.Content -> {
+          OrderDetailsContent(state.order, state.trip)
+          OrderDecisionActions(state, onDecision)
+        }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
-        is OrderDetailsUiState.Error -> OrderDetailsMessage(true, onRetry)
+        OrderDetailsUiState.SessionEnded ->
+            OrderDetailsMessage(
+                true,
+                onRetry,
+                R.string.order_details_session_ended,
+                canRetry = false,
+            )
+        is OrderDetailsUiState.Error -> {
+          val orderError = (state as? OrderDetailsUiState.Error.OrderFailure)?.error
+          val message =
+              when (orderError) {
+                OrderError.NotAuthenticated -> R.string.order_details_authentication_required
+                OrderError.PermissionDenied -> R.string.order_details_permission_denied
+                else -> R.string.order_details_error
+              }
+          OrderDetailsMessage(
+              true,
+              onRetry,
+              message,
+              canRetry = orderError != OrderError.NotAuthenticated,
+          )
+        }
       }
+    }
+  }
+}
+
+@Composable
+private fun OrderDecisionActions(
+    state: OrderDetailsUiState.Content,
+    onDecision: (OrderDecision) -> Unit,
+) {
+  val message =
+      when {
+        state.decisionSaved -> R.string.order_decision_saved
+        state.decisionError is OrderError.AlreadyDecided -> R.string.order_decision_conflict
+        state.decisionError != null -> R.string.order_decision_error
+        else -> null
+      }
+  if (message != null)
+      Text(stringResource(message), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+  if (state.canDecide) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      OutlinedButton(
+          onClick = { onDecision(OrderDecision.REJECT) },
+          enabled = !state.isSaving,
+          modifier = Modifier.weight(1f),
+      ) {
+        Text(stringResource(R.string.order_decision_reject))
+      }
+      Button(
+          onClick = { onDecision(OrderDecision.ACCEPT) },
+          enabled = !state.isSaving,
+          modifier = Modifier.weight(1f),
+      ) {
+        Text(stringResource(R.string.order_decision_accept))
+      }
+    }
+    if (state.isSaving) {
+      LinearProgressIndicator(Modifier.fillMaxWidth())
+      Text(
+          stringResource(R.string.order_decision_saving),
+          Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+      )
     }
   }
 }
@@ -192,10 +258,17 @@ private fun OrderDetailsStatus(status: OrderStatus) {
         OrderStatus.ACCEPTED -> R.string.order_details_accepted
         OrderStatus.REJECTED -> R.string.order_details_rejected
       }
+  val colors = MaterialTheme.colorScheme
+  val (container, foreground) =
+      when (status) {
+        OrderStatus.PENDING -> colors.secondaryContainer to colors.onSecondaryContainer
+        OrderStatus.ACCEPTED -> colors.primaryContainer to colors.onPrimaryContainer
+        OrderStatus.REJECTED -> colors.errorContainer to colors.onErrorContainer
+      }
   Surface(
       shape = CircleShape,
-      color = MaterialTheme.colorScheme.primaryContainer,
-      contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+      color = container,
+      contentColor = foreground,
       border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
   ) {
     Text(
@@ -241,7 +314,12 @@ private fun OrderDetailsDivider() =
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
 @Composable
-private fun OrderDetailsMessage(isError: Boolean, onRetry: () -> Unit) {
+private fun OrderDetailsMessage(
+    isError: Boolean,
+    onRetry: () -> Unit,
+    message: Int = if (isError) R.string.order_details_error else R.string.order_details_not_found,
+    canRetry: Boolean = isError,
+) {
   OrderDetailsCard {
     Column(
         Modifier.fillMaxWidth().heightIn(min = 324.dp).padding(horizontal = 6.dp, vertical = 22.dp),
@@ -262,14 +340,12 @@ private fun OrderDetailsMessage(isError: Boolean, onRetry: () -> Unit) {
         )
       }
       Text(
-          stringResource(
-              if (isError) R.string.order_details_error else R.string.order_details_not_found
-          ),
+          stringResource(message),
           Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
           textAlign = TextAlign.Center,
           style = MaterialTheme.typography.titleMedium.copy(fontSize = 24.sp, lineHeight = 32.sp),
       )
-      if (isError) {
+      if (canRetry) {
         Button(
             onClick = onRetry,
             modifier =

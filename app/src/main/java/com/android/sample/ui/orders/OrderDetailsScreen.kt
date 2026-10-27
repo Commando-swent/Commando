@@ -107,13 +107,19 @@ fun OrderDetailsScreen(
                 canRetry = false,
             )
         is OrderDetailsUiState.Error -> {
+          val orderError = (state as? OrderDetailsUiState.Error.OrderFailure)?.error
           val message =
-              when ((state as? OrderDetailsUiState.Error.OrderFailure)?.error) {
+              when (orderError) {
                 OrderError.NotAuthenticated -> R.string.order_details_authentication_required
                 OrderError.PermissionDenied -> R.string.order_details_permission_denied
                 else -> R.string.order_details_error
               }
-          OrderDetailsMessage(true, onRetry, message)
+          OrderDetailsMessage(
+              true,
+              onRetry,
+              message,
+              canRetry = orderError != OrderError.NotAuthenticated,
+          )
         }
       }
     }

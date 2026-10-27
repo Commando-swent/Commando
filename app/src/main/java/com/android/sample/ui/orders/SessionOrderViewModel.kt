@@ -14,7 +14,7 @@ class SessionOrderViewModel(
     createRepository: (() -> String?) -> OrderRepository,
 ) : ViewModel() {
   private var active = true
-  val repository = createRepository { auth.currentUser?.uid?.takeIf { active && it == userId } }
+  val repository = createRepository(::currentUserId)
 
   fun currentUserId(): String? = auth.currentUser?.uid?.takeIf { active && it == userId }
 

@@ -275,18 +275,41 @@ class OrderDetailsScreenTest {
 
   @Test
   fun authenticationFailureExplainsHowToRecoverWithoutProtectedContent() {
-    assertErrorActions(
-        OrderDetailsUiState.Error.OrderFailure(OrderError.NotAuthenticated),
-        "Authentication is required. Sign in again to view this order.",
-    )
+    show(OrderDetailsUiState.Error.OrderFailure(OrderError.NotAuthenticated))
+    compose
+        .onNodeWithText("Authentication is required. Sign in again to view this order.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertProtectedContentAbsent()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    backWorks()
   }
 
   @Test
   fun orderFailureOffersWorkingRetryAndBack() {
     assertErrorActions(
         OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied),
-        "You no longer have access to update this order.",
+        "You don't have permission to access or modify this order.",
     )
+  }
+
+  @Test
+  fun unknownOrderFailureKeepsWorkingRetry() {
+    assertErrorActions(OrderDetailsUiState.Error.OrderFailure(OrderError.Unknown))
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun permissionFailureUsesGeneralFrenchMessage() {
+    show(OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied))
+    compose
+        .onNodeWithText(
+            "Vous n'avez pas l'autorisation de consulter ou de modifier cette commande."
+        )
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertProtectedContentAbsent()
   }
 
   @Test
@@ -326,7 +349,7 @@ class OrderDetailsScreenTest {
             OrderDetailsUiState.Loading to null,
             OrderDetailsUiState.NotFound to "This order could not be found.",
             OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied) to
-                "You no longer have access to update this order.",
+                "You don't have permission to access or modify this order.",
         )) {
       compose.runOnIdle { state.value = OrderDetailsUiState.Content(order, trip) }
       compose.onNodeWithText("2 × Stored oat milk").performScrollTo().assertIsDisplayed()

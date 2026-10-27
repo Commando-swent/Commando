@@ -20,5 +20,5 @@
     <string name="order_decision_error">Could not save the decision. Check your connection and try again.</string>
     <string name="order_details_session_ended">This session has ended. Sign in again to view your orders.</string>
     <string name="order_details_authentication_required">Authentication is required. Sign in again to view this order.</string>
-    <string name="order_details_permission_denied">You no longer have access to update this order.</string>
+    <string name="order_details_permission_denied">You don\'t have permission to access or modify this order.</string>
 </resources>

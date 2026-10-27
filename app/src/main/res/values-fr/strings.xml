@@ -313,5 +313,5 @@
     <string name="order_decision_error">Impossible de sauvegarder la décision. Vérifiez votre connexion et réessayez.</string>
     <string name="order_details_session_ended">Cette session est terminée. Reconnectez-vous pour consulter vos commandes.</string>
     <string name="order_details_authentication_required">Une authentification est nécessaire. Reconnectez-vous pour consulter cette commande.</string>
-    <string name="order_details_permission_denied">Vous ne disposez plus des droits pour modifier cette commande.</string>
+    <string name="order_details_permission_denied">Vous n\'avez pas l\'autorisation de consulter ou de modifier cette commande.</string>
 </resources>

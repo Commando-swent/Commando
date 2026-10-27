@@ -3,11 +3,17 @@ package com.android.sample.emulator.firestore.security
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
+import com.android.sample.model.OrderDecision.ACCEPT
+import com.android.sample.model.OrderDecision.REJECT
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -57,17 +63,23 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       // A requester filter is mandatory; trip-wide list access belongs to #147.
       for (client in listOf(requester, owner, other, signedOut)) {
         assertPermissionDenied { client.firestore.collection("orders").get(Source.SERVER).await() }
-        assertPermissionDenied {
-          client.firestore
-              .collection("orders")
-              .document(saved.id)
-              .update("status", "ACCEPTED")
-              .await()
-        }
+        if (client != owner)
+            assertPermissionDenied {
+              client.firestore
+                  .collection("orders")
+                  .document(saved.id)
+                  .update("status", "ACCEPTED")
+                  .await()
+            }
         assertPermissionDenied {
           client.firestore.collection("orders").document(saved.id).delete().await()
         }
       }
+      owner.firestore.collection("orders").document(saved.id).update("status", "ACCEPTED").await()
+      assertEquals(
+          OrderResult.Success(saved.copy(status = OrderStatus.ACCEPTED)),
+          fresh.getOrderById(saved.id),
+      )
       assertPermissionDenied {
         other.firestore
             .collection("orders")
@@ -184,6 +196,169 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       assertPermissionDenied { requester.firestore.collection("orders").add(data).await() }
     }
   }
+
+  @Test
+  fun ownerDecisionsPersistAndRetriesDoNotWriteAgainEvenForPastOrClosedTrips() = runTest {
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      assertTrue(owner.auth.currentUser!!.isAnonymous)
+      for (decision in OrderDecision.entries) {
+        val trip = publish(owner)
+        val saved = createOrder(requester, trip)
+        val tripRef = owner.firestore.collection("trips").document(trip)
+        tripRef.update(mapOf("status" to "COMPLETED", "scheduledAt" to Timestamp(0, 0))).await()
+        val target = decision.targetStatus()
+        val expected = saved.copy(status = target)
+        // Production rules deny final-order writes; the second call must be read-only.
+        repeat(2) {
+          assertEquals(OrderResult.Success(expected), orders(owner).decideOrder(saved.id, decision))
+        }
+        val opposite = if (decision == ACCEPT) REJECT else ACCEPT
+        assertEquals(
+            OrderResult.Error(OrderError.AlreadyDecided(expected)),
+            orders(owner).decideOrder(saved.id, opposite),
+        )
+        assertEquals(OrderResult.Success(expected), orders(requester).getOrderById(saved.id))
+        val ref = owner.firestore.collection("orders").document(saved.id)
+        for (status in OrderStatus.entries) assertPermissionDenied("final order -> $status") {
+          ref.update("status", status.name).await()
+        }
+        assertPermissionDenied { ref.delete().await() }
+      }
+    }
+  }
+
+  @Test
+  fun directSdkDecisionsRequirePersistedOwnerAndOnlyStatusMayChange() = runTest {
+    withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
+        (requester, owner, other, signedOut) ->
+      val saved = createOrder(requester, publish(owner))
+      for (client in listOf(requester, other, signedOut)) for (status in
+          listOf("ACCEPTED", "REJECTED")) {
+        assertPermissionDenied {
+          client.firestore.collection("orders").document(saved.id).update("status", status).await()
+        }
+      }
+      val ref = owner.firestore.collection("orders").document(saved.id)
+      val original = ref.get(Source.SERVER).await().data!!
+      val item = (original.getValue("items") as List<*>).single() as Map<*, *>
+      val mutations =
+          listOf(
+              mapOf("items" to emptyList<Any>()),
+              mapOf("items" to listOf(item + ("unitPriceCents" to 1))),
+              mapOf("requesterId" to owner.auth.currentUser!!.uid),
+              mapOf("tripId" to publish(owner)),
+              mapOf("commissionCents" to 999),
+              mapOf("createdAt" to Timestamp(0, 0)),
+              mapOf("updatedAt" to FieldValue.serverTimestamp()),
+              mapOf("extra" to true),
+              mapOf("commissionCents" to FieldValue.delete()),
+          )
+      for (mutation in mutations) assertPermissionDenied("immutable fields $mutation") {
+        ref.update(mutation + ("status" to "ACCEPTED")).await()
+      }
+      val attackTrip = publish(other)
+      assertPermissionDenied("tripId owner impersonation") {
+        val attack = other.firestore.collection("orders").document(saved.id)
+        attack.update(mapOf("tripId" to attackTrip, "status" to "ACCEPTED")).await()
+      }
+      for (status in listOf("PENDING", "UNKNOWN")) assertPermissionDenied {
+        ref.update("status", status).await()
+      }
+      assertPermissionDenied { ref.delete().await() }
+      assertEquals(original, ref.get(Source.SERVER).await().data)
+      ref.update("status", "REJECTED").await()
+      assertEquals(original + ("status" to "REJECTED"), ref.get(Source.SERVER).await().data)
+      for (client in listOf(requester, other, signedOut)) {
+        val error =
+            if (client == signedOut) OrderError.NotAuthenticated else OrderError.PermissionDenied
+        for (decision in OrderDecision.entries) {
+          assertEquals(OrderResult.Error(error), orders(client).decideOrder(saved.id, decision))
+        }
+      }
+    }
+  }
+
+  @Test
+  fun legacySelfOrdersRemainReadableButDenyAllDecisions() = runTest {
+    withClients("owner" to true) { (owner) ->
+      val saved = createOrder(owner, publish(owner))
+      val repo = orders(owner)
+      val denied = OrderResult.Error(OrderError.PermissionDenied)
+      val ref = owner.firestore.collection("orders").document(saved.id)
+      for (decision in OrderDecision.entries) {
+        assertEquals(denied, repo.decideOrder(saved.id, decision))
+        assertPermissionDenied { ref.update("status", decision.targetStatus().name).await() }
+        assertEquals(OrderResult.Success(saved), repo.getOrderById(saved.id))
+      }
+      val uid = owner.auth.currentUser!!.uid
+      val authError = OrderResult.Error(OrderError.NotAuthenticated)
+      val direct = FirebaseOrderFirestoreDataSource(owner.firestore)
+      assertEquals(
+          authError,
+          OrderRepositoryFirestore(direct, { "spoofed" }).decideOrder(saved.id, ACCEPT),
+      )
+      val revoked = FirebaseOrderFirestoreDataSource(owner.firestore) { null }
+      assertEquals(
+          authError,
+          OrderRepositoryFirestore(revoked, { uid }).decideOrder(saved.id, ACCEPT),
+      )
+      val active = OrderRepositoryFirestore(direct, { uid })
+      assertEquals(
+          OrderResult.Error(OrderError.NotFound),
+          active.decideOrder("missing-order", ACCEPT),
+      )
+      owner.auth.signOut()
+      assertEquals(authError, active.decideOrder(saved.id, ACCEPT))
+    }
+  }
+
+  @Test
+  fun separateRepositoriesResolveCompetingTransactionsWithoutOverwriting() = runTest {
+    assertConcurrentDecisions(OrderDecision.entries.toList())
+  }
+
+  @Test
+  fun separateRepositoriesResolveIdenticalTransactionsWithoutOverwriting() = runTest {
+    assertConcurrentDecisions(listOf(ACCEPT, ACCEPT))
+  }
+
+  private suspend fun assertConcurrentDecisions(decisions: List<OrderDecision>) =
+      kotlinx.coroutines.coroutineScope {
+        withClients("requester" to true, "owner" to true) { (requester, owner) ->
+          val saved = createOrder(requester, publish(owner))
+          val gate = CompletableDeferred<Unit>()
+          val calls = decisions.map { decision ->
+            val repo = orders(owner)
+            async(Dispatchers.Default) {
+              gate.await()
+              repo.decideOrder(saved.id, decision)
+            }
+          }
+          gate.complete(Unit)
+          val results = calls.awaitAll()
+          val persisted = (orders(owner).getOrderById(saved.id) as OrderResult.Success).data
+          assertTrue(decisions.any { it.targetStatus() == persisted.status })
+          assertEquals(saved.copy(status = persisted.status), persisted)
+          decisions.zip(results).forEach { (decision, result) ->
+            val target = decision.targetStatus()
+            assertEquals(
+                if (persisted.status == target) OrderResult.Success(persisted)
+                else OrderResult.Error(OrderError.AlreadyDecided(persisted)),
+                result,
+            )
+          }
+          assertEquals(OrderResult.Success(persisted), orders(requester).getOrderById(saved.id))
+        }
+      }
+
+  private fun orders(client: EmulatorClient) =
+      OrderRepositoryFirestore({ client.auth.currentUser?.uid }, client.firestore)
+
+  private suspend fun createOrder(requester: EmulatorClient, trip: String) =
+      (orders(requester)
+              .createOrder(OrderDraft(trip, listOf(OrderItem("milk", "Milk", 220, 2)), 150))
+              as OrderResult.Success)
+          .data
 
   private suspend fun publish(owner: EmulatorClient): String {
     val time = Instant.now()

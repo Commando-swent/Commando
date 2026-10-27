@@ -3,6 +3,7 @@ package com.android.sample.data.repository
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.*
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import java.time.Instant
 import java.util.UUID
@@ -24,7 +25,7 @@ internal constructor(
   constructor(
       currentUserId: () -> String?,
       firestore: FirebaseFirestore? = null,
-  ) : this(FirebaseOrderFirestoreDataSource(firestore), currentUserId)
+  ) : this(FirebaseOrderFirestoreDataSource(firestore, currentUserId), currentUserId)
 
   private val submissions = Mutex()
   private val pending = mutableMapOf<Pair<String, OrderDraft>, String>()
@@ -98,6 +99,21 @@ internal constructor(
     OrderResult.Success(order)
   }
 
+  override suspend fun decideOrder(
+      orderId: String,
+      decision: OrderDecision,
+  ): OrderResult<Order> = session { uid ->
+    if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
+    val order =
+        source.decide(orderId, uid, decision).toOrder()
+            ?: return@session failure(OrderError.InvalidData)
+    if (order.id != orderId || order.status == OrderStatus.PENDING) {
+      return@session failure(OrderError.InvalidData)
+    }
+    if (order.status == decision.targetStatus()) OrderResult.Success(order)
+    else failure(OrderError.AlreadyDecided(order))
+  }
+
   private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
     currentCoroutineContext().ensureActive()
     val uid =
@@ -140,10 +156,14 @@ internal interface OrderFirestoreDataSource {
   suspend fun getMine(uid: String): List<OrderFirestoreDocument>
 
   suspend fun getTrip(id: String): Map<String, Any?>?
+
+  suspend fun decide(id: String, ownerId: String, decision: OrderDecision): OrderFirestoreDocument
 }
 
-internal class FirebaseOrderFirestoreDataSource(private val instance: FirebaseFirestore? = null) :
-    OrderFirestoreDataSource {
+internal class FirebaseOrderFirestoreDataSource(
+    private val instance: FirebaseFirestore? = null,
+    private val currentUserId: (() -> String?)? = null,
+) : OrderFirestoreDataSource {
   private val firestore
     get() = instance ?: FirebaseFirestore.getInstance()
 
@@ -177,14 +197,70 @@ internal class FirebaseOrderFirestoreDataSource(private val instance: FirebaseFi
           .await()
           .takeIf { it.exists() }
           ?.data
+
+  override suspend fun decide(
+      id: String,
+      ownerId: String,
+      decision: OrderDecision,
+  ): OrderFirestoreDocument {
+    val context = currentCoroutineContext()
+    val database = firestore
+    // Decisions verify session and Firebase identities; creation uses repository guards and rules.
+    fun ensureSession() {
+      context.ensureActive()
+      if (
+          FirebaseAuth.getInstance(database.app).currentUser?.uid != ownerId ||
+              (currentUserId != null && currentUserId.invoke() != ownerId)
+      ) {
+        throw decisionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
+      }
+    }
+    ensureSession()
+    fun attempt(write: Boolean) = database.runTransaction { transaction ->
+      ensureSession()
+      val ref = database.collection("orders").document(id)
+      val document = transaction.readOrder(ref, ownerId)
+      // Retried callbacks read both documents before writing and recheck session/cancellation.
+      ensureSession()
+      if (write && document.data["status"] == OrderStatus.PENDING.name) {
+        val status = decision.targetStatus().name
+        transaction.update(ref, "status", status)
+        document.copy(data = document.data + ("status" to status))
+      } else document
+    }
+    return try {
+      attempt(true).await()
+    } catch (denied: FirebaseFirestoreException) {
+      if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+      // Rules can reject a stale PENDING write after a competing commit. Never retry that write.
+      attempt(false).await().also {
+        ensureSession()
+        if (it.data["status"] == OrderStatus.PENDING.name) throw denied
+      }
+    }
+  }
+
+  private fun Transaction.readOrder(ref: DocumentReference, uid: String): OrderFirestoreDocument {
+    val stored = get(ref)
+    if (!stored.exists()) throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
+    val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
+    val order =
+        document.toOrder() ?: throw decisionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+    val trip = get(ref.firestore.collection("trips").document(order.tripId))
+    if (!trip.exists() || trip.getString("ownerId") != uid || order.requesterId == uid) {
+      throw decisionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    }
+    return document
+  }
+
+  private fun decisionError(code: FirebaseFirestoreException.Code) =
+      FirebaseFirestoreException("Order decision failed", code)
 }
 
 private fun failure(error: OrderError) = OrderResult.Error(error)
 
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)
-
-private fun String.isDocumentId() = isNotBlank() && !contains('/') && this != "." && this != ".."
 
 private fun Any?.cents(): Int? =
     when (this) {

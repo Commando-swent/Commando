@@ -2,8 +2,11 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.*
+import com.android.sample.model.OrderDecision.ACCEPT
+import com.android.sample.model.OrderDecision.REJECT
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import java.time.Instant
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
@@ -151,8 +154,108 @@ class OrderRepositoryFirestoreTest {
     assertEquals(3, source.writes)
   }
 
+  @Test
+  fun decisionsMapEveryTransitionWithoutRewritingFinalOrders() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue("b")
+    uid = "owner"
+    for (status in OrderStatus.entries) for (decision in OrderDecision.entries) {
+      source.documents["b"] = original.copy(data = original.data + ("status" to status.name))
+      val before = source.writes
+      val target = if (decision == ACCEPT) OrderStatus.ACCEPTED else OrderStatus.REJECTED
+      val expected = saved.copy(status = if (status == OrderStatus.PENDING) target else status)
+      assertEquals(
+          if (expected.status == target) OrderResult.Success(expected)
+          else error(OrderError.AlreadyDecided(expected)),
+          decide(decision),
+      )
+      assertEquals(expected, source.documents.getValue("b").toOrder())
+      assertEquals(before + if (status == OrderStatus.PENDING) 1 else 0, source.writes)
+    }
+  }
+
+  @Test
+  fun decisionsRejectInvalidMissingMalformedAndUnauthorizedData() = runTest {
+    repository.createOrder(draft)
+    val original = source.documents.getValue("b")
+    uid = "owner"
+    for (id in listOf("", " ", "a/b", ".", "..")) assertEquals(
+        error(OrderError.InvalidData),
+        decide(id = id),
+    )
+    assertEquals(error(OrderError.NotFound), decide(id = "missing"))
+    for (data in listOf(original.data - "items", original.data + ("status" to "UNKNOWN"))) {
+      source.documents["b"] = original.copy(data = data)
+      assertEquals(error(OrderError.InvalidData), decide())
+    }
+    source.documents["b"] = original
+    for (trip in listOf(null, mapOf("ownerId" to "other"))) {
+      source.trip = trip
+      assertEquals(error(OrderError.PermissionDenied), decide())
+    }
+    // A source must never expose malformed, unrelated or uncommitted results as success.
+    val malformed = original.copy(data = emptyMap())
+    val wrongId = original.copy(id = "other", data = original.data + ("status" to "ACCEPTED"))
+    for (document in listOf(malformed, wrongId, original)) {
+      source.decisionResult = document
+      assertEquals(error(OrderError.InvalidData), decide())
+    }
+    uid = null
+    assertEquals(error(OrderError.NotAuthenticated), decide())
+    assertEquals(1, source.writes)
+  }
+
+  @Test
+  fun suspendedDecisionsHandleSessionLossCancellationAndUncertainCommits() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    uid = "owner"
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    source.beforeRead = {
+      entered.complete(Unit)
+      release.await()
+    }
+    val pending = async { decide() }
+    entered.await()
+    uid = null
+    release.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+    uid = "owner"
+    val cancelEntered = CompletableDeferred<Unit>()
+    source.beforeRead = {
+      cancelEntered.complete(Unit)
+      CompletableDeferred<Unit>().await()
+    }
+    val cancelled = async { decide() }
+    cancelEntered.await()
+    cancelled.cancelAndJoin()
+    assertTrue(cancelled.isCancelled)
+    source.beforeRead = {}
+    val accepted = saved.copy(status = OrderStatus.ACCEPTED)
+    assertEquals(OrderResult.Success(accepted), decide())
+    assertEquals(error(OrderError.AlreadyDecided(accepted)), decide(REJECT))
+    assertEquals(2, source.writes)
+    source.documents["b"] =
+        source.documents
+            .getValue("b")
+            .copy(data = source.documents.getValue("b").data + ("status" to "PENDING"))
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), decide(REJECT))
+    source.confirmationFails = false
+    val rejected = saved.copy(status = OrderStatus.REJECTED)
+    assertEquals(OrderResult.Success(rejected), decide(REJECT))
+    assertEquals(error(OrderError.AlreadyDecided(rejected)), decide())
+    assertEquals(3, source.writes)
+  }
+
+  private suspend fun decide(decision: OrderDecision = ACCEPT, id: String = "b") =
+      repository.decideOrder(id, decision)
+
+  private fun sourceError(code: Code): Nothing = throw FirebaseFirestoreException("test", code)
+
   private inner class MemorySource : OrderFirestoreDataSource {
     val documents = linkedMapOf<String, OrderFirestoreDocument>()
+    var decisionResult: OrderFirestoreDocument? = null
     var beforeRead: suspend () -> Unit = {}
     var confirmationFails = false
     var writes = 0
@@ -176,6 +279,28 @@ class OrderRepositoryFirestoreTest {
     override suspend fun getMine(uid: String): List<OrderFirestoreDocument> {
       beforeRead()
       return documents.values.toList()
+    }
+
+    override suspend fun decide(
+        id: String,
+        ownerId: String,
+        decision: OrderDecision,
+    ): OrderFirestoreDocument {
+      beforeRead()
+      decisionResult?.let {
+        return it
+      }
+      val document = documents[id] ?: sourceError(Code.NOT_FOUND)
+      if (document.toOrder() == null) sourceError(Code.INVALID_ARGUMENT)
+      if (trip?.get("ownerId") != ownerId || document.data["requesterId"] == ownerId) {
+        sourceError(Code.PERMISSION_DENIED)
+      }
+      if (document.data["status"] != OrderStatus.PENDING.name) return document
+      return document.copy(data = document.data + ("status" to decision.targetStatus().name)).also {
+        documents[id] = it
+        writes++
+        if (confirmationFails) throw IllegalStateException("Confirmation unavailable")
+      }
     }
 
     override suspend fun create(id: String, data: Map<String, Any?>) =

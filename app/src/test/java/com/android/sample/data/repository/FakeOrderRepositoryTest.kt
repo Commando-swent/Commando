@@ -3,6 +3,9 @@ package com.android.sample.data.repository
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.Location
 import com.android.sample.model.Order
+import com.android.sample.model.OrderDecision
+import com.android.sample.model.OrderDecision.ACCEPT
+import com.android.sample.model.OrderDecision.REJECT
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
@@ -397,6 +400,130 @@ class FakeOrderRepositoryTest {
     userId = "requester-demo"
     assertEquals(OrderResult.Success(order()), repository.getOrderById("order-demo-1"))
   }
+
+  @Test
+  fun decisionsPreserveSnapshotsAndFinalOutcomes() = runTest {
+    userId = "commando"
+    for (selfOrder in listOf(false, true)) for (status in OrderStatus.entries) for (decision in
+        OrderDecision.entries) {
+      val stored =
+          order()
+              .copy(
+                  status = status,
+                  requesterId = if (selfOrder) "commando" else "requester-demo",
+                  items = listOf(item, item.copy(productId = "bread")),
+              )
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      val target = if (decision == ACCEPT) OrderStatus.ACCEPTED else OrderStatus.REJECTED
+      val expected = stored.copy(status = if (status == OrderStatus.PENDING) target else status)
+      val result = orders.decideOrder(stored.id, decision)
+      if (selfOrder) {
+        assertEquals(failure(OrderError.PermissionDenied), result)
+        assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+        continue
+      }
+      assertEquals(
+          if (expected.status == target) OrderResult.Success(expected)
+          else failure(OrderError.AlreadyDecided(expected)),
+          result,
+      )
+      val snapshot = result.persisted()
+      (snapshot.items as MutableList).clear()
+      assertEquals(OrderResult.Success(expected), orders.getOrderById(stored.id))
+    }
+  }
+
+  @Test
+  fun decisionsRequireOwnerSessionAndValidExistingOrder() = runTest {
+    val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = trips())
+    for (caller in listOf("requester-demo", "outsider", null)) {
+      userId = caller
+      val expected =
+          if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
+      assertEquals(failure(expected), orders.decideOrder(order().id, ACCEPT))
+    }
+    userId = "commando"
+    for (id in listOf("", " ", "a/b", ".", "..")) {
+      assertEquals(failure(OrderError.InvalidData), orders.decideOrder(id, ACCEPT))
+    }
+    assertEquals(failure(OrderError.NotFound), orders.decideOrder("missing", ACCEPT))
+    assertEquals(OrderResult.Success(order()), orders.getOrderById(order().id))
+  }
+
+  @Test
+  fun suspendedDecisionsDiscardChangedSessionsAndCancellationReleasesLock() = runTest {
+    for (cancel in listOf(false, true)) {
+      val entered = CompletableDeferred<Unit>()
+      val release = CompletableDeferred<Unit>()
+      val source = trips()
+      val delayed =
+          object : TripRepository by source {
+            override suspend fun getTripById(tripId: String): TripResult<Trip> {
+              entered.complete(Unit)
+              release.await()
+              return source.getTripById(tripId)
+            }
+          }
+      userId = "commando"
+      val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = delayed)
+      val pending = async { orders.decideOrder(order().id, ACCEPT) }
+      entered.await()
+      if (cancel) {
+        pending.cancel()
+        pending.join()
+        assertTrue(pending.isCancelled)
+      } else {
+        userId = "outsider"
+        release.complete(Unit)
+        assertEquals(failure(OrderError.NotAuthenticated), pending.await())
+      }
+      userId = "requester-demo"
+      assertEquals(OrderResult.Success(order()), orders.getOrderById(order().id))
+      release.complete(Unit)
+      userId = "commando"
+      assertEquals(
+          OrderResult.Success(order().copy(status = OrderStatus.REJECTED)),
+          orders.decideOrder(order().id, REJECT),
+      )
+    }
+  }
+
+  @Test
+  fun concurrentDecisionsCannotReplaceTheWinner() = runTest {
+    userId = "commando"
+    for (decisions in
+        listOf(
+            OrderDecision.entries.toList(),
+            listOf(ACCEPT, ACCEPT),
+        )) {
+      val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = trips())
+      val gate = CompletableDeferred<Unit>()
+      val results = decisions.map {
+        async(Dispatchers.Default) {
+          gate.await()
+          orders.decideOrder(order().id, it)
+        }
+      }
+      gate.complete(Unit)
+      val outcomes = results.awaitAll()
+      val persisted = orders.getOrderById(order().id).data()
+      assertTrue(persisted.status != OrderStatus.PENDING)
+      assertEquals(order().copy(status = persisted.status), persisted)
+      assertEquals(
+          if (decisions.distinct().size == 1) 2 else 1,
+          outcomes.count { it is OrderResult.Success },
+      )
+      outcomes.forEach { assertEquals(persisted, it.persisted()) }
+    }
+  }
+
+  private fun failure(error: OrderError) = OrderResult.Error(error)
+
+  private fun OrderResult<Order>.persisted(): Order =
+      when (this) {
+        is OrderResult.Success -> data
+        is OrderResult.Error -> (error as OrderError.AlreadyDecided).persistedOrder
+      }
 
   private fun fake(initial: List<Order> = emptyList()) =
       FakeOrderRepository({ userId }, initial, { time }, { "order-demo-1" })

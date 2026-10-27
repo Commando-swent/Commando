@@ -123,7 +123,21 @@ class OrderDetailsScreenTest {
 
   @Test
   fun contentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
-    show()
+    assertReadOnlyContent(OrderStatus.PENDING, "PENDING")
+  }
+
+  @Test
+  fun acceptedContentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
+    assertReadOnlyContent(OrderStatus.ACCEPTED, "ACCEPTED")
+  }
+
+  @Test
+  fun rejectedContentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
+    assertReadOnlyContent(OrderStatus.REJECTED, "REJECTED")
+  }
+
+  private fun assertReadOnlyContent(status: OrderStatus, label: String) {
+    show(OrderDetailsUiState.Content(order.copy(status = status), trip))
     for (text in
         listOf(
             "Stored store",
@@ -135,8 +149,8 @@ class OrderDetailsScreenTest {
         )) {
       compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
     }
-    compose.onAllNodesWithText("PENDING").assertCountEquals(1)
-    compose.onNodeWithText("PENDING").assertIsDisplayed()
+    compose.onAllNodesWithText(label).assertCountEquals(1)
+    compose.onNodeWithText(label).assertIsDisplayed()
     // Exhaustive action checks also exclude editing, Accept/Reject and submission controls.
     compose.onAllNodes(hasClickAction()).assertCountEquals(1)
     compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.SetText)).assertCountEquals(0)

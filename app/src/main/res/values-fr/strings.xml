@@ -171,6 +171,8 @@
     <string name="order_details_item">%1$d × %2$s</string>
     <string name="order_details_commission">COMMISSION</string>
     <string name="order_details_pending">EN ATTENTE</string>
+    <string name="order_details_accepted">ACCEPTÉE</string>
+    <string name="order_details_rejected">REFUSÉE</string>
     <string name="order_details_loading">Chargement des détails de la commande</string>
     <string name="order_details_not_found">Cette commande est introuvable.</string>
     <string name="order_details_error">Une erreur est survenue lors du chargement de cette commande.</string>

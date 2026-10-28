@@ -55,6 +55,7 @@ internal fun FormField(
     error: CreateTripError?,
     errorTag: String,
     modifier: Modifier = Modifier,
+    helperArgs: List<Any> = emptyList(),
     input: @Composable () -> Unit,
 ) {
   Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -66,7 +67,7 @@ internal fun FormField(
     input()
     if (error == null) {
       Text(
-          text = stringResource(helper),
+          text = stringResource(helper, *helperArgs.toTypedArray()),
           style = tripTextStyle(12, 16, FontWeight.Medium),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
@@ -114,8 +115,9 @@ internal fun PickerField(
     tag: String,
     errorTag: String,
     modifier: Modifier = Modifier,
+    helperArgs: List<Any> = emptyList(),
 ) {
-  FormField(label, helper, error, errorTag, modifier) {
+  FormField(label, helper, error, errorTag, modifier, helperArgs) {
     InputBox(
         icon = icon,
         isError = error != null,
@@ -149,6 +151,7 @@ internal fun LocationPickerField(
     onSelected: (Location) -> Unit,
     tag: String,
     errorTag: String,
+    helperArgs: List<Any> = emptyList(),
 ) {
   var expanded by rememberSaveable { mutableStateOf(false) }
   Box {
@@ -163,6 +166,7 @@ internal fun LocationPickerField(
         onClick = { expanded = true },
         tag = tag,
         errorTag = errorTag,
+        helperArgs = helperArgs,
     )
     DropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
       options.forEach { location ->

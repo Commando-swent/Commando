@@ -7,6 +7,8 @@ import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
 import com.android.sample.model.Order
+import com.android.sample.model.itemCount
+import com.android.sample.model.totalCents
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -17,13 +19,13 @@ import kotlinx.coroutines.launch
 
 /** One incoming-order row, built only from fields stored on the order itself. */
 data class IncomingOrderRow(val order: Order) {
-  /** Total quantity across products, counted as in My Orders. */
+  /** Total quantity across products; see [Order.itemCount]. */
   val itemCount: Long
-    get() = order.items.sumOf { it.quantity.toLong() }
+    get() = order.itemCount
 
-  /** Products plus commission, in CHF cents. */
+  /** Products plus commission, in CHF cents; see [Order.totalCents]. */
   val totalCents: Long
-    get() = order.items.sumOf { it.unitPriceCents.toLong() * it.quantity } + order.commissionCents
+    get() = order.totalCents
 }
 
 sealed class IncomingOrdersUiState {

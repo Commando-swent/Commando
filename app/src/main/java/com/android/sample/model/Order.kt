@@ -41,3 +41,11 @@ data class Order(
     val status: OrderStatus,
     val createdAt: Instant,
 )
+
+/** Total quantity across products, e.g. two apples and one milk count as three items. */
+val Order.itemCount: Long
+  get() = items.sumOf { it.quantity.toLong() }
+
+/** Products plus commission, in CHF cents; Long, so the sum cannot overflow. */
+val Order.totalCents: Long
+  get() = items.sumOf { it.unitPriceCents.toLong() * it.quantity } + commissionCents

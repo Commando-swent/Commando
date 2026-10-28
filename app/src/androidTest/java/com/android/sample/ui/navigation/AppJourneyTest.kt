@@ -18,6 +18,7 @@ import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
 import java.time.Instant
@@ -91,6 +92,16 @@ class AppJourneyTest {
     compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertIsDisplayed()
     click(AppTestTags.TRIPS_BUTTON)
+    // From the handoff (46.52, 6.56): SV building is about 240 m away, Rolex about 660 m.
+    // The list is lazy, so scroll it to each node first: small screens show only the header.
+    pickLocation("SV building")
+    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    pickLocation("Rolex Learning Center")
+    scrollTripsTo(hasText("No trips near Rolex Learning Center yet.")).assertIsDisplayed()
+    compose.onNodeWithText(trip.store.name).assertDoesNotExist()
+    scrollTripsTo(hasText("Clear location")).performClick()
+    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
     compose.onNodeWithText(trip.store.name).performClick()
@@ -178,6 +189,16 @@ class AppJourneyTest {
   }
 
   private fun click(tag: String) = compose.onNodeWithTag(tag).performClick()
+
+  private fun scrollTripsTo(matcher: SemanticsMatcher): SemanticsNodeInteraction {
+    compose.onNode(hasScrollToIndexAction()).performScrollToNode(matcher)
+    return compose.onNode(matcher)
+  }
+
+  private fun pickLocation(name: String) {
+    scrollTripsTo(hasTestTag(AvailableTripsScreenTestTags.LOCATION_FIELD)).performClick()
+    click(CreateTripScreenTestTags.locationOption(name))
+  }
 
   private fun back() = compose.runOnUiThread {
     compose.activity.onBackPressedDispatcher.onBackPressed()

@@ -41,6 +41,7 @@ import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
+import com.android.sample.model.TripLocations
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
@@ -83,6 +84,7 @@ import com.android.sample.ui.trips.MyTripsViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
+import com.android.sample.ui.trips.TripLocationFilterViewModel
 import com.android.sample.ui.trips.formatTripDeparture
 import kotlinx.coroutines.launch
 
@@ -200,6 +202,8 @@ private fun AuthenticatedApp(
     onLanguageSelected: (AppLanguage) -> Unit,
 ) {
   val appViewModel: AppViewModel = viewModel()
+  // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
+  val locationFilter: TripLocationFilterViewModel = viewModel()
   val profileViewModel: ProfileViewModel = viewModel {
     ProfileViewModel(repository, photoRepository)
   }
@@ -295,9 +299,29 @@ private fun AuthenticatedApp(
       }
       composable(route = CommandoScreens.AvailableTrips.name) { entry ->
         val availableTripsViewModel: AvailableTripsViewModel =
-            viewModel(viewModelStoreOwner = entry) { AvailableTripsViewModel(tripRepository) }
+            viewModel(viewModelStoreOwner = entry) {
+              // The resume observer below loads on entry and on every return.
+              AvailableTripsViewModel(
+                  tripRepository,
+                  locationFilter.selected,
+                  loadImmediately = false,
+              )
+            }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, availableTripsViewModel) {
+          val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) availableTripsViewModel.retry()
+          }
+          lifecycleOwner.lifecycle.addObserver(observer)
+          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        val selectedPoint by locationFilter.selected.collectAsState()
         AvailableTripsScreen(
             viewModel = availableTripsViewModel,
+            selectedPoint = selectedPoint,
+            points = TripLocations.handoffPoints,
+            onSelectPoint = locationFilter::select,
+            onClearPoint = locationFilter::clear,
             onTripSelected = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },
@@ -468,13 +492,20 @@ private fun AuthenticatedApp(
         val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
         val model: OrderDetailsViewModel =
             viewModel(viewModelStoreOwner = entry) {
-              OrderDetailsViewModel(orderId, orders.repository, tripRepository)
+              OrderDetailsViewModel(
+                  orderId,
+                  orders.repository,
+                  tripRepository,
+                  orders::currentUserId,
+                  orders.sessionChanges,
+              )
             }
         val state by model.uiState.collectAsState()
         OrderDetailsScreen(
             state = state,
             onBack = { navController.popBackStack() },
             onRetry = model::retry,
+            onDecision = model::decide,
         )
       }
       composable(route = CommandoScreens.Profile.name) {

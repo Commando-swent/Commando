@@ -6,10 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +26,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
+import com.android.sample.model.HANDOFF_RADIUS_METERS
+import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.ui.navigation.NavigationTestTags
 import java.time.Instant
@@ -44,15 +44,35 @@ private val runsMuted = Color(0xFFC3C9B2)
 private val runsAccent = Color(0xFFB9E48A)
 private val runsOnAccent = Color(0xFF17240A)
 
+object AvailableTripsScreenTestTags {
+  const val LOCATION_FIELD = "availableTripsLocationField"
+  const val CLEAR_LOCATION = "availableTripsClearLocation"
+  const val NO_MATCHES = "availableTripsNoMatches"
+}
+
 @Composable
 fun AvailableTripsScreen(
     viewModel: AvailableTripsViewModel,
     onTripSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenMap: (() -> Unit)? = null,
+    selectedPoint: Location? = null,
+    points: List<Location> = emptyList(),
+    onSelectPoint: (Location) -> Unit = {},
+    onClearPoint: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
-  AvailableTripsScreen(state, viewModel::retry, onTripSelected, modifier, onOpenMap)
+  AvailableTripsScreen(
+      state,
+      viewModel::retry,
+      onTripSelected,
+      modifier,
+      onOpenMap,
+      selectedPoint,
+      points,
+      onSelectPoint,
+      onClearPoint,
+  )
 }
 
 @Composable
@@ -62,50 +82,98 @@ fun AvailableTripsScreen(
     onTripSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
     onOpenMap: (() -> Unit)? = null,
+    selectedPoint: Location? = null,
+    points: List<Location> = emptyList(),
+    onSelectPoint: (Location) -> Unit = {},
+    onClearPoint: () -> Unit = {},
 ) {
-  Column(
-      modifier.fillMaxSize().background(runsBackground).padding(20.dp),
+  // One scrolling container, so every state stays reachable on small screens with large fonts.
+  LazyColumn(
+      modifier.fillMaxSize().background(runsBackground),
+      contentPadding = PaddingValues(20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     onOpenMap?.let {
-      TextButton(onClick = it, modifier = Modifier.testTag(NavigationTestTags.OPEN_MAP)) {
-        Text(stringResource(R.string.nav_mock_map))
+      item {
+        TextButton(onClick = it, modifier = Modifier.testTag(NavigationTestTags.OPEN_MAP)) {
+          Text(stringResource(R.string.nav_mock_map))
+        }
       }
     }
-    Text(
-        stringResource(R.string.trips_title),
-        color = runsText,
-        style = MaterialTheme.typography.headlineSmall,
-    )
-    Text(
-        stringResource(R.string.trips_subtitle),
-        color = runsMuted,
-        style = MaterialTheme.typography.bodySmall,
-    )
-    when (state) {
-      AvailableTripsUiState.Loading -> {
-        val loading = stringResource(R.string.trips_loading)
-        LazyColumn(
-            modifier = Modifier.semantics { contentDescription = loading },
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-          items(4) {
-            Card(
-                modifier = Modifier.fillMaxWidth().height(104.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = runsSurfaceContainer),
-                border = BorderStroke(1.dp, runsOutlineVariant),
-            ) {}
+    item {
+      Text(
+          stringResource(R.string.trips_title),
+          color = runsText,
+          style = MaterialTheme.typography.headlineSmall,
+      )
+    }
+    item {
+      Text(
+          stringResource(R.string.trips_subtitle),
+          color = runsMuted,
+          style = MaterialTheme.typography.bodySmall,
+      )
+    }
+    if (points.isNotEmpty()) {
+      item {
+        LocationPickerField(
+            label = R.string.trips_location_label,
+            icon = R.drawable.ic_trip_map_pin,
+            selected = selectedPoint,
+            options = points,
+            placeholder = R.string.trips_location_placeholder,
+            helper = R.string.trips_location_helper,
+            helperArgs = listOf(HANDOFF_RADIUS_METERS.toInt()),
+            error = null,
+            enabled = true,
+            onSelected = onSelectPoint,
+            tag = AvailableTripsScreenTestTags.LOCATION_FIELD,
+            errorTag = "",
+        )
+      }
+      if (selectedPoint != null) {
+        item {
+          Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+            TextButton(
+                onClick = onClearPoint,
+                modifier = Modifier.testTag(AvailableTripsScreenTestTags.CLEAR_LOCATION),
+            ) {
+              Text(stringResource(R.string.trips_location_clear), color = runsAccent)
+            }
           }
         }
       }
-      is AvailableTripsUiState.Content ->
-          LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(state.trips) { trip -> TripCard(trip) { onTripSelected(trip.id) } }
+    }
+    when (state) {
+      AvailableTripsUiState.Loading ->
+          item {
+            val loading = stringResource(R.string.trips_loading)
+            Column(
+                Modifier.semantics { contentDescription = loading },
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+              repeat(4) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().height(104.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = runsSurfaceContainer),
+                    border = BorderStroke(1.dp, runsOutlineVariant),
+                ) {}
+              }
+            }
           }
-      AvailableTripsUiState.Empty -> TripStatusCard(stringResource(R.string.trips_empty))
+      is AvailableTripsUiState.Content ->
+          items(state.trips, key = Trip::id) { trip -> TripCard(trip) { onTripSelected(trip.id) } }
+      AvailableTripsUiState.Empty -> item { TripStatusCard(stringResource(R.string.trips_empty)) }
+      is AvailableTripsUiState.NoMatches ->
+          item {
+            TripStatusCard(
+                stringResource(R.string.trips_no_matches, state.location.name),
+                modifier = Modifier.testTag(AvailableTripsScreenTestTags.NO_MATCHES),
+            )
+          }
       is AvailableTripsUiState.Error ->
-          TripStatusCard(stringResource(R.string.trips_error), onRetry)
+          item { TripStatusCard(stringResource(R.string.trips_error), onRetry) }
     }
   }
 }
@@ -141,19 +209,19 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TripStatusCard(message: String, onRetry: (() -> Unit)? = null) {
+private fun TripStatusCard(
+    message: String,
+    onRetry: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+) {
   Card(
-      modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+      modifier = modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
       shape = RoundedCornerShape(16.dp),
       colors = CardDefaults.cardColors(containerColor = runsSurfaceContainer),
       border = BorderStroke(1.dp, runsOutlineVariant),
   ) {
     Column(
-        modifier =
-            Modifier.fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .heightIn(min = 280.dp)
-                .padding(20.dp),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 280.dp).padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
     ) {

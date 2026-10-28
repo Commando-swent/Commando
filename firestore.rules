@@ -78,7 +78,7 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
-    // Orders are immutable until the decision transition in #148 adds narrow update rules.
+    // Order access is anchored to the persisted associated trip.
     function ownsOrderTrip(data) {
       return get(/databases/$(database)/documents/trips/$(data.tripId)).data.ownerId == request.auth.uid;
     }
@@ -129,6 +129,7 @@ service cloud.firestore {
         && validOrderItems(request.resource.data.items, request.resource.data.commissionCents)
         && request.resource.data.status == "PENDING"
         && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.ownerId != request.auth.uid
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "PUBLISHED"
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time;
       allow get: if isAuthenticated() && (resource == null
@@ -136,7 +137,13 @@ service cloud.firestore {
       // Queries must filter by requesterId == uid, or by a tripId the caller owns (#147).
       allow list: if isAuthenticated()
         && (resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
-      allow update, delete: if false;
+      allow update: if isAuthenticated()
+        && ownsOrderTrip(resource.data)
+        && resource.data.requesterId != request.auth.uid
+        && resource.data.status == "PENDING"
+        && request.resource.data.status in ["ACCEPTED", "REJECTED"]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"]);
+      allow delete: if false;
     }
 
     match /stores/{storeId}/products/{productId} {

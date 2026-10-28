@@ -11,11 +11,23 @@ submission until a product is removed; quantities do not count toward this disti
 Creation derives the requester from the session, writes PENDING and a server timestamp, and confirms
 the saved snapshot through a SERVER read. The trip must be PUBLISHED with a strictly future departure;
 the rules enforce eligibility at write time, independently of the preliminary application lookup.
+New orders on the authenticated requester's own trip are forbidden: the production adapter returns
+InvalidData before writing, and rules also reject direct SDK writes. Existing stored orders and
+read access remain unchanged; this creation guard performs no migration or decision transition.
+The shared fake also rejects self-orders when a TripRepository is injected, checks the returned trip
+ID and session after lookup, and never inserts on lookup failure. Without an injected lookup, creation
+keeps standalone fixture behavior. This optional fake check does not emulate production trip timing
+or publication validation; those remain enforced by the production adapter and rules.
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
-Detail reads allow the requester or the associated trip's current owner. Updates and deletes are
-denied; #148 owns atomic decisions and statuses.
+Detail reads allow the requester or the associated trip's current owner. Deletes, and updates other
+than owner decisions, remain denied.
+
+`decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
+ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
+without writing. Rules denials reconcile only authorized final snapshots through a read-only transaction.
+Decisions ignore trip status/time and deny legacy self-orders, which remain readable.
 
 #147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
 like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered
@@ -23,9 +35,9 @@ or foreign-trip query is denied. The automatic single-field index suffices.
 
 All operations check session identity before/after suspension. Cancellation propagates. Missing documents
 return NotFound when readable; a lookup denied by rules remains PermissionDenied (including an
-unreadable/missing trip). Unavailable/network failures use the existing Unknown result. No errors or
-statuses were added to the shared API. After an account change a committed write can remain stored,
-but its result is not delivered to the previous session. Server reads intentionally fail offline.
+unreadable/missing trip). Unavailable/network failures use Unknown. Retry uncertain decisions with the
+same ID/intent, even from a fresh repository. Cancellation/session loss cannot undo committed writes;
+their results are withheld from ended sessions. Server reads intentionally fail offline.
 
 Rules enforce identity, eligible trip, exact order/item fields, nonblank product IDs/names, integer
 prices/quantities, line and overall Int totals including commission, unique products, timestamp,

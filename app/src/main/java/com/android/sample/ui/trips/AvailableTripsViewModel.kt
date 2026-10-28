@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
+import com.android.sample.model.Location
 import com.android.sample.model.Trip
+import com.android.sample.model.filterTripsServing
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,17 +21,31 @@ sealed class AvailableTripsUiState {
 
   data object Empty : AvailableTripsUiState()
 
+  /** The feed has trips, but none serve [location]. */
+  data class NoMatches(val location: Location) : AvailableTripsUiState()
+
   data class Error(val error: TripError) : AvailableTripsUiState()
 }
 
-/** Displays repository results unchanged; the repository owns trip eligibility and ordering. */
-class AvailableTripsViewModel(private val repository: TripRepository) : ViewModel() {
+/**
+ * Shows the repository's trips that serve [selectedPoint], via `filterTripsServing`. The repository
+ * owns eligibility and ordering. A new selection is applied to the last loaded trips without a
+ * network call; reload and retry keep it and apply it to the fresh trips.
+ */
+class AvailableTripsViewModel(
+    private val repository: TripRepository,
+    private val selectedPoint: StateFlow<Location?> = MutableStateFlow(null),
+    loadImmediately: Boolean = true,
+) : ViewModel() {
   private val mutableState = MutableStateFlow<AvailableTripsUiState>(AvailableTripsUiState.Loading)
   val uiState: StateFlow<AvailableTripsUiState> = mutableState.asStateFlow()
   private var isLoading = false
+  // The last successful feed; null while loading or after an error, so a new selection then waits.
+  private var loadedTrips: List<Trip>? = null
 
   init {
-    loadTrips()
+    viewModelScope.launch { selectedPoint.collect { loadedTrips?.let(::show) } }
+    if (loadImmediately) loadTrips()
   }
 
   fun retry() {
@@ -40,16 +56,17 @@ class AvailableTripsViewModel(private val repository: TripRepository) : ViewMode
     if (isLoading) return
     // Set this before launching so repeated calls cannot start concurrent requests.
     isLoading = true
+    loadedTrips = null
     mutableState.value = AvailableTripsUiState.Loading
     viewModelScope.launch {
       try {
-        mutableState.value =
-            when (val result = repository.getUpcomingTrips()) {
-              is TripResult.Success ->
-                  if (result.data.isEmpty()) AvailableTripsUiState.Empty
-                  else AvailableTripsUiState.Content(result.data)
-              is TripResult.Error -> AvailableTripsUiState.Error(result.error)
-            }
+        when (val result = repository.getUpcomingTrips()) {
+          is TripResult.Success -> {
+            loadedTrips = result.data
+            show(result.data)
+          }
+          is TripResult.Error -> mutableState.value = AvailableTripsUiState.Error(result.error)
+        }
       } catch (cancelled: CancellationException) {
         throw cancelled
       } catch (error: Exception) {
@@ -58,5 +75,16 @@ class AvailableTripsViewModel(private val repository: TripRepository) : ViewMode
         isLoading = false
       }
     }
+  }
+
+  private fun show(trips: List<Trip>) {
+    val point = selectedPoint.value
+    val matches = filterTripsServing(trips, point)
+    mutableState.value =
+        when {
+          trips.isEmpty() -> AvailableTripsUiState.Empty
+          point != null && matches.isEmpty() -> AvailableTripsUiState.NoMatches(point)
+          else -> AvailableTripsUiState.Content(matches)
+        }
   }
 }

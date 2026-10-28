@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
 import com.android.sample.model.Order
+import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderStatus
 import java.time.Instant
@@ -13,7 +14,8 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * Shares orders within one instance only; never persists data or enforces Firebase security. Inject
- * the shared [tripRepository] to enable associated-trip owner reads; absent lookup denies them.
+ * the shared [tripRepository] to enable owner reads and reject self-orders during creation. Without
+ * that lookup, creation retains standalone fixture behavior and owner reads are denied.
  */
 class FakeOrderRepository(
     private val currentUserId: () -> String?,
@@ -40,6 +42,8 @@ class FakeOrderRepository(
   override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = withSession { userId ->
     val input = draft.copy(items = draft.items.toList())
     if (!input.isValid()) return@withSession OrderResult.Error(OrderError.InvalidData)
+    val tripError = creationTripError(input.tripId, userId)
+    if (tripError != null) return@withSession OrderResult.Error(tripError)
     val id = newId()
     if (id.isBlank() || orders.containsKey(id)) {
       return@withSession OrderResult.Error(OrderError.Unknown)
@@ -89,6 +93,55 @@ class FakeOrderRepository(
                 .map { it.snapshot() }
         )
       }
+
+  override suspend fun decideOrder(
+      orderId: String,
+      decision: OrderDecision,
+  ): OrderResult<Order> = withSession { userId ->
+    if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
+    val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
+    // Requester access never bypasses trip ownership, including for final decisions.
+    val error = tripOwnerAccessError(order.tripId, userId)
+    currentCoroutineContext().ensureActive()
+    if (currentUserId() != userId) return@withSession OrderResult.Error(OrderError.NotAuthenticated)
+    if (error != null || order.requesterId == userId) {
+      return@withSession OrderResult.Error(error ?: OrderError.PermissionDenied)
+    }
+    val target = decision.targetStatus()
+    val persisted =
+        if (order.status == OrderStatus.PENDING) {
+          order.copy(status = target).also { orders[orderId] = it }
+        } else order
+    val snapshot = persisted.snapshot()
+    if (snapshot.status == target) OrderResult.Success(snapshot)
+    else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
+  }
+
+  private suspend fun creationTripError(tripId: String, userId: String): OrderError? {
+    val source = tripRepository ?: return null
+    val result =
+        try {
+          source.getTripById(tripId)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          currentCoroutineContext().ensureActive()
+          return if (currentUserId() != userId) OrderError.NotAuthenticated else OrderError.Unknown
+        }
+    currentCoroutineContext().ensureActive()
+    if (currentUserId() != userId) return OrderError.NotAuthenticated
+    return when (result) {
+      is TripResult.Success ->
+          if (result.data.id != tripId || result.data.ownerId == userId) OrderError.InvalidData
+          else null
+      is TripResult.Error ->
+          when (result.error) {
+            TripError.NotFound -> OrderError.NotFound
+            TripError.PermissionDenied -> OrderError.PermissionDenied
+            else -> OrderError.Unknown
+          }
+    }
+  }
 
   private suspend fun tripOwnerAccessError(tripId: String, userId: String): OrderError? {
     // Resolve ownership from the associated Trip, never from UI role or caller-supplied owner ID.

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -43,6 +45,7 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
 import java.time.Instant
@@ -344,7 +347,8 @@ class CommandoAppTest {
     compose.runOnIdle {
       // The first three are the Details and the two Catalogue lookups of the opaque trip.
       assertEquals(List(3) { secondTrip.id } + listOf(firstTrip.id, secondTrip.id), requestedIds)
-      assertEquals(1, listLoads)
+      // The list reloads on every resume: one load on entry plus one per return from Details.
+      assertEquals(4, listLoads)
     }
   }
 
@@ -517,10 +521,60 @@ class CommandoAppTest {
     click(HomeTestTags.TRIP_ACTION)
     compose.onNodeWithText("Injected store").assertIsDisplayed()
     compose.runOnIdle {
-      assertEquals(2, listLoads)
+      // The list reloads on every resume: one load on entry plus one per return (Details, Profile).
+      assertEquals(4, listLoads)
       assertTrue(homeLoads > 0)
       assertEquals(listOf("known-trip"), requestedIds)
     }
+  }
+
+  @Test
+  fun locationFilterSurvivesNavigationReloadsOnReturnAndResetsOnSignOut() = runTest {
+    val repository = FakeAuthRepository(alice)
+    val fake = twoTrips(alice.uid)
+    var listLoads = 0
+    val trips =
+        object : TripRepository by fake {
+          override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
+            listLoads++
+            return fake.getUpcomingTrips()
+          }
+        }
+    show(repository, trips)
+    click(HomeTestTags.TRIP_ACTION)
+    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
+    compose.runOnIdle { assertEquals(1, listLoads) }
+    // CE building is about 60 m from the first handoff and over 1 km from the second.
+    click(AvailableTripsScreenTestTags.LOCATION_FIELD)
+    compose.onNodeWithText("CE building").performClick()
+    val assertFiltered = {
+      compose
+          .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
+          .assert(hasText("CE building"))
+      compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
+      compose.onNodeWithText(secondTrip.store.name).assertDoesNotExist()
+    }
+    assertFiltered()
+    compose.onNodeWithText(firstTrip.store.name).performClick()
+    assertTripDetails(firstTrip)
+    compose.onNodeWithText("Back").performClick()
+    assertFiltered()
+    click(AppTestTags.PROFILE_BUTTON)
+    assertScreen(NavigationTestTags.PROFILE_SCREEN)
+    pressBack()
+    assertFiltered()
+    compose.runOnIdle { assertEquals(3, listLoads) }
+
+    compose.runOnIdle { repository.signOut() }
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    repository.signInWithEmailResult = Result.success(alice)
+    repository.signInWithEmail("", "")
+    click(HomeTestTags.TRIP_ACTION)
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
+        .assert(hasText("All locations"))
+    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
+    compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
   }
 
   @Test

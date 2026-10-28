@@ -12,6 +12,7 @@ import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
 import com.android.sample.model.Order
+import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
@@ -357,6 +358,9 @@ class MyOrdersViewModelTest {
     }
 
     override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = error("Not used")
+
+    override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> =
+        error("Not used")
 
     override suspend fun getOrderById(orderId: String): OrderResult<Order> = error("Not used")
 

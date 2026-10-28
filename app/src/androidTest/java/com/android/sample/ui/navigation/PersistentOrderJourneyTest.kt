@@ -52,11 +52,15 @@ class PersistentOrderJourneyTest {
       val auth = AuthRepositoryFirebase(first.auth)
       val uid = auth.currentUser!!.uid
       val trips = TripRepositoryFirestore(auth, first.firestore)
+      val owner = client(host).also(clients::add)
+      owner.auth.signInAnonymously().await()
+      val ownerTrips = TripRepositoryFirestore(AuthRepositoryFirebase(owner.auth), owner.firestore)
       val place = Location("Migros ${uid.take(8)}", 46.52, 6.57)
       val trip =
-          (trips.publishTrip(NewTrip(place, Instant.now().plusSeconds(600), place))
+          (ownerTrips.publishTrip(NewTrip(place, Instant.now().plusSeconds(600), place))
                   as TripResult.Success)
               .data
+      assertNotEquals(uid, trip.ownerId)
       val milk = Product("milk", "migros", "Milk", 220)
       val products =
           object : ProductRepository {

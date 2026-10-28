@@ -3,6 +3,8 @@ package com.android.sample.data.repository
 import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderDraft
 
+internal fun String.isDocumentId() = isNotBlank() && !contains('/') && this != "." && this != ".."
+
 /** Shared input and decoded-snapshot validation; CHF arithmetic must fit in Int cents. */
 internal fun OrderDraft.isValid(): Boolean {
   if (tripId.isBlank() || commissionCents < 0) return false

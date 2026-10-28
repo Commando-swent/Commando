@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+// AI assistance: OpenAI Codex (shared feed classification).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripError
@@ -7,7 +8,8 @@ import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
-import com.android.sample.model.filterTripsServing
+import com.android.sample.model.TripFeed
+import com.android.sample.model.classifyTrips
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -78,13 +80,11 @@ class AvailableTripsViewModel(
   }
 
   private fun show(trips: List<Trip>) {
-    val point = selectedPoint.value
-    val matches = filterTripsServing(trips, point)
     mutableState.value =
-        when {
-          trips.isEmpty() -> AvailableTripsUiState.Empty
-          point != null && matches.isEmpty() -> AvailableTripsUiState.NoMatches(point)
-          else -> AvailableTripsUiState.Content(matches)
+        when (val feed = classifyTrips(trips, selectedPoint.value)) {
+          TripFeed.Empty -> AvailableTripsUiState.Empty
+          is TripFeed.NoMatches -> AvailableTripsUiState.NoMatches(feed.location)
+          is TripFeed.Matches -> AvailableTripsUiState.Content(feed.trips)
         }
   }
 }

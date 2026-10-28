@@ -1,6 +1,6 @@
 package com.android.sample.model
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code; OpenAI Codex (shared feed classification).
 
 import kotlin.math.asin
 import kotlin.math.cos
@@ -28,8 +28,8 @@ internal fun distanceMeters(from: Location, to: Location): Double {
 
 /**
  * Keeps the trips whose handoff location lies within [radiusMeters] (inclusive) of [point], in
- * their original order. A `null` point means no filter. Trips with invalid handoff coordinates are
- * dropped, and an invalid point matches nothing. Works for any coordinates, not only campus places.
+ * their original order. A `null` point returns every trip unchanged. With a selected point, trips
+ * with invalid handoff coordinates are dropped, and an invalid point matches nothing.
  */
 fun filterTripsServing(
     trips: List<Trip>,
@@ -52,3 +52,22 @@ fun Location.hasValidCoordinates(): Boolean =
         latitude in -90.0..90.0 &&
         longitude.isFinite() &&
         longitude in -180.0..180.0
+
+/** Shared filtered-feed outcomes for the requester list and map. */
+sealed interface TripFeed {
+  data object Empty : TripFeed
+
+  data class NoMatches(val location: Location) : TripFeed
+
+  data class Matches(val trips: List<Trip>) : TripFeed
+}
+
+/**
+ * Distinguishes an empty source from zero filter matches, preserving repository eligibility/order.
+ */
+fun classifyTrips(trips: List<Trip>, point: Location?): TripFeed {
+  if (trips.isEmpty()) return TripFeed.Empty
+  val matches = filterTripsServing(trips, point)
+  return if (point != null && matches.isEmpty()) TripFeed.NoMatches(point)
+  else TripFeed.Matches(matches)
+}

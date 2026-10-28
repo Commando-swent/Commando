@@ -20,8 +20,12 @@ class CampusMapProjection(
     private val east: Double,
 ) {
   init {
-    require(south.isFinite() && north.isFinite() && south >= -90 && north <= 90 && south < north)
-    require(west.isFinite() && east.isFinite() && west >= -180 && east <= 180 && west < east)
+    require(south.isFinite() && north.isFinite() && south >= -90 && north <= 90 && south < north) {
+      "Invalid latitude bounds: $south..$north"
+    }
+    require(west.isFinite() && east.isFinite() && west >= -180 && east <= 180 && west < east) {
+      "Invalid longitude bounds: $west..$east"
+    }
   }
 
   /** Returns null for invalid/offscreen coordinates, without clamping them to a false location. */

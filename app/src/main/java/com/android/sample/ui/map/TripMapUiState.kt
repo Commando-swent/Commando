@@ -20,18 +20,23 @@ sealed interface TripMapUiState {
   data object SessionEnded : TripMapUiState
 
   /**
-   * Groups identical handoff coordinates; nearby points remain separate (no proximity clustering).
+   * Keeps list/map feed parity, including unprojectable trips. The renderer must use
+   * [CampusMapProjection.project] to omit invalid/offscreen marker groups; Content does not imply
+   * visible markers. Groups exact coordinates, without proximity clustering. Part 2 replaces the
+   * illustration-only MockMapUiState and its different, fixture-ID grouping.
    */
   data class Content(val trips: List<Trip>, val selectedTripId: String? = null) : TripMapUiState {
-    val markerGroups: List<List<Trip>> =
-        trips
-            .groupBy { it.handoffLocation.latitude to it.handoffLocation.longitude }
-            .values
-            .toList()
+    val markerGroups: List<List<Trip>>
+      get() =
+          trips
+              .groupBy { it.handoffLocation.latitude to it.handoffLocation.longitude }
+              .values
+              .toList()
 
-    val selectedTrip: Trip? = trips.firstOrNull { it.id == selectedTripId }
+    val selectedTrip: Trip?
+      get() = trips.firstOrNull { it.id == selectedTripId }
 
-    val selectedGroup: List<Trip> =
-        markerGroups.firstOrNull { group -> group.any { it.id == selectedTripId } }.orEmpty()
+    val selectedGroup: List<Trip>
+      get() = markerGroups.firstOrNull { group -> group.any { it.id == selectedTripId } }.orEmpty()
   }
 }

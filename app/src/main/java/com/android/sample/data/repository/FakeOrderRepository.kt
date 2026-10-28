@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+// AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
@@ -66,7 +67,7 @@ class FakeOrderRepository(
     OrderResult.Success(
         orders.values
             .filter { it.requesterId == userId }
-            .sortedWith(compareByDescending<Order> { it.createdAt }.thenBy { it.id })
+            .sortedWith(NEWEST_ORDER_FIRST)
             .map { it.snapshot() }
     )
   }
@@ -75,11 +76,25 @@ class FakeOrderRepository(
     if (orderId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
     if (userId != order.requesterId) {
-      val error = tripOwnerAccessError(order, userId)
+      val error = tripOwnerAccessError(order.tripId, userId)
       if (error != null) return@withSession OrderResult.Error(error)
     }
     OrderResult.Success(order.snapshot())
   }
+
+  /** Same contract as [OrderRepository.getOrdersForTrip]; ownership comes from [tripRepository]. */
+  override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> =
+      withSession { userId ->
+        if (tripId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)
+        val error = tripOwnerAccessError(tripId, userId)
+        if (error != null) return@withSession OrderResult.Error(error)
+        OrderResult.Success(
+            orders.values
+                .filter { it.tripId == tripId }
+                .sortedWith(NEWEST_ORDER_FIRST)
+                .map { it.snapshot() }
+        )
+      }
 
   override suspend fun decideOrder(
       orderId: String,
@@ -88,7 +103,7 @@ class FakeOrderRepository(
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
     // Requester access never bypasses trip ownership, including for final decisions.
-    val error = tripOwnerAccessError(order, userId)
+    val error = tripOwnerAccessError(order.tripId, userId)
     currentCoroutineContext().ensureActive()
     if (currentUserId() != userId) return@withSession OrderResult.Error(OrderError.NotAuthenticated)
     if (error != null || order.requesterId == userId) {
@@ -130,11 +145,11 @@ class FakeOrderRepository(
     }
   }
 
-  private suspend fun tripOwnerAccessError(order: Order, userId: String): OrderError? {
+  private suspend fun tripOwnerAccessError(tripId: String, userId: String): OrderError? {
     // Resolve ownership from the associated Trip, never from UI role or caller-supplied owner ID.
     val trip =
         try {
-          tripRepository?.getTripById(order.tripId)
+          tripRepository?.getTripById(tripId)
         } catch (cancelled: CancellationException) {
           throw cancelled
         } catch (_: Exception) {
@@ -149,9 +164,7 @@ class FakeOrderRepository(
         }
     // A lookup can suspend while the authenticated account changes.
     return if (
-        currentUserId() != userId ||
-            associatedTrip.id != order.tripId ||
-            associatedTrip.ownerId != userId
+        currentUserId() != userId || associatedTrip.id != tripId || associatedTrip.ownerId != userId
     ) {
       OrderError.PermissionDenied
     } else {

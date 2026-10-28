@@ -134,8 +134,9 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time;
       allow get: if isAuthenticated() && (resource == null
         || resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
-      // #147 adds the separately tested trip-owner list query.
-      allow list: if isAuthenticated() && resource.data.requesterId == request.auth.uid;
+      // Queries must filter by requesterId == uid, or by a tripId the caller owns (#147).
+      allow list: if isAuthenticated()
+        && (resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
       allow update: if isAuthenticated()
         && ownsOrderTrip(resource.data)
         && resource.data.requesterId != request.auth.uid

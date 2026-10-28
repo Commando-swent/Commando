@@ -10,6 +10,7 @@ import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Order
 import com.android.sample.model.Trip
+import com.android.sample.model.itemCount
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -20,9 +21,9 @@ import kotlinx.coroutines.launch
 
 /** One My Orders row: the stored order and its trip, or null when the trip could not be read. */
 data class MyOrderRow(val order: Order, val trip: Trip?) {
-  /** Total quantity across products, e.g. two apples and one milk count as three items. */
+  /** Total quantity across products; see [Order.itemCount]. */
   val itemCount: Long
-    get() = order.items.sumOf { it.quantity.toLong() }
+    get() = order.itemCount
 }
 
 sealed class MyOrdersUiState {

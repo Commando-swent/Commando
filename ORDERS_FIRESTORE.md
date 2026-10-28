@@ -1,6 +1,6 @@
 # Orders persistence — #145
 
-AI assistance: OpenAI Codex. Shared-contract choices below remain subject to teammate review.
+AI assistance: OpenAI Codex; #147 trip-owner query: Claude Code. Shared-contract choices below remain subject to teammate review.
 
 `orders/{id}` stores `tripId`, `requesterId`, `items` (productId/name/unitPriceCents/quantity),
 `commissionCents`, `status` and `createdAt`. The document ID is the Order ID.
@@ -21,13 +21,17 @@ or publication validation; those remain enforced by the production adapter and r
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
-Detail reads allow the requester or the associated trip's current owner. Baseline trip-wide lists,
-updates other than owner decisions, and deletes remain denied; #147 owns the future trip query.
+Detail reads allow the requester or the associated trip's current owner. Deletes, and updates other
+than owner decisions, remain denied.
 
 `decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
 ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
 without writing. Rules denials reconcile only authorized final snapshots through a read-only transaction.
 Decisions ignore trip status/time and deny legacy self-orders, which remain readable.
+
+#147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
+like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered
+or foreign-trip query is denied. The automatic single-field index suffices.
 
 All operations check session identity before/after suspension. Cancellation propagates. Missing documents
 return NotFound when readable; a lookup denied by rules remains PermissionDenied (including an

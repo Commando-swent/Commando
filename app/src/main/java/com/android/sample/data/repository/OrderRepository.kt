@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+// AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
@@ -19,10 +20,20 @@ interface OrderRepository {
   suspend fun getOrderById(orderId: String): OrderResult<Order>
 
   /**
+   * Orders of [tripId] for the authenticated owner of that Trip, newest first; equal timestamps are
+   * ordered by ID. Requesters and unrelated users are denied, even for orders they placed.
+   */
+  suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>>
+
+  /**
    * Trip owner only; identical final decisions are read-only, opposite ones return AlreadyDecided.
    */
   suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order>
 }
+
+/** Shared list order of every order query. */
+internal val NEWEST_ORDER_FIRST: Comparator<Order> =
+    compareByDescending<Order> { it.createdAt }.thenBy { it.id }
 
 internal fun OrderDecision.targetStatus(): OrderStatus =
     when (this) {

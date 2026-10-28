@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; trip-owner query (#147): Claude Code.
 import com.android.sample.model.*
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -88,9 +88,7 @@ internal constructor(
     val orders =
         source.getMine(uid).map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
     if (orders.any { it.requesterId != uid }) return@session failure(OrderError.PermissionDenied)
-    OrderResult.Success(
-        orders.sortedWith(compareByDescending<Order> { it.createdAt }.thenBy { it.id })
-    )
+    OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = session { uid ->
@@ -102,6 +100,20 @@ internal constructor(
       return@session failure(OrderError.PermissionDenied)
     }
     OrderResult.Success(order)
+  }
+
+  /** Checks trip ownership, then reads the trip's orders from the server; see the interface. */
+  override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> = session { uid ->
+    if (!tripId.isDocumentId()) return@session failure(OrderError.InvalidData)
+    // Rules enforce ownership independently; this check also covers a readable PUBLISHED trip.
+    if (source.getTrip(tripId)?.get("ownerId") != uid) {
+      return@session failure(OrderError.PermissionDenied)
+    }
+    if (!sameSession(uid)) return@session failure(OrderError.NotAuthenticated)
+    val documents = source.getForTrip(tripId)
+    val orders = documents.map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
+    if (orders.any { it.tripId != tripId }) return@session failure(OrderError.PermissionDenied)
+    OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
   override suspend fun decideOrder(
@@ -160,6 +172,9 @@ internal interface OrderFirestoreDataSource {
 
   suspend fun getMine(uid: String): List<OrderFirestoreDocument>
 
+  /** Server read of every order whose `tripId` is [tripId]; the rules restrict it to the owner. */
+  suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument>
+
   suspend fun getTrip(id: String): Map<String, Any?>?
 
   suspend fun decide(id: String, ownerId: String, decision: OrderDecision): OrderFirestoreDocument
@@ -189,8 +204,12 @@ internal class FirebaseOrderFirestoreDataSource(
           .takeIf { it.exists() }
           ?.let { OrderFirestoreDocument(it.id, it.data.orEmpty()) }
 
-  override suspend fun getMine(uid: String) =
-      orders.whereEqualTo("requesterId", uid).get(Source.SERVER).await().documents.map {
+  override suspend fun getMine(uid: String) = whereEqualTo("requesterId", uid)
+
+  override suspend fun getForTrip(tripId: String) = whereEqualTo("tripId", tripId)
+
+  private suspend fun whereEqualTo(field: String, value: String) =
+      orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {
         OrderFirestoreDocument(it.id, it.data.orEmpty())
       }
 

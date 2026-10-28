@@ -62,10 +62,15 @@ class TripMapViewModelTest {
   fun initialLoadExposesActualIdsCoordinatesAndRepositoryOrder() = runTest {
     repository.read = { TripResult.Success(listOf(second, far, first)) }
     val model = model()
+    model.selectTrip(first.id) // Loading ignores selection.
     assertEquals(TripMapUiState.Loading, model.uiState.value)
     advanceUntilIdle()
     assertEquals(listOf(second, far, first), content(model).trips)
     assertEquals(point, content(model).trips.last().handoffLocation)
+    assertNull(content(model).selectedTrip)
+    model.selectTrip(first.id)
+    model.selectTrip("unknown")
+    assertEquals(first, content(model).selectedTrip)
     assertEquals(1, repository.calls)
   }
 
@@ -80,23 +85,6 @@ class TripMapViewModelTest {
     model.selectTrip(renamed.id)
     assertEquals(renamed, content(model).selectedTrip)
     assertEquals(listOf(first, renamed), content(model).selectedGroup)
-  }
-
-  @Test
-  fun selectionWhileLoadingIsIgnored() = runTest {
-    val model = model()
-    model.selectTrip(first.id)
-    advanceUntilIdle()
-    assertNull(content(model).selectedTrip)
-  }
-
-  @Test
-  fun unknownSelectionKeepsTheSelectedTrip() = runTest {
-    val model = model()
-    advanceUntilIdle()
-    model.selectTrip(first.id)
-    model.selectTrip("unknown")
-    assertEquals(first, content(model).selectedTrip)
   }
 
   @Test
@@ -163,6 +151,41 @@ class TripMapViewModelTest {
   }
 
   @Test
+  fun emptyNoMatchesAndErrorsAreMappedWithoutContent() = runTest {
+    filter.select(farPoint)
+    val model = model(false)
+    for ((result, expected) in
+        listOf(
+            TripResult.Success(emptyList<Trip>()) to TripMapUiState.Empty,
+            TripResult.Success(listOf(first)) to TripMapUiState.NoMatches(farPoint),
+            TripResult.Error(TripError.NetworkError) to
+                TripMapUiState.Error(TripError.NetworkError),
+        )) {
+      repository.read = { result }
+      model.refresh()
+      advanceUntilIdle()
+      assertEquals(expected, model.uiState.value)
+    }
+  }
+
+  @Test
+  fun selectionWhileLoadingIsIgnored() = runTest {
+    val model = model()
+    model.selectTrip(first.id)
+    advanceUntilIdle()
+    assertNull(content(model).selectedTrip)
+  }
+
+  @Test
+  fun unknownSelectionKeepsTheSelectedTrip() = runTest {
+    val model = model()
+    advanceUntilIdle()
+    model.selectTrip(first.id)
+    model.selectTrip("unknown")
+    assertEquals(first, content(model).selectedTrip)
+  }
+
+  @Test
   fun emptyFeedAndNoFilterMatchesAreDistinct() = runTest {
     filter.select(farPoint)
     repository.read = { TripResult.Success(emptyList()) }
@@ -212,6 +235,41 @@ class TripMapViewModelTest {
   }
 
   @Test
+  fun refreshWhileLoadingKeepsSelectionAndDismissalStillWorks() = runTest {
+    val model = model()
+    advanceUntilIdle()
+    model.selectTrip(first.id)
+    val reply = CompletableDeferred<TripResult<List<Trip>>>()
+    repository.read = { reply.await() }
+    model.refresh()
+    runCurrent()
+    model.refresh()
+    runCurrent()
+    reply.complete(TripResult.Success(listOf(first, second)))
+    advanceUntilIdle()
+    assertEquals(first, content(model).selectedTrip)
+    repository.read = { TripResult.Success(listOf(first)) }
+    model.refresh()
+    model.clearSelection()
+    advanceUntilIdle()
+    assertNull(content(model).selectedTrip)
+  }
+
+  @Test
+  fun contentPreservesUndrawableTripsForListParity() = runTest {
+    val trips = listOf(far, first.copy(handoffLocation = point.copy(latitude = Double.NaN)))
+    repository.read = { TripResult.Success(trips) }
+    val model = model()
+    advanceUntilIdle()
+    val projection = CampusMapProjection(46.518, 46.524, 6.560, 6.572)
+    assertEquals(trips, content(model).trips)
+    assertEquals(2, content(model).markerGroups.size)
+    assertTrue(
+        content(model).markerGroups.all { projection.project(it.first().handoffLocation) == null }
+    )
+  }
+
+  @Test
   fun refreshRejectsAnOlderReplyEvenWhenTheRepositoryIgnoresCancellation() = runTest {
     val oldReply = CompletableDeferred<TripResult<List<Trip>>>()
     repository.read = { withContext(NonCancellable) { oldReply.await() } }
@@ -234,6 +292,7 @@ class TripMapViewModelTest {
     session.value = "another-requester"
     advanceUntilIdle()
     assertEquals(TripMapUiState.SessionEnded, model.uiState.value)
+    session.value = "requester" // Returning to the original account must not revive this model.
     model.refresh()
     model.selectTrip(second.id)
     filter.select(point)

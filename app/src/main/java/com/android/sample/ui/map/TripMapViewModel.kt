@@ -3,17 +3,11 @@ package com.android.sample.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
-import com.android.sample.model.Trip
 import com.android.sample.model.TripFeed
-import com.android.sample.model.classifyTrips
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
+import com.android.sample.ui.session.SessionGuard
+import com.android.sample.ui.trips.FilteredTripFeed
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,107 +16,80 @@ import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 /**
- * Loads the session's real map trips using the list's repository and shared location selection. The
- * repository owns eligibility and ordering; changing the filter does not trigger a read. Navigation
- * must scope this model to the authenticated graph and call [refresh] on map entry.
+ * Maps the shared trip feed to map selection state. Scope to the authenticated graph and refresh on
+ * entry. The explicit session signal also clears data before navigation disposes that graph.
  */
 class TripMapViewModel(
-    private val repository: TripRepository,
-    private val selectedPoint: StateFlow<Location?>,
-    private val currentUserId: () -> String?,
+    repository: TripRepository,
+    selectedPoint: StateFlow<Location?>,
+    currentUserId: () -> String?,
     sessionChanges: Flow<String?> = emptyFlow(),
     loadImmediately: Boolean = false,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<TripMapUiState>(TripMapUiState.Loading)
   val uiState: StateFlow<TripMapUiState> = mutableState.asStateFlow()
-  private val sessionId = currentUserId()
-  private var sessionEnded = false
-  private var loadedTrips: List<Trip>? = null
-  private var loadJob: Job? = null
-  private var loadVersion = 0
+  private val session = SessionGuard(currentUserId)
+  private var selectedTripId: String? = null
+  private val feed =
+      FilteredTripFeed(
+          viewModelScope,
+          repository,
+          selectedPoint,
+          ::show,
+          { mutableState.value = TripMapUiState.Loading },
+          { if (!endSessionIfChanged()) mutableState.value = TripMapUiState.Error(it) },
+      )
 
   init {
-    viewModelScope.launch { sessionChanges.collect { if (it != sessionId) endSession() } }
-    viewModelScope.launch {
-      selectedPoint.collect { if (ensureSessionActive()) loadedTrips?.let { trips -> show(trips) } }
-    }
+    viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) endSession() } }
     if (loadImmediately) refresh()
   }
 
-  /** Reloads on entry, refresh or retry; only the latest request may publish a result. */
+  /** Replaces an in-flight refresh without losing the selection during Loading. */
   fun refresh() {
-    if (!ensureSessionActive()) return
-    val selectedId = (mutableState.value as? TripMapUiState.Content)?.selectedTripId
-    val version = ++loadVersion
-    loadJob?.cancel()
-    loadedTrips = null
-    mutableState.value = TripMapUiState.Loading
-    loadJob = viewModelScope.launch {
-      val result =
-          try {
-            repository.getUpcomingTrips()
-          } catch (cancelled: CancellationException) {
-            throw cancelled
-          } catch (_: Exception) {
-            TripResult.Error(TripError.Unknown)
-          }
-      // Reject even a repository that swallows cancellation or returns an old session's data.
-      currentCoroutineContext().ensureActive()
-      if (version != loadVersion || !ensureSessionActive()) return@launch
-      when (result) {
-        is TripResult.Success -> {
-          val trips = result.data.toList()
-          loadedTrips = trips
-          show(trips, selectedId)
-        }
-        is TripResult.Error -> mutableState.value = TripMapUiState.Error(result.error)
-      }
-    }
+    if (!endSessionIfChanged()) feed.refresh()
   }
 
-  /** Selects an actual visible trip ID; unknown IDs and non-content states are ignored. */
+  /** Selects a visible real ID; unknown IDs and non-content states are ignored. */
   fun selectTrip(id: String) {
-    if (!ensureSessionActive()) return
+    if (endSessionIfChanged()) return
     val content = mutableState.value as? TripMapUiState.Content ?: return
-    if (content.trips.any { it.id == id }) mutableState.value = content.copy(selectedTripId = id)
+    if (content.trips.any { it.id == id }) {
+      selectedTripId = id
+      mutableState.value = content.copy(selectedTripId = id)
+    }
   }
 
-  /** Dismisses the trip card without changing the shared delivery-location filter. */
+  /** Dismisses the card, including a selection retained during an in-flight refresh. */
   fun clearSelection() {
-    if (!ensureSessionActive()) return
-    val content = mutableState.value as? TripMapUiState.Content ?: return
-    mutableState.value = content.copy(selectedTripId = null)
+    if (endSessionIfChanged()) return
+    selectedTripId = null
+    (mutableState.value as? TripMapUiState.Content)?.let {
+      mutableState.value = it.copy(selectedTripId = null)
+    }
   }
 
-  private fun show(
-      trips: List<Trip>,
-      selectedId: String? = (mutableState.value as? TripMapUiState.Content)?.selectedTripId,
-  ) {
+  private fun show(result: TripFeed) {
+    if (endSessionIfChanged()) return
+    val trips = (result as? TripFeed.Matches)?.trips.orEmpty()
+    selectedTripId = selectedTripId?.takeIf { id -> trips.any { it.id == id } }
     mutableState.value =
-        when (val feed = classifyTrips(trips, selectedPoint.value)) {
+        when (result) {
           TripFeed.Empty -> TripMapUiState.Empty
-          is TripFeed.NoMatches -> TripMapUiState.NoMatches(feed.location)
-          is TripFeed.Matches ->
-              TripMapUiState.Content(
-                  feed.trips,
-                  selectedId?.takeIf { id -> feed.trips.any { it.id == id } },
-              )
+          is TripFeed.NoMatches -> TripMapUiState.NoMatches(result.location)
+          is TripFeed.Matches -> TripMapUiState.Content(result.trips, selectedTripId)
         }
   }
 
-  private fun ensureSessionActive(): Boolean {
-    if (sessionEnded || sessionId == null || currentUserId() != sessionId) {
-      endSession()
-      return false
-    }
-    return true
+  private fun endSessionIfChanged(): Boolean {
+    val ended = session.initialUserId == null || session.hasEnded()
+    if (ended) endSession()
+    return ended
   }
 
   private fun endSession() {
-    sessionEnded = true
-    loadVersion++
-    loadJob?.cancel()
-    loadedTrips = null
+    selectedTripId = null
+    feed.clear()
     mutableState.value = TripMapUiState.SessionEnded
   }
 }

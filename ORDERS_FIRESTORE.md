@@ -11,6 +11,13 @@ submission until a product is removed; quantities do not count toward this disti
 Creation derives the requester from the session, writes PENDING and a server timestamp, and confirms
 the saved snapshot through a SERVER read. The trip must be PUBLISHED with a strictly future departure;
 the rules enforce eligibility at write time, independently of the preliminary application lookup.
+New orders on the authenticated requester's own trip are forbidden: the production adapter returns
+InvalidData before writing, and rules also reject direct SDK writes. Existing stored orders and
+read access remain unchanged; this creation guard performs no migration or decision transition.
+The shared fake also rejects self-orders when a TripRepository is injected, checks the returned trip
+ID and session after lookup, and never inserts on lookup failure. Without an injected lookup, creation
+keeps standalone fixture behavior. This optional fake check does not emulate production trip timing
+or publication validation; those remain enforced by the production adapter and rules.
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.

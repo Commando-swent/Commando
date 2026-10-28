@@ -3,6 +3,7 @@ package com.android.sample.emulator.firestore.security
 import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -12,6 +13,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
@@ -163,9 +165,21 @@ private fun Any?.toFirestoreValue(): JSONObject =
       null -> JSONObject().put("nullValue", JSONObject.NULL)
       is Boolean -> JSONObject().put("booleanValue", this)
       is String -> JSONObject().put("stringValue", this)
+      is Timestamp ->
+          JSONObject()
+              .put(
+                  "timestampValue",
+                  java.time.Instant.ofEpochSecond(seconds, nanoseconds.toLong()).toString(),
+              )
       is Int,
       is Long -> JSONObject().put("integerValue", toString())
       is Number -> JSONObject().put("doubleValue", toDouble())
+      is List<*> ->
+          JSONObject()
+              .put(
+                  "arrayValue",
+                  JSONObject().put("values", JSONArray(map { it.toFirestoreValue() })),
+              )
       is Map<*, *> ->
           JSONObject()
               .put(

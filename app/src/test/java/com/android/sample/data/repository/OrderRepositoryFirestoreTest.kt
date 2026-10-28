@@ -69,9 +69,32 @@ class OrderRepositoryFirestoreTest {
         .forEach { assertEquals(error(OrderError.InvalidData), repository.createOrder(it)) }
     source.trip = mapOf("status" to "PUBLISHED", "scheduledAt" to Timestamp(time.epochSecond, 0))
     assertEquals(error(OrderError.InvalidData), repository.createOrder(draft))
+    // An otherwise eligible trip must be published and have a usable departure timestamp.
+    val eligible =
+        mapOf(
+            "ownerId" to "owner",
+            "status" to "PUBLISHED",
+            "scheduledAt" to Timestamp(time.epochSecond + 3600, 0),
+        )
+    for (trip in listOf(eligible + ("status" to "DRAFT"), eligible - "scheduledAt")) {
+      source.trip = trip
+      assertEquals(error(OrderError.InvalidData), repository.createOrder(draft))
+    }
     source.trip = null
     assertEquals(error(OrderError.NotFound), repository.createOrder(draft))
     assertTrue(source.documents.isEmpty())
+    assertEquals(0, source.writes)
+  }
+
+  @Test
+  fun rejectsTripOwnerBeforeWritingButAllowsAnotherRequester() = runTest {
+    uid = "owner"
+    assertEquals(error(OrderError.InvalidData), repository.createOrder(draft))
+    assertEquals(0, source.writes)
+    assertTrue(source.documents.isEmpty())
+    uid = "alice"
+    assertTrue(repository.createOrder(draft) is OrderResult.Success)
+    assertEquals(1, source.writes)
   }
 
   @Test

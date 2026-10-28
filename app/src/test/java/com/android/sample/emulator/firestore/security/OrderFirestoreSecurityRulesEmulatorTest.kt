@@ -25,6 +25,42 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class OrderFirestoreSecurityRulesEmulatorTest {
   @Test
+  fun selfOrdersAreRejectedByTheAdapterAndDirectWrites() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publish(owner)
+      val ownerId = owner.auth.currentUser!!.uid
+      val ownerOrders = OrderRepositoryFirestore({ ownerId }, owner.firestore)
+      val draft = OrderDraft(trip, listOf(OrderItem("milk", "Milk", 220, 1)))
+      assertEquals(OrderResult.Error(OrderError.InvalidData), ownerOrders.createOrder(draft))
+      val requesterOrders =
+          OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      val saved = (requesterOrders.createOrder(draft) as OrderResult.Success).data
+      val data =
+          requester.firestore
+              .collection("orders")
+              .document(saved.id)
+              .get(Source.SERVER)
+              .await()
+              .data!!
+      // Bypass the Kotlin guard with an otherwise valid document belonging to the trip owner.
+      assertPermissionDenied {
+        owner.firestore
+            .collection("orders")
+            .add(
+                data +
+                    mapOf(
+                        "requesterId" to ownerId,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                    )
+            )
+            .await()
+      }
+      assertEquals(OrderResult.Success(emptyList<Order>()), ownerOrders.getMyOrders())
+      assertEquals(OrderResult.Success(listOf(saved)), requesterOrders.getMyOrders())
+    }
+  }
+
+  @Test
   fun persistentSnapshotRequesterQueriesAndOwnerDetailAccess() = runTest {
     withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
         (requester, owner, other, signedOut) ->
@@ -280,8 +316,22 @@ class OrderFirestoreSecurityRulesEmulatorTest {
 
   @Test
   fun legacySelfOrdersRemainReadableButDenyAllDecisions() = runTest {
-    withClients("owner" to true) { (owner) ->
-      val saved = createOrder(owner, publish(owner))
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      val original = createOrder(requester, publish(owner))
+      val saved =
+          original.copy(
+              id = UUID.randomUUID().toString(),
+              requesterId = owner.auth.currentUser!!.uid,
+          )
+      val fields =
+          owner.firestore
+              .collection("orders")
+              .document(original.id)
+              .get(Source.SERVER)
+              .await()
+              .data!!
+      // Seed historical data through the emulator admin API: clients can no longer create it.
+      createDocumentAsOwner("orders", saved.id, fields + ("requesterId" to saved.requesterId))
       val repo = orders(owner)
       val denied = OrderResult.Error(OrderError.PermissionDenied)
       val ref = owner.firestore.collection("orders").document(saved.id)

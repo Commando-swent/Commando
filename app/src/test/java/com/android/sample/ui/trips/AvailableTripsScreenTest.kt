@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
@@ -194,6 +195,8 @@ class AvailableTripsScreenTest {
   fun locationFieldShowsPlaceholderAndPickingReportsExactPoint() {
     val picked = mutableListOf<Location>()
     showFilter(AvailableTripsUiState.Content(listOf(trip)), null, onSelect = { picked.add(it) })
+    val helper = "Trips within ${HANDOFF_RADIUS_METERS.toInt()} m of this point"
+    compose.onNodeWithText(helper).assertIsDisplayed().assertTextEquals(helper)
     compose
         .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
         .assert(hasText("All locations"))

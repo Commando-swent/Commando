@@ -39,9 +39,9 @@ sealed class IncomingOrdersUiState {
 }
 
 /**
- * Lists the orders of [tripId] for its owner. The repository decides who may read them; this only
- * drops rows of another trip. Each load clears the previous rows at once and only the latest load
- * may publish, so a late reply (for example from before an account change) never reappears.
+ * Lists the orders of [tripId] for its owner. The repository alone decides which orders it returns.
+ * Each load clears the previous rows at once and only the latest load may publish, so a late reply
+ * (for example from before an account change) never reappears.
  */
 class IncomingOrdersViewModel(
     private val orderRepository: OrderRepository,
@@ -75,7 +75,7 @@ class IncomingOrdersViewModel(
         when (val result = orderRepository.getOrdersForTrip(tripId)) {
           is OrderResult.Error -> IncomingOrdersUiState.Error(result.error)
           is OrderResult.Success -> {
-            val rows = result.data.filter { it.tripId == tripId }.map(::IncomingOrderRow)
+            val rows = result.data.map(::IncomingOrderRow)
             if (rows.isEmpty()) IncomingOrdersUiState.Empty else IncomingOrdersUiState.Content(rows)
           }
         }

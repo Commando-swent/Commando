@@ -137,7 +137,7 @@ class IncomingOrdersViewModelTest {
   }
 
   @Test
-  fun lateReplyOfASupersededLoadIsDiscardedAndForeignRowsAreDropped() = runTest {
+  fun lateReplyOfASupersededLoadIsDiscarded() = runTest {
     val repository = GatedOrderRepository()
     val viewModel = IncomingOrdersViewModel(repository, trip.id)
     runCurrent()
@@ -146,7 +146,7 @@ class IncomingOrdersViewModelTest {
     repository.gates[0].complete(OrderResult.Success(listOf(older)))
     advanceUntilIdle()
     assertEquals(IncomingOrdersUiState.Loading, viewModel.uiState.value)
-    repository.gates[1].complete(OrderResult.Success(listOf(elsewhere, newer)))
+    repository.gates[1].complete(OrderResult.Success(listOf(newer)))
     advanceUntilIdle()
     assertEquals(listOf("newer"), rowIds(viewModel.uiState.value))
     assertEquals(listOf(trip.id, trip.id), repository.tripIds)

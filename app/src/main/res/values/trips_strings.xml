@@ -7,4 +7,9 @@
     <string name="trips_retry">Retry</string>
     <string name="trips_departure">Departure: %1$s</string>
     <string name="trips_handoff">%1$s · Handoff point</string>
+    <string name="trips_location_label">Delivery location</string>
+    <string name="trips_location_placeholder">All locations</string>
+    <string name="trips_location_helper">Trips within 500 m of this point</string>
+    <string name="trips_location_clear">Clear location</string>
+    <string name="trips_no_matches">No trips near %1$s yet.</string>
 </resources>

@@ -302,6 +302,11 @@
     <string name="trips_retry">Réessayer</string>
     <string name="trips_departure">Départ : %1$s</string>
     <string name="trips_handoff">%1$s · Point de remise</string>
+    <string name="trips_location_label">Lieu de livraison</string>
+    <string name="trips_location_placeholder">Tous les lieux</string>
+    <string name="trips_location_helper">Trajets à moins de 500 m de ce point</string>
+    <string name="trips_location_clear">Effacer le lieu</string>
+    <string name="trips_no_matches">Aucun trajet près de %1$s pour le moment.</string>
     <string name="profile_faq_expanded">Développé</string>
     <string name="profile_faq_collapsed">Réduit</string>
     <string name="order_product_limit">Nombre maximal de produits différents par commande : %1$d. Retirez un produit pour continuer.</string>

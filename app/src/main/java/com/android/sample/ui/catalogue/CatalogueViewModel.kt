@@ -4,6 +4,7 @@ package com.android.sample.ui.catalogue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.MAX_PRODUCT_QUERY_LIMIT
+import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductResult
@@ -46,8 +47,14 @@ sealed interface CatalogueContent {
       get() = nextCursor != null && !isLoadingMore
   }
 
-  /** [query] has no word the index can search, such as a single letter: a hint, not "no match". */
-  data class UnsearchableQuery(val query: String) : CatalogueContent
+  /**
+   * [query] has no word the index can search, such as a single letter, or is too long: a hint, not
+   * "no match".
+   */
+  data class UnsearchableQuery(val query: String) : CatalogueContent {
+    val isTooLong: Boolean
+      get() = query.length > MAX_SEARCH_QUERY_LENGTH
+  }
 
   data class UnsupportedStore(val storeName: String) : CatalogueContent
 
@@ -91,7 +98,7 @@ data class CatalogueUiState(
   fun quantityOf(productId: String): Int = items.find { it.productId == productId }?.quantity ?: 0
 }
 
-const val SEARCH_DEBOUNCE_MILLIS = 300L
+internal const val SEARCH_DEBOUNCE_MILLIS = 300L
 
 /**
  * Searches the selected trip's chain catalogue page by page and edits the shared [OrderDraftState].
@@ -130,9 +137,13 @@ class CatalogueViewModel(
 
   fun clearSearch() = onQueryChange("")
 
-  /** Repeats a failed first page; ignored while a search is already running. */
+  /**
+   * Repeats a failed first page; ignored while a search is already running or once products are
+   * loaded, so it never drops them. A failed later page is retried through [loadMore].
+   */
   fun retry() {
-    if (searchJob?.isActive != true) search(debounce = false)
+    if (searchJob?.isActive == true || mutableState.value.content is CatalogueContent.Loaded) return
+    search(debounce = false)
   }
 
   /** Appends the next page, or retries the page that failed; one request at a time. */

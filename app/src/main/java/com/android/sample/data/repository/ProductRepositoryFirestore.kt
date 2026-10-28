@@ -8,6 +8,7 @@ import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import java.io.IOException
 import java.text.Normalizer
 import java.util.Locale
@@ -117,9 +118,10 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
           query.whereEqualTo(FieldPath.of(FIELD_SEARCH_PREFIXES, term), true)
         }
     val ordered = filtered.orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+    // Offline, a cached page can be short and would read as the end of the catalogue: fail instead.
     return (afterDocumentId?.let { ordered.startAfter(it) } ?: ordered)
         .limit(limit.toLong())
-        .get()
+        .get(Source.SERVER)
         .await()
         .documents
         .map { ProductFirestoreDocument(it.id, it.data.orEmpty()) }
@@ -200,9 +202,9 @@ private fun Exception.toProductError(): ProductError =
     }
 
 internal const val MAX_PRODUCT_QUERY_LIMIT = 50
-private const val MAX_SEARCH_QUERY_LENGTH = 100
+internal const val MAX_SEARCH_QUERY_LENGTH = 100
 private const val MAX_SEARCH_TERMS = 5
-private const val MIN_SEARCH_TERM_LENGTH = 2
+internal const val MIN_SEARCH_TERM_LENGTH = 2
 private const val MAX_SEARCH_TERM_LENGTH = 15
 private const val MAX_CURSOR_LENGTH = 1_500
 private val NON_SEARCHABLE_CHARACTERS = Regex("[^a-z0-9]+")

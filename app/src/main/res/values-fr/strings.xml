@@ -71,7 +71,17 @@
     <string name="catalogue_no_match_body">Vérifiez l’orthographe ou essayez un mot plus court. Vos articles sélectionnés sont conservés.</string>
     <string name="catalogue_clear_search">Effacer la recherche</string>
     <string name="catalogue_short_query_title">Continuez à saisir pour rechercher</string>
-    <string name="catalogue_short_query_body">Saisissez au moins 2 lettres ou chiffres, et 100 caractères au plus. Vos articles sélectionnés sont conservés.</string>
+    <plurals name="catalogue_short_query_body">
+        <item quantity="one">Saisissez au moins %1$d lettre ou chiffre. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="many">Saisissez au moins %1$d lettres ou chiffres. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="other">Saisissez au moins %1$d lettres ou chiffres. Vos articles sélectionnés sont conservés.</item>
+    </plurals>
+    <string name="catalogue_long_query_title">Raccourcissez votre recherche</string>
+    <plurals name="catalogue_long_query_body">
+        <item quantity="one">Saisissez %1$d caractère au plus. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="many">Saisissez %1$d caractères au plus. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="other">Saisissez %1$d caractères au plus. Vos articles sélectionnés sont conservés.</item>
+    </plurals>
     <string name="catalogue_empty_title">Aucun produit pour le moment</string>
     <string name="catalogue_empty_body">Le catalogue de ce magasin ne contient pas encore de produits.</string>
     <string name="catalogue_error_title">Impossible de charger le catalogue</string>

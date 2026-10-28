@@ -45,6 +45,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
+import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
+import com.android.sample.data.repository.MIN_SEARCH_TERM_LENGTH
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
@@ -312,6 +314,8 @@ private fun LazyListScope.catalogueBody(
         ) {
           Text(
               stringResource(R.string.catalogue_load_more_error),
+              // A page loads without a tap, so its failure is announced too.
+              Modifier.semantics { liveRegion = LiveRegionMode.Polite },
               style = catalogueText(14),
               color = MaterialTheme.colorScheme.error,
           )
@@ -360,19 +364,30 @@ private fun CatalogueStateMessage(
                 stringResource(R.string.catalogue_unsupported_title),
                 stringResource(R.string.catalogue_unsupported_body, content.storeName),
             )
+        content is CatalogueContent.UnsearchableQuery && content.isTooLong ->
+            Triple(
+                R.drawable.ic_catalogue_search,
+                stringResource(R.string.catalogue_long_query_title),
+                pluralStringResource(
+                    R.plurals.catalogue_long_query_body,
+                    MAX_SEARCH_QUERY_LENGTH,
+                    MAX_SEARCH_QUERY_LENGTH,
+                ),
+            )
         content is CatalogueContent.UnsearchableQuery ->
             Triple(
                 R.drawable.ic_catalogue_search,
                 stringResource(R.string.catalogue_short_query_title),
-                stringResource(R.string.catalogue_short_query_body),
+                pluralStringResource(
+                    R.plurals.catalogue_short_query_body,
+                    MIN_SEARCH_TERM_LENGTH,
+                    MIN_SEARCH_TERM_LENGTH,
+                ),
             )
         noMatch ->
             Triple(
                 R.drawable.ic_catalogue_search_x,
-                stringResource(
-                    R.string.catalogue_no_match_title,
-                    (content as CatalogueContent.Loaded).query,
-                ),
+                stringResource(R.string.catalogue_no_match_title, content.query),
                 stringResource(R.string.catalogue_no_match_body),
             )
         else ->

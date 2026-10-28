@@ -2,6 +2,7 @@ package com.android.sample.ui.catalogue
 
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductResult
@@ -300,7 +301,12 @@ class CatalogueViewModelTest {
     vm.onQueryChange("a")
     advanceUntilIdle()
     assertEquals(CatalogueContent.UnsearchableQuery("a"), vm.uiState.value.content)
+    assertFalse((vm.uiState.value.content as CatalogueContent.UnsearchableQuery).isTooLong)
     assertTrue(vm.uiState.value.canSearch)
+
+    vm.onQueryChange("a".repeat(MAX_SEARCH_QUERY_LENGTH + 1))
+    advanceUntilIdle()
+    assertTrue((vm.uiState.value.content as CatalogueContent.UnsearchableQuery).isTooLong)
   }
 
   @Test
@@ -376,7 +382,7 @@ class CatalogueViewModelTest {
   }
 
   @Test
-  fun unexpectedRepositoryExceptionsBecomeUnknownErrors() = runTest {
+  fun unexpectedRepositoryExceptionsBecomeUnknownErrorsAndRetryKeepsLoadedProducts() = runTest {
     products.result = ProductResult.Success(migrosProducts(0..60))
     val vm = viewModel()
     advanceUntilIdle()
@@ -384,7 +390,14 @@ class CatalogueViewModelTest {
     vm.loadMore()
     advanceUntilIdle()
     assertEquals(ProductError.Unknown, content(vm).loadMoreError)
+    // A failed later page is retried with loadMore(); retry() never drops the loaded products.
     vm.retry()
+    advanceUntilIdle()
+    assertEquals(migrosProducts(0..49), loaded(vm))
+    assertEquals(ProductError.Unknown, content(vm).loadMoreError)
+    assertEquals(2, products.requests.size)
+
+    vm.onQueryChange("oat")
     advanceUntilIdle()
     assertEquals(CatalogueContent.ProductsFailed(ProductError.Unknown), vm.uiState.value.content)
   }

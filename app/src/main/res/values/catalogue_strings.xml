@@ -32,7 +32,15 @@
     <string name="catalogue_no_match_body">Check the spelling or try a shorter word. Your selected items are kept.</string>
     <string name="catalogue_clear_search">Clear search</string>
     <string name="catalogue_short_query_title">Keep typing to search</string>
-    <string name="catalogue_short_query_body">Use at least 2 letters or digits, and at most 100 characters. Your selected items are kept.</string>
+    <plurals name="catalogue_short_query_body">
+        <item quantity="one">Use at least %1$d letter or digit. Your selected items are kept.</item>
+        <item quantity="other">Use at least %1$d letters or digits. Your selected items are kept.</item>
+    </plurals>
+    <string name="catalogue_long_query_title">Shorten your search</string>
+    <plurals name="catalogue_long_query_body">
+        <item quantity="one">Use at most %1$d character. Your selected items are kept.</item>
+        <item quantity="other">Use at most %1$d characters. Your selected items are kept.</item>
+    </plurals>
     <string name="catalogue_empty_title">No products yet</string>
     <string name="catalogue_empty_body">This store has no products in the catalogue yet.</string>
     <string name="catalogue_error_title">Couldn’t load the catalogue</string>

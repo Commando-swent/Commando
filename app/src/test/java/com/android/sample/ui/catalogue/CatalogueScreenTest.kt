@@ -156,7 +156,10 @@ class CatalogueScreenTest {
 
     // Reaching the end asked for page 2 once; scrolling back and forth does not retry it.
     list.performScrollToNode(hasTestTag(CatalogueTestTags.LOAD_MORE))
-    compose.onNodeWithText("Couldn’t load more products.").assertIsDisplayed()
+    compose
+        .onNodeWithText("Couldn’t load more products.")
+        .assertIsDisplayed()
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
     list.performScrollToNode(hasTestTag(CatalogueTestTags.row("migros:000")))
     list.performScrollToNode(hasTestTag(CatalogueTestTags.LOAD_MORE))
     assertEquals(listOf(null, "migros:049"), products.requests.map { it.cursor })
@@ -201,14 +204,21 @@ class CatalogueScreenTest {
   }
 
   @Test
-  fun aOneLetterSearchAsksForMoreLettersInsteadOfReportingNoMatch() {
+  fun unsearchableQueriesAskToTypeMoreOrShortenInsteadOfReportingNoMatch() {
     show()
     compose.onNodeWithTag(CatalogueTestTags.add(milk.id)).performClick()
     products.result = ProductResult.Error(ProductError.InvalidQuery)
     compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("o")
     compose.onNodeWithText("Keep typing to search").assertIsDisplayed()
+    compose.onNodeWithText("Use at least 2 letters or digits", substring = true).assertIsDisplayed()
     compose.onNodeWithText("No products match", substring = true).assertDoesNotExist()
     compose.onNodeWithTag(CatalogueTestTags.SUMMARY).assertTextContains("1 item")
+
+    // Too long to search: asking for more letters would be the wrong hint.
+    compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("o".repeat(101))
+    compose.onNodeWithText("Shorten your search").assertIsDisplayed()
+    compose.onNodeWithText("Use at most 100 characters", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("Keep typing to search").assertDoesNotExist()
 
     products.result = ProductResult.Success(listOf(milk, bread))
     compose.onNodeWithText("Clear search").performClick()

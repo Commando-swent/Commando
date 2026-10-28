@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; trip-owner query (#147): Claude Code.
 import com.android.sample.model.*
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -102,6 +102,7 @@ internal constructor(
     OrderResult.Success(order)
   }
 
+  /** Checks trip ownership, then reads the trip's orders from the server; see the interface. */
   override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> = session { uid ->
     if (!tripId.isDocumentId()) return@session failure(OrderError.InvalidData)
     // Rules enforce ownership independently; this check also covers a readable PUBLISHED trip.
@@ -171,6 +172,7 @@ internal interface OrderFirestoreDataSource {
 
   suspend fun getMine(uid: String): List<OrderFirestoreDocument>
 
+  /** Server read of every order whose `tripId` is [tripId]; the rules restrict it to the owner. */
   suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument>
 
   suspend fun getTrip(id: String): Map<String, Any?>?

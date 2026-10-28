@@ -1,5 +1,6 @@
 package com.android.sample.model
 
+// AI assistance: Claude Code for the shared item count and total.
 import java.time.Instant
 
 /** Maximum distinct products per order; mirrored by the production Firestore rules. */

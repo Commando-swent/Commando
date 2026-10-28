@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
 
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError

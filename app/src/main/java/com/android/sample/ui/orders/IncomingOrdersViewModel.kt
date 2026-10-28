@@ -28,13 +28,18 @@ data class IncomingOrderRow(val order: Order) {
     get() = order.totalCents
 }
 
+/** What the incoming-orders list of one trip shows. */
 sealed class IncomingOrdersUiState {
+  /** A load is in progress; previous rows are no longer shown. */
   data object Loading : IncomingOrdersUiState()
 
+  /** The trip's orders, newest first, as returned by the repository. */
   data class Content(val rows: List<IncomingOrderRow>) : IncomingOrdersUiState()
 
+  /** The trip has no orders yet. */
   data object Empty : IncomingOrdersUiState()
 
+  /** The load failed with [error]; [IncomingOrdersViewModel.refresh] retries it. */
   data class Error(val error: OrderError) : IncomingOrdersUiState()
 }
 
@@ -42,6 +47,8 @@ sealed class IncomingOrdersUiState {
  * Lists the orders of [tripId] for its owner. The repository alone decides which orders it returns.
  * Each load clears the previous rows at once and only the latest load may publish, so a late reply
  * (for example from before an account change) never reappears.
+ *
+ * @param loadImmediately false when navigation starts the first load itself, e.g. on resume.
  */
 class IncomingOrdersViewModel(
     private val orderRepository: OrderRepository,
@@ -49,6 +56,7 @@ class IncomingOrdersViewModel(
     loadImmediately: Boolean = true,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<IncomingOrdersUiState>(IncomingOrdersUiState.Loading)
+  /** Current state of the list, read by the screen. */
   val uiState: StateFlow<IncomingOrdersUiState> = mutableState.asStateFlow()
   private var loadJob: Job? = null
   private var latestLoad = 0

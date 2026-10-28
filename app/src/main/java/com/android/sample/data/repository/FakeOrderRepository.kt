@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+// AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
@@ -81,6 +82,7 @@ class FakeOrderRepository(
     OrderResult.Success(order.snapshot())
   }
 
+  /** Same contract as [OrderRepository.getOrdersForTrip]; ownership comes from [tripRepository]. */
   override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> =
       withSession { userId ->
         if (tripId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)

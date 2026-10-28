@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
 import com.android.sample.model.*
 import com.android.sample.model.OrderDecision.ACCEPT
 import com.android.sample.model.OrderDecision.REJECT

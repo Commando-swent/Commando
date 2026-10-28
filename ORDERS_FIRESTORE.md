@@ -1,6 +1,6 @@
 # Orders persistence — #145
 
-AI assistance: OpenAI Codex. Shared-contract choices below remain subject to teammate review.
+AI assistance: OpenAI Codex; #147 trip-owner query: Claude Code. Shared-contract choices below remain subject to teammate review.
 
 `orders/{id}` stores `tripId`, `requesterId`, `items` (productId/name/unitPriceCents/quantity),
 `commissionCents`, `status` and `createdAt`. The document ID is the Order ID.

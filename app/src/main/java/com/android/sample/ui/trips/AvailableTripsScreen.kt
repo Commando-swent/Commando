@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
+import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.ui.navigation.NavigationTestTags
@@ -122,6 +123,7 @@ fun AvailableTripsScreen(
             options = points,
             placeholder = R.string.trips_location_placeholder,
             helper = R.string.trips_location_helper,
+            helperArgs = listOf(HANDOFF_RADIUS_METERS.toInt()),
             error = null,
             enabled = true,
             onSelected = onSelectPoint,

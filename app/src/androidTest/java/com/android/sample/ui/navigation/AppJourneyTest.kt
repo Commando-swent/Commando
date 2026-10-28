@@ -93,13 +93,15 @@ class AppJourneyTest {
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertIsDisplayed()
     click(AppTestTags.TRIPS_BUTTON)
     // From the handoff (46.52, 6.56): SV building is about 240 m away, Rolex about 660 m.
+    // The list is lazy, so scroll it to each node first: small screens show only the header.
     pickLocation("SV building")
-    compose.onNodeWithText(trip.store.name).assertIsDisplayed()
+    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
     pickLocation("Rolex Learning Center")
-    compose.onNodeWithText("No trips near Rolex Learning Center yet.").assertIsDisplayed()
+    scrollTripsTo(hasText("No trips near Rolex Learning Center yet.")).assertIsDisplayed()
     compose.onNodeWithText(trip.store.name).assertDoesNotExist()
-    compose.onNodeWithText("Clear location").performClick()
-    compose.onNodeWithText(trip.store.name).assertIsDisplayed()
+    scrollTripsTo(hasText("Clear location")).performClick()
+    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
     compose.onNodeWithText(trip.store.name).performClick()
@@ -188,11 +190,13 @@ class AppJourneyTest {
 
   private fun click(tag: String) = compose.onNodeWithTag(tag).performClick()
 
+  private fun scrollTripsTo(matcher: SemanticsMatcher): SemanticsNodeInteraction {
+    compose.onNode(hasScrollToIndexAction()).performScrollToNode(matcher)
+    return compose.onNode(matcher)
+  }
+
   private fun pickLocation(name: String) {
-    compose
-        .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
-        .performScrollTo()
-        .performClick()
+    scrollTripsTo(hasTestTag(AvailableTripsScreenTestTags.LOCATION_FIELD)).performClick()
     click(CreateTripScreenTestTags.locationOption(name))
   }
 

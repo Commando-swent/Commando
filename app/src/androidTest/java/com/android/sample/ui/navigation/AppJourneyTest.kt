@@ -64,7 +64,7 @@ class AppJourneyTest {
               query: String,
               cursor: String?,
               limit: Int,
-          ) = ProductResult.Error(ProductError.Unknown)
+          ) = ProductResult.Success(ProductPage(listOf(oat).filter { it.storeId == storeId }, null))
         }
     val google =
         object : GoogleCredentialClient {

@@ -18,6 +18,9 @@ import com.android.sample.model.Trip
 import com.android.sample.model.storeIdFor
 import com.android.sample.ui.orders.OrderDraftState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,8 +30,24 @@ import kotlinx.coroutines.launch
 sealed interface CatalogueContent {
   data object Loading : CatalogueContent
 
-  /** Products of the trip's chain only; an empty list is a real, empty catalogue. */
-  data class Loaded(val products: List<Product>) : CatalogueContent
+  /**
+   * Loaded pages of the trip's chain for [query], the trimmed search these results answer. An empty
+   * list for a blank [query] is a real, empty catalogue. [nextCursor] is null once every page is
+   * loaded; a [loadMoreError] keeps it so the failed page can be retried.
+   */
+  data class Loaded(
+      val products: List<Product>,
+      val query: String = "",
+      val nextCursor: String? = null,
+      val isLoadingMore: Boolean = false,
+      val loadMoreError: ProductError? = null,
+  ) : CatalogueContent {
+    val canLoadMore: Boolean
+      get() = nextCursor != null && !isLoadingMore
+  }
+
+  /** [query] has no word the index can search, such as a single letter: a hint, not "no match". */
+  data class UnsearchableQuery(val query: String) : CatalogueContent
 
   data class UnsupportedStore(val storeName: String) : CatalogueContent
 
@@ -47,12 +66,9 @@ data class CatalogueUiState(
   val products: List<Product>
     get() = (content as? CatalogueContent.Loaded)?.products.orEmpty()
 
-  val visibleProducts: List<Product>
-    get() {
-      val search = query.trim()
-      return if (search.isEmpty()) products
-      else products.filter { it.name.contains(search, ignoreCase = true) }
-    }
+  /** Searching needs the trip's chain; it stays possible after a failed search. */
+  val canSearch: Boolean
+    get() = trip != null && content !is CatalogueContent.UnsupportedStore
 
   val selectedCount: Long
     get() = items.sumOf { it.quantity.toLong() }
@@ -75,19 +91,23 @@ data class CatalogueUiState(
   fun quantityOf(productId: String): Int = items.find { it.productId == productId }?.quantity ?: 0
 }
 
+const val SEARCH_DEBOUNCE_MILLIS = 300L
+
 /**
- * Loads the selected trip's chain catalogue and edits the shared [OrderDraftState]. Pass the same
- * draft instance to Review Order; this screen never clears it.
+ * Searches the selected trip's chain catalogue page by page and edits the shared [OrderDraftState].
+ * Pass the same draft instance to Review Order; this screen never clears it.
  */
 class CatalogueViewModel(
     private val tripId: String,
     private val tripRepository: TripRepository,
     private val productRepository: ProductRepository,
     private val draft: OrderDraftState,
+    private val searchDebounceMillis: Long = SEARCH_DEBOUNCE_MILLIS,
 ) : ViewModel() {
   private val mutableState: MutableStateFlow<CatalogueUiState>
   val uiState: StateFlow<CatalogueUiState>
-  private var isLoading = false
+  private var searchJob: Job? = null
+  private var pageJob: Job? = null
 
   init {
     require(tripId.isNotBlank())
@@ -98,16 +118,60 @@ class CatalogueViewModel(
     viewModelScope.launch {
       draft.draft.collect { current -> mutableState.update { it.copy(items = itemsOf(current)) } }
     }
-    load()
+    search(debounce = false)
   }
 
+  /** Each change restarts a debounced search; results of an older query are never shown. */
   fun onQueryChange(query: String) {
+    val previous = mutableState.value.query
     mutableState.update { it.copy(query = query) }
+    if (query.trim() != previous.trim()) search(debounce = true)
   }
 
   fun clearSearch() = onQueryChange("")
 
-  fun retry() = load()
+  /** Repeats a failed first page; ignored while a search is already running. */
+  fun retry() {
+    if (searchJob?.isActive != true) search(debounce = false)
+  }
+
+  /** Appends the next page, or retries the page that failed; one request at a time. */
+  fun loadMore() {
+    val loaded = mutableState.value.content as? CatalogueContent.Loaded ?: return
+    val cursor = loaded.nextCursor
+    val storeId = mutableState.value.trip?.let { storeIdFor(it.store.name) }
+    // A pending search will replace these results; never extend them with another page.
+    if (searchJob?.isActive == true) return
+    if (!loaded.canLoadMore || cursor == null || storeId == null) return
+    setLoaded { it.copy(isLoadingMore = true, loadMoreError = null) }
+    pageJob = viewModelScope.launch {
+      val result =
+          try {
+            productRepository.searchProducts(storeId, loaded.query, cursor, MAX_PRODUCT_QUERY_LIMIT)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            ProductResult.Error(ProductError.Unknown)
+          }
+      // A new search cancels this job; never append a page to another query's results.
+      ensureActive()
+      setLoaded { current ->
+        when (result) {
+          is ProductResult.Success -> {
+            val known = current.products.mapTo(HashSet()) { it.id }
+            val page = result.data.products.filter { it.belongsTo(storeId) && it.id !in known }
+            current.copy(
+                products = current.products + page,
+                nextCursor = result.data.nextCursor,
+                isLoadingMore = false,
+            )
+          }
+          is ProductResult.Error ->
+              current.copy(isLoadingMore = false, loadMoreError = result.error)
+        }
+      }
+    }
+  }
 
   fun add(productId: String) {
     if (!ownsDraft()) return
@@ -129,28 +193,33 @@ class CatalogueViewModel(
     draft.updateQuantity(productId, quantity - 1)
   }
 
-  private fun load() {
-    if (isLoading) return
-    // Set this before launching so repeated calls cannot start concurrent requests.
-    isLoading = true
-    mutableState.update { it.copy(content = CatalogueContent.Loading) }
-    viewModelScope.launch {
-      try {
-        val content = loadContent()
-        mutableState.update { it.copy(content = content) }
-      } catch (cancelled: CancellationException) {
-        throw cancelled
-      } catch (_: Exception) {
-        mutableState.update {
-          it.copy(content = CatalogueContent.ProductsFailed(ProductError.Unknown))
-        }
-      } finally {
-        isLoading = false
+  private fun search(debounce: Boolean) {
+    searchJob?.cancel()
+    pageJob?.cancel()
+    setLoaded { it.copy(isLoadingMore = false) }
+    val query = mutableState.value.query.trim()
+    if (!debounce) mutableState.update { it.copy(content = CatalogueContent.Loading) }
+    searchJob = viewModelScope.launch {
+      // While typing, the current results stay until the search is actually sent.
+      if (debounce) {
+        delay(searchDebounceMillis)
+        mutableState.update { it.copy(content = CatalogueContent.Loading) }
       }
+      val content =
+          try {
+            loadFirstPage(query)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            CatalogueContent.ProductsFailed(ProductError.Unknown)
+          }
+      // The query changed while this request ran: its results are stale.
+      ensureActive()
+      mutableState.update { it.copy(content = content) }
     }
   }
 
-  private suspend fun loadContent(): CatalogueContent {
+  private suspend fun loadFirstPage(query: String): CatalogueContent {
     val trip =
         mutableState.value.trip
             ?: when (val result = tripRepository.getTripById(tripId)) {
@@ -160,14 +229,29 @@ class CatalogueViewModel(
             }
     val storeId =
         storeIdFor(trip.store.name) ?: return CatalogueContent.UnsupportedStore(trip.store.name)
-    return when (val result = productRepository.getProducts(storeId, MAX_PRODUCT_QUERY_LIMIT)) {
+    val result =
+        productRepository.searchProducts(storeId, query, cursor = null, MAX_PRODUCT_QUERY_LIMIT)
+    return when (result) {
       // Never show, or let the requester select, a product from another chain.
       is ProductResult.Success ->
-          CatalogueContent.Loaded(result.data.filter { it.belongsTo(storeId) })
+          CatalogueContent.Loaded(
+              result.data.products.filter { it.belongsTo(storeId) }.distinctBy { it.id },
+              query,
+              result.data.nextCursor,
+          )
       is ProductResult.Error ->
-          if (result.error == ProductError.InvalidStore)
-              CatalogueContent.UnsupportedStore(trip.store.name)
-          else CatalogueContent.ProductsFailed(result.error)
+          when (result.error) {
+            ProductError.InvalidStore -> CatalogueContent.UnsupportedStore(trip.store.name)
+            // Too short or too long to search, such as "a": checked before any Firestore read.
+            ProductError.InvalidQuery -> CatalogueContent.UnsearchableQuery(query)
+            else -> CatalogueContent.ProductsFailed(result.error)
+          }
+    }
+  }
+
+  private fun setLoaded(edit: (CatalogueContent.Loaded) -> CatalogueContent.Loaded) {
+    mutableState.update { state ->
+      (state.content as? CatalogueContent.Loaded)?.let { state.copy(content = edit(it)) } ?: state
     }
   }
 

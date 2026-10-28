@@ -46,6 +46,14 @@
         <item quantity="many">%1$d RÉSULTATS POUR « %2$s »</item>
         <item quantity="other">%1$d RÉSULTATS POUR « %2$s »</item>
     </plurals>
+    <string name="catalogue_all_products_more">TOUS LES PRODUITS · %1$d+</string>
+    <plurals name="catalogue_results_more">
+        <item quantity="one">%1$d+ RÉSULTAT POUR « %2$s »</item>
+        <item quantity="many">%1$d+ RÉSULTATS POUR « %2$s »</item>
+        <item quantity="other">%1$d+ RÉSULTATS POUR « %2$s »</item>
+    </plurals>
+    <string name="catalogue_load_more_error">Impossible de charger plus de produits.</string>
+    <string name="catalogue_loading_more">Chargement d’autres produits…</string>
     <string name="catalogue_loading">CHARGEMENT DES PRODUITS…</string>
     <string name="catalogue_add">Ajouter %1$s à la commande</string>
     <string name="catalogue_increase">Augmenter la quantité de %1$s</string>
@@ -62,6 +70,8 @@
     <string name="catalogue_no_match_title">Aucun produit ne correspond à « %1$s »</string>
     <string name="catalogue_no_match_body">Vérifiez l’orthographe ou essayez un mot plus court. Vos articles sélectionnés sont conservés.</string>
     <string name="catalogue_clear_search">Effacer la recherche</string>
+    <string name="catalogue_short_query_title">Continuez à saisir pour rechercher</string>
+    <string name="catalogue_short_query_body">Saisissez au moins 2 lettres ou chiffres, et 100 caractères au plus. Vos articles sélectionnés sont conservés.</string>
     <string name="catalogue_empty_title">Aucun produit pour le moment</string>
     <string name="catalogue_empty_body">Le catalogue de ce magasin ne contient pas encore de produits.</string>
     <string name="catalogue_error_title">Impossible de charger le catalogue</string>

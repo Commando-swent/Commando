@@ -7,7 +7,18 @@
     <string name="order_details_item">%1$d × %2$s</string>
     <string name="order_details_commission">COMMISSION</string>
     <string name="order_details_pending">PENDING</string>
+    <string name="order_details_accepted">ACCEPTED</string>
+    <string name="order_details_rejected">REJECTED</string>
     <string name="order_details_loading">Loading order details</string>
     <string name="order_details_not_found">This order could not be found.</string>
     <string name="order_details_error">Something went wrong while loading this order.</string>
+    <string name="order_decision_accept">Accept</string>
+    <string name="order_decision_reject">Reject</string>
+    <string name="order_decision_saving">Saving decision…</string>
+    <string name="order_decision_saved">Order status updated.</string>
+    <string name="order_decision_conflict">This order was already decided. Its latest status is shown.</string>
+    <string name="order_decision_error">Could not save the decision. Check your connection and try again.</string>
+    <string name="order_details_session_ended">This session has ended. Sign in again to view your orders.</string>
+    <string name="order_details_authentication_required">Authentication is required. Sign in again to view this order.</string>
+    <string name="order_details_permission_denied">You don\'t have permission to access or modify this order.</string>
 </resources>

@@ -1,5 +1,7 @@
 package com.android.sample.data.repository
 
+import com.android.sample.model.Order
+
 sealed class OrderError {
   data object NotAuthenticated : OrderError()
 
@@ -8,6 +10,8 @@ sealed class OrderError {
   data object PermissionDenied : OrderError()
 
   data object InvalidData : OrderError()
+
+  data class AlreadyDecided(val persistedOrder: Order) : OrderError()
 
   data object Unknown : OrderError()
 }

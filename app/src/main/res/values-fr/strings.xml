@@ -171,6 +171,8 @@
     <string name="order_details_item">%1$d × %2$s</string>
     <string name="order_details_commission">COMMISSION</string>
     <string name="order_details_pending">EN ATTENTE</string>
+    <string name="order_details_accepted">ACCEPTÉE</string>
+    <string name="order_details_rejected">REFUSÉE</string>
     <string name="order_details_loading">Chargement des détails de la commande</string>
     <string name="order_details_not_found">Cette commande est introuvable.</string>
     <string name="order_details_error">Une erreur est survenue lors du chargement de cette commande.</string>
@@ -303,4 +305,13 @@
     <string name="profile_faq_expanded">Développé</string>
     <string name="profile_faq_collapsed">Réduit</string>
     <string name="order_product_limit">Nombre maximal de produits différents par commande : %1$d. Retirez un produit pour continuer.</string>
+    <string name="order_decision_accept">Accepter</string>
+    <string name="order_decision_reject">Refuser</string>
+    <string name="order_decision_saving">Enregistrement de la décision…</string>
+    <string name="order_decision_saved">Statut de la commande mis à jour.</string>
+    <string name="order_decision_conflict">Cette commande a déjà été traitée. Son statut actuel est affiché.</string>
+    <string name="order_decision_error">Impossible de sauvegarder la décision. Vérifiez votre connexion et réessayez.</string>
+    <string name="order_details_session_ended">Cette session est terminée. Reconnectez-vous pour consulter vos commandes.</string>
+    <string name="order_details_authentication_required">Une authentification est nécessaire. Reconnectez-vous pour consulter cette commande.</string>
+    <string name="order_details_permission_denied">Vous n\'avez pas l\'autorisation de consulter ou de modifier cette commande.</string>
 </resources>

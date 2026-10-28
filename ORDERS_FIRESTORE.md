@@ -18,14 +18,18 @@ read access remain unchanged; this creation guard performs no migration or decis
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
 Detail reads allow the requester or the associated trip's current owner. Baseline trip-wide lists,
-updates and deletes are denied. #147 owns the future trip query; #148 owns atomic decisions and statuses.
-No placeholder methods or decision writes are introduced here.
+updates other than owner decisions, and deletes remain denied; #147 owns the future trip query.
+
+`decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
+ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
+without writing. Rules denials reconcile only authorized final snapshots through a read-only transaction.
+Decisions ignore trip status/time and deny legacy self-orders, which remain readable.
 
 All operations check session identity before/after suspension. Cancellation propagates. Missing documents
 return NotFound when readable; a lookup denied by rules remains PermissionDenied (including an
-unreadable/missing trip). Unavailable/network failures use the existing Unknown result. No errors or
-statuses were added to the shared API. After an account change a committed write can remain stored,
-but its result is not delivered to the previous session. Server reads intentionally fail offline.
+unreadable/missing trip). Unavailable/network failures use Unknown. Retry uncertain decisions with the
+same ID/intent, even from a fresh repository. Cancellation/session loss cannot undo committed writes;
+their results are withheld from ended sessions. Server reads intentionally fail offline.
 
 Rules enforce identity, eligible trip, exact order/item fields, nonblank product IDs/names, integer
 prices/quantities, line and overall Int totals including commission, unique products, timestamp,

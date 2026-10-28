@@ -316,8 +316,22 @@ class OrderFirestoreSecurityRulesEmulatorTest {
 
   @Test
   fun legacySelfOrdersRemainReadableButDenyAllDecisions() = runTest {
-    withClients("owner" to true) { (owner) ->
-      val saved = createOrder(owner, publish(owner))
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      val original = createOrder(requester, publish(owner))
+      val saved =
+          original.copy(
+              id = UUID.randomUUID().toString(),
+              requesterId = owner.auth.currentUser!!.uid,
+          )
+      val fields =
+          owner.firestore
+              .collection("orders")
+              .document(original.id)
+              .get(Source.SERVER)
+              .await()
+              .data!!
+      // Seed historical data through the emulator admin API: clients can no longer create it.
+      createDocumentAsOwner("orders", saved.id, fields + ("requesterId" to saved.requesterId))
       val repo = orders(owner)
       val denied = OrderResult.Error(OrderError.PermissionDenied)
       val ref = owner.firestore.collection("orders").document(saved.id)

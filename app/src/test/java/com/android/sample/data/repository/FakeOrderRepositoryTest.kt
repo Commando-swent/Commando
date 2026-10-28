@@ -270,6 +270,118 @@ class FakeOrderRepositoryTest {
     assertEquals("order-demo-1", repository.createOrder(input).data().id)
   }
 
+  @Test
+  fun creationRejectsSelfOrdersWithoutConsumingIdsOrChangingLegacyOrders() = runTest {
+    var generatedIds = 0
+    val legacy = order().copy(requesterId = "commando")
+    val repository =
+        FakeOrderRepository(
+            { userId },
+            listOf(legacy),
+            now = { time },
+            newId = { "new-${++generatedIds}" },
+            tripRepository = trips(),
+        )
+    userId = "commando"
+    assertEquals(failure(OrderError.InvalidData), repository.createOrder(input))
+    assertEquals(0, generatedIds)
+    assertEquals(listOf(legacy), repository.getMyOrders().data())
+    assertEquals(OrderResult.Success(legacy), repository.getOrderById(legacy.id))
+    userId = "requester-demo"
+    val saved = repository.createOrder(input).data()
+    assertEquals("new-1", saved.id)
+    assertEquals(userId, saved.requesterId)
+    assertEquals(listOf(saved), repository.getMyOrders().data())
+  }
+
+  @Test
+  fun creationDoesNotInsertWhenInjectedTripLookupFailsOrReturnsAnotherTrip() = runTest {
+    val source = trips()
+    val repository = FakeOrderRepository({ userId }, tripRepository = source)
+    for ((error, expected) in
+        listOf(
+            TripError.NotFound to OrderError.NotFound,
+            TripError.PermissionDenied to OrderError.PermissionDenied,
+            TripError.NetworkError to OrderError.Unknown,
+            TripError.InvalidData to OrderError.Unknown,
+            TripError.Unknown to OrderError.Unknown,
+        )) {
+      source.forcedError = error
+      assertEquals(failure(expected), repository.createOrder(input))
+      assertTrue(repository.getMyOrders().data().isEmpty())
+    }
+    source.forcedError = null
+    val mismatched =
+        object : TripRepository by source {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> =
+              source.getTripById(this@FakeOrderRepositoryTest.tripId)
+        }
+    val wrong = FakeOrderRepository({ userId }, tripRepository = mismatched)
+    assertEquals(failure(OrderError.InvalidData), wrong.createOrder(input.copy(tripId = "another")))
+    assertTrue(wrong.getMyOrders().data().isEmpty())
+  }
+
+  @Test
+  fun creationDiscardsAnAccountChangeDuringTripLookup() = runTest {
+    val entered = CompletableDeferred<Unit>()
+    val release = CompletableDeferred<Unit>()
+    val source = trips()
+    val delayed =
+        object : TripRepository by source {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> {
+            entered.complete(Unit)
+            release.await()
+            return source.getTripById(tripId)
+          }
+        }
+    val repository = FakeOrderRepository({ userId }, tripRepository = delayed)
+    val pending = async { repository.createOrder(input) }
+    entered.await()
+    userId = "new-account"
+    release.complete(Unit)
+    assertEquals(failure(OrderError.NotAuthenticated), pending.await())
+    assertTrue(repository.getMyOrders().data().isEmpty())
+    assertTrue(repository.createOrder(input) is OrderResult.Success)
+  }
+
+  @Test
+  fun creationLookupExceptionsAndCancellationLeaveStorageAndMutexUsable() = runTest {
+    for (scenario in listOf("exception", "account-change", "cancellation")) {
+      userId = "requester-demo"
+      var failing = true
+      val source = trips()
+      val throwing =
+          object : TripRepository by source {
+            override suspend fun getTripById(tripId: String): TripResult<Trip> {
+              if (failing) {
+                if (scenario == "account-change") userId = "new-account"
+                if (scenario == "cancellation") throw CancellationException("cancelled")
+                error("Trip lookup failed")
+              }
+              return source.getTripById(tripId)
+            }
+          }
+      val repository = FakeOrderRepository({ userId }, tripRepository = throwing)
+      if (scenario == "cancellation") {
+        try {
+          repository.createOrder(input)
+          org.junit.Assert.fail("Cancellation must propagate")
+        } catch (_: CancellationException) {}
+      } else {
+        assertEquals(
+            failure(
+                if (scenario == "account-change") OrderError.NotAuthenticated
+                else OrderError.Unknown
+            ),
+            repository.createOrder(input),
+        )
+      }
+      assertTrue(repository.getMyOrders().data().isEmpty())
+      failing = false
+      assertTrue(repository.createOrder(input) is OrderResult.Success)
+    }
+  }
+
   private fun trips(ownerId: String = "commando") =
       FakeTripRepository(
           ownerId,

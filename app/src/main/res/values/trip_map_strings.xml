@@ -1,0 +1,27 @@
+<resources>
+    <string name="trip_map_title">Campus map</string>
+    <string name="trip_map_refresh">Refresh</string>
+    <string name="trip_map_clear_filter">%1$s · Clear location</string>
+    <string name="trip_map_loading">Finding trips near you…</string>
+    <string name="trip_map_session_ended">Your session has ended.</string>
+    <string name="trip_map_marker">Trip: %1$s at %2$s · %3$s</string>
+    <string name="trip_map_page">Show trip %1$d of %2$d: %3$s</string>
+    <string name="trip_map_north_up">Campus map · north is up</string>
+    <string name="trip_map_attribution">© OpenStreetMap contributors · ODbL</string>
+    <string name="trip_map_off_map">Outside campus map: %1$s · %2$s</string>
+    <string name="trip_map_locate">Locate me</string>
+    <string name="trip_map_location_unavailable">Device location is not enabled in this version. Choose a delivery location from the trip list.</string>
+    <string name="trip_map_empty_body">When a commando publishes a trip, refresh to see it here.</string>
+    <string name="trip_map_error_body">Check your connection, then try again.</string>
+    <string name="trip_map_today">Today</string>
+    <string name="trip_map_tomorrow">Tomorrow</string>
+    <string name="trip_map_distance">%1$d m</string>
+    <string name="trip_map_distance_unknown">—</string>
+    <string name="trip_map_loading_subtitle">Looking for upcoming trips…</string>
+    <string name="trip_map_error_subtitle">Trips couldn’t be loaded</string>
+    <string name="trip_map_refresh_map">Map · Refresh trips</string>
+    <plurals name="trip_map_count">
+        <item quantity="one">%1$d upcoming trip near you</item>
+        <item quantity="other">%1$d upcoming trips near you</item>
+    </plurals>
+</resources>

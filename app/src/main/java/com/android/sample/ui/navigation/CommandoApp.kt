@@ -230,7 +230,7 @@ private fun AuthenticatedApp(
             launchSingleTop = true
           }
         }
-        if (currentScreen == CommandoScreens.MockMap && mode == AppMode.Commando) {
+        if (currentScreen == CommandoScreens.TripMap && mode == AppMode.Commando) {
           navController.navigate(CommandoScreens.MyTrips.name) {
             popUpTo(CommandoScreens.Home.name)
             launchSingleTop = true
@@ -322,7 +322,7 @@ private fun AuthenticatedApp(
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },
             onOpenMap = {
-              navController.navigate(CommandoScreens.MockMap.name) { launchSingleTop = true }
+              navController.navigate(CommandoScreens.TripMap.name) { launchSingleTop = true }
             },
         )
       }
@@ -478,7 +478,7 @@ private fun AuthenticatedApp(
               )
         }
       }
-      composable(route = CommandoScreens.MockMap.name) { entry ->
+      composable(route = CommandoScreens.TripMap.name) { entry ->
         val map: TripMapViewModel =
             viewModel(viewModelStoreOwner = entry) {
               TripMapViewModel(

@@ -20,9 +20,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -34,42 +32,6 @@ import com.android.sample.ui.navigation.NavigationTestTags
 
 internal val TRIP_MARKER_WIDTH = 96.dp
 internal val GROUP_MARKER_WIDTH = 124.dp
-
-@Composable
-internal fun MapIllustration(modifier: Modifier) {
-  val map = ImageBitmap.imageResource(R.drawable.mock_campus_map)
-  BoxWithConstraints(modifier) {
-    // The Figma map artwork spans the full 412 x 917 frame; bars cover y=0..64 and 813..917.
-    // Crop those covered areas while keeping marker positions in the same illustrated coordinate
-    // space.
-    Canvas(Modifier.matchParentSize()) {
-      drawImage(
-          map,
-          srcOffset = IntOffset(0, (map.height * 64f / 917).toInt()),
-          srcSize = IntSize(map.width, (map.height * 749f / 917).toInt()),
-          dstSize = IntSize(size.width.toInt(), size.height.toInt()),
-      )
-    }
-    val width = maxWidth
-    val height = maxHeight
-    @Composable
-    fun Label(text: String, x: Float, y: Float, size: Int, spacing: Float = .6f) {
-      Text(
-          text,
-          Modifier.offset(width * x / 412, height * (y - 64) / 749).clearAndSetSemantics {},
-          color = MaterialTheme.colorScheme.outline.copy(alpha = .65f),
-          style = MaterialTheme.typography.labelSmall,
-          fontSize = size.sp,
-          letterSpacing = spacing.sp,
-      )
-    }
-    Label("EPFL", 150f, 268f, 13, 3.12f)
-    Label("UNIL · Dorigny", 40f, 662f, 10, 1f)
-    Label("Route Cantonale", 248f, 566f, 9)
-    Label("Ecublens", 268f, 118f, 10, 1f)
-    Label("M1", 360f, 228f, 9)
-  }
-}
 
 @Composable
 internal fun MapMarker(
@@ -147,45 +109,6 @@ internal fun MapMarker(
   }
 }
 
-@Composable
-internal fun EmptyMapCard(modifier: Modifier) {
-  Surface(
-      modifier.fillMaxWidth().testTag(MockMapTestTags.EMPTY),
-      shape = RoundedCornerShape(24.dp),
-      color = MaterialTheme.colorScheme.secondaryContainer,
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-  ) {
-    Column(
-        Modifier.padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-      Box(
-          Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, CircleShape),
-          contentAlignment = Alignment.Center,
-      ) {
-        Icon(
-            painterResource(R.drawable.ic_trip_map_pin),
-            null,
-            Modifier.size(28.dp),
-            tint = MaterialTheme.colorScheme.onPrimary,
-        )
-      }
-      Text(
-          stringResource(R.string.mock_map_empty_title),
-          style = MaterialTheme.typography.titleMedium,
-          textAlign = TextAlign.Center,
-      )
-      Text(
-          stringResource(R.string.mock_map_empty_body),
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
-          textAlign = TextAlign.Center,
-      )
-    }
-  }
-}
-
 /** Stable semantics for the real map and its Figma overlays. */
 object TripMapTestTags {
   const val MARKER_LABEL_PREFIX = "trip_map_marker_label_"
@@ -213,7 +136,7 @@ internal fun MapDiscoveryHeader(
       color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .96f),
   ) {
     Row(
-        Modifier.height(78.dp).padding(start = 19.dp, end = 13.dp),
+        Modifier.heightIn(min = 78.dp).padding(start = 19.dp, end = 13.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {

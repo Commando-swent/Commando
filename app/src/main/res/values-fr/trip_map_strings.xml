@@ -1,6 +1,6 @@
 <resources>
     <string name="trip_map_refresh">Actualiser</string>
-    <string name="trip_map_loading">Recherche de trajets à proximité…</string>
+    <string name="trip_map_loading">Recherche des trajets à venir…</string>
     <string name="trip_map_session_ended">Votre session est terminée.</string>
     <string name="trip_map_marker">Trajet : %1$s à %2$s · %3$s</string>
     <string name="trip_map_page">Afficher le trajet %1$d sur %2$d : %3$s</string>
@@ -15,14 +15,12 @@
     <string name="trip_map_off_map">Choisir le trajet : %1$s · %2$s</string>
     <string name="trip_map_locate">Me localiser</string>
     <string name="trip_map_location_unavailable">La géolocalisation n’est pas activée dans cette version. Choisissez un lieu de remise dans la liste des trajets.</string>
-    <string name="trip_map_today">Aujourd’hui</string>
-    <string name="trip_map_tomorrow">Demain</string>
     <string name="trip_map_distance">%1$d m</string>
     <string name="trip_map_loading_subtitle">Recherche des trajets à venir…</string>
     <string name="trip_map_error_subtitle">Impossible de charger les trajets</string>
     <plurals name="trip_map_count">
-        <item quantity="one">%1$d trajet à venir à proximité</item>
-        <item quantity="other">%1$d trajets à venir à proximité</item>
-        <item quantity="many">%1$d trajets à venir à proximité</item>
+        <item quantity="one">%1$d trajet à venir sur le campus</item>
+        <item quantity="other">%1$d trajets à venir sur le campus</item>
+        <item quantity="many">%1$d trajets à venir sur le campus</item>
     </plurals>
 </resources>

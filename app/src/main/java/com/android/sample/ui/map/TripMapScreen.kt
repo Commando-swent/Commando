@@ -12,12 +12,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -30,10 +35,10 @@ import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.distanceMeters
 import com.android.sample.model.hasValidCoordinates
-import java.time.LocalDate
+import com.android.sample.ui.components.formatTripTime
+import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
@@ -60,9 +65,32 @@ fun TripMapScreen(
   val scope = rememberCoroutineScope()
   val locationMessage = stringResource(R.string.trip_map_location_unavailable)
   val uri = LocalUriHandler.current
+  val density = LocalDensity.current
+  var viewportBounds by remember { mutableStateOf(Rect.Zero) }
+  var controlsBounds by remember { mutableStateOf(Rect.Zero) }
+  val markerBounds = remember(groups) { mutableStateMapOf<String, Rect>() }
   BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-    val cardLimit = (maxHeight - 110.dp).coerceAtLeast(160.dp)
-    MapTripCanvas(groups, content?.selectedTripId, selectedPoint, onSelectTrip, mapSurface)
+    val showLocateWithCard = maxHeight >= 400.dp
+    val controlsHeight = with(density) { controlsBounds.height.toDp() }
+    val cardLimit = (maxHeight - controlsHeight - 32.dp).coerceAtLeast(0.dp)
+    val locate: @Composable () -> Unit = {
+      MapRoundAction(
+          R.drawable.map_locate,
+          R.string.trip_map_locate,
+          { scope.launch { snackbar.showSnackbar(locationMessage) } },
+          Modifier.testTag(TripMapTestTags.LOCATE),
+      )
+    }
+    MapTripCanvas(
+        groups,
+        content?.selectedTripId,
+        selectedPoint,
+        onSelectTrip,
+        mapSurface,
+        onViewportBounds = { viewportBounds = it },
+    ) { id, bounds ->
+      markerBounds[id] = bounds
+    }
     Box(
         Modifier.fillMaxWidth()
             .height(186.dp)
@@ -82,19 +110,22 @@ fun TripMapScreen(
           is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
           else -> pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
         }
-    MapDiscoveryHeader(
-        subtitle,
-        onBack,
-        onRefresh,
-        state != TripMapUiState.Loading && state != TripMapUiState.SessionEnded,
-        Modifier.fillMaxWidth().padding(16.dp),
-    )
-    selectedPoint?.let {
-      TextButton(
-          onClearPoint,
-          Modifier.padding(start = 16.dp, top = 100.dp).testTag(TripMapTestTags.CLEAR_FILTER),
-      ) {
-        Text(stringResource(R.string.trip_map_clear_filter, it.name), fontSize = 12.sp)
+    Column(
+        Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
+          controlsBounds = it.boundsInRoot()
+        }
+    ) {
+      MapDiscoveryHeader(
+          subtitle,
+          onBack,
+          onRefresh,
+          state != TripMapUiState.Loading && state != TripMapUiState.SessionEnded,
+          Modifier.fillMaxWidth(),
+      )
+      selectedPoint?.let {
+        TextButton(onClearPoint, Modifier.testTag(TripMapTestTags.CLEAR_FILTER)) {
+          Text(stringResource(R.string.trip_map_clear_filter, it.name), fontSize = 12.sp)
+        }
       }
     }
     if (
@@ -115,16 +146,16 @@ fun TripMapScreen(
         )
       }
       is TripMapUiState.Content -> {
-        val coveredEdge = (if (selectedPoint == null) 94.dp else 148.dp) + 48.dp
-        val offMap =
-            groups
-                .takeIf { candidates ->
-                  candidates.any {
-                    val point = CAMPUS_MAP_PROJECTION.project(it.first().handoffLocation)
-                    point == null || maxHeight * point.y.toFloat() < coveredEdge
-                  }
-                }
-                .orEmpty()
+        val offMap = groups.filter { group ->
+          CAMPUS_MAP_PROJECTION.project(group.first().handoffLocation) == null ||
+              markerBounds[group.first().id]?.let { bounds ->
+                bounds.overlaps(controlsBounds) ||
+                    bounds.left < viewportBounds.left ||
+                    bounds.top < viewportBounds.top ||
+                    bounds.right > viewportBounds.right ||
+                    bounds.bottom > viewportBounds.bottom
+              } == true
+        }
         if (offMap.isNotEmpty() && state.selectedTrip == null) {
           Surface(
               Modifier.align(Alignment.BottomCenter)
@@ -154,17 +185,24 @@ fun TripMapScreen(
         }
         val trip = state.selectedTrip
         if (trip != null) {
-          MapTripPreview(
-              trip.mapSummary(selectedPoint = selectedPoint),
-              state.selectedGroup.map { it.mapSummary(selectedPoint = selectedPoint) },
-              onSelectTrip,
-              onClearSelection,
-              { onTripDetails(trip.id) },
+          Column(
               Modifier.align(Alignment.BottomCenter)
                   .padding(16.dp)
                   .fillMaxWidth()
                   .heightIn(max = cardLimit),
-          )
+              horizontalAlignment = Alignment.End,
+              verticalArrangement = Arrangement.spacedBy(16.dp),
+          ) {
+            if (showLocateWithCard) locate()
+            MapTripPreview(
+                trip.mapSummary(selectedPoint = selectedPoint),
+                state.selectedGroup.map { it.mapSummary(selectedPoint = selectedPoint) },
+                onSelectTrip,
+                onClearSelection,
+                { onTripDetails(trip.id) },
+                Modifier.fillMaxWidth().weight(1f, fill = false),
+            )
+          }
         }
       }
       else ->
@@ -194,19 +232,8 @@ fun TripMapScreen(
         )
       }
     }
-    if (content?.selectedTrip == null || maxHeight >= 400.dp) {
-      val locateBottom =
-          if (content?.selectedTrip != null) {
-            (if (content.selectedGroup.size > 1) 273.dp else 211.dp) + 32.dp
-          } else 16.dp
-      MapRoundAction(
-          R.drawable.map_locate,
-          R.string.trip_map_locate,
-          { scope.launch { snackbar.showSnackbar(locationMessage) } },
-          Modifier.align(Alignment.BottomEnd)
-              .padding(end = 16.dp, bottom = locateBottom)
-              .testTag(TripMapTestTags.LOCATE),
-      )
+    if (content?.selectedTrip == null) {
+      Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
     }
     SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
   }
@@ -243,17 +270,15 @@ private fun Trip.mapSummary(
     selectedPoint: Location? = null,
 ): MapTripSummary {
   val locale = LocalConfiguration.current.locales[0]
-  val today = stringResource(R.string.trip_map_today)
-  val tomorrow = stringResource(R.string.trip_map_tomorrow)
-  val zone = ZoneId.systemDefault()
-  val date = scheduledAt.atZone(zone).toLocalDate()
-  val day =
-      when (date) {
-        LocalDate.now(zone) -> today
-        LocalDate.now(zone).plusDays(1) -> tomorrow
-        else -> DateTimeFormatter.ofLocalizedDate(FormatStyle.SHORT).withLocale(locale).format(date)
-      }
-  val time = markerTime()
+  val departure =
+      formatTripTime(
+          scheduledAt,
+          now = Instant.now(),
+          zone = ZoneId.systemDefault(),
+          locale = locale,
+          today = stringResource(R.string.trip_today),
+          tomorrow = stringResource(R.string.trip_tomorrow),
+      )
   val meters =
       selectedPoint
           ?.takeIf { it.hasValidCoordinates() && handoffLocation.hasValidCoordinates() }
@@ -262,7 +287,7 @@ private fun Trip.mapSummary(
   return MapTripSummary(
       id,
       store.name,
-      "$day, $time",
+      departure,
       handoffLocation.name,
       position.x.toFloat(),
       position.y.toFloat(),
@@ -279,8 +304,14 @@ private fun MapTripCanvas(
     selectedPoint: Location?,
     onSelectTrip: (String) -> Unit,
     mapSurface: @Composable (Modifier) -> Unit,
+    onViewportBounds: (Rect) -> Unit,
+    onMarkerBounds: (String, Rect) -> Unit,
 ) {
-  BoxWithConstraints(Modifier.fillMaxSize().clipToBounds().testTag(TripMapTestTags.SURFACE)) {
+  BoxWithConstraints(
+      Modifier.fillMaxSize().clipToBounds().testTag(TripMapTestTags.SURFACE).onGloballyPositioned {
+        onViewportBounds(it.boundsInRoot())
+      }
+  ) {
     mapSurface(Modifier.matchParentSize())
     groups.forEach { group ->
       val trip = group.firstOrNull { it.id == selectedTripId } ?: group.first()
@@ -297,12 +328,19 @@ private fun MapTripCanvas(
             trip.markerTime(),
             group.size,
             { onSelectTrip(trip.id) },
-            Modifier.offset(x, maxHeight * summary.y).layout { measurable, constraints ->
-              val marker = measurable.measure(constraints)
-              layout(marker.width, marker.height) {
-                marker.place(-marker.width / 2, -marker.height)
-              }
-            },
+            Modifier.offset(x, maxHeight * summary.y)
+                .layout { measurable, constraints ->
+                  val marker = measurable.measure(constraints)
+                  layout(marker.width, marker.height) {
+                    marker.place(-marker.width / 2, -marker.height)
+                  }
+                }
+                .onGloballyPositioned {
+                  onMarkerBounds(
+                      group.first().id,
+                      it.findRootCoordinates().localBoundingBoxOf(it, clipBounds = false),
+                  )
+                },
             labelShift = x.coerceIn(half, maxWidth - half) - x,
         )
       }

@@ -319,4 +319,17 @@
     <string name="order_details_session_ended">Cette session est terminée. Reconnectez-vous pour consulter vos commandes.</string>
     <string name="order_details_authentication_required">Une authentification est nécessaire. Reconnectez-vous pour consulter cette commande.</string>
     <string name="order_details_permission_denied">Vous n\'avez pas l\'autorisation de consulter ou de modifier cette commande.</string>
+    <string name="incoming_orders_title">Commandes reçues</string>
+    <string name="incoming_orders_subtitle">Commandes passées sur ce trajet.</string>
+    <string name="incoming_orders_loading">Chargement des commandes reçues</string>
+    <string name="incoming_orders_empty">Aucune commande sur ce trajet pour le moment.</string>
+    <string name="incoming_orders_refresh">Actualiser</string>
+    <string name="incoming_orders_error">Une erreur est survenue lors du chargement des commandes.</string>
+    <string name="incoming_orders_retry">Réessayer</string>
+    <string name="incoming_orders_order">Commande %1$s</string>
+    <plurals name="incoming_orders_items">
+        <item quantity="one">%1$d article · %2$s</item>
+        <item quantity="many">%1$d articles · %2$s</item>
+        <item quantity="other">%1$d articles · %2$s</item>
+    </plurals>
 </resources>

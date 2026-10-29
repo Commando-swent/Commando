@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: Claude Code for sharing the status badge (#147).
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -80,7 +81,7 @@ fun OrderDetailsScreen(
         )
       }
       when (state) {
-        is OrderDetailsUiState.Content -> OrderDetailsStatus(state.order.status)
+        is OrderDetailsUiState.Content -> OrderStatusBadge(state.order.status)
         OrderDetailsUiState.Loading -> OrderDetailsPlaceholder(Modifier.width(92.dp).height(30.dp))
         else -> Unit
       }
@@ -250,8 +251,9 @@ private fun OrderDetailsSection(label: String) {
   )
 }
 
+/** Localized order [status] with a distinct color per status; shared with incoming orders. */
 @Composable
-private fun OrderDetailsStatus(status: OrderStatus) {
+internal fun OrderStatusBadge(status: OrderStatus) {
   val label =
       when (status) {
         OrderStatus.PENDING -> R.string.order_details_pending

@@ -29,6 +29,11 @@ private val commandoFont =
             FontWeight.Bold,
             variationSettings = FontVariation.Settings(FontVariation.weight(700)),
         ),
+        Font(
+            R.font.plus_jakarta_sans,
+            FontWeight.ExtraBold,
+            variationSettings = FontVariation.Settings(FontVariation.weight(800)),
+        ),
     )
 
 private fun style(size: Int, weight: FontWeight) =

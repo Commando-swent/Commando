@@ -1,7 +1,7 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
-/** UI-only fixture: positions are fractions of the illustration, never geographic coordinates. */
+/** Display text and fractional positions shared by real maps and illustration previews. */
 data class MockMapTrip(
     val id: String,
     val store: String,
@@ -10,7 +10,12 @@ data class MockMapTrip(
     val x: Float,
     val y: Float,
     val handoffPointId: String = handoff,
+    val isSample: Boolean = false,
+    val distanceLabel: String? = null,
 )
+
+/** Presentation name used by the geographic screen; previews retain their original model. */
+typealias MapTripSummary = MockMapTrip
 
 enum class MockMapStatus {
   Content,
@@ -39,7 +44,7 @@ data class MockMapUiState(
 }
 
 object MockMapSamples {
-  val trips =
+  private val fixtures =
       listOf(
           MockMapTrip(
               "sample-migros",
@@ -75,6 +80,8 @@ object MockMapSamples {
               151f / 749,
           ),
       )
+
+  val trips = fixtures.map { it.copy(isSample = true) }
 }
 
 object MockMapTestTags {

@@ -1,0 +1,11 @@
+<resources>
+    <string name="trip_map_refresh">Refresh</string>
+    <string name="trip_map_loading">Finding trips near you…</string>
+    <string name="trip_map_session_ended">Your session has ended.</string>
+    <string name="trip_map_marker">Trip: %1$s at %2$s · %3$s</string>
+    <string name="trip_map_page">Show trip %1$d of %2$d: %3$s</string>
+    <string name="trip_map_empty_body">When a commando publishes a trip, refresh to see it here.</string>
+    <string name="trip_map_error_body">Check your connection, then try again.</string>
+    <string name="trip_map_distance_unknown">—</string>
+    <string name="trip_map_refresh_map">Map · Refresh trips</string>
+</resources>

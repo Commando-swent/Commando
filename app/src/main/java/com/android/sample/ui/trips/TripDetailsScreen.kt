@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+// AI assistance: Claude Code for the incoming-orders entry point (#147).
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -23,17 +24,26 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 
+/**
+ * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);
+ * [onViewOrders] opens the trip's incoming orders and is shown only when not null.
+ */
 @Composable
 fun TripDetailsScreen(
     viewModel: TripDetailsViewModel,
     onBack: () -> Unit,
     onAddItems: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
+    onViewOrders: ((String) -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
-  TripDetailsScreen(state, viewModel::retry, onBack, onAddItems, modifier)
+  TripDetailsScreen(state, viewModel::retry, onBack, onAddItems, modifier, onViewOrders)
 }
 
+/**
+ * Stateless trip details for [state]. Both actions receive the trip ID: [onAddItems] opens the
+ * catalogue (disabled when null) and [onViewOrders] opens the incoming orders (hidden when null).
+ */
 @Composable
 fun TripDetailsScreen(
     state: TripDetailsUiState,
@@ -41,6 +51,7 @@ fun TripDetailsScreen(
     onBack: () -> Unit,
     onAddItems: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
+    onViewOrders: ((String) -> Unit)? = null,
 ) {
   Column(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
@@ -62,6 +73,12 @@ fun TripDetailsScreen(
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
           TripDetailsContent(state.trip)
+          if (onViewOrders != null) {
+            TripDetailsButton(
+                text = stringResource(R.string.trip_details_view_orders),
+                onClick = { onViewOrders(state.trip.id) },
+            )
+          }
           TripDetailsButton(
               text = stringResource(R.string.trip_details_add_items),
               onClick = { onAddItems?.invoke(state.trip.id) },

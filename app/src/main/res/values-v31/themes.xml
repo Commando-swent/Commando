@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.SampleApp.NoActionBar" parent="Theme.SampleApp">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowSplashScreenBackground">#161B12</item>
+    </style>
+</resources>

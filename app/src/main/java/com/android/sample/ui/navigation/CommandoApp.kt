@@ -1,7 +1,7 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex (real-trip map integration).
-
+// AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
+// Claude Code contributed the shared resume refresh and incoming orders (#147).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -60,6 +60,8 @@ import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapViewModel
+import com.android.sample.ui.orders.IncomingOrdersScreen
+import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
 import com.android.sample.ui.orders.MyOrdersViewModel
 import com.android.sample.ui.orders.OrderDetailsScreen
@@ -269,14 +271,7 @@ private fun AuthenticatedApp(
           val state by homeViewModel.uiState.collectAsState()
           tripState = state
           onRetry = homeViewModel::refresh
-          val lifecycleOwner = LocalLifecycleOwner.current
-          DisposableEffect(lifecycleOwner, homeViewModel) {
-            val observer = LifecycleEventObserver { _, event ->
-              if (event == Lifecycle.Event.ON_RESUME) homeViewModel.refresh()
-            }
-            lifecycleOwner.lifecycle.addObserver(observer)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-          }
+          RefreshOnResume(homeViewModel, homeViewModel::refresh)
         }
         HomeScreen(
             mode = appUiState.mode,
@@ -315,14 +310,7 @@ private fun AuthenticatedApp(
                   loadImmediately = false,
               )
             }
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner, availableTripsViewModel) {
-          val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) availableTripsViewModel.retry()
-          }
-          lifecycleOwner.lifecycle.addObserver(observer)
-          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
+        RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
         val selectedPoint by locationFilter.selected.collectAsState()
         AvailableTripsScreen(
             viewModel = availableTripsViewModel,
@@ -363,6 +351,9 @@ private fun AuthenticatedApp(
             }
         val tripDetailsViewModel: TripDetailsViewModel =
             viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
+        val tripState by tripDetailsViewModel.uiState.collectAsState()
+        // The entry point is for the owner only; the repository and rules check ownership again.
+        val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == userId
         TripDetailsScreen(
             viewModel = tripDetailsViewModel,
             onBack = { navController.popBackStack() },
@@ -372,6 +363,38 @@ private fun AuthenticatedApp(
                     navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
                   }
                 } else null,
+            onViewOrders =
+                if (appUiState.mode == AppMode.Commando && ownsTrip) {
+                  { selectedTripId ->
+                    navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
+                      launchSingleTop = true
+                    }
+                  }
+                } else null,
+        )
+      }
+      composable(
+          route = CommandoScreens.IncomingOrders.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Incoming Orders requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        // The resume observer loads on entry and refreshes after a decision in Order Details.
+        val incomingOrdersViewModel: IncomingOrdersViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              IncomingOrdersViewModel(orders.repository, tripId, loadImmediately = false)
+            }
+        RefreshOnResume(incomingOrdersViewModel, incomingOrdersViewModel::refresh)
+        IncomingOrdersScreen(
+            viewModel = incomingOrdersViewModel,
+            onOrderClick = { orderId ->
+              navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
+                launchSingleTop = true
+              }
+            },
         )
       }
       composable(
@@ -465,14 +488,7 @@ private fun AuthenticatedApp(
                   orders.sessionChanges,
               )
             }
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner, map) {
-          val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) map.refresh()
-          }
-          lifecycleOwner.lifecycle.addObserver(observer)
-          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
+        RefreshOnResume(map, map::refresh)
         val state by map.uiState.collectAsState()
         val selectedPoint by locationFilter.selected.collectAsState()
         TripMapScreen(
@@ -491,14 +507,7 @@ private fun AuthenticatedApp(
             viewModel(viewModelStoreOwner = entry) {
               MyOrdersViewModel(orders.repository, tripRepository, userId, loadImmediately = false)
             }
-        val lifecycleOwner = LocalLifecycleOwner.current
-        DisposableEffect(lifecycleOwner, model) {
-          val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) model.retry()
-          }
-          lifecycleOwner.lifecycle.addObserver(observer)
-          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-        }
+        RefreshOnResume(model, model::retry)
         MyOrdersScreen(
             viewModel = model,
             requesterId = userId,
@@ -599,6 +608,22 @@ private fun AuthenticatedApp(
         } ?: androidx.compose.material3.CircularProgressIndicator()
       }
     }
+  }
+}
+
+/**
+ * Calls [onResume] whenever the current destination resumes, including when it is first shown and
+ * when the user comes back to it. [key] restarts the observer when the destination's state changes.
+ */
+@Composable
+private fun RefreshOnResume(key: Any, onResume: () -> Unit) {
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner, key) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) onResume()
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
 }
 

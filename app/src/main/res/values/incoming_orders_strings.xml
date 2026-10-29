@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="incoming_orders_title">Incoming orders</string>
+    <string name="incoming_orders_subtitle">Orders placed on this trip.</string>
+    <string name="incoming_orders_loading">Loading incoming orders</string>
+    <string name="incoming_orders_empty">No orders on this trip yet.</string>
+    <string name="incoming_orders_refresh">Refresh</string>
+    <string name="incoming_orders_error">Something went wrong while loading the orders.</string>
+    <string name="incoming_orders_retry">Retry</string>
+    <string name="incoming_orders_order">Order %1$s</string>
+    <plurals name="incoming_orders_items">
+        <item quantity="one">%1$d item · %2$s</item>
+        <item quantity="other">%1$d items · %2$s</item>
+    </plurals>
+</resources>

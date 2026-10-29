@@ -10,7 +10,7 @@ data class MockMapTrip(
     val x: Float,
     val y: Float,
     val handoffPointId: String = handoff,
-    val isSample: Boolean = true,
+    val isSample: Boolean = false,
     val distanceLabel: String? = null,
 )
 
@@ -44,7 +44,7 @@ data class MockMapUiState(
 }
 
 object MockMapSamples {
-  val trips =
+  private val fixtures =
       listOf(
           MockMapTrip(
               "sample-migros",
@@ -80,6 +80,8 @@ object MockMapSamples {
               151f / 749,
           ),
       )
+
+  val trips = fixtures.map { it.copy(isSample = true) }
 }
 
 object MockMapTestTags {

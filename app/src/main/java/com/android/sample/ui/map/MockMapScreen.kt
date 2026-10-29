@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -174,12 +175,8 @@ internal fun MapTripPreview(
     onDetails: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-  Surface(
-      modifier.testTag(Tags.SUMMARY).semantics { liveRegion = LiveRegionMode.Polite },
-      shape = RoundedCornerShape(24.dp),
-      color = MaterialTheme.colorScheme.surfaceContainer,
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = 10.dp,
+  MapFloatingSurface(
+      modifier.testTag(Tags.SUMMARY).semantics { liveRegion = LiveRegionMode.Polite }
   ) {
     Column(
         Modifier.then(
@@ -313,15 +310,28 @@ internal fun MapTripPreview(
   }
 }
 
+/** Shared Figma chrome for the map's floating cards, header and loading pill. */
 @Composable
-internal fun MapPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+internal fun MapFloatingSurface(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 24.dp,
+    color: Color = MaterialTheme.colorScheme.surfaceContainer,
+    borderColor: Color = MaterialTheme.colorScheme.outlineVariant,
+    content: @Composable () -> Unit,
+) {
   Surface(
       modifier,
-      shape = RoundedCornerShape(24.dp),
-      color = MaterialTheme.colorScheme.surfaceContainer,
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = 8.dp,
-  ) {
+      shape = RoundedCornerShape(cornerRadius),
+      color = color,
+      border = BorderStroke(1.dp, borderColor),
+      shadowElevation = 10.dp,
+      content = content,
+  )
+}
+
+@Composable
+internal fun MapPanel(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+  MapFloatingSurface(modifier) {
     Column(
         Modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -338,7 +348,7 @@ internal fun MapSharedPointPager(
     modifier: Modifier = Modifier,
 ) {
   Row(
-      modifier.fillMaxWidth().height(14.dp),
+      modifier.fillMaxWidth().heightIn(min = 48.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -365,16 +375,21 @@ internal fun MapSharedPointPager(
                 trip.store,
             )
         Box(
-            Modifier.size(if (selected) 16.dp else 6.dp, 6.dp)
-                .background(
-                    if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.outline,
-                    CircleShape,
-                )
+            Modifier.size(48.dp)
                 .testTag(Tags.PAGE_PREFIX + trip.id)
                 .selectable(selected, role = Role.Tab, onClick = { onSelect(trip.id) })
-                .semantics { contentDescription = description }
-        )
+                .semantics { contentDescription = description },
+            contentAlignment = Alignment.Center,
+        ) {
+          Box(
+              Modifier.size(if (selected) 16.dp else 6.dp, 6.dp)
+                  .background(
+                      if (selected) MaterialTheme.colorScheme.primary
+                      else MaterialTheme.colorScheme.outline,
+                      CircleShape,
+                  )
+          )
+        }
       }
     }
   }

@@ -44,7 +44,7 @@ class SessionOrderViewModelTest {
             query: String,
             cursor: String?,
             limit: Int,
-        ) = ProductResult.Error(ProductError.Unknown)
+        ) = ProductResult.Success(ProductPage(listOf(Product("milk", "migros", "Milk", 220)), null))
       }
 
   @Before

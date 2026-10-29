@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: Claude Code for the Long CHF formatter (#147).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
@@ -17,8 +18,14 @@ internal fun commissionCents(text: String): Int? =
         .takeIf { it.matches(Regex("[0-9]+(\\.[0-9]{1,2})?")) }
         ?.let { runCatching { BigDecimal(it).movePointRight(2).intValueExact() }.getOrNull() }
 
-internal fun money(cents: Int?) =
-    cents?.let { String.format(Locale.ROOT, "CHF %d.%02d", it / 100, it % 100) } ?: "—"
+private const val CENTS_PER_FRANC = 100
+
+/** Formats optional CHF [cents]; a missing amount shows a dash. */
+internal fun money(cents: Int?) = cents?.let { money(it.toLong()) } ?: "—"
+
+/** Formats CHF [cents] as `CHF x.yy`; Long, so an order total cannot overflow. */
+internal fun money(cents: Long): String =
+    String.format(Locale.ROOT, "CHF %d.%02d", cents / CENTS_PER_FRANC, cents % CENTS_PER_FRANC)
 
 data class ReviewOrderState(
     val draft: OrderDraft,

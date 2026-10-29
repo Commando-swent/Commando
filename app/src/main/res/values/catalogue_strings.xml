@@ -9,6 +9,13 @@
         <item quantity="one">%1$d RESULT FOR “%2$s”</item>
         <item quantity="other">%1$d RESULTS FOR “%2$s”</item>
     </plurals>
+    <string name="catalogue_all_products_more">ALL PRODUCTS · %1$d+</string>
+    <plurals name="catalogue_results_more">
+        <item quantity="one">%1$d+ RESULT FOR “%2$s”</item>
+        <item quantity="other">%1$d+ RESULTS FOR “%2$s”</item>
+    </plurals>
+    <string name="catalogue_load_more_error">Couldn’t load more products.</string>
+    <string name="catalogue_loading_more">Loading more products…</string>
     <string name="catalogue_loading">LOADING PRODUCTS…</string>
     <string name="catalogue_add">Add %1$s to order</string>
     <string name="catalogue_increase">Increase %1$s quantity</string>
@@ -24,6 +31,16 @@
     <string name="catalogue_no_match_title">No products match “%1$s”</string>
     <string name="catalogue_no_match_body">Check the spelling or try a shorter word. Your selected items are kept.</string>
     <string name="catalogue_clear_search">Clear search</string>
+    <string name="catalogue_short_query_title">Keep typing to search</string>
+    <plurals name="catalogue_short_query_body">
+        <item quantity="one">Use at least %1$d letter or digit. Your selected items are kept.</item>
+        <item quantity="other">Use at least %1$d letters or digits. Your selected items are kept.</item>
+    </plurals>
+    <string name="catalogue_long_query_title">Shorten your search</string>
+    <plurals name="catalogue_long_query_body">
+        <item quantity="one">Use at most %1$d character. Your selected items are kept.</item>
+        <item quantity="other">Use at most %1$d characters. Your selected items are kept.</item>
+    </plurals>
     <string name="catalogue_empty_title">No products yet</string>
     <string name="catalogue_empty_body">This store has no products in the catalogue yet.</string>
     <string name="catalogue_error_title">Couldn’t load the catalogue</string>

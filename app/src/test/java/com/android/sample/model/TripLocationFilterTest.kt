@@ -1,6 +1,6 @@
 package com.android.sample.model
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code; OpenAI Codex (classification tests).
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,6 +43,22 @@ class TripLocationFilterTest {
   /** A point [meters] due north of [from], using the same Earth radius as the production code. */
   private fun north(from: Location, meters: Double) =
       Location("offset", from.latitude + Math.toDegrees(meters / 6_371_008.8), from.longitude)
+
+  @Test
+  fun classificationDistinguishesEmptyNoMatchesAndOrderedMatches() {
+    val point = place("CM building")
+    assertEquals(TripFeed.Empty, classifyTrips(emptyList(), null))
+    assertEquals(TripFeed.Empty, classifyTrips(emptyList(), point))
+    assertEquals(
+        TripFeed.NoMatches(Location("far", 0.0, 0.0)),
+        classifyTrips(campusTrips, Location("far", 0.0, 0.0)),
+    )
+    assertEquals(TripFeed.Matches(campusTrips), classifyTrips(campusTrips, null))
+    assertEquals(
+        TripFeed.Matches(filterTripsServing(campusTrips, point)),
+        classifyTrips(campusTrips, point),
+    )
+  }
 
   @Test
   fun noSelectedPointReturnsEveryTripInTheSameOrder() {

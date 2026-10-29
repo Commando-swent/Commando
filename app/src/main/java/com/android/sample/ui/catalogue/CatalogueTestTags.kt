@@ -6,6 +6,7 @@ object CatalogueTestTags {
   const val CLEAR_QUERY = "catalogue_clear_query"
   const val PRODUCT_LIST = "catalogue_product_list"
   const val MESSAGE_ACTION = "catalogue_message_action"
+  const val LOAD_MORE = "catalogue_load_more"
   const val SUMMARY = "catalogue_summary"
   const val CONTINUE = "catalogue_continue"
 

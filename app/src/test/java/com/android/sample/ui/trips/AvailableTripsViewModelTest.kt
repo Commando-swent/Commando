@@ -144,19 +144,17 @@ class AvailableTripsViewModelTest {
   }
 
   @Test
-  fun repeatedRetriesCannotStartConcurrentLoads() = runTest {
+  fun repeatedRetriesReplaceTheInFlightLoad() = runTest {
     repository.gate = CompletableDeferred()
     val viewModel = AvailableTripsViewModel(repository)
     repeat(3) { viewModel.retry() }
     runCurrent()
     repeat(3) { viewModel.retry() }
     runCurrent()
-    assertEquals(1, repository.calls)
+    assertEquals(2, repository.calls)
     repository.gate!!.complete(Unit)
     advanceUntilIdle()
-    viewModel.retry()
-    advanceUntilIdle()
-    assertEquals(2, repository.calls)
+    assertEquals(AvailableTripsUiState.Content(listOf(trip)), viewModel.uiState.value)
   }
 
   @Test

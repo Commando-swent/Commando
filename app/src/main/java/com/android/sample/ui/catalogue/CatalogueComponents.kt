@@ -379,18 +379,22 @@ internal fun CatalogueMessage(
     if (primaryAction) {
       PrimaryPillButton(action, true, onAction, Modifier.testTag(CatalogueTestTags.MESSAGE_ACTION))
     } else {
-      OutlinedButton(
-          onClick = onAction,
-          modifier =
-              Modifier.width(200.dp)
-                  .heightIn(min = 48.dp)
-                  .testTag(CatalogueTestTags.MESSAGE_ACTION),
-          shape = RoundedCornerShape(24.dp),
-          border = BorderStroke(1.dp, c.outline),
-      ) {
-        Text(action, style = catalogueText(15, FontWeight.Bold), color = c.onSurface)
-      }
+      SecondaryPillButton(action, onAction, Modifier.testTag(CatalogueTestTags.MESSAGE_ACTION))
     }
+  }
+}
+
+/** Outlined 48 dp pill for secondary actions such as Clear search and Load more. */
+@Composable
+internal fun SecondaryPillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+  val c = MaterialTheme.colorScheme
+  OutlinedButton(
+      onClick = onClick,
+      modifier = modifier.width(200.dp).heightIn(min = 48.dp),
+      shape = RoundedCornerShape(24.dp),
+      border = BorderStroke(1.dp, c.outline),
+  ) {
+    Text(text, style = catalogueText(15, FontWeight.Bold), color = c.onSurface)
   }
 }
 

@@ -1,5 +1,6 @@
 package com.android.sample.ui.navigation
 
+// AI assistance: Claude Code for the incoming-orders destination (#147).
 import android.net.Uri
 import androidx.annotation.StringRes
 import com.android.sample.R
@@ -24,6 +25,8 @@ enum class CommandoScreens(
   MockMap(title = R.string.nav_mock_map, showBottomBar = true),
   MyOrders(title = R.string.my_orders_title, showBottomBar = true),
   OrderDetails(title = R.string.order_details_title),
+  /** Orders placed on one of the owner's trips; reached from that trip's details. */
+  IncomingOrders(title = R.string.incoming_orders_title),
   /** Product catalogue of the selected trip's chain; titled after the Trip Details action. */
   Catalogue(title = R.string.add_items_title),
   ReviewOrder(title = R.string.order_review);
@@ -34,7 +37,8 @@ enum class CommandoScreens(
         when (this) {
           TripDetails,
           Catalogue,
-          ReviewOrder -> "$name/{$TRIP_ID_ARGUMENT}"
+          ReviewOrder,
+          IncomingOrders -> "$name/{$TRIP_ID_ARGUMENT}"
           OrderDetails -> "$name/{$ORDER_ID_ARGUMENT}"
           else -> name
         }
@@ -54,6 +58,9 @@ enum class CommandoScreens(
 
     /** Reviews the shared draft of the selected trip before it is submitted. */
     fun reviewOrderRoute(tripId: String): String = "${ReviewOrder.name}/${Uri.encode(tripId)}"
+
+    /** Opens the incoming orders of the owner's trip, preserving its opaque ID. */
+    fun incomingOrdersRoute(tripId: String): String = "${IncomingOrders.name}/${Uri.encode(tripId)}"
 
     /** Encodes the opaque order ID once; consumers use Navigation's decoded string argument. */
     fun orderDetailsRoute(orderId: String): String = "${OrderDetails.name}/${Uri.encode(orderId)}"

@@ -1,7 +1,9 @@
 package com.android.sample.emulator.firestore.adapter
 
 // AI assistance: OpenAI Codex.
+import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepositoryFirestore
+import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.android.sample.data.repository.productSearchPrefixes
 import com.android.sample.data.repository.successData
@@ -104,6 +106,25 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
       val second = ids("cr", first.nextCursor, limit = 2)
       assertEquals(listOf("migros:105"), second.products.map(Product::id))
       assertEquals(null, second.nextCursor)
+    }
+  }
+
+  @Test
+  fun concreteAdapter_failsOfflineInsteadOfEndingTheCatalogueWithACachedPage() = runTest {
+    withFirestoreEmulator { firestore ->
+      val migros = firestore.collection("stores").document("migros").collection("products")
+      listOf("101", "102", "103").forEach { id ->
+        migros.document(id).set(storedProduct("migros:$id", "Lait $id", 1.0)).await()
+      }
+      val repository = ProductRepositoryFirestore(firestore)
+      val first = repository.searchProducts("migros", "lait", limit = 2).successData()
+      assertEquals("102", first.nextCursor)
+
+      firestore.disableNetwork().await()
+      assertEquals(
+          ProductResult.Error(ProductError.NetworkError),
+          repository.searchProducts("migros", "lait", first.nextCursor, limit = 2),
+      )
     }
   }
 

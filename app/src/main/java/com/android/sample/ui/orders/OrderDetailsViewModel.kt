@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex (shared session guard).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError
@@ -12,6 +13,7 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
+import com.android.sample.ui.session.SessionGuard
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -64,14 +66,12 @@ class OrderDetailsViewModel(
   val uiState: StateFlow<OrderDetailsUiState> = mutableState.asStateFlow()
   private var isLoading = false
 
-  private val sessionId = currentUserId()
-  private var sessionEnded = false
+  private val session = SessionGuard(currentUserId)
 
   init {
     viewModelScope.launch {
       sessionChanges.collect { userId ->
-        if (userId != sessionId) {
-          sessionEnded = true
+        if (session.hasEnded(userId)) {
           mutableState.value = OrderDetailsUiState.SessionEnded
         }
       }
@@ -86,7 +86,7 @@ class OrderDetailsViewModel(
   private fun load() {
     if (
         isLoading ||
-            sessionEnded ||
+            session.ended ||
             (mutableState.value as? OrderDetailsUiState.Content)?.isSaving == true
     )
         return
@@ -106,8 +106,7 @@ class OrderDetailsViewModel(
   }
 
   private fun sessionIsValid(): Boolean {
-    if (sessionEnded || currentUserId() != sessionId) {
-      sessionEnded = true
+    if (session.hasEnded()) {
       mutableState.value = OrderDetailsUiState.SessionEnded
       return false
     }
@@ -172,7 +171,8 @@ class OrderDetailsViewModel(
         }
     currentCoroutineContext().ensureActive()
     return when (result) {
-      is TripResult.Success -> OrderDetailsUiState.Content(order, result.data, sessionId)
+      is TripResult.Success ->
+          OrderDetailsUiState.Content(order, result.data, session.initialUserId)
       is TripResult.Error -> OrderDetailsUiState.Error.TripFailure(result.error)
     }
   }

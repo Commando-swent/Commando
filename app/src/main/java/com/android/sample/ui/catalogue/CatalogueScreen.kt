@@ -18,19 +18,26 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +45,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
+import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
+import com.android.sample.data.repository.MIN_SEARCH_TERM_LENGTH
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
@@ -54,6 +63,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import kotlinx.coroutines.flow.first
 
 /**
  * Requester catalogue for one trip. [onContinue] receives the loaded trip, ready for Review Order;
@@ -76,6 +86,7 @@ fun CatalogueRoute(
       onIncrease = viewModel::increment,
       onDecrease = viewModel::decrement,
       onRetry = viewModel::retry,
+      onLoadMore = viewModel::loadMore,
       onContinue = { if (state.canContinue) state.trip?.let(onContinue) },
       modifier = modifier,
   )
@@ -91,10 +102,27 @@ fun CatalogueScreen(
     onIncrease: (String) -> Unit,
     onDecrease: (String) -> Unit,
     onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val c = MaterialTheme.colorScheme
+  val listState = rememberLazyListState()
+  val loaded = state.content as? CatalogueContent.Loaded
+  // A failed page waits for its Retry button instead of being requested again on every scroll.
+  val canAutoLoad = loaded?.canLoadMore == true && loaded.loadMoreError == null
+  val currentOnLoadMore by rememberUpdatedState(onLoadMore)
+  // Restarts after each page, as loading clears canAutoLoad, so one request is sent per page.
+  LaunchedEffect(listState, canAutoLoad) {
+    if (!canAutoLoad) return@LaunchedEffect
+    snapshotFlow {
+      val layout = listState.layoutInfo
+      val lastVisible = layout.visibleItemsInfo.lastOrNull()?.index ?: -1
+      lastVisible >= layout.totalItemsCount - AUTO_LOAD_DISTANCE
+    }
+        .first { it }
+    currentOnLoadMore()
+  }
   Column(
       modifier
           .fillMaxSize()
@@ -107,6 +135,7 @@ fun CatalogueScreen(
     // Summary, search and products scroll together so short screens keep the list reachable.
     LazyColumn(
         Modifier.weight(1f).fillMaxWidth().testTag(CatalogueTestTags.PRODUCT_LIST),
+        state = listState,
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -116,12 +145,12 @@ fun CatalogueScreen(
           CatalogueSearchField(
               query = state.query,
               onQueryChange = onQueryChange,
-              enabled = state.content is CatalogueContent.Loaded,
+              enabled = state.canSearch,
               modifier = Modifier.padding(horizontal = 24.dp),
           )
         }
       }
-      catalogueBody(state, onClearSearch, onAdd, onIncrease, onDecrease, onRetry)
+      catalogueBody(state, onClearSearch, onAdd, onIncrease, onDecrease, onRetry, onLoadMore)
     }
     CatalogueBottomBar(state, onContinue)
   }
@@ -211,6 +240,9 @@ internal fun formatTripTime(
 
 private val ListItemPadding = Modifier.padding(horizontal = 20.dp)
 
+/** The next page is requested once one of the last [AUTO_LOAD_DISTANCE] list items is visible. */
+private const val AUTO_LOAD_DISTANCE = 3
+
 private fun LazyListScope.catalogueBody(
     state: CatalogueUiState,
     onClearSearch: () -> Unit,
@@ -218,32 +250,38 @@ private fun LazyListScope.catalogueBody(
     onIncrease: (String) -> Unit,
     onDecrease: (String) -> Unit,
     onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
 ) {
   val content = state.content
-  val search = state.query.trim()
-  val visible = state.visibleProducts
   if (content is CatalogueContent.Loading) {
     item(key = "loading") { SectionLabel(stringResource(R.string.catalogue_loading)) }
     items(6) { SkeletonProductRow(ListItemPadding) }
     return
   }
-  if (content !is CatalogueContent.Loaded || visible.isEmpty()) {
-    item(key = "message") { CatalogueStateMessage(content, search, onClearSearch, onRetry) }
+  if (content !is CatalogueContent.Loaded || content.products.isEmpty()) {
+    item(key = "message") { CatalogueStateMessage(content, onClearSearch, onRetry) }
     return
   }
+  val loaded = content.products
+  // Only loaded pages are counted; "+" marks that the store has more matching products.
+  val more = content.nextCursor != null
   item(key = "label") {
     SectionLabel(
-        if (search.isEmpty()) stringResource(R.string.catalogue_all_products, content.products.size)
+        if (content.query.isEmpty())
+            stringResource(
+                if (more) R.string.catalogue_all_products_more else R.string.catalogue_all_products,
+                loaded.size,
+            )
         else
             pluralStringResource(
-                R.plurals.catalogue_results,
-                visible.size,
-                visible.size,
-                search.uppercase(),
+                if (more) R.plurals.catalogue_results_more else R.plurals.catalogue_results,
+                loaded.size,
+                loaded.size,
+                content.query.uppercase(),
             )
     )
   }
-  items(visible, key = { it.id }) { product ->
+  items(loaded, key = { it.id }) { product ->
     CatalogueProductRow(
         product = product,
         quantity = state.quantityOf(product.id),
@@ -253,13 +291,47 @@ private fun LazyListScope.catalogueBody(
         modifier = ListItemPadding,
     )
   }
+  // Scrolling near the end requests the next page; only a failed page needs a button.
+  if (content.isLoadingMore) {
+    // Screen readers hear one polite announcement; the rows themselves are only placeholders.
+    item(key = "loading_more") {
+      val description = stringResource(R.string.catalogue_loading_more)
+      SkeletonProductRow(
+          ListItemPadding.semantics {
+            contentDescription = description
+            liveRegion = LiveRegionMode.Polite
+          }
+      )
+    }
+    item { SkeletonProductRow(ListItemPadding) }
+  }
+  if (content.loadMoreError != null)
+      item(key = "load_more_error") {
+        Column(
+            ListItemPadding.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Text(
+              stringResource(R.string.catalogue_load_more_error),
+              // A page loads without a tap, so its failure is announced too.
+              Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+              style = catalogueText(14),
+              color = MaterialTheme.colorScheme.error,
+          )
+          SecondaryPillButton(
+              stringResource(R.string.catalogue_retry),
+              onLoadMore,
+              Modifier.testTag(CatalogueTestTags.LOAD_MORE),
+          )
+        }
+      }
 }
 
 /** Empty catalogue, empty search, unsupported store and failures; never a silent empty list. */
 @Composable
 private fun CatalogueStateMessage(
     content: CatalogueContent,
-    search: String,
     onClearSearch: () -> Unit,
     onRetry: () -> Unit,
 ) {
@@ -281,8 +353,9 @@ private fun CatalogueStateMessage(
     )
     return
   }
-  // Only reached for a loaded catalogue when nothing is visible, or for an unsupported store.
-  val noMatch = content is CatalogueContent.Loaded && content.products.isNotEmpty()
+  // Only reached for an empty result, an unsearchable query, or an unsupported store.
+  val noMatch = content is CatalogueContent.Loaded && content.query.isNotEmpty()
+  val searching = noMatch || content is CatalogueContent.UnsearchableQuery
   val (icon, title, body) =
       when {
         content is CatalogueContent.UnsupportedStore ->
@@ -291,10 +364,30 @@ private fun CatalogueStateMessage(
                 stringResource(R.string.catalogue_unsupported_title),
                 stringResource(R.string.catalogue_unsupported_body, content.storeName),
             )
+        content is CatalogueContent.UnsearchableQuery && content.isTooLong ->
+            Triple(
+                R.drawable.ic_catalogue_search,
+                stringResource(R.string.catalogue_long_query_title),
+                pluralStringResource(
+                    R.plurals.catalogue_long_query_body,
+                    MAX_SEARCH_QUERY_LENGTH,
+                    MAX_SEARCH_QUERY_LENGTH,
+                ),
+            )
+        content is CatalogueContent.UnsearchableQuery ->
+            Triple(
+                R.drawable.ic_catalogue_search,
+                stringResource(R.string.catalogue_short_query_title),
+                pluralStringResource(
+                    R.plurals.catalogue_short_query_body,
+                    MIN_SEARCH_TERM_LENGTH,
+                    MIN_SEARCH_TERM_LENGTH,
+                ),
+            )
         noMatch ->
             Triple(
                 R.drawable.ic_catalogue_search_x,
-                stringResource(R.string.catalogue_no_match_title, search),
+                stringResource(R.string.catalogue_no_match_title, content.query),
                 stringResource(R.string.catalogue_no_match_body),
             )
         else ->
@@ -309,7 +402,7 @@ private fun CatalogueStateMessage(
       title,
       body,
       accentIcon = false,
-      action = if (noMatch) stringResource(R.string.catalogue_clear_search) else null,
+      action = if (searching) stringResource(R.string.catalogue_clear_search) else null,
       onAction = onClearSearch,
       modifier = modifier,
   )
@@ -415,7 +508,7 @@ private val previewItems =
 
 @Composable
 private fun CataloguePreview(state: CatalogueUiState) {
-  SampleAppTheme { CatalogueScreen(state, {}, {}, {}, {}, {}, {}, {}, {}) }
+  SampleAppTheme { CatalogueScreen(state, {}, {}, {}, {}, {}, {}, {}, {}, {}) }
 }
 
 @Preview(name = "01 · Content", widthDp = 412, heightDp = 917)
@@ -438,7 +531,12 @@ private fun CatalogueSelectedPreview() =
 @Composable
 private fun CatalogueSearchPreview() =
     CataloguePreview(
-        CatalogueUiState(previewTrip, CatalogueContent.Loaded(previewProducts), "oat", previewItems)
+        CatalogueUiState(
+            previewTrip,
+            CatalogueContent.Loaded(previewProducts.take(1), "oat"),
+            "oat",
+            previewItems,
+        )
     )
 
 @Preview(name = "04 · Loading", widthDp = 412, heightDp = 917)
@@ -451,7 +549,7 @@ private fun CatalogueEmptySearchPreview() =
     CataloguePreview(
         CatalogueUiState(
             previewTrip,
-            CatalogueContent.Loaded(previewProducts),
+            CatalogueContent.Loaded(emptyList(), "chocolat"),
             "chocolat",
             previewItems,
         )

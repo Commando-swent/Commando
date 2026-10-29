@@ -1,0 +1,11 @@
+<resources>
+    <string name="trip_map_refresh">Actualiser</string>
+    <string name="trip_map_loading">Recherche de trajets à proximité…</string>
+    <string name="trip_map_session_ended">Votre session est terminée.</string>
+    <string name="trip_map_marker">Trajet : %1$s à %2$s · %3$s</string>
+    <string name="trip_map_page">Afficher le trajet %1$d sur %2$d : %3$s</string>
+    <string name="trip_map_empty_body">Lorsqu’un commando publie un trajet, actualisez pour le voir ici.</string>
+    <string name="trip_map_error_body">Vérifiez votre connexion, puis réessayez.</string>
+    <string name="trip_map_distance_unknown">—</string>
+    <string name="trip_map_refresh_map">Carte · Actualiser les trajets</string>
+</resources>

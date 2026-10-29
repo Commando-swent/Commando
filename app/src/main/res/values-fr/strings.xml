@@ -46,6 +46,14 @@
         <item quantity="many">%1$d RÉSULTATS POUR « %2$s »</item>
         <item quantity="other">%1$d RÉSULTATS POUR « %2$s »</item>
     </plurals>
+    <string name="catalogue_all_products_more">TOUS LES PRODUITS · %1$d+</string>
+    <plurals name="catalogue_results_more">
+        <item quantity="one">%1$d+ RÉSULTAT POUR « %2$s »</item>
+        <item quantity="many">%1$d+ RÉSULTATS POUR « %2$s »</item>
+        <item quantity="other">%1$d+ RÉSULTATS POUR « %2$s »</item>
+    </plurals>
+    <string name="catalogue_load_more_error">Impossible de charger plus de produits.</string>
+    <string name="catalogue_loading_more">Chargement d’autres produits…</string>
     <string name="catalogue_loading">CHARGEMENT DES PRODUITS…</string>
     <string name="catalogue_add">Ajouter %1$s à la commande</string>
     <string name="catalogue_increase">Augmenter la quantité de %1$s</string>
@@ -62,6 +70,18 @@
     <string name="catalogue_no_match_title">Aucun produit ne correspond à « %1$s »</string>
     <string name="catalogue_no_match_body">Vérifiez l’orthographe ou essayez un mot plus court. Vos articles sélectionnés sont conservés.</string>
     <string name="catalogue_clear_search">Effacer la recherche</string>
+    <string name="catalogue_short_query_title">Continuez à saisir pour rechercher</string>
+    <plurals name="catalogue_short_query_body">
+        <item quantity="one">Saisissez au moins %1$d lettre ou chiffre. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="many">Saisissez au moins %1$d lettres ou chiffres. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="other">Saisissez au moins %1$d lettres ou chiffres. Vos articles sélectionnés sont conservés.</item>
+    </plurals>
+    <string name="catalogue_long_query_title">Raccourcissez votre recherche</string>
+    <plurals name="catalogue_long_query_body">
+        <item quantity="one">Saisissez %1$d caractère au plus. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="many">Saisissez %1$d caractères au plus. Vos articles sélectionnés sont conservés.</item>
+        <item quantity="other">Saisissez %1$d caractères au plus. Vos articles sélectionnés sont conservés.</item>
+    </plurals>
     <string name="catalogue_empty_title">Aucun produit pour le moment</string>
     <string name="catalogue_empty_body">Le catalogue de ce magasin ne contient pas encore de produits.</string>
     <string name="catalogue_error_title">Impossible de charger le catalogue</string>
@@ -292,6 +312,7 @@
     <string name="trip_details_shopping_time">Heure des courses</string>
     <string name="trip_details_handoff">Point de remise</string>
     <string name="trip_details_add_items">Ajouter des articles à ce trajet</string>
+    <string name="trip_details_view_orders">Voir les commandes</string>
     <string name="trip_details_not_found">Ce trajet est introuvable.</string>
     <string name="trip_details_error">Une erreur est survenue lors du chargement de ce trajet.</string>
     <string name="trips_title">Trajets disponibles</string>
@@ -302,6 +323,11 @@
     <string name="trips_retry">Réessayer</string>
     <string name="trips_departure">Départ : %1$s</string>
     <string name="trips_handoff">%1$s · Point de remise</string>
+    <string name="trips_location_label">Lieu de livraison</string>
+    <string name="trips_location_placeholder">Tous les lieux</string>
+    <string name="trips_location_helper">Trajets à moins de %1$d m de ce point</string>
+    <string name="trips_location_clear">Effacer le lieu</string>
+    <string name="trips_no_matches">Aucun trajet près de %1$s pour le moment.</string>
     <string name="profile_faq_expanded">Développé</string>
     <string name="profile_faq_collapsed">Réduit</string>
     <string name="order_product_limit">Nombre maximal de produits différents par commande : %1$d. Retirez un produit pour continuer.</string>
@@ -314,4 +340,17 @@
     <string name="order_details_session_ended">Cette session est terminée. Reconnectez-vous pour consulter vos commandes.</string>
     <string name="order_details_authentication_required">Une authentification est nécessaire. Reconnectez-vous pour consulter cette commande.</string>
     <string name="order_details_permission_denied">Vous n\'avez pas l\'autorisation de consulter ou de modifier cette commande.</string>
+    <string name="incoming_orders_title">Commandes reçues</string>
+    <string name="incoming_orders_subtitle">Commandes passées sur ce trajet.</string>
+    <string name="incoming_orders_loading">Chargement des commandes reçues</string>
+    <string name="incoming_orders_empty">Aucune commande sur ce trajet pour le moment.</string>
+    <string name="incoming_orders_refresh">Actualiser</string>
+    <string name="incoming_orders_error">Une erreur est survenue lors du chargement des commandes.</string>
+    <string name="incoming_orders_retry">Réessayer</string>
+    <string name="incoming_orders_order">Commande %1$s</string>
+    <plurals name="incoming_orders_items">
+        <item quantity="one">%1$d article · %2$s</item>
+        <item quantity="many">%1$d articles · %2$s</item>
+        <item quantity="other">%1$d articles · %2$s</item>
+    </plurals>
 </resources>

@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
 import com.android.sample.model.*
 import com.android.sample.model.OrderDecision.ACCEPT
 import com.android.sample.model.OrderDecision.REJECT
@@ -178,6 +178,52 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  fun tripQueryChecksTheOwnerBeforeQueryingAndSortsNewestFirst() = runTest {
+    repository.createOrder(draft)
+    val original = source.documents.getValue("b")
+    source.documents["a"] = original.copy(id = "a")
+    source.documents["c"] =
+        original.copy(
+            id = "c",
+            data = original.data + ("createdAt" to Timestamp(time.epochSecond + 1, 0)),
+        )
+    uid = "owner"
+    assertEquals(
+        listOf("c", "a", "b"),
+        (repository.getOrdersForTrip("trip") as OrderResult.Success).data.map { it.id },
+    )
+    // The requester ("alice") and an unrelated user are denied without issuing the list query.
+    for (user in listOf("alice", "other")) {
+      uid = user
+      assertEquals(error(OrderError.PermissionDenied), repository.getOrdersForTrip("trip"))
+    }
+    uid = "owner"
+    assertEquals(error(OrderError.InvalidData), repository.getOrdersForTrip("a/b"))
+    source.trip = null
+    assertEquals(error(OrderError.PermissionDenied), repository.getOrdersForTrip("trip"))
+    assertEquals(1, source.tripQueries)
+    uid = null
+    assertEquals(error(OrderError.NotAuthenticated), repository.getOrdersForTrip("trip"))
+  }
+
+  @Test
+  fun tripQueryRejectsForeignOrMalformedResultsAndAccountChanges() = runTest {
+    repository.createOrder(draft)
+    val original = source.documents.getValue("b")
+    uid = "owner"
+    source.documents["x"] =
+        original.copy(id = "x", data = original.data + ("tripId" to "elsewhere"))
+    assertEquals(error(OrderError.PermissionDenied), repository.getOrdersForTrip("trip"))
+    source.documents["x"] = original.copy(id = "x", data = original.data - "items")
+    assertEquals(error(OrderError.InvalidData), repository.getOrdersForTrip("trip"))
+    source.documents.remove("x")
+    // The account changes while the trip is being read: no query is sent for the old session.
+    source.beforeRead = { uid = "other" }
+    assertEquals(error(OrderError.NotAuthenticated), repository.getOrdersForTrip("trip"))
+    assertEquals(2, source.tripQueries)
+  }
+
+  @Test
   fun decisionsMapEveryTransitionWithoutRewritingFinalOrders() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     val original = source.documents.getValue("b")
@@ -282,6 +328,7 @@ class OrderRepositoryFirestoreTest {
     var beforeRead: suspend () -> Unit = {}
     var confirmationFails = false
     var writes = 0
+    var tripQueries = 0
     var trip: Map<String, Any?>? =
         mapOf(
             "ownerId" to "owner",
@@ -300,6 +347,12 @@ class OrderRepositoryFirestoreTest {
     }
 
     override suspend fun getMine(uid: String): List<OrderFirestoreDocument> {
+      beforeRead()
+      return documents.values.toList()
+    }
+
+    override suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument> {
+      tripQueries++
       beforeRead()
       return documents.values.toList()
     }

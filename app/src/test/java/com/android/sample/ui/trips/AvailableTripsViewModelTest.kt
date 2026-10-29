@@ -7,11 +7,13 @@ import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.filterTripsServing
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -142,19 +144,17 @@ class AvailableTripsViewModelTest {
   }
 
   @Test
-  fun repeatedRetriesCannotStartConcurrentLoads() = runTest {
+  fun repeatedRetriesReplaceTheInFlightLoad() = runTest {
     repository.gate = CompletableDeferred()
     val viewModel = AvailableTripsViewModel(repository)
     repeat(3) { viewModel.retry() }
     runCurrent()
     repeat(3) { viewModel.retry() }
     runCurrent()
-    assertEquals(1, repository.calls)
+    assertEquals(2, repository.calls)
     repository.gate!!.complete(Unit)
     advanceUntilIdle()
-    viewModel.retry()
-    advanceUntilIdle()
-    assertEquals(2, repository.calls)
+    assertEquals(AvailableTripsUiState.Content(listOf(trip)), viewModel.uiState.value)
   }
 
   @Test
@@ -167,6 +167,123 @@ class AvailableTripsViewModelTest {
     viewModel.retry()
     advanceUntilIdle()
     assertEquals(2, repository.calls)
+    assertEquals(AvailableTripsUiState.Content(listOf(trip)), viewModel.uiState.value)
+  }
+
+  // Handoffs north of [point]; 0.0036 deg of latitude is about 400 m, 0.0054 deg about 600 m.
+  private val point = Location("CM building", 46.5205116, 6.5667474)
+  private val farPoint = Location("Lausanne station", 46.5167, 6.6291)
+
+  private fun at(id: String, dLat: Double) =
+      trip.copy(id = id, handoffLocation = point.copy(latitude = point.latitude + dLat))
+
+  private val near = at("near", 0.0)
+  private val edge = at("edge", 0.0036)
+  private val far = at("far", 0.0054)
+
+  private fun ids(viewModel: AvailableTripsViewModel) =
+      (viewModel.uiState.value as AvailableTripsUiState.Content).trips.map { it.id }
+
+  @Test
+  fun selectionShowsOnlyServingTripsInRepositoryOrder() = runTest {
+    val returned = listOf(edge, far, near)
+    repository.result = TripResult.Success(returned)
+    val viewModel = AvailableTripsViewModel(repository, MutableStateFlow(point))
+    advanceUntilIdle()
+    assertEquals(listOf("edge", "near"), ids(viewModel))
+    assertEquals(filterTripsServing(returned, point).map { it.id }, ids(viewModel))
+  }
+
+  @Test
+  fun selectionChangesRefilterLoadedTripsWithoutNewRequests() = runTest {
+    repository.result = TripResult.Success(listOf(near, far))
+    val selection = MutableStateFlow<Location?>(null)
+    val viewModel = AvailableTripsViewModel(repository, selection)
+    advanceUntilIdle()
+    assertEquals(listOf("near", "far"), ids(viewModel))
+    selection.value = point
+    advanceUntilIdle()
+    assertEquals(listOf("near"), ids(viewModel))
+    selection.value = farPoint
+    advanceUntilIdle()
+    assertEquals(AvailableTripsUiState.NoMatches(farPoint), viewModel.uiState.value)
+    selection.value = null
+    advanceUntilIdle()
+    assertEquals(listOf("near", "far"), ids(viewModel))
+    assertEquals(1, repository.calls)
+  }
+
+  @Test
+  fun emptyFeedNoMatchesAndErrorStayDistinctWithASelection() = runTest {
+    val selection = MutableStateFlow<Location?>(farPoint)
+    repository.result = TripResult.Success(emptyList())
+    val viewModel = AvailableTripsViewModel(repository, selection)
+    advanceUntilIdle()
+    assertEquals(AvailableTripsUiState.Empty, viewModel.uiState.value)
+    repository.result = TripResult.Success(listOf(near))
+    viewModel.retry()
+    advanceUntilIdle()
+    assertEquals(AvailableTripsUiState.NoMatches(farPoint), viewModel.uiState.value)
+    repository.result = TripResult.Error(TripError.NetworkError)
+    viewModel.retry()
+    advanceUntilIdle()
+    assertEquals(AvailableTripsUiState.Error(TripError.NetworkError), viewModel.uiState.value)
+  }
+
+  @Test
+  fun reloadKeepsSelectionAndReflectsAddedAndRemovedTrips() = runTest {
+    repository.result = TripResult.Success(listOf(near, far))
+    val viewModel = AvailableTripsViewModel(repository, MutableStateFlow(point))
+    advanceUntilIdle()
+    assertEquals(listOf("near"), ids(viewModel))
+    repository.result = TripResult.Success(listOf(near, far, edge))
+    viewModel.retry()
+    advanceUntilIdle()
+    assertEquals(listOf("near", "edge"), ids(viewModel))
+    repository.result = TripResult.Success(listOf(far, edge))
+    viewModel.retry()
+    advanceUntilIdle()
+    assertEquals(listOf("edge"), ids(viewModel))
+    assertEquals(3, repository.calls)
+  }
+
+  @Test
+  fun retryAfterErrorAppliesTheSelection() = runTest {
+    repository.result = TripResult.Error(TripError.NetworkError)
+    val viewModel = AvailableTripsViewModel(repository, MutableStateFlow(point))
+    advanceUntilIdle()
+    assertEquals(AvailableTripsUiState.Error(TripError.NetworkError), viewModel.uiState.value)
+    repository.result = TripResult.Success(listOf(far, near))
+    viewModel.retry()
+    advanceUntilIdle()
+    assertEquals(listOf("near"), ids(viewModel))
+  }
+
+  @Test
+  fun selectionChangedDuringLoadIsAppliedToTheResult() = runTest {
+    repository.result = TripResult.Success(listOf(near, far))
+    repository.gate = CompletableDeferred()
+    val selection = MutableStateFlow<Location?>(null)
+    val viewModel = AvailableTripsViewModel(repository, selection)
+    runCurrent()
+    selection.value = farPoint
+    runCurrent()
+    assertEquals(AvailableTripsUiState.Loading, viewModel.uiState.value)
+    selection.value = point
+    repository.gate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf("near"), ids(viewModel))
+  }
+
+  @Test
+  fun deferredLoadWaitsForRetry() = runTest {
+    val viewModel = AvailableTripsViewModel(repository, MutableStateFlow(null), false)
+    advanceUntilIdle()
+    assertEquals(0, repository.calls)
+    assertEquals(AvailableTripsUiState.Loading, viewModel.uiState.value)
+    viewModel.retry()
+    advanceUntilIdle()
+    assertEquals(1, repository.calls)
     assertEquals(AvailableTripsUiState.Content(listOf(trip)), viewModel.uiState.value)
   }
 

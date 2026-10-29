@@ -11,10 +11,10 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Holds the delivery point a requester filters trips by, shared by the trip list (#146) and map
- * (#150), which read [selected] and apply `filterTripsServing`. One instance per authenticated
- * session, created on the outer App entry next to the other session ViewModels; signing out or
- * switching accounts discards it, so a selection never leaks between accounts. The full point is
- * saved, so a building, map pin or GPS position survives process death.
+ * (#150), which read [selected] and apply [com.android.sample.model.classifyTrips]. One instance
+ * per authenticated session, created on the outer App entry next to the other session ViewModels;
+ * signing out or switching accounts discards it, so a selection never leaks between accounts. The
+ * full point is saved, so a building, map pin or GPS position survives process death.
  */
 class TripLocationFilterViewModel(private val savedStateHandle: SavedStateHandle) : ViewModel() {
   private val mutableSelected = MutableStateFlow(restore())

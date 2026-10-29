@@ -140,7 +140,7 @@ class TripMapScreenTest {
     assertTrue(map.height > map.width * 1.5f)
     assertEquals(78f, header.height, 1f)
     assertEquals(map.width - 32f, card.width, 1f)
-    assertEquals(239f, card.height, 1f)
+    assertEquals(273f, card.height, 1f)
     assertEquals(map.bottom - 16f, card.bottom, 1f)
     assertTrue(card.top > header.bottom)
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed()

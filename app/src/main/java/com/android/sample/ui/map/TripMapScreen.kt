@@ -197,7 +197,7 @@ fun TripMapScreen(
     if (content?.selectedTrip == null || maxHeight >= 400.dp) {
       val locateBottom =
           if (content?.selectedTrip != null) {
-            (if (content.selectedGroup.size > 1) 239.dp else 211.dp) + 32.dp
+            (if (content.selectedGroup.size > 1) 273.dp else 211.dp) + 32.dp
           } else 16.dp
       MapRoundAction(
           R.drawable.map_locate,

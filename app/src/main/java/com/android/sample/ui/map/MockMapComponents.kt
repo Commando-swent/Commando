@@ -90,7 +90,10 @@ internal fun MapMarker(
       )
   Column(
       modifier
-          .width(if (groupSize > 1 && !selected) GROUP_MARKER_WIDTH else TRIP_MARKER_WIDTH)
+          .width(
+              (if (groupSize > 1 && !selected) GROUP_MARKER_WIDTH else TRIP_MARKER_WIDTH) +
+                  labelShift.coerceAtLeast(-labelShift) * 2
+          )
           .heightIn(min = 48.dp)
           .testTag(MockMapTestTags.MARKER_PREFIX + trip.id)
           .selectable(selected, role = Role.Button, onClick = onClick)

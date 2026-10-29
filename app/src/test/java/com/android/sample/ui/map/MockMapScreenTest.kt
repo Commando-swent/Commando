@@ -2,12 +2,15 @@ package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
 import android.graphics.Bitmap
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.dp
+import com.android.sample.R
 import com.android.sample.data.repository.TripError
 import com.android.sample.ui.map.MockMapTestTags as Tags
 import com.android.sample.ui.navigation.*
@@ -41,6 +44,34 @@ class MockMapScreenTest {
         }
       }
     }
+  }
+
+  @Test
+  fun discoveryAndLocationControlsDispatchTheirOwnActions() {
+    var lists = 0
+    var refreshes = 0
+    var locations = 0
+    compose.setContent {
+      SampleAppTheme {
+        Column {
+          MapDiscoveryHeader("", { lists++ }, { refreshes++ }, true)
+          MapLoadingPill()
+          MapMarkerSkeletons(Modifier.height(40.dp))
+          MapRoundAction(
+              R.drawable.map_locate,
+              R.string.nav_trip_list,
+              { locations++ },
+              Modifier.testTag(TripMapTestTags.LOCATE),
+          )
+        }
+      }
+    }
+    tag(NavigationTestTags.MAP_LIST).performTouchInput { click() }
+    tag(TripMapTestTags.REFRESH).performTouchInput { click() }
+    tag(TripMapTestTags.LOCATE).performTouchInput { click() }
+    assertEquals(1, locations)
+    assertEquals(1, lists)
+    assertEquals(1, refreshes)
   }
 
   @Test

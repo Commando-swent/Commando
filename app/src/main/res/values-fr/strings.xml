@@ -292,6 +292,7 @@
     <string name="trip_details_shopping_time">Heure des courses</string>
     <string name="trip_details_handoff">Point de remise</string>
     <string name="trip_details_add_items">Ajouter des articles à ce trajet</string>
+    <string name="trip_details_view_orders">Voir les commandes</string>
     <string name="trip_details_not_found">Ce trajet est introuvable.</string>
     <string name="trip_details_error">Une erreur est survenue lors du chargement de ce trajet.</string>
     <string name="trips_title">Trajets disponibles</string>

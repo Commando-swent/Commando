@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+// AI assistance: Claude Code for the incoming-orders entry point tests (#147).
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
@@ -62,6 +63,7 @@ class TripDetailsScreenTest {
       onBack: () -> Unit = {},
       onAddItems: ((String) -> Unit)? = {},
       largeText: Boolean = false,
+      onViewOrders: ((String) -> Unit)? = null,
   ) {
     compose.setContent {
       val density = LocalDensity.current
@@ -74,10 +76,27 @@ class TripDetailsScreenTest {
               onRetry = onRetry,
               onBack = onBack,
               onAddItems = onAddItems,
+              onViewOrders = onViewOrders,
           )
         }
       }
     }
+  }
+
+  @Test
+  fun viewOrdersOpensTheExactTripAlongsideTheDisabledCatalogue() {
+    val opened = mutableListOf<String>()
+    show(TripDetailsUiState.Content(trip), onAddItems = null, onViewOrders = { opened.add(it) })
+    compose.onNodeWithText("Add items to this run").assertIsNotEnabled()
+    compose.onNodeWithText("View orders").assertIsDisplayed().assertIsEnabled().performClick()
+    compose.runOnIdle { assertEquals(listOf(trip.id), opened) }
+  }
+
+  @Test
+  fun viewOrdersIsHiddenWithoutItsCallback() {
+    show(TripDetailsUiState.Content(trip))
+    compose.onNodeWithText("Migros").assertIsDisplayed()
+    compose.onNodeWithText("View orders").assertDoesNotExist()
   }
 
   @Test

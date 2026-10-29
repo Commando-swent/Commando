@@ -59,6 +59,8 @@ import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.map.MockMapScreen
 import com.android.sample.ui.map.MockMapViewModel
+import com.android.sample.ui.orders.IncomingOrdersScreen
+import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
 import com.android.sample.ui.orders.MyOrdersViewModel
 import com.android.sample.ui.orders.OrderDetailsScreen
@@ -342,6 +344,9 @@ private fun AuthenticatedApp(
             }
         val tripDetailsViewModel: TripDetailsViewModel =
             viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
+        val tripState by tripDetailsViewModel.uiState.collectAsState()
+        // The entry point is for the owner only; the repository and rules check ownership again.
+        val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == userId
         TripDetailsScreen(
             viewModel = tripDetailsViewModel,
             onBack = { navController.popBackStack() },
@@ -351,6 +356,38 @@ private fun AuthenticatedApp(
                     navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
                   }
                 } else null,
+            onViewOrders =
+                if (appUiState.mode == AppMode.Commando && ownsTrip) {
+                  { selectedTripId ->
+                    navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
+                      launchSingleTop = true
+                    }
+                  }
+                } else null,
+        )
+      }
+      composable(
+          route = CommandoScreens.IncomingOrders.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Incoming Orders requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        // The resume observer loads on entry and refreshes after a decision in Order Details.
+        val incomingOrdersViewModel: IncomingOrdersViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              IncomingOrdersViewModel(orders.repository, tripId, loadImmediately = false)
+            }
+        RefreshOnResume(incomingOrdersViewModel, incomingOrdersViewModel::refresh)
+        IncomingOrdersScreen(
+            viewModel = incomingOrdersViewModel,
+            onOrderClick = { orderId ->
+              navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
+                launchSingleTop = true
+              }
+            },
         )
       }
       composable(

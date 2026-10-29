@@ -115,9 +115,16 @@ fun TripMapScreen(
         )
       }
       is TripMapUiState.Content -> {
-        val offMap = groups.filter {
-          CAMPUS_MAP_PROJECTION.project(it.first().handoffLocation) == null
-        }
+        val coveredEdge = (if (selectedPoint == null) 94.dp else 148.dp) + 48.dp
+        val offMap =
+            groups
+                .takeIf { candidates ->
+                  candidates.any {
+                    val point = CAMPUS_MAP_PROJECTION.project(it.first().handoffLocation)
+                    point == null || maxHeight * point.y.toFloat() < coveredEdge
+                  }
+                }
+                .orEmpty()
         if (offMap.isNotEmpty() && state.selectedTrip == null) {
           Surface(
               Modifier.align(Alignment.BottomCenter)

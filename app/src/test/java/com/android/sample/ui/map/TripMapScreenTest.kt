@@ -4,6 +4,7 @@ package com.android.sample.ui.map
 import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.core.app.ApplicationProvider
@@ -107,14 +108,26 @@ class TripMapScreenTest {
 
   @Test
   @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
-  fun offscreenTripRemainsSelectableInsteadOfBeingClampedToTheMap() {
+  fun offscreenAndHeaderCoveredTripsRemainTouchableInLandscape() {
     val outside = trip.copy(handoffLocation = Location("Lausanne", 46.5167, 6.6291))
-    state = TripMapUiState.Content(listOf(outside))
+    val covered =
+        trip.copy(
+            id = "covered",
+            handoffLocation = TripLocations.handoffPoints.first { it.name.contains("SwissTech") },
+        )
+    val trips = listOf(outside, covered)
+    state = TripMapUiState.Content(trips)
     show()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).assertDoesNotExist()
-    compose.onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + trip.id).performScrollTo().performClick()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
-    assertEquals(trip.id, details)
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + outside.id).assertDoesNotExist()
+    for (candidate in trips) {
+      compose
+          .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + candidate.id)
+          .performScrollTo()
+          .performTouchInput { click() }
+      compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
+      assertEquals(candidate.id, details)
+      compose.runOnIdle { state = TripMapUiState.Content(trips) }
+    }
   }
 
   @Test
@@ -158,5 +171,9 @@ class TripMapScreenTest {
     )
     assertTrue(label.left >= map.left)
     assertTrue(label.right <= map.right)
+    compose
+        .onNodeWithTag(TripMapTestTags.MARKER_LABEL_PREFIX + trip.id, useUnmergedTree = true)
+        .performTouchInput { click(Offset(width - 2f, center.y)) }
+    compose.onNodeWithTag(MockMapTestTags.SUMMARY).assertIsDisplayed()
   }
 }

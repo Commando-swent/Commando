@@ -36,8 +36,6 @@
     <string name="auth_google_unavailable">La connexion Google doit encore être configurée. Utilisez votre e-mail et votre mot de passe pour le moment.</string>
     <string name="auth_google_clear_error">Impossible de réinitialiser le choix du compte Google. Réessayez plus tard.</string>
     <string name="catalogue_trip_summary">%1$s · %2$s</string>
-    <string name="catalogue_today">Aujourd’hui</string>
-    <string name="catalogue_tomorrow">Demain</string>
     <string name="catalogue_search_hint">Rechercher des produits</string>
     <string name="catalogue_clear_query">Effacer la recherche</string>
     <string name="catalogue_all_products">TOUS LES PRODUITS · %1$d</string>

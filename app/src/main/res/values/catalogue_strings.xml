@@ -1,7 +1,5 @@
 <resources>
     <string name="catalogue_trip_summary">%1$s · %2$s</string>
-    <string name="catalogue_today">Today</string>
-    <string name="catalogue_tomorrow">Tomorrow</string>
     <string name="catalogue_search_hint">Search products</string>
     <string name="catalogue_clear_query">Clear search text</string>
     <string name="catalogue_all_products">ALL PRODUCTS · %1$d</string>

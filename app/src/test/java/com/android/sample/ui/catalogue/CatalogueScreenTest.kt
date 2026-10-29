@@ -31,6 +31,7 @@ import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
 import com.android.sample.model.Trip
+import com.android.sample.ui.components.formatTripTime
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant

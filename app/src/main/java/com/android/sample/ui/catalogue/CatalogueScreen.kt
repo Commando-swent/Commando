@@ -1,7 +1,7 @@
 package com.android.sample.ui.catalogue
 
-// AI assistance: Claude Code. Layout from Figma "05 · Product catalogue (#65)".
-import android.text.format.DateFormat
+// AI assistance: Claude Code; OpenAI Codex (shared time formatter). Layout from Figma "05 · Product
+// catalogue (#65)".
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -55,14 +55,11 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.ui.components.formatTripTime
 import com.android.sample.ui.orders.money
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
 import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
-import java.time.temporal.ChronoUnit
-import java.util.Locale
 import kotlinx.coroutines.flow.first
 
 /**
@@ -194,8 +191,8 @@ private fun TripSummary(trip: Trip) {
           now = Instant.now(),
           zone = ZoneId.systemDefault(),
           locale = LocalConfiguration.current.locales[0],
-          today = stringResource(R.string.catalogue_today),
-          tomorrow = stringResource(R.string.catalogue_tomorrow),
+          today = stringResource(R.string.trip_today),
+          tomorrow = stringResource(R.string.trip_tomorrow),
       )
   Row(
       Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
@@ -211,31 +208,6 @@ private fun TripSummary(trip: Trip) {
         overflow = TextOverflow.Ellipsis,
     )
   }
-}
-
-/**
- * Figma trip time in [zone]: "Today, 17:30", "Tomorrow, 17:30" or "16 Oct, 17:30". The time and the
- * day-month order follow [locale].
- */
-internal fun formatTripTime(
-    scheduledAt: Instant,
-    now: Instant,
-    zone: ZoneId,
-    locale: Locale,
-    today: String,
-    tomorrow: String,
-): String {
-  val departure = scheduledAt.atZone(zone)
-  val day =
-      when (ChronoUnit.DAYS.between(now.atZone(zone).toLocalDate(), departure.toLocalDate())) {
-        0L -> today
-        1L -> tomorrow
-        else ->
-            DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, "dMMM"), locale)
-                .format(departure)
-      }
-  val time = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale)
-  return "$day, ${time.format(departure)}"
 }
 
 private val ListItemPadding = Modifier.padding(horizontal = 20.dp)

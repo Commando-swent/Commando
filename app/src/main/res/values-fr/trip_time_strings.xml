@@ -1,0 +1,4 @@
+<resources>
+    <string name="trip_today">Aujourd’hui</string>
+    <string name="trip_tomorrow">Demain</string>
+</resources>

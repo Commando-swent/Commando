@@ -2,7 +2,7 @@ package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
 /** Display text and fractional positions shared by real maps and illustration previews. */
-data class MapTripSummary(
+data class MockMapTrip(
     val id: String,
     val store: String,
     val time: String,
@@ -14,8 +14,8 @@ data class MapTripSummary(
     val distanceLabel: String? = null,
 )
 
-/** Source compatibility for the illustration previews. */
-typealias MockMapTrip = MapTripSummary
+/** Presentation name used by the geographic screen; previews retain their original model. */
+typealias MapTripSummary = MockMapTrip
 
 enum class MockMapStatus {
   Content,

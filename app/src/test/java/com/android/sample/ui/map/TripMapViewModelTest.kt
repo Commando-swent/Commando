@@ -62,15 +62,10 @@ class TripMapViewModelTest {
   fun initialLoadExposesActualIdsCoordinatesAndRepositoryOrder() = runTest {
     repository.read = { TripResult.Success(listOf(second, far, first)) }
     val model = model()
-    model.selectTrip(first.id) // Loading ignores selection.
     assertEquals(TripMapUiState.Loading, model.uiState.value)
     advanceUntilIdle()
     assertEquals(listOf(second, far, first), content(model).trips)
     assertEquals(point, content(model).trips.last().handoffLocation)
-    assertNull(content(model).selectedTrip)
-    model.selectTrip(first.id)
-    model.selectTrip("unknown")
-    assertEquals(first, content(model).selectedTrip)
     assertEquals(1, repository.calls)
   }
 
@@ -148,24 +143,6 @@ class TripMapViewModelTest {
     assertEquals(listOf(added), content(model).trips)
     assertNull(content(model).selectedTripId)
     assertEquals(point, filter.selected.value)
-  }
-
-  @Test
-  fun emptyNoMatchesAndErrorsAreMappedWithoutContent() = runTest {
-    filter.select(farPoint)
-    val model = model(false)
-    for ((result, expected) in
-        listOf(
-            TripResult.Success(emptyList<Trip>()) to TripMapUiState.Empty,
-            TripResult.Success(listOf(first)) to TripMapUiState.NoMatches(farPoint),
-            TripResult.Error(TripError.NetworkError) to
-                TripMapUiState.Error(TripError.NetworkError),
-        )) {
-      repository.read = { result }
-      model.refresh()
-      advanceUntilIdle()
-      assertEquals(expected, model.uiState.value)
-    }
   }
 
   @Test

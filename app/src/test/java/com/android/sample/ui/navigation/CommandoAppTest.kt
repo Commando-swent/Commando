@@ -1,5 +1,7 @@
 package com.android.sample.ui.navigation
 
+// AI assistance: OpenAI Codex (real-trip map integration).
+
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -20,6 +22,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
@@ -42,6 +45,8 @@ import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
@@ -555,6 +560,14 @@ class CommandoAppTest {
       compose.onNodeWithText(secondTrip.store.name).assertDoesNotExist()
     }
     assertFiltered()
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(TripMapTestTags.CLEAR_FILTER)
+        .assert(hasText("CE building", substring = true))
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + firstTrip.id).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
+    click(NavigationTestTags.MAP_LIST)
+    assertFiltered()
     compose.onNodeWithText(firstTrip.store.name).performClick()
     assertTripDetails(firstTrip)
     compose.onNodeWithText("Back").performClick()
@@ -563,7 +576,7 @@ class CommandoAppTest {
     assertScreen(NavigationTestTags.PROFILE_SCREEN)
     pressBack()
     assertFiltered()
-    compose.runOnIdle { assertEquals(3, listLoads) }
+    compose.runOnIdle { assertEquals(5, listLoads) }
 
     compose.runOnIdle { repository.signOut() }
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
@@ -575,6 +588,41 @@ class CommandoAppTest {
         .assert(hasText("All locations"))
     compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
+  }
+
+  @Test
+  fun mapKeepsSharedChromeAndSwitchesToCommandoTrips() {
+    show(FakeAuthRepository(alice), twoTrips(alice.uid))
+    click(HomeTestTags.TRIP_ACTION)
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performScrollTo().performClick()
+    compose.onNodeWithTag(AppTestTags.TOP_BAR).assertIsDisplayed()
+    compose.onNodeWithTag(AppTestTags.BOTTOM_BAR).assertIsDisplayed()
+    click(AppTestTags.COMMANDO_MODE)
+    assertScreen(MyTripsTestTags.SCREEN)
+    compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    pressBack()
+    assertScreen(NavigationTestTags.HOME_SCREEN)
+    compose.onNodeWithTag(TripMapTestTags.HEADER).assertDoesNotExist()
+  }
+
+  @Test
+  fun mapOpensOpaqueTripDetailsAndRefreshesOnReturn() {
+    show(FakeAuthRepository(alice), twoTrips(alice.uid))
+    click(HomeTestTags.TRIP_ACTION)
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + secondTrip.id)
+        .performScrollTo()
+        .performClick()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    assertTripDetails(secondTrip)
+    pressBack()
+    compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled()
+    compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
+    compose.onNode(hasScrollAction()).performScrollToNode(hasText(firstTrip.store.name))
+    compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
+    compose.onNode(hasScrollAction()).performScrollToNode(hasText(secondTrip.store.name))
+    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
   }
 
   @Test

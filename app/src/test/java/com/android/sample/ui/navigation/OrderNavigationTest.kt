@@ -15,6 +15,7 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
@@ -170,7 +171,7 @@ class OrderNavigationTest {
   }
 
   @Test
-  fun mapDoesNotSendSyntheticMarkerIdsToTheTripRepositoryAndReturnsToList() {
+  fun emptyMapHasNoSyntheticMarkersOrTripLookupsAndReturnsToList() {
     val lookups = mutableListOf<String>()
     show(
         object : TripRepository by trips {
@@ -182,8 +183,9 @@ class OrderNavigationTest {
     )
     click(AppTestTags.TRIPS_BUTTON)
     click(NavigationTestTags.OPEN_MAP)
-    click(MockMapTestTags.MARKER_PREFIX + "sample-migros")
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag(TripMapTestTags.STATUS).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + "sample-migros").assertDoesNotExist()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).assertDoesNotExist()
     assertTrue(lookups.isEmpty())
     click(NavigationTestTags.MAP_LIST)
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).assertIsDisplayed()

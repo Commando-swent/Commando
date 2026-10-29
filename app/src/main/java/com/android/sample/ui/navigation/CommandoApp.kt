@@ -1,5 +1,7 @@
 package com.android.sample.ui.navigation
 
+// AI assistance: OpenAI Codex (real-trip map integration).
+
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -56,8 +58,8 @@ import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
-import com.android.sample.ui.map.MockMapScreen
-import com.android.sample.ui.map.MockMapViewModel
+import com.android.sample.ui.map.TripMapScreen
+import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
 import com.android.sample.ui.orders.MyOrdersViewModel
 import com.android.sample.ui.orders.OrderDetailsScreen
@@ -222,6 +224,12 @@ private fun AuthenticatedApp(
         if (currentScreen == CommandoScreens.Profile && mode != appUiState.mode) {
           // Back must not restore a trips list belonging to the previous mode.
           navController.navigate(CommandoScreens.Profile.name) {
+            popUpTo(CommandoScreens.Home.name)
+            launchSingleTop = true
+          }
+        }
+        if (currentScreen == CommandoScreens.MockMap && mode == AppMode.Commando) {
+          navController.navigate(CommandoScreens.MyTrips.name) {
             popUpTo(CommandoScreens.Home.name)
             launchSingleTop = true
           }
@@ -447,13 +455,35 @@ private fun AuthenticatedApp(
               )
         }
       }
-      composable(route = CommandoScreens.MockMap.name) {
-        val map: MockMapViewModel = viewModel { MockMapViewModel() }
-        // These marker IDs are UI fixtures, not keys in the production TripRepository.
-        MockMapScreen(
-            viewModel = map,
-            onTripDetails = null,
+      composable(route = CommandoScreens.MockMap.name) { entry ->
+        val map: TripMapViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              TripMapViewModel(
+                  tripRepository,
+                  locationFilter.selected,
+                  orders::currentUserId,
+                  orders.sessionChanges,
+              )
+            }
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, map) {
+          val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) map.refresh()
+          }
+          lifecycleOwner.lifecycle.addObserver(observer)
+          onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        }
+        val state by map.uiState.collectAsState()
+        val selectedPoint by locationFilter.selected.collectAsState()
+        TripMapScreen(
+            state,
+            map::refresh,
+            map::selectTrip,
+            map::clearSelection,
+            onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
             onBack = { navController.popBackStack() },
+            selectedPoint = selectedPoint,
+            onClearPoint = locationFilter::clear,
         )
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->

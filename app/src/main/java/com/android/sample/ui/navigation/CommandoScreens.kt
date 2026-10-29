@@ -21,7 +21,7 @@ enum class CommandoScreens(
   AvailableTrips(title = R.string.trips_title, showModeSelector = true, showBottomBar = true),
   MyTrips(title = R.string.my_trips_title, showModeSelector = true, showBottomBar = true),
   TripDetails(title = R.string.trips_title),
-  MockMap(title = R.string.nav_mock_map, showBottomBar = true),
+  MockMap(title = R.string.trip_map_title, showModeSelector = true, showBottomBar = true),
   MyOrders(title = R.string.my_orders_title, showBottomBar = true),
   OrderDetails(title = R.string.order_details_title),
   /** Product catalogue of the selected trip's chain; titled after the Trip Details action. */

@@ -1,6 +1,7 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -10,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
 import com.android.sample.ui.map.MockMapTestTags as Tags
@@ -44,6 +46,49 @@ class MockMapScreenTest {
         }
       }
     }
+  }
+
+  @Test
+  fun omittedSampleFlagKeepsProductionDescriptionsAndScrolling() {
+    val trip = MapTripSummary("real", "Shop", "12:30", "CM", .5f, .5f)
+    assertFalse(trip.isSample)
+    assertTrue(MockMapSamples.trips.all { it.isSample })
+    compose.setContent {
+      SampleAppTheme {
+        Column {
+          MapMarker(trip, false, trip.time, 1, {})
+          MapTripPreview(trip, listOf(trip), {}, {}, {})
+        }
+      }
+    }
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    tag(Tags.MARKER_PREFIX + trip.id)
+        .assertContentDescriptionEquals(
+            context.getString(R.string.trip_map_marker, trip.store, trip.time, trip.handoff)
+        )
+    compose.onAllNodesWithText(trip.time).assertCountEquals(2)
+    compose.onNode(hasScrollAction()).assertExists()
+  }
+
+  @Test
+  fun mapAndHomeUseTheSameNavigationGeometry() {
+    var screen by mutableStateOf(CommandoScreens.Home)
+    compose.setContent {
+      SampleAppTheme {
+        AppScaffold(
+            screen,
+            AppMode.Requester,
+            {},
+            {},
+            {},
+            onTrips = { screen = CommandoScreens.MockMap },
+        ) {}
+      }
+    }
+    val height = tag(AppTestTags.BOTTOM_BAR).fetchSemanticsNode().boundsInRoot.height
+    tag(AppTestTags.TRIPS_BUTTON).performTouchInput { click() }
+    tag(AppTestTags.TRIPS_BUTTON).assertIsSelected()
+    assertEquals(height, tag(AppTestTags.BOTTOM_BAR).fetchSemanticsNode().boundsInRoot.height)
   }
 
   @Test
@@ -116,7 +161,11 @@ class MockMapScreenTest {
     assertEquals(listOf("sample-migros", "sample-denner"), calls)
     text("2 TRIPS AT THIS HANDOFF POINT").assertIsDisplayed()
     capture("shared")
-    tag(Tags.PAGE_PREFIX + "sample-shared").performClick().assertIsSelected()
+    tag(Tags.PAGE_PREFIX + "sample-shared").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+    tag(Tags.PAGE_PREFIX + "sample-denner").assertWidthIsEqualTo(48.dp).assertHeightIsEqualTo(48.dp)
+    tag(Tags.PAGE_PREFIX + "sample-shared")
+        .performTouchInput { click(topLeft + androidx.compose.ui.geometry.Offset(2f, 2f)) }
+        .assertIsSelected()
     compose
         .onNodeWithContentDescription("Sample trip: Migros EPFL at 18:15")
         .assertIsSelected()

@@ -208,12 +208,9 @@ internal fun MapDiscoveryHeader(
     refreshEnabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-  Surface(
+  MapFloatingSurface(
       modifier.testTag(TripMapTestTags.HEADER),
-      shape = RoundedCornerShape(24.dp),
       color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = .96f),
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = 10.dp,
   ) {
     Row(
         Modifier.height(78.dp).padding(start = 19.dp, end = 13.dp),
@@ -298,12 +295,10 @@ internal fun MapRoundAction(
 
 @Composable
 internal fun MapLoadingPill(modifier: Modifier = Modifier) {
-  Surface(
+  MapFloatingSurface(
       modifier.testTag(TripMapTestTags.STATUS),
-      shape = RoundedCornerShape(20.dp),
+      cornerRadius = 20.dp,
       color = MaterialTheme.colorScheme.surfaceContainerHigh,
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-      shadowElevation = 10.dp,
   ) {
     Row(
         Modifier.padding(start = 14.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
@@ -336,15 +331,13 @@ internal fun MapFeedbackCard(
         is TripMapUiState.Error -> stringResource(R.string.mock_map_error_title)
         else -> stringResource(R.string.mock_map_empty_title)
       }
-  Surface(
+  MapFloatingSurface(
       modifier
           .fillMaxWidth()
           .heightIn(min = if (error) 298.dp else 283.dp)
           .testTag(TripMapTestTags.STATUS),
-      shape = RoundedCornerShape(24.dp),
       color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = .97f),
-      border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-      shadowElevation = 10.dp,
+      borderColor = MaterialTheme.colorScheme.outline,
   ) {
     Column(
         Modifier.verticalScroll(rememberScrollState())

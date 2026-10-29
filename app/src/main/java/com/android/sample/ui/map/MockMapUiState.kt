@@ -1,8 +1,8 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
-/** UI-only fixture: positions are fractions of the illustration, never geographic coordinates. */
-data class MockMapTrip(
+/** Display text and fractional positions shared by real maps and illustration previews. */
+data class MapTripSummary(
     val id: String,
     val store: String,
     val time: String,
@@ -10,7 +10,12 @@ data class MockMapTrip(
     val x: Float,
     val y: Float,
     val handoffPointId: String = handoff,
+    val isSample: Boolean = true,
+    val distanceLabel: String? = null,
 )
+
+/** Source compatibility for the illustration previews. */
+typealias MockMapTrip = MapTripSummary
 
 enum class MockMapStatus {
   Content,

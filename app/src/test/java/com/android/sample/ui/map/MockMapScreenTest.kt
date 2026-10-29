@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.android.sample.data.repository.TripError
 import com.android.sample.ui.map.MockMapTestTags as Tags
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
@@ -43,6 +44,20 @@ class MockMapScreenTest {
   }
 
   @Test
+  fun feedbackCardsDispatchRefreshAndRetry() {
+    var state by mutableStateOf<TripMapUiState>(TripMapUiState.Empty)
+    var calls = 0
+    compose.setContent { SampleAppTheme { MapFeedbackCard(state, { calls++ }) } }
+    tag(TripMapTestTags.EMPTY_REFRESH).performClick()
+    compose.runOnIdle { state = TripMapUiState.Error(TripError.NetworkError) }
+    tag(Tags.RETRY).performClick()
+    assertEquals(2, calls)
+    compose.runOnIdle { state = TripMapUiState.SessionEnded }
+    tag(Tags.RETRY).assertDoesNotExist()
+    tag(TripMapTestTags.EMPTY_REFRESH).assertDoesNotExist()
+  }
+
+  @Test
   fun selectionShowsSampleInformationAndDetailsEmitsOnlyTheSelectedId() {
     val calls = mutableListOf<String>()
     show(details = { calls.add(it) })
@@ -56,6 +71,9 @@ class MockMapScreenTest {
     text("Sample departure · 12:30").assertIsDisplayed()
     text("CM building").assertIsDisplayed()
     assertTrue(calls.isEmpty())
+    val card = tag(Tags.SUMMARY).fetchSemanticsNode().boundsInRoot
+    assertEquals(380f, card.width, 1f)
+    assertEquals(211f, card.height, 1f)
     capture("selected")
     tag(Tags.DETAILS).performClick()
     assertEquals(listOf("sample-migros"), calls)

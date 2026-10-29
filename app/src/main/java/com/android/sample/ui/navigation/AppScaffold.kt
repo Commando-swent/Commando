@@ -174,15 +174,14 @@ private fun AppBottomBar(
     onTrips: () -> Unit,
     onOrders: (() -> Unit)?,
 ) {
-  NavigationBar(
-      modifier = Modifier.testTag(AppTestTags.BOTTOM_BAR),
-      containerColor = MaterialTheme.colorScheme.surfaceContainer,
-  ) {
+  val mapStyle = currentScreen == CommandoScreens.MockMap
+  val tabs: @Composable RowScope.() -> Unit = {
     AppNavigationItem(
         R.drawable.nav_home,
         R.string.nav_home,
         modifier = Modifier.testTag(AppTestTags.HOME_BUTTON),
         selected = currentScreen == CommandoScreens.Home,
+        mapStyle = mapStyle,
         onClick = onHome,
     )
     AppNavigationItem(
@@ -193,6 +192,7 @@ private fun AppBottomBar(
             currentScreen == CommandoScreens.AvailableTrips ||
                 currentScreen == CommandoScreens.MockMap ||
                 currentScreen == CommandoScreens.MyTrips,
+        mapStyle = mapStyle,
         onClick = onTrips,
     )
     AppNavigationItem(
@@ -201,6 +201,7 @@ private fun AppBottomBar(
         modifier = Modifier.testTag(AppTestTags.ORDERS_BUTTON),
         selected = currentScreen == CommandoScreens.MyOrders,
         enabled = onOrders != null,
+        mapStyle = mapStyle,
         onClick = { onOrders?.invoke() },
     )
     AppNavigationItem(
@@ -208,7 +209,24 @@ private fun AppBottomBar(
         R.string.nav_profile,
         modifier = Modifier.testTag(AppTestTags.PROFILE_BUTTON),
         selected = currentScreen == CommandoScreens.Profile,
+        mapStyle = mapStyle,
         onClick = onProfile,
+    )
+  }
+  if (mapStyle) {
+    Row(
+        Modifier.fillMaxWidth()
+            .height(104.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainer)
+            .testTag(AppTestTags.BOTTOM_BAR)
+            .selectableGroup(),
+        content = tabs,
+    )
+  } else {
+    NavigationBar(
+        modifier = Modifier.testTag(AppTestTags.BOTTOM_BAR),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        content = tabs,
     )
   }
 }
@@ -226,7 +244,48 @@ private fun RowScope.AppNavigationItem(
     selected: Boolean = false,
     enabled: Boolean = true,
     onClick: () -> Unit,
+    mapStyle: Boolean = false,
 ) {
+  if (mapStyle) {
+    Column(
+        modifier
+            .weight(1f)
+            .height(80.dp)
+            .selectable(selected, enabled = enabled, role = Role.Tab, onClick = onClick)
+            .padding(top = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+      Box(
+          Modifier.size(64.dp, 32.dp)
+              .background(
+                  if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                  RoundedCornerShape(16.dp),
+              ),
+          contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+            painterResource(icon),
+            null,
+            Modifier.size(24.dp),
+            tint =
+                if (selected) MaterialTheme.colorScheme.onSecondaryContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+      }
+      Text(
+          stringResource(label),
+          fontSize = 12.sp,
+          lineHeight = 16.sp,
+          fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+          color =
+              if (selected) MaterialTheme.colorScheme.onSurface
+              else MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
+    return
+  }
+
   NavigationBarItem(
       selected = selected,
       onClick = onClick,

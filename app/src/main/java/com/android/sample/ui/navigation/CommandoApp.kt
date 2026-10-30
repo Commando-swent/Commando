@@ -1,6 +1,7 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: Claude Code for the shared refresh-on-resume effect and incoming orders (#147).
+// AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
+// Claude Code contributed the shared resume refresh and incoming orders (#147).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -57,8 +58,8 @@ import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
-import com.android.sample.ui.map.MockMapScreen
-import com.android.sample.ui.map.MockMapViewModel
+import com.android.sample.ui.map.TripMapScreen
+import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
@@ -229,6 +230,12 @@ private fun AuthenticatedApp(
             launchSingleTop = true
           }
         }
+        if (currentScreen == CommandoScreens.TripMap && mode == AppMode.Commando) {
+          navController.navigate(CommandoScreens.MyTrips.name) {
+            popUpTo(CommandoScreens.Home.name)
+            launchSingleTop = true
+          }
+        }
         appViewModel.switchMode(mode)
       },
       onHome = {
@@ -315,7 +322,7 @@ private fun AuthenticatedApp(
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },
             onOpenMap = {
-              navController.navigate(CommandoScreens.MockMap.name) { launchSingleTop = true }
+              navController.navigate(CommandoScreens.TripMap.name) { launchSingleTop = true }
             },
         )
       }
@@ -471,13 +478,28 @@ private fun AuthenticatedApp(
               )
         }
       }
-      composable(route = CommandoScreens.MockMap.name) {
-        val map: MockMapViewModel = viewModel { MockMapViewModel() }
-        // These marker IDs are UI fixtures, not keys in the production TripRepository.
-        MockMapScreen(
-            viewModel = map,
-            onTripDetails = null,
+      composable(route = CommandoScreens.TripMap.name) { entry ->
+        val map: TripMapViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              TripMapViewModel(
+                  tripRepository,
+                  locationFilter.selected,
+                  orders::currentUserId,
+                  orders.sessionChanges,
+              )
+            }
+        RefreshOnResume(map, map::refresh)
+        val state by map.uiState.collectAsState()
+        val selectedPoint by locationFilter.selected.collectAsState()
+        TripMapScreen(
+            state,
+            map::refresh,
+            map::selectTrip,
+            map::clearSelection,
+            onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
             onBack = { navController.popBackStack() },
+            selectedPoint = selectedPoint,
+            onClearPoint = locationFilter::clear,
         )
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->

@@ -81,7 +81,7 @@ class MockMapScreenTest {
             {},
             {},
             {},
-            onTrips = { screen = CommandoScreens.MockMap },
+            onTrips = { screen = CommandoScreens.TripMap },
         ) {}
       }
     }

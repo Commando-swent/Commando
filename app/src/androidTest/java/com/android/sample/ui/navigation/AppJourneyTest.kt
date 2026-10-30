@@ -13,6 +13,8 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.profile.ProfileEditTestTags
@@ -103,6 +105,13 @@ class AppJourneyTest {
     scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
     scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
+    compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled().performClick()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).performClick()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performClick()
+    compose.onNodeWithText(trip.handoffLocation.name).assertIsDisplayed()
+    back()
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
     compose.onNodeWithText(trip.store.name).performClick()
     compose.onNodeWithText("Add items to this run").performScrollTo().performClick()

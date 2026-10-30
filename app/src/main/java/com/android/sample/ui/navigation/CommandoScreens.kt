@@ -22,7 +22,7 @@ enum class CommandoScreens(
   AvailableTrips(title = R.string.trips_title, showModeSelector = true, showBottomBar = true),
   MyTrips(title = R.string.my_trips_title, showModeSelector = true, showBottomBar = true),
   TripDetails(title = R.string.trips_title),
-  MockMap(title = R.string.nav_mock_map, showBottomBar = true),
+  TripMap(title = R.string.trip_map_title, showModeSelector = true, showBottomBar = true),
   MyOrders(title = R.string.my_orders_title, showBottomBar = true),
   OrderDetails(title = R.string.order_details_title),
   /** Orders placed on one of the owner's trips; reached from that trip's details. */

@@ -191,7 +191,7 @@ private fun AppBottomBar(
         modifier = Modifier.testTag(AppTestTags.TRIPS_BUTTON),
         selected =
             currentScreen == CommandoScreens.AvailableTrips ||
-                currentScreen == CommandoScreens.MockMap ||
+                currentScreen == CommandoScreens.TripMap ||
                 currentScreen == CommandoScreens.MyTrips,
         onClick = onTrips,
     )

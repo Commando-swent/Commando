@@ -136,6 +136,29 @@ class TripMapScreenTest {
   }
 
   @Test
+  @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
+  fun selectorCoveredTripsRemainTouchableWithTheCmFilter() {
+    val trips =
+        listOf("SwissTech", "metro", "Rolex").map { name ->
+          trip.copy(
+              id = name,
+              handoffLocation = TripLocations.handoffPoints.first { it.name.contains(name) },
+          )
+        }
+    state = TripMapUiState.Content(trips)
+    show()
+    for (candidate in trips) {
+      compose
+          .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + candidate.id)
+          .performScrollTo()
+          .performTouchInput { click() }
+      compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
+      assertEquals(candidate.id, details)
+      compose.runOnIdle { state = TripMapUiState.Content(trips) }
+    }
+  }
+
+  @Test
   fun selectedCardOverlaysTheFullViewportBelowTheFigmaHeader() {
     state = TripMapUiState.Content(listOf(trip, second), trip.id)
     show()

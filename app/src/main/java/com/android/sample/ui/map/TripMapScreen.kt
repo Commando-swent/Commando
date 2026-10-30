@@ -68,6 +68,8 @@ fun TripMapScreen(
   val density = LocalDensity.current
   var viewportBounds by remember { mutableStateOf(Rect.Zero) }
   var controlsBounds by remember { mutableStateOf(Rect.Zero) }
+  var selectorBounds by
+      remember(groups, viewportBounds, controlsBounds) { mutableStateOf(Rect.Zero) }
   val markerBounds = remember(groups) { mutableStateMapOf<String, Rect>() }
   BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
     val showLocateWithCard = maxHeight >= 400.dp
@@ -150,6 +152,7 @@ fun TripMapScreen(
           CAMPUS_MAP_PROJECTION.project(group.first().handoffLocation) == null ||
               markerBounds[group.first().id]?.let { bounds ->
                 bounds.overlaps(controlsBounds) ||
+                    bounds.overlaps(selectorBounds) ||
                     bounds.left < viewportBounds.left ||
                     bounds.top < viewportBounds.top ||
                     bounds.right > viewportBounds.right ||
@@ -160,7 +163,8 @@ fun TripMapScreen(
           Surface(
               Modifier.align(Alignment.BottomCenter)
                   .padding(16.dp, 60.dp)
-                  .heightIn(max = cardLimit),
+                  .heightIn(max = cardLimit)
+                  .onGloballyPositioned { selectorBounds = it.boundsInRoot() },
               shape = RoundedCornerShape(24.dp),
               color = MaterialTheme.colorScheme.surfaceContainer,
           ) {

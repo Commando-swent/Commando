@@ -4,11 +4,15 @@ package com.android.sample.emulator.firestore.security
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderResult
 import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
+import com.android.sample.model.Order
+import com.android.sample.model.OrderItem
+import com.android.sample.model.OrderStatus
 import com.android.sample.model.ShoppingChecklistItem
+import com.android.sample.model.buildShoppingChecklist
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
@@ -42,6 +46,32 @@ class ShoppingChecklistFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun everyAggregatedProductCanBeCheckedAndUncheckingFirstIsANoOp() = runTest {
+    withClients("owner" to true) { (owner) ->
+      val trip = publish(owner)
+      val uid = owner.auth.currentUser!!.uid
+      val repository = ShoppingChecklistRepositoryFirestore({ uid }, owner.firestore)
+      // Unchecking before any progress exists succeeds and stores nothing.
+      assertEquals(OrderResult.Success(Unit), repository.setPurchased(trip, milk, false))
+      assertEquals(OrderResult.Success(emptyMap<String, Long>()), get(repository, trip))
+
+      // 21 valid accepted orders of five distinct products each aggregate to 105 products.
+      val orders =
+          (1..21).map { n ->
+            val products = (1..5).map { OrderItem("product-$n-$it", "Product $n.$it", 100, 1) }
+            Order("order-$n", trip, "requester", products, 0, OrderStatus.ACCEPTED, Instant.EPOCH)
+          }
+      val items = buildShoppingChecklist(trip, orders, emptyMap())
+      assertEquals(105, items.size)
+      for (item in items) {
+        assertEquals(OrderResult.Success(Unit), repository.setPurchased(trip, item, true))
+      }
+      val all = items.associate { it.productId to 1L }
+      assertEquals(OrderResult.Success(all), get(repository, trip))
+    }
+  }
+
+  @Test
   fun onlyTheTripOwnerCanReadOrWriteProgress() = runTest {
     withClients("owner" to true, "other" to true, "signedOut" to false) { (owner, other, signedOut)
       ->
@@ -54,16 +84,14 @@ class ShoppingChecklistFirestoreSecurityRulesEmulatorTest {
       assertEquals(denied, get(otherRepository, trip))
       assertEquals(denied, otherRepository.setPurchased(trip, milk, false))
       for (client in listOf(other, signedOut)) {
-        val document = client.firestore.collection(COLLECTION).document(trip)
-        assertPermissionDenied("foreign read") { document.get(Source.SERVER).await() }
-        assertPermissionDenied("foreign write") {
-          document.set(valid(), SetOptions.merge()).await()
-        }
-        assertPermissionDenied("delete") { document.delete().await() }
+        val items = items(client, trip)
+        assertPermissionDenied("foreign list") { items.get(Source.SERVER).await() }
+        assertPermissionDenied("foreign read") { items.document("milk").get(Source.SERVER).await() }
+        assertPermissionDenied("foreign write") { items.document("milk").set(valid()).await() }
+        assertPermissionDenied("foreign delete") { items.document("milk").delete().await() }
       }
-      val ownerCollection = owner.firestore.collection(COLLECTION)
-      assertPermissionDenied("list") { ownerCollection.get(Source.SERVER).await() }
-      assertPermissionDenied("owner delete") { ownerCollection.document(trip).delete().await() }
+      val checklists = owner.firestore.collection(COLLECTION)
+      assertPermissionDenied("checklist list") { checklists.get(Source.SERVER).await() }
       val ownerRepository = ShoppingChecklistRepositoryFirestore({ uid }, owner.firestore)
       assertEquals(denied, get(ownerRepository, "missing-trip"))
     }
@@ -73,14 +101,14 @@ class ShoppingChecklistFirestoreSecurityRulesEmulatorTest {
   fun malformedProgressIsRejectedOrSkippedAndEndedSessionsFail() = runTest {
     withClients("owner" to true) { (owner) ->
       val trip = publish(owner)
-      val document = owner.firestore.collection(COLLECTION).document(trip)
+      val document = items(owner, trip).document("milk")
       val invalid =
           listOf(
               valid() + ("ownerId" to "someone"),
-              valid() + ("purchased" to "milk"),
+              valid() + ("quantity" to "two"),
+              valid() + ("quantity" to 0),
               valid() + ("updatedAt" to Timestamp(0, 0)),
-              mapOf("purchased" to mapOf("milk" to 1)),
-              valid() + ("purchased" to (1..101).associate { "product-$it" to 1 }),
+              mapOf("quantity" to 1),
           )
       for (data in invalid) assertPermissionDenied("malformed progress") {
         document.set(data).await()
@@ -89,15 +117,18 @@ class ShoppingChecklistFirestoreSecurityRulesEmulatorTest {
       var uid: String? = owner.auth.currentUser!!.uid
       val repository = ShoppingChecklistRepositoryFirestore({ uid }, owner.firestore)
       assertEquals(OrderResult.Error(OrderError.InvalidData), get(repository, "a/b"))
-      // Rules cannot check map values, so the repository skips the malformed ones.
-      val stored = mapOf("milk" to "two", "eggs" to 0, "bread" to 2)
-      document.set(valid() + ("purchased" to stored)).await()
+      // Documents written outside the rules are skipped when malformed.
+      val itemsPath = "$COLLECTION/$trip/items"
+      createDocumentAsOwner(itemsPath, "eggs", mapOf("quantity" to "two"))
+      createDocumentAsOwner(itemsPath, "bread", mapOf("quantity" to 2))
       assertEquals(OrderResult.Success(mapOf("bread" to 2L)), get(repository, trip))
-      val zero = milk.copy(requiredQuantity = 0)
-      assertEquals(
-          OrderResult.Error(OrderError.InvalidData),
-          repository.setPurchased(trip, zero, true),
-      )
+      val invalidItems = listOf(milk.copy(requiredQuantity = 0), milk.copy(productId = "a/b"))
+      for (item in invalidItems) {
+        assertEquals(
+            OrderResult.Error(OrderError.InvalidData),
+            repository.setPurchased(trip, item, true),
+        )
+      }
       uid = null
       assertEquals(OrderResult.Error(OrderError.NotAuthenticated), get(repository, trip))
     }
@@ -106,8 +137,10 @@ class ShoppingChecklistFirestoreSecurityRulesEmulatorTest {
   private suspend fun get(repository: ShoppingChecklistRepositoryFirestore, trip: String) =
       repository.getPurchasedQuantities(trip)
 
-  private fun valid() =
-      mapOf("purchased" to mapOf("milk" to 1), "updatedAt" to FieldValue.serverTimestamp())
+  private fun valid() = mapOf("quantity" to 1, "updatedAt" to FieldValue.serverTimestamp())
+
+  private fun items(client: EmulatorClient, trip: String) =
+      client.firestore.collection(COLLECTION).document(trip).collection("items")
 
   /** Only the trip owner matters to the checklist rules, so other trip fields are omitted. */
   private fun publish(owner: EmulatorClient): String =

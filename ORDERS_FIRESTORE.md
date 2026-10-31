@@ -57,9 +57,11 @@ Before production activation, the Firebase project owner must review and deploy 
 confirmed project, then record an Android persistence check. No production deployment is performed or
 claimed by these changes. Local emulator success is not evidence of production configuration.
 
-#193: `shoppingChecklists/{tripId}` stores only the trip owner's purchase progress: `purchased` maps a
-product ID to the quantity it was checked for, plus a server `updatedAt`. Products and quantities are
-recomputed from the trip's ACCEPTED orders (`buildShoppingChecklist`), so orders are never copied. An
-item stays checked only while its checked quantity covers the current requirement. Each toggle is a
-merge write of one product. Rules allow get/create/update only to the owner of `trips/{tripId}`,
-exact fields, a map of at most 100 products and a server timestamp; list and delete are denied.
+#193: `shoppingChecklists/{tripId}/items/{productId}` stores only the trip owner's purchase progress:
+one document per checked product, with the `quantity` it was checked for and a server `updatedAt`.
+Products and quantities are recomputed from the trip's ACCEPTED orders (`buildShoppingChecklist`), so
+orders are never copied. An item stays checked only while its checked quantity covers the current
+requirement. Checking writes the product's document and unchecking deletes it, so toggles never touch
+other products, there is no product limit, and unchecking before any save is a no-op. Rules allow
+reads and writes only to the owner of `trips/{tripId}`, with exact fields, a positive integer
+quantity and a server timestamp.

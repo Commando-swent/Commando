@@ -151,16 +151,16 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/trips/$(tripId)).data.ownerId == request.auth.uid;
     }
 
-    // Map values cannot be checked without loops; the size bound caps the document instead.
-    match /shoppingChecklists/{tripId} {
-      allow get: if isAuthenticated() && ownsTrip(tripId);
+    // One document per checked product, so progress is as unbounded as the trip's orders.
+    // Unchecking deletes the document.
+    match /shoppingChecklists/{tripId}/items/{productId} {
+      allow read, delete: if isAuthenticated() && ownsTrip(tripId);
       allow create, update: if isAuthenticated() && ownsTrip(tripId)
-        && request.resource.data.keys().hasAll(["purchased", "updatedAt"])
-        && request.resource.data.keys().hasOnly(["purchased", "updatedAt"])
-        && request.resource.data.purchased is map
-        && request.resource.data.purchased.size() <= 100
+        && request.resource.data.keys().hasAll(["quantity", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["quantity", "updatedAt"])
+        && request.resource.data.quantity is int
+        && request.resource.data.quantity > 0
         && request.resource.data.updatedAt == request.time;
-      allow list, delete: if false;
     }
 
     match /stores/{storeId}/products/{productId} {

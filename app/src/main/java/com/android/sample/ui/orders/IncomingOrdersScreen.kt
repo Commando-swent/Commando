@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code (incoming orders #147, checklist entry #193).
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -42,6 +43,7 @@ object IncomingOrdersTestTags {
   const val ERROR = "incoming_orders_error"
   const val RETRY = "incoming_orders_retry"
   const val ORDER_CARD_PREFIX = "incoming_orders_card_"
+  const val OPEN_CHECKLIST = "incoming_orders_open_checklist"
 }
 
 // Same spacing as the My Orders and My Trips lists.
@@ -57,22 +59,25 @@ private const val LOADING_PLACEHOLDER_COUNT = 3
 
 /**
  * Orders placed on one trip, shown to its owner. Loads them through [viewModel] and opens an order
- * with [onOrderClick], which receives the order ID.
+ * with [onOrderClick], which receives the order ID. [onOpenChecklist] opens the trip's shopping
+ * checklist; its button is hidden when null.
  */
 @Composable
 fun IncomingOrdersScreen(
     viewModel: IncomingOrdersViewModel,
     onOrderClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenChecklist: (() -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
-  IncomingOrdersScreen(state, viewModel::refresh, onOrderClick, modifier)
+  IncomingOrdersScreen(state, viewModel::refresh, onOrderClick, modifier, onOpenChecklist)
 }
 
 /**
  * Stateless incoming-orders list: one card per order with its ID, status, item count and total,
  * plus the loading, empty and error states. [onRefresh] reloads the list from the empty and error
- * states; [onOrderClick] receives the ID of the selected order.
+ * states; [onOrderClick] receives the ID of the selected order. [onOpenChecklist] opens the
+ * shopping checklist and is shown only when not null.
  */
 @Composable
 fun IncomingOrdersScreen(
@@ -80,6 +85,7 @@ fun IncomingOrdersScreen(
     onRefresh: () -> Unit,
     onOrderClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenChecklist: (() -> Unit)? = null,
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -97,6 +103,14 @@ fun IncomingOrdersScreen(
           color = colors.onSurfaceVariant,
           style = MaterialTheme.typography.bodySmall,
       )
+    }
+    if (onOpenChecklist != null) {
+      OutlinedButton(
+          onClick = onOpenChecklist,
+          modifier = Modifier.fillMaxWidth().testTag(IncomingOrdersTestTags.OPEN_CHECKLIST),
+      ) {
+        Text(stringResource(R.string.shopping_checklist_open))
+      }
     }
     when (state) {
       IncomingOrdersUiState.Loading -> {

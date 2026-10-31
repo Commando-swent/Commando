@@ -143,17 +143,7 @@ internal constructor(
     } catch (exception: Exception) {
       currentCoroutineContext().ensureActive()
       if (!sameSession(uid)) return failure(OrderError.NotAuthenticated)
-      failure(
-          when ((exception as? FirebaseFirestoreException)?.code) {
-            FirebaseFirestoreException.Code.UNAUTHENTICATED -> OrderError.NotAuthenticated
-            FirebaseFirestoreException.Code.PERMISSION_DENIED -> OrderError.PermissionDenied
-            FirebaseFirestoreException.Code.NOT_FOUND -> OrderError.NotFound
-            FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-            FirebaseFirestoreException.Code.OUT_OF_RANGE,
-            FirebaseFirestoreException.Code.DATA_LOSS -> OrderError.InvalidData
-            else -> OrderError.Unknown
-          }
-      )
+      failure(exception.toOrderError())
     }
   }
 
@@ -282,6 +272,18 @@ internal class FirebaseOrderFirestoreDataSource(
 }
 
 private fun failure(error: OrderError) = OrderResult.Error(error)
+
+/** Shared by order-backed adapters; non-Firestore failures are Unknown. */
+internal fun Exception.toOrderError(): OrderError =
+    when ((this as? FirebaseFirestoreException)?.code) {
+      FirebaseFirestoreException.Code.UNAUTHENTICATED -> OrderError.NotAuthenticated
+      FirebaseFirestoreException.Code.PERMISSION_DENIED -> OrderError.PermissionDenied
+      FirebaseFirestoreException.Code.NOT_FOUND -> OrderError.NotFound
+      FirebaseFirestoreException.Code.INVALID_ARGUMENT,
+      FirebaseFirestoreException.Code.OUT_OF_RANGE,
+      FirebaseFirestoreException.Code.DATA_LOSS -> OrderError.InvalidData
+      else -> OrderError.Unknown
+    }
 
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)

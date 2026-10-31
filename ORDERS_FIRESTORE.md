@@ -1,6 +1,6 @@
 # Orders persistence — #145
 
-AI assistance: OpenAI Codex; #147 trip-owner query: Claude Code. Shared-contract choices below remain subject to teammate review.
+AI assistance: OpenAI Codex; #147 trip-owner query and #193 checklist: Claude Code. Shared-contract choices below remain subject to teammate review.
 
 `orders/{id}` stores `tripId`, `requesterId`, `items` (productId/name/unitPriceCents/quantity),
 `commissionCents`, `status` and `createdAt`. The document ID is the Order ID.
@@ -56,3 +56,10 @@ The Orders security profile tests the real SDK/adapter with production rules and
 Before production activation, the Firebase project owner must review and deploy rules/indexes to the
 confirmed project, then record an Android persistence check. No production deployment is performed or
 claimed by these changes. Local emulator success is not evidence of production configuration.
+
+#193: `shoppingChecklists/{tripId}` stores only the trip owner's purchase progress: `purchased` maps a
+product ID to the quantity it was checked for, plus a server `updatedAt`. Products and quantities are
+recomputed from the trip's ACCEPTED orders (`buildShoppingChecklist`), so orders are never copied. An
+item stays checked only while its checked quantity covers the current requirement. Each toggle is a
+merge write of one product. Rules allow get/create/update only to the owner of `trips/{tripId}`,
+exact fields, a map of at most 100 products and a server timestamp; list and delete are denied.

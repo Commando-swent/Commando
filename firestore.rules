@@ -152,12 +152,15 @@ service cloud.firestore {
     }
 
     // One document per checked product, so progress is as unbounded as the trip's orders.
-    // Unchecking deletes the document.
-    match /shoppingChecklists/{tripId}/items/{productId} {
+    // Unchecking deletes the document. The key is the SHA-256 of the product ID, which may
+    // contain characters that document IDs cannot; one product has exactly one document.
+    match /shoppingChecklists/{tripId}/items/{key} {
       allow read, delete: if isAuthenticated() && ownsTrip(tripId);
       allow create, update: if isAuthenticated() && ownsTrip(tripId)
-        && request.resource.data.keys().hasAll(["quantity", "updatedAt"])
-        && request.resource.data.keys().hasOnly(["quantity", "updatedAt"])
+        && request.resource.data.keys().hasAll(["productId", "quantity", "updatedAt"])
+        && request.resource.data.keys().hasOnly(["productId", "quantity", "updatedAt"])
+        && request.resource.data.productId is string
+        && key == hashing.sha256(request.resource.data.productId).toHexString().lower()
         && request.resource.data.quantity is int
         && request.resource.data.quantity > 0
         && request.resource.data.updatedAt == request.time;

@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex; trip-owner query (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
 import com.android.sample.model.*
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -273,7 +273,7 @@ internal class FirebaseOrderFirestoreDataSource(
 
 private fun failure(error: OrderError) = OrderResult.Error(error)
 
-/** Shared by order-backed adapters; non-Firestore failures are Unknown. */
+/** Shared by the order and shopping-checklist adapters; non-Firestore failures are Unknown. */
 internal fun Exception.toOrderError(): OrderError =
     when ((this as? FirebaseFirestoreException)?.code) {
       FirebaseFirestoreException.Code.UNAUTHENTICATED -> OrderError.NotAuthenticated

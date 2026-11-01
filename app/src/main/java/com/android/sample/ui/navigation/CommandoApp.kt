@@ -1,7 +1,7 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
-// Claude Code contributed the shared resume refresh and incoming orders (#147).
+// Claude Code contributed the shared resume refresh, incoming orders (#147) and checklist (#193).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -41,6 +41,8 @@ import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.data.repository.ShoppingChecklistRepository
+import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.model.TripLocations
@@ -69,6 +71,8 @@ import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.ReviewOrderRoute
 import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
+import com.android.sample.ui.orders.ShoppingChecklistScreen
+import com.android.sample.ui.orders.ShoppingChecklistViewModel
 import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileHelpScreen
@@ -101,6 +105,7 @@ fun CommandoApp(
     photoRepository: ProfilePhotoRepository? = null,
     productRepository: ProductRepository? = null,
     orderRepositoryFactory: ((() -> String?) -> OrderRepository)? = null,
+    checklistRepositoryFactory: ((() -> String?) -> ShoppingChecklistRepository)? = null,
     onLanguageSelected: (AppLanguage) -> Unit = {},
 ) {
   val context = LocalContext.current
@@ -165,12 +170,19 @@ fun CommandoApp(
                   ?: OrderRepositoryFirestore(currentUserId)
             }
           }
+          // Bound to the same session identity as the orders, so an account change ends it too.
+          val checklists =
+              remember(orders) {
+                checklistRepositoryFactory?.invoke(orders::currentUserId)
+                    ?: ShoppingChecklistRepositoryFirestore(orders::currentUserId)
+              }
           AuthenticatedApp(
               repository = repository,
               photoRepository = photoRepository,
               tripRepository = trips,
               productRepository = productRepository,
               orders = orders,
+              checklists = checklists,
               userId = user.uid,
               onSignOut = {
                 if (sessionViewModel.signOut()) {
@@ -200,6 +212,7 @@ private fun AuthenticatedApp(
     tripRepository: TripRepository,
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
+    checklists: ShoppingChecklistRepository,
     userId: String,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
@@ -395,7 +408,29 @@ private fun AuthenticatedApp(
                 launchSingleTop = true
               }
             },
+            onOpenChecklist = {
+              navController.navigate(CommandoScreens.shoppingChecklistRoute(tripId)) {
+                launchSingleTop = true
+              }
+            },
         )
+      }
+      composable(
+          route = CommandoScreens.ShoppingChecklist.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val tripId =
+            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
+              "Shopping Checklist requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
+            }
+        // Reloading on resume picks up orders accepted while the checklist was in the background.
+        val checklist: ShoppingChecklistViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              ShoppingChecklistViewModel(orders.repository, checklists, tripId)
+            }
+        RefreshOnResume(checklist, checklist::refresh)
+        ShoppingChecklistScreen(viewModel = checklist)
       }
       composable(
           route = CommandoScreens.Catalogue.route,

@@ -1,7 +1,7 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex. Shared bars from the Command'o Figma design.
-// Incoming-orders back bar (#147): Claude Code.
+// Incoming-orders and checklist back bars (#147, #193): Claude Code.
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,7 +27,12 @@ import androidx.compose.ui.unit.sp
 import com.android.sample.R
 
 /** Detail destinations without their own back control; they get the shared back bar. */
-private val BACK_BAR_SCREENS = setOf(CommandoScreens.TripDetails, CommandoScreens.IncomingOrders)
+private val BACK_BAR_SCREENS =
+    setOf(
+        CommandoScreens.TripDetails,
+        CommandoScreens.IncomingOrders,
+        CommandoScreens.ShoppingChecklist,
+    )
 
 /** Shared layout for authenticated destinations; content owns neither bars nor navigation. */
 @Composable

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shopping_checklist_title">Shopping list</string>
+    <string name="shopping_checklist_open">Open shopping list</string>
+    <string name="shopping_checklist_loading">Loading the shopping list</string>
+    <string name="shopping_checklist_empty">No accepted orders on this trip yet.</string>
+    <string name="shopping_checklist_refresh">Refresh</string>
+    <string name="shopping_checklist_error">Something went wrong while loading the shopping list.</string>
+    <string name="shopping_checklist_retry">Retry</string>
+    <string name="shopping_checklist_save_error">This item could not be saved. Please try again.</string>
+    <plurals name="shopping_checklist_progress">
+        <item quantity="one">%1$d of %2$d purchased</item>
+        <item quantity="other">%1$d of %2$d purchased</item>
+    </plurals>
+    <string name="shopping_checklist_quantity">Qty %1$d</string>
+</resources>

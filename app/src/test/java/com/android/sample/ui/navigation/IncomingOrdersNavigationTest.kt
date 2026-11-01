@@ -1,12 +1,13 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code (incoming orders #147, shopping checklist #193).
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import com.android.sample.data.repository.FakeOrderRepository
+import com.android.sample.data.repository.FakeShoppingChecklistRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.model.Location
@@ -19,6 +20,7 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.orders.IncomingOrdersTestTags
+import com.android.sample.ui.orders.ShoppingChecklistTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.MyTripsTestTags
 import java.time.Instant
@@ -78,7 +80,15 @@ class IncomingOrdersNavigationTest {
 
   private fun show() {
     compose.setContent {
-      SampleAppTheme { CommandoApp(auth, trips, credentials, orderRepositoryFactory = factory) }
+      SampleAppTheme {
+        CommandoApp(
+            auth,
+            trips,
+            credentials,
+            orderRepositoryFactory = factory,
+            checklistRepositoryFactory = ::FakeShoppingChecklistRepository,
+        )
+      }
     }
   }
 
@@ -119,6 +129,26 @@ class IncomingOrdersNavigationTest {
     compose.onNodeWithText("Order status updated.").assertExists()
     back()
     card().assert(hasText("ACCEPTED"))
+  }
+
+  @Test
+  fun acceptedOrderFillsTheShoppingListAndCheckedItemsStayChecked() {
+    openIncomingOrders()
+    click(IncomingOrdersTestTags.OPEN_CHECKLIST)
+    compose.onNodeWithTag(ShoppingChecklistTestTags.EMPTY).assertIsDisplayed()
+    back()
+    card().performClick()
+    compose.onNodeWithText("Accept").performScrollTo().performClick()
+    compose.onNodeWithText("Order status updated.").assertExists()
+    back()
+    click(IncomingOrdersTestTags.OPEN_CHECKLIST)
+    val milk = compose.onNodeWithTag(ShoppingChecklistTestTags.ITEM_PREFIX + "milk")
+    milk.assertIsOff().assert(hasText("Qty 2")).performClick()
+    milk.assertIsOn()
+    // A new checklist screen restores the saved progress.
+    click(AppTestTags.BACK_BUTTON)
+    click(IncomingOrdersTestTags.OPEN_CHECKLIST)
+    milk.assertIsOn()
   }
 
   @Test

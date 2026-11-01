@@ -26,3 +26,7 @@ security profile. Emulator validation does not establish deployed-backend config
 #201 delivers storage; #204 adds atomic order-event publication and order regression tests.
 #202 provides state management. Screens and navigation remain separate S5 increments.
 Shared Firebase uses an additive rollout; activate the versioned event-required policy only after client migration.
+
+NotificationsViewModel (#202) prepares independent, lazily loaded inbox/preference state. It uses
+the shared SessionGuard, confirms saves before changing displayed values and defers reloads during
+saves. A failed save keeps the last confirmed data and offers an explicit retry of the failed action.

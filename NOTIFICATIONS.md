@@ -25,3 +25,8 @@ security profile. Emulator validation does not establish deployed-backend config
 
 #201 stays open until event publication and its order regressions land. #202 supplies the Figma
 screens, ViewModels and navigation. This increment changes no order behavior and adds no UI/push.
+
+NotificationsViewModel (#202) prepares independent, lazily loaded inbox/preference state. It uses
+the shared SessionGuard, confirms saves before changing displayed values and defers reloads during
+saves. A failed save keeps the last confirmed data and a retryable error. Its screen/navigation
+bindings remain pending the approved Figma frames; no route or user-visible screen is added yet.

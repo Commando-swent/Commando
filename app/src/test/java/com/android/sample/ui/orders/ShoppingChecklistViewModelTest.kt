@@ -108,19 +108,20 @@ class ShoppingChecklistViewModelTest {
     assertEquals(content(item(bread), item(milk, purchased = true)), viewModel.uiState.value)
   }
 
-  @Test
-  fun refreshDuringAPendingSaveWaitsForItAndKeepsTheSavedItem() = runTest {
-    val saveCanFinish = CompletableDeferred<Unit>()
+  /**
+   * Starts a save held until [saveResult] completes, then a refresh while it is pending. A null
+   * result lets the fake save; an error result is returned as the save's failure.
+   */
+  private fun TestScope.refreshDuringPendingSave(
+      saveResult: CompletableDeferred<OrderResult<Unit>?>
+  ): ShoppingChecklistViewModel {
     val slowSaves =
         object : ShoppingChecklistRepository by checklist {
           override suspend fun setPurchased(
               tripId: String,
               item: ShoppingChecklistItem,
               purchased: Boolean,
-          ): OrderResult<Unit> {
-            saveCanFinish.await()
-            return checklist.setPurchased(tripId, item, purchased)
-          }
+          ) = saveResult.await() ?: checklist.setPurchased(tripId, item, purchased)
         }
     val viewModel = ShoppingChecklistViewModel(orders, slowSaves, trip.id)
     viewModel.refresh()
@@ -130,10 +131,26 @@ class ShoppingChecklistViewModelTest {
     viewModel.refresh()
     runCurrent()
     assertEquals(ShoppingChecklistUiState.Loading, viewModel.uiState.value)
+    return viewModel
+  }
 
-    saveCanFinish.complete(Unit)
+  @Test
+  fun refreshDuringAPendingSaveWaitsForItAndKeepsTheSavedItem() = runTest {
+    val saveResult = CompletableDeferred<OrderResult<Unit>?>()
+    val viewModel = refreshDuringPendingSave(saveResult)
+    saveResult.complete(null)
     advanceUntilIdle()
     assertEquals(content(item(bread), item(milk, purchased = true)), viewModel.uiState.value)
+  }
+
+  @Test
+  fun saveFailingDuringARefreshIsShownAfterTheReload() = runTest {
+    val saveResult = CompletableDeferred<OrderResult<Unit>?>()
+    val viewModel = refreshDuringPendingSave(saveResult)
+    saveResult.complete(OrderResult.Error(OrderError.Unknown))
+    advanceUntilIdle()
+    val failed = content(item(bread), item(milk)).copy(saveError = OrderError.Unknown)
+    assertEquals(failed, viewModel.uiState.value)
   }
 
   @Test

@@ -55,6 +55,8 @@ class ShoppingChecklistViewModel(
   private var loadJob: Job? = null
   private var latestLoad = 0
   private val pendingSaves = mutableSetOf<Job>()
+  /** A save that failed while a reload was in progress, shown once the list is back. */
+  private var unreportedSaveError: OrderError? = null
 
   /** Reloads orders and progress, e.g. on retry or when newly accepted orders may exist. */
   fun refresh() {
@@ -66,7 +68,12 @@ class ShoppingChecklistViewModel(
       // Reading before a pending save commits would show the item with its old state.
       saves.joinAll()
       val state = fetch()
-      if (load == latestLoad) mutableState.value = state
+      if (load == latestLoad) {
+        mutableState.value =
+            (state as? ShoppingChecklistUiState.Content)?.copy(saveError = unreportedSaveError)
+                ?: state
+        unreportedSaveError = null
+      }
     }
   }
 
@@ -78,8 +85,12 @@ class ShoppingChecklistViewModel(
     if (mutableState.value !is ShoppingChecklistUiState.Content) return
     val save = viewModelScope.launch {
       val result = checklistRepository.setPurchased(tripId, item, purchased)
-      // While a refresh is loading, it waits for this save and reads its result itself.
-      val content = mutableState.value as? ShoppingChecklistUiState.Content ?: return@launch
+      // While a refresh is loading, it waits for this save, reads its result and shows its error.
+      val content = mutableState.value as? ShoppingChecklistUiState.Content
+      if (content == null) {
+        if (result is OrderResult.Error) unreportedSaveError = result.error
+        return@launch
+      }
       mutableState.value =
           when (result) {
             is OrderResult.Error -> content.copy(saveError = result.error)

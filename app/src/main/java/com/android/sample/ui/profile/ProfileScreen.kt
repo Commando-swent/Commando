@@ -125,6 +125,8 @@ fun ProfileScreen(
                 R.string.notifications_title,
                 onNotifications,
                 Modifier.testTag(com.android.sample.ui.notifications.NotificationTestTags.INBOX),
+                R.drawable.profile_notifications,
+                iconTint = MaterialTheme.colorScheme.primary,
             )
             ProfileMenuRow(
                 R.string.notifications_preferences,
@@ -132,6 +134,8 @@ fun ProfileScreen(
                 Modifier.testTag(
                     com.android.sample.ui.notifications.NotificationTestTags.PREFERENCES
                 ),
+                R.drawable.profile_notification_preferences,
+                iconTint = MaterialTheme.colorScheme.primary,
             )
             ProfileMenuRow(
                 R.string.profile_language,

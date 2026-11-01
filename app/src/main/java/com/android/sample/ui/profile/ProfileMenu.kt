@@ -13,6 +13,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -51,6 +53,7 @@ internal fun ProfileMenuRow(
     modifier: Modifier = Modifier,
     @DrawableRes icon: Int? = null,
     value: String? = null,
+    iconTint: Color? = null,
 ) {
   Row(
       modifier
@@ -61,7 +64,7 @@ internal fun ProfileMenuRow(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    icon?.let { ProfileMenuIcon(it) }
+    icon?.let { ProfileMenuIcon(it, iconTint) }
     Text(stringResource(title), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
     value?.let {
       Text(
@@ -76,13 +79,18 @@ internal fun ProfileMenuRow(
 
 /** Keeps the Figma glyph at its native size inside the shared settings icon container. */
 @Composable
-internal fun ProfileMenuIcon(@DrawableRes icon: Int) {
+internal fun ProfileMenuIcon(@DrawableRes icon: Int, tint: Color? = null) {
   Surface(
       shape = RoundedCornerShape(9.dp),
       color = MaterialTheme.colorScheme.surfaceContainerHigh,
   ) {
     Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-      Image(painterResource(icon), contentDescription = null, modifier = Modifier.size(16.dp))
+      Image(
+          painterResource(icon),
+          contentDescription = null,
+          modifier = Modifier.size(16.dp),
+          colorFilter = tint?.let { ColorFilter.tint(it) },
+      )
     }
   }
 }

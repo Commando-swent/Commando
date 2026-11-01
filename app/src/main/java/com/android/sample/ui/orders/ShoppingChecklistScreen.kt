@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -126,7 +127,13 @@ private fun ChecklistContent(
   val colors = MaterialTheme.colorScheme
   val purchased = state.items.count { it.purchased }
   Text(
-      stringResource(R.string.shopping_checklist_progress, purchased, state.items.size),
+      // The plural follows the purchased count, e.g. "1 sur 2 acheté" in French.
+      pluralStringResource(
+          R.plurals.shopping_checklist_progress,
+          purchased,
+          purchased,
+          state.items.size,
+      ),
       modifier = Modifier.testTag(ShoppingChecklistTestTags.PROGRESS),
       color = colors.onBackground,
       style = MaterialTheme.typography.titleMedium,

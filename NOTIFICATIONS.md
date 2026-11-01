@@ -16,8 +16,7 @@ users/{uid}/notificationPreferences/settings stores boolean newOrders and orderD
 by default. users/{uid}/notifications/{eventId} copies its canonical event and stores visible/isRead.
 First processing transactionally reads preferences and creates this record. Muted events keep an
 invisible record: re-enabling a category never replays them. Existing entries remain visible/read.
-Preferences are evaluated at first processing, not original event time; these semantics remain
-proposals for teammate review.
+Evaluating preferences at first processing rather than event time remains a proposal for teammate review.
 
 Rules enforce recipient-only reads, exact preference types, canonical event identity, immutable
 notification content and read-only-to-true updates. Results sort by event time descending then ID.

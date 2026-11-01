@@ -22,5 +22,5 @@ notification content and read-only-to-true updates. Results sort by event time d
 No composite index is required. Run ./gradlew check assembleDebug and the production-rules Firebase
 security profile. Emulator validation does not establish deployed-backend configuration.
 
-#201 stays open until event publication and its order regressions land. #202 supplies the Figma
-screens, ViewModels and navigation. This increment changes no order behavior and adds no UI/push.
+#201 delivers recipient storage and preferences. #204 adds atomic order-event publication.
+#202 provides state management; screens and navigation are planned separately for S5.

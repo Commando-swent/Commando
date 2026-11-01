@@ -25,8 +25,15 @@ No composite index is required. Run ./gradlew check assembleDebug and the produc
 security profile. Emulator validation does not establish deployed-backend configuration.
 
 #201 is delivered through storage and atomic-event increments, with order regression tests. #202
-supplies screens, ViewModels and navigation. Deploy these rules alongside the updated app: older
-clients writing orders without their events will be rejected. No cloud deployment was performed.
+supplies screens, ViewModels and navigation. The versioned rules enforce events for every order write.
+Activate that requirement only after migrating clients: older APKs do not publish these events.
+
+On 2026-11-01, command-o received an additive notification rollout. Its published rules preserve
+the previous order permissions and add the recipient-only event, inbox and preference rules.
+The updated APK writes its events atomically; older APKs remain usable but do not generate
+notifications. Legacy creation and both decisions were checked alongside the notification/security
+suite (44 tests) against this rollout policy. The stricter event-required policy remains a later,
+coordinated deployment. Keep the published snapshot and ruleset reference when changing this policy.
 
 NotificationsViewModel (#202) prepares independent, lazily loaded inbox/preference state. It uses
 the shared SessionGuard, confirms saves before changing displayed values and defers reloads during

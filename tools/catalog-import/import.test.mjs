@@ -1,7 +1,7 @@
 // AI assistance: Claude Code. Run with: node --test tools/catalog-import/import.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { emulatorHost, firestoreClient, importProducts, parseArgs, parseExport, searchPrefixes, toProduct } from './import.mjs';
+import { displayName, emulatorHost, firestoreClient, importProducts, parseArgs, parseExport, parseSizes, searchPrefixes, toProduct } from './import.mjs';
 
 const row = (number, overrides = {}) =>
   ({ id: `migros:${number}`, store: 'migros', name: 'Lait entier', price: 1.95, image_url: null, category: 'Lait > Lait UHT', ...overrides });
@@ -78,6 +78,10 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
       image_url: 'https://image.migros.ch/c.jpg',
       removed_at: null,
       search_prefixes: { cr: true, cre: true, crem: true, creme: true },
+      size_text: null,
+      source_name: 'Crème',
+      brand: null,
+      variant: null,
     },
   });
   assert.equal(toProduct(row('1', { price: 3, image_url: '' }), 'migros').data.price, 3);
@@ -86,6 +90,67 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
   // Boundaries of the app's Int cents: CHF 0.01 and Int.MAX_VALUE cents.
   assert.equal(toProduct(row('1', { price: 0.01 }), 'migros').data.price, 0.01);
   assert.equal(toProduct(row('1', { price: 21_474_836.47 }), 'migros').data.price, 21_474_836.47);
+});
+
+test('displayName writes brand, name and variant once each and never drops a different word', () => {
+  const cases = [
+    ['Noxana', 'Frey', null, 'Frey Noxana'], ['Lait', ' M-Budget ', null, 'M-Budget Lait'], ['Frey Noir', 'Frey', null, 'Frey Noir'],
+    ['Lait M-Budget', 'm budget', null, 'Lait M-Budget'], ['Freyja Tea', 'Frey', null, 'Frey Freyja Tea'],
+    ['Sel de table', 'Jura Sel', null, 'Jura Sel de table'], ['Féta', 'Xenia Feta', null, 'Xenia Feta'],
+    ['Läckerlis de Bâle Piccolo', 'Läckerli Huus', null, 'Läckerli Huus Läckerlis de Bâle Piccolo'],
+    ['Tourist', 'Frey', ' Lait ', 'Frey Tourist Lait'], ['Crémant 55%', 'Frey', 'crémant', 'Frey Crémant 55%'],
+    ['Emmental', null, 'doux', 'Emmental doux'], ['Tresse', null, null, 'Tresse'], ['Tresse', ' ', ' ', 'Tresse'],
+  ];
+  for (const [name, brand, variant, expected] of cases) assert.equal(displayName(name, brand, variant), expected);
+});
+
+test('toProduct keeps the source name, brand, variant and size apart and indexes the display name', () => {
+  const product = toProduct(row('100125000000', { name: ' Tourist ', brand: 'Frey', variant: 'Lait', size_text: ' 100g ', category: 'Chocolat > Blanc' }), 'migros');
+  const { name, source_name, brand, variant, size_text, search_prefixes } = product.data;
+  assert.deepEqual([name, source_name, brand, variant, size_text], ['Frey Tourist Lait', 'Tourist', 'Frey', 'Lait', '100g']);
+  assert.deepEqual(Object.keys(search_prefixes), ['bl', 'bla', 'blan', 'blanc', 'fr', 'fre', 'frey', 'la', 'lai', 'lait', 'to', 'tou', 'tour', 'touri', 'touris', 'tourist']);
+  assert.deepEqual([toProduct(row('1', { size_text: '  ', variant: ' ' }), 'migros').data.size_text, toProduct(row('1'), 'migros').data.variant], [null, null]);
+  assert.equal(toProduct(row('1', { size_text: 'Packungsgrösse\n60ml' }), 'migros').data.size_text, 'Packungsgrösse 60ml');
+  for (const field of ['brand', 'variant', 'size_text']) assert.deepEqual(toProduct(row('1', { [field]: 7 }), 'migros'), { error: `invalid ${field}` });
+});
+
+test('parseExport takes missing sizes from a manifest by product ID, never over the export', () => {
+  const manifest = [{ version: 4 }, ...[' 1 l ', '500 g', null].map((size, i) => ({ data: { id: `migros:${i + 1}`, size_text: size } }))];
+  const sizes = parseSizes(`${manifest.map((line) => JSON.stringify(line)).join('\n')}\n`);
+  assert.deepEqual([...sizes], [['migros:1', '1 l'], ['migros:2', '500 g']]);
+  const lines = [row('1'), row('2', { size_text: '6 x 500 g' }), row('3')].map((item) => JSON.stringify(item)).join('\n');
+  const { products } = parseExport(lines, 'migros', sizes);
+  assert.deepEqual(products.map((product) => product.data.size_text), ['1 l', '6 x 500 g', null]);
+});
+
+test('a brand, size or variant change is an update and a rerun of the corrected export writes nothing', async () => {
+  const client = fakeClient();
+  await importProducts(exportOf(row('1', { name: 'Lait' })), { client, write: true, log: () => {} });
+  for (const extra of [{ brand: 'M-Budget', size_text: '100g' }, { brand: 'M-Budget', size_text: '100g', variant: 'noisettes entières' }]) {
+    const corrected = exportOf(row('1', { name: 'Lait', ...extra }));
+    const fix = await importProducts(corrected, { client, write: true, log: () => {} });
+    assert.deepEqual([fix.counts.update, fix.written], [1, 1]);
+    const rerun = await importProducts(corrected, { client, write: true, log: () => {} });
+    assert.deepEqual([rerun.counts.unchanged, rerun.written], [1, 0]);
+  }
+  const { name, size_text, variant, search_prefixes } = client.documents.get(path('1')).data;
+  assert.deepEqual([name, size_text, variant, search_prefixes.budget, search_prefixes.entieres], ['M-Budget Lait noisettes entières', '100g', 'noisettes entières', true, true]);
+});
+
+test('a renamed product gets the prefixes of its new name only, and a rerun without sizes keeps them', async () => {
+  const client = fakeClient();
+  const sizes = parseSizes(`${JSON.stringify({ data: { id: 'migros:1', size_text: '300 g' } })}\n`);
+  await importProducts(parseExport(JSON.stringify(row('1', { name: 'Tourist', brand: 'Frey' })), 'migros', sizes).products, { client, write: true, log: () => {} });
+  const renamed = parseExport(JSON.stringify(row('1', { name: 'Noxana', brand: 'Frey' })), 'migros', sizes).products;
+  assert.equal((await importProducts(renamed, { client, write: true, log: () => {} })).counts.update, 1);
+  const { name, size_text, search_prefixes } = client.documents.get(path('1')).data;
+  assert.deepEqual([name, size_text], ['Frey Noxana', '300 g']);
+  assert.deepEqual(Object.keys(search_prefixes).filter((prefix) => prefix.startsWith('to')), []);
+  assert.equal(search_prefixes.noxana, true);
+  const withoutSizes = parseExport(JSON.stringify(row('1', { name: 'Noxana', brand: 'Frey' })), 'migros').products;
+  const rerun = await importProducts(withoutSizes, { client, write: true, log: () => {} });
+  assert.deepEqual([rerun.counts.unchanged, rerun.written], [1, 0]);
+  assert.equal(client.documents.get(path('1')).data.size_text, '300 g');
 });
 
 test('parseExport skips invalid and duplicate lines with their line numbers', () => {
@@ -237,6 +302,7 @@ test('parseArgs is a dry run unless --write, and production writes need --projec
     assert.throws(() => parseArgs(['export.jsonl']), /--store must be migros or coop/);
     assert.throws(() => parseArgs(['export.jsonl', '--store', 'denner']), /--store must be migros or coop/);
     assert.equal(parseArgs(['export.jsonl', '--store', 'coop']).store, 'coop');
+    assert.equal(parseArgs(['export.jsonl', '--store', 'migros', '--sizes', 'manifest.jsonl']).sizes, 'manifest.jsonl');
   } finally {
     if (env !== undefined) process.env.FIRESTORE_EMULATOR_HOST = env;
   }
@@ -252,11 +318,20 @@ test('imports into the Firestore emulator, marks a delisted product removed and 
   assert.ok(host, 'FIRESTORE_EMULATOR_HOST is not set: run this test with the Firestore emulator (see README.md)');
   const client = await firestoreClient(host);
   const number = `test-${Date.now()}`;
-  const products = exportOf(row(number, { name: 'Œufs frais', price: 4.6 }));
+  const products = exportOf(row(number, { name: 'Œufs frais', brand: 'Migros Bio', size_text: '6 pièces', price: 4.6 }));
+  assert.equal(products[0].data.name, 'Migros Bio Œufs frais');
   assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 1);
   const [[, document]] = await client.get([path(number)]);
   assert.deepEqual(document.data, { ...products[0].data, price: 4.6 });
   assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 0);
+
+  // A rename replaces the whole search_prefixes map in Firestore, not only the new keys.
+  const renamed = exportOf(row(number, { name: 'Lait entier', brand: 'Migros Bio', size_text: '6 pièces', price: 4.6 }));
+  assert.equal((await importProducts(renamed, { client, write: true, log: () => {} })).written, 1);
+  const [[, renamedDocument]] = await client.get([path(number)]);
+  assert.deepEqual(renamedDocument.data.search_prefixes, renamed[0].data.search_prefixes);
+  assert.equal(renamedDocument.data.search_prefixes.oeufs, undefined);
+  await importProducts(products, { client, write: true, log: () => {} });
 
   const removedAt = '2026-10-20T08:00:00Z';
   const removal = exportOf(row(number, { price: null, removed_at: removedAt }));

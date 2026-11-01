@@ -3,8 +3,9 @@
 `import.mjs` copies a swiss-cli export of one store's products into
 `stores/{store}/products/{product number}` of the `(default)` database of `command-o`, with the
 schema `ProductRepositoryFirestore` reads: `id` (`migros:<number>` or `coop:<number>`), `name`,
-`price` (CHF), `image_url` (or `null`), `removed_at` (`null` when listed) and `search_prefixes`, the
-2- to 15-character prefixes of the words of the name and of the last category segment, normalized
+`price` (CHF), `image_url` (or `null`), `removed_at` (`null` when listed), `size_text`, `source_name`,
+`brand` and `variant` (each or `null`) and
+`search_prefixes`, the 2- to 15-character prefixes of the words of the name and of the last category segment, normalized
 like `normalizeProductSearchText`. Only Migros and Coop publish a full catalogue; items of other
 chains are entered by hand in the app.
 
@@ -17,9 +18,23 @@ deploy the `search_prefixes` field override of `firestore.indexes.json` before a
 A JSON Lines file of one store's products, exported from swiss-cli, a tool maintained in a separate
 repository. Each line is one JSON object with `id` (`migros:<number>` or `coop:<number>`), `store`
 (`migros` or `coop`), `name`, `price` (CHF), `image_url` (optional), `category` (optional, for
-example `Lait > Lait UHT`) and `removed_at` (`null` or absent for listed products). Keep exports in
-`tools/catalog-import/` (for example `tools/catalog-import/coop.jsonl`), whose `.gitignore` keeps
-them out of Git.
+example `Lait > Lait UHT`), `brand`, `variant` and `size_text` (optional) and `removed_at` (`null` or
+absent for listed products). `name` is shown as brand, name and variant, each once (`Frey Tourist Lait`);
+the store's parts are kept in `source_name`, `brand` and `variant`. Keep exports in
+`tools/catalog-import/` (for example `tools/catalog-import/coop.jsonl`) and generated files in
+`tools/catalog-import/tmp/`; its `.gitignore` keeps both out of Git.
+
+### Sizes (`--sizes`)
+
+The Migros export has no `size_text`. `--sizes sizes.jsonl` fills it from a JSON Lines file with one
+`{"data": {"id": "migros:<number>", "size_text": "100g"}}` object per line; other lines and fields
+are ignored. Limits:
+
+- A size in the export always wins; the file only fills missing ones, matched by `id`.
+- Sizes are not checked for freshness: a stale file keeps stale sizes until it is regenerated.
+- A row without a size keeps the size already stored, so a rerun without `--sizes` erases nothing;
+  a size can be replaced this way but not cleared.
+- One line that is not JSON stops the run before any read or write.
 
 Invalid lines (another store, bad id, blank name, a price that is not a positive CHF amount in cents,
 a non-HTTP image URL, duplicates) are skipped and listed with their line numbers. The importer marks
@@ -54,7 +69,8 @@ an export on the emulator first and run the production commands once.
 ## Reruns and removals
 
 Documents are keyed by the store's product number, so a rerun updates them in place, and unchanged
-products are not rewritten: rerunning resumes a stopped import. Each write replaces only the fields
+products are not rewritten: rerunning resumes a stopped import. A changed brand, name or variant changes
+`name` and replaces the whole `search_prefixes` map, so prefixes of the old name stop matching. Each write replaces only the fields
 above, keeps any other field, and fails if the document changed since it was read (rerun then).
 The tool only reads and writes the documents named in the export, all under `stores/{store}`: one
 store's import never touches another store, and products missing from a partial export are never

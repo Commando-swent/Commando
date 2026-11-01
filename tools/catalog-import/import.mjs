@@ -11,9 +11,9 @@ import { pathToFileURL } from 'node:url';
 export const STORES = ['migros', 'coop'];
 const PROJECT = 'command-o';
 const DATABASE = `projects/${PROJECT}/databases/(default)`;
-const FIELDS = ['id', 'name', 'price', 'image_url', 'removed_at', 'search_prefixes'];
+const FIELDS = ['id', 'name', 'price', 'image_url', 'removed_at', 'search_prefixes', 'size_text', 'source_name', 'brand', 'variant'];
 const BATCH_SIZE = 400; // Firestore commits hold at most 500 writes.
-const USAGE = `Usage: node import.mjs <export.jsonl> --store ${STORES.join('|')} [--write [--project ${PROJECT}]] [--max-writes N]`;
+const USAGE = `Usage: node import.mjs <export.jsonl> --store ${STORES.join('|')} [--sizes manifest.jsonl] [--write [--project ${PROJECT}]] [--max-writes N]`;
 
 /** Must stay identical to normalizeProductSearchText in Command'o's ProductRepositoryFirestore. */
 export function normalizeSearchText(text) {
@@ -29,6 +29,27 @@ export function searchPrefixes(name, categoryPath = '') {
     for (let length = 2; length <= Math.min(word.length, 15); length += 1) prefixes.add(word.slice(0, length));
   }
   return Object.fromEntries([...prefixes].sort().map((prefix) => [prefix, true]));
+}
+
+/**
+ * The display name, after GS1's product description: brand, the store's name, then the variant.
+ * A part already in the name is not repeated, and the words a brand ends with and the name starts
+ * with are written once ("Jura Sel" and "Sel de table" give "Jura Sel de table"). Nothing is invented.
+ */
+export function displayName(name, brand, variant) {
+  const words = (text) => normalizeSearchText(text ?? '').split(/[^a-z0-9]+/).filter(Boolean);
+  const contains = (text, part) => part.length > 0 && text.some((_, i) => part.every((word, j) => text[i + j] === word));
+  const brandWords = words(brand);
+  let full = name.trim();
+  if (brandWords.length > 0 && !contains(words(full), brandWords)) {
+    const parts = full.split(/\s+/);
+    const shared = parts.findLastIndex((_, i) => {
+      const head = words(parts.slice(0, i + 1).join(' '));
+      return head.length <= brandWords.length && head.every((word, j) => brandWords[brandWords.length - head.length + j] === word);
+    });
+    full = [brand.trim(), ...parts.slice(shared + 1)].join(' ');
+  }
+  return contains(words(full), words(variant)) || !variant?.trim() ? full : `${full} ${variant.trim()}`;
 }
 
 // A Firestore document ID the app accepts: no whitespace or `/`, not `.`, `..` or `__…__`.
@@ -62,8 +83,10 @@ export function toProduct(row, store) {
   if (!isPrice(row.price)) return { error: 'invalid price' };
   const imageUrl = typeof row.image_url === 'string' ? row.image_url.trim() : row.image_url ?? null;
   if (imageUrl && !/^https?:\/\/\S+$/.test(imageUrl)) return { error: 'invalid image_url' };
-  if (row.category != null && typeof row.category !== 'string') return { error: 'invalid category' };
-  const name = row.name.trim();
+  for (const field of ['category', 'brand', 'variant', 'size_text']) {
+    if (row[field] != null && typeof row[field] !== 'string') return { error: `invalid ${field}` };
+  }
+  const name = displayName(row.name, row.brand, row.variant);
   const data = {
     id: row.id,
     name,
@@ -71,12 +94,30 @@ export function toProduct(row, store) {
     image_url: imageUrl || null,
     removed_at: null,
     search_prefixes: searchPrefixes(name, row.category ?? ''),
+    size_text: row.size_text?.replace(/\s+/g, ' ').trim() || null,
+    // The parts of the name, as the store gives them.
+    source_name: row.name.trim(),
+    brand: row.brand?.trim() || null,
+    variant: row.variant?.trim() || null,
   };
   return { path, data, removedAt: null };
 }
 
-/** Valid products of one store's JSON Lines export, and one diagnostic per skipped line. */
-export function parseExport(text, store) {
+/** The sizes of a `--sizes` file (`{ data: { id, size_text } }` lines; see README) by product ID. */
+export function parseSizes(text) {
+  const sizes = new Map();
+  for (const line of text.split(/\r?\n/).filter((item) => item.trim())) {
+    const { id, size_text: size } = JSON.parse(line).data ?? {};
+    if (typeof id === 'string' && typeof size === 'string' && size.trim()) sizes.set(id, size.trim());
+  }
+  return sizes;
+}
+
+/**
+ * Valid products of one store's JSON Lines export, and one diagnostic per skipped line. A row
+ * without `size_text` takes its size from `sizes`, so sizes already fetched need no new crawl.
+ */
+export function parseExport(text, store, sizes = new Map()) {
   if (!STORES.includes(store)) throw new Error(`Unsupported store ${store}: use ${STORES.join(' or ')}`);
   const products = new Map();
   const skipped = [];
@@ -88,7 +129,7 @@ export function parseExport(text, store) {
     } catch {
       row = null;
     }
-    const product = row ? toProduct(row, store) : { error: 'not JSON' };
+    const product = row ? toProduct({ ...row, size_text: row.size_text ?? sizes.get(row.id) }, store) : { error: 'not JSON' };
     if (!product.error && products.has(product.path)) product.error = `duplicate of ${row.id}`;
     if (product.error) skipped.push(`line ${index + 1}: ${product.error}`);
     else products.set(product.path, product);
@@ -106,8 +147,10 @@ const sameFields = (existing, data) => owned(existing) === owned(data);
 export function planWrites(products, existingByPath) {
   const counts = { create: 0, update: 0, remove: 0, unchanged: 0, removedNotInFirestore: 0 };
   const writes = [];
-  for (const { path, data, removedAt } of products) {
+  for (const { path, data: row, removedAt } of products) {
     const existing = existingByPath.get(path);
+    // A row without a size keeps the stored one, so a rerun without --sizes never erases sizes.
+    const data = row && { ...row, size_text: row.size_text ?? existing?.data.size_text ?? null };
     const currentDocument = existing ? { updateTime: existing.updateTime } : { exists: false };
     let action;
     if (removedAt) action = !existing ? 'removedNotInFirestore' : existing.data.removed_at != null ? 'unchanged' : 'remove';
@@ -206,11 +249,12 @@ export async function firestoreClient(host = emulatorHost()) {
 }
 
 export function parseArgs(args) {
-  const options = { file: null, store: null, write: false, project: null, maxWrites: Infinity };
+  const options = { file: null, store: null, sizes: null, write: false, project: null, maxWrites: Infinity };
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === '--write') options.write = true;
     else if (args[i] === '--store') options.store = args[++i];
     else if (args[i] === '--project') options.project = args[++i];
+    else if (args[i] === '--sizes') options.sizes = args[++i];
     else if (args[i] === '--max-writes') options.maxWrites = Number(args[++i]);
     else if (!args[i].startsWith('--') && !options.file) options.file = args[i];
     else throw new Error(`Unexpected argument ${args[i]}. ${USAGE}`);
@@ -225,7 +269,9 @@ export function parseArgs(args) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const { products, skipped } = parseExport(readFileSync(options.file, 'utf8'), options.store);
+  const sizes = options.sizes ? parseSizes(readFileSync(options.sizes, 'utf8')) : new Map();
+  if (options.sizes) console.log(`${sizes.size} sizes read from ${options.sizes}`);
+  const { products, skipped } = parseExport(readFileSync(options.file, 'utf8'), options.store, sizes);
   skipped.slice(0, 20).forEach((line) => console.warn(`Skipped ${line}`));
   if (skipped.length > 20) console.warn(`... and ${skipped.length - 20} more skipped lines`);
   console.log(`${products.length} valid products, ${skipped.length} skipped lines`);

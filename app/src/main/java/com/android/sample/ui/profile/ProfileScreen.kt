@@ -1,5 +1,7 @@
 package com.android.sample.ui.profile
 
+// AI assistance: OpenAI Codex (notification menu entries).
+
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ScrollState
@@ -58,6 +60,8 @@ fun ProfileScreen(
     onOrderHistory: (() -> Unit)? = null,
     onHelp: (() -> Unit)? = null,
     onLanguage: (() -> Unit)? = null,
+    onNotifications: (() -> Unit)? = null,
+    onNotificationPreferences: (() -> Unit)? = null,
 ) {
   Column(
       modifier
@@ -117,6 +121,18 @@ fun ProfileScreen(
             )
           }
           ProfileMenuSection(R.string.profile_preferences) {
+            ProfileMenuRow(
+                R.string.notifications_title,
+                onNotifications,
+                Modifier.testTag(com.android.sample.ui.notifications.NotificationTestTags.INBOX),
+            )
+            ProfileMenuRow(
+                R.string.notifications_preferences,
+                onNotificationPreferences,
+                Modifier.testTag(
+                    com.android.sample.ui.notifications.NotificationTestTags.PREFERENCES
+                ),
+            )
             ProfileMenuRow(
                 R.string.profile_language,
                 onLanguage,

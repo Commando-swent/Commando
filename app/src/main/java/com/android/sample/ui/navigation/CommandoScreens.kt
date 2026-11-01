@@ -19,6 +19,8 @@ enum class CommandoScreens(
   Profile(title = R.string.nav_profile, showModeSelector = true, showBottomBar = true),
   ProfileHelp(title = R.string.profile_help),
   ProfileLanguage(title = R.string.profile_language),
+  Notifications(title = R.string.notifications_title),
+  NotificationPreferences(title = R.string.notifications_preferences),
   AvailableTrips(title = R.string.trips_title, showModeSelector = true, showBottomBar = true),
   MyTrips(title = R.string.my_trips_title, showModeSelector = true, showBottomBar = true),
   TripDetails(title = R.string.trips_title),

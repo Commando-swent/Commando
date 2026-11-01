@@ -31,3 +31,15 @@ clients writing orders without their events will be rejected. No cloud deploymen
 NotificationsViewModel (#202) prepares independent, lazily loaded inbox/preference state. It uses
 the shared SessionGuard, confirms saves before changing displayed values and defers reloads during
 saves. A failed save keeps the last confirmed data and offers an explicit retry of the failed action.
+
+Profile now opens both Notifications and Notification preferences. CommandoApp owns the routes,
+uses an account-bound injectable notification repository, and refreshes each page on resume. Inbox
+rows open the existing Order Details route with the full opaque ID, encoded once. Only the visible
+reference is shortened (eight trailing characters); it never supplies the navigation argument.
+
+The domain model remains independent of Android colors/text. The screens reuse OrderStatusBadge
+and the Command'o Material palette, show explicit read/unread text, and format dates using the
+current locale and time zone. EN/FR resources cover every state. Whole preference rows are switches;
+loading/save errors expose a retry and confirmed values survive failed writes. Lists and settings
+scroll on short displays. Figma proposal: file WPmz3r0efh7jF2BQmUTfRt, page 799:7200. The proposed
+contract and design still need teammate review; local implementation does not imply that approval.

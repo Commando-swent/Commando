@@ -131,7 +131,9 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.ownerId != request.auth.uid
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "PUBLISHED"
-        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time;
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time
+        && hasOrderEvent(orderId, "ORDER_PLACED",
+          get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.ownerId);
       allow get: if isAuthenticated() && (resource == null
         || resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
       // Queries must filter by requesterId == uid, or by a tripId the caller owns (#147).
@@ -142,7 +144,8 @@ service cloud.firestore {
         && resource.data.requesterId != request.auth.uid
         && resource.data.status == "PENDING"
         && request.resource.data.status in ["ACCEPTED", "REJECTED"]
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"]);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
+        && hasOrderEvent(orderId, "ORDER_" + request.resource.data.status, resource.data.requesterId);
       allow delete: if false;
     }
 
@@ -166,10 +169,36 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
-    // The following increment adds validated atomic publication with order writes.
+    // Every event and its order transition must commit together; neither side can be forged alone.
+    function hasOrderEvent(orderId, type, recipient) {
+      let eventId = orderId + "_" + type;
+      let event = getAfter(/databases/$(database)/documents/orderEvents/$(eventId)).data;
+      return event.orderId == orderId && event.type == type
+        && event.recipientId == recipient && event.occurredAt == request.time;
+    }
+
+    function validOrderEvent(eventId, data) {
+      let path = /databases/$(database)/documents/orders/$(data.orderId);
+      let order = getAfter(path).data;
+      let trip = get(/databases/$(database)/documents/trips/$(order.tripId)).data;
+      return data.keys().hasAll(["orderId", "recipientId", "type", "occurredAt"])
+        && data.keys().hasOnly(["orderId", "recipientId", "type", "occurredAt"])
+        && data.orderId is string && data.orderId.matches('[^/]+')
+        && data.recipientId is string && data.recipientId.matches('[^/]+')
+        && eventId == data.orderId + "_" + data.type && data.occurredAt == request.time
+        && (data.type == "ORDER_PLACED"
+          ? (!exists(path) && order.status == "PENDING" && order.createdAt == request.time
+            && request.auth.uid == order.requesterId && data.recipientId == trip.ownerId)
+          : (exists(path) && get(path).data.status == "PENDING"
+            && data.type in ["ORDER_ACCEPTED", "ORDER_REJECTED"]
+            && data.type == "ORDER_" + order.status
+            && request.auth.uid == trip.ownerId && data.recipientId == order.requesterId));
+    }
+
     match /orderEvents/{eventId} {
       allow read: if isAuthenticated() && resource.data.recipientId == request.auth.uid;
-      allow write: if false;
+      allow create: if isAuthenticated() && validOrderEvent(eventId, request.resource.data);
+      allow update, delete: if false;
     }
 
     function ownsNotificationData(userId) {

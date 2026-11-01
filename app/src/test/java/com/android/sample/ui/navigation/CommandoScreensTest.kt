@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex; incoming-orders route test (#147): Claude Code.
+// AI assistance: OpenAI Codex; incoming-orders (#147) and checklist (#193) routes: Claude Code.
 import android.content.Context
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -78,6 +78,16 @@ class CommandoScreensTest {
     assertEquals("IncomingOrders/{tripId}", CommandoScreens.IncomingOrders.route)
     assertEquals(R.string.incoming_orders_title, CommandoScreens.IncomingOrders.title)
     assertEquals("IncomingOrders/trip%20%2F%201", CommandoScreens.incomingOrdersRoute("trip / 1"))
+  }
+
+  @Test
+  fun shoppingChecklistHasARequiredTripIdItsOwnTitleAndEncodesOpaqueIds() {
+    assertEquals("ShoppingChecklist/{tripId}", CommandoScreens.ShoppingChecklist.route)
+    assertEquals(R.string.shopping_checklist_title, CommandoScreens.ShoppingChecklist.title)
+    assertEquals(
+        "ShoppingChecklist/trip%20%2F%201",
+        CommandoScreens.shoppingChecklistRoute("trip / 1"),
+    )
   }
 
   @Test

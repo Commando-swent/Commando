@@ -182,7 +182,16 @@ internal class FirebaseOrderFirestoreDataSource(
 
   override suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument {
     val ref = orders.document(id)
-    ref.set(data).await()
+    val trip = getTrip(data.getValue("tripId") as String)
+    val recipient =
+        trip?.get("ownerId") as? String
+            ?: throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
+    firestore
+        .runBatch { batch ->
+          batch.set(ref, data)
+          batch.setEvent(id, recipient, NotificationEventType.ORDER_PLACED)
+        }
+        .await()
     return checkNotNull(get(ref.id))
   }
 
@@ -239,6 +248,13 @@ internal class FirebaseOrderFirestoreDataSource(
       if (write && document.data["status"] == OrderStatus.PENDING.name) {
         val status = decision.targetStatus().name
         transaction.update(ref, "status", status)
+        val type =
+            if (decision == OrderDecision.ACCEPT) NotificationEventType.ORDER_ACCEPTED
+            else NotificationEventType.ORDER_REJECTED
+        transaction.set(
+            database.collection(NotificationFirestoreData.EVENTS).document(type.eventId(id)),
+            publishedEvent(id, document.data.getValue("requesterId") as String, type),
+        )
         document.copy(data = document.data + ("status" to status))
       } else document
     }
@@ -269,6 +285,21 @@ internal class FirebaseOrderFirestoreDataSource(
 
   private fun decisionError(code: FirebaseFirestoreException.Code) =
       FirebaseFirestoreException("Order decision failed", code)
+
+  private fun WriteBatch.setEvent(id: String, recipient: String, type: NotificationEventType) {
+    set(
+        firestore.collection(NotificationFirestoreData.EVENTS).document(type.eventId(id)),
+        publishedEvent(id, recipient, type),
+    )
+  }
+
+  private fun publishedEvent(id: String, recipient: String, type: NotificationEventType) =
+      mapOf(
+          NotificationFirestoreData.ORDER_ID to id,
+          NotificationFirestoreData.RECIPIENT_ID to recipient,
+          NotificationFirestoreData.TYPE to type.name,
+          NotificationFirestoreData.OCCURRED_AT to FieldValue.serverTimestamp(),
+      )
 }
 
 private fun failure(error: OrderError) = OrderResult.Error(error)

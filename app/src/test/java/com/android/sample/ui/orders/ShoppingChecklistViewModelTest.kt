@@ -5,9 +5,11 @@ import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -102,6 +104,34 @@ class ShoppingChecklistViewModelTest {
 
     checklist.forcedError = null
     viewModel.setPurchased(item(milk), true)
+    advanceUntilIdle()
+    assertEquals(content(item(bread), item(milk, purchased = true)), viewModel.uiState.value)
+  }
+
+  @Test
+  fun refreshDuringAPendingSaveWaitsForItAndKeepsTheSavedItem() = runTest {
+    val saveCanFinish = CompletableDeferred<Unit>()
+    val slowSaves =
+        object : ShoppingChecklistRepository by checklist {
+          override suspend fun setPurchased(
+              tripId: String,
+              item: ShoppingChecklistItem,
+              purchased: Boolean,
+          ): OrderResult<Unit> {
+            saveCanFinish.await()
+            return checklist.setPurchased(tripId, item, purchased)
+          }
+        }
+    val viewModel = ShoppingChecklistViewModel(orders, slowSaves, trip.id)
+    viewModel.refresh()
+    advanceUntilIdle()
+    viewModel.setPurchased(item(milk), true)
+    runCurrent()
+    viewModel.refresh()
+    runCurrent()
+    assertEquals(ShoppingChecklistUiState.Loading, viewModel.uiState.value)
+
+    saveCanFinish.complete(Unit)
     advanceUntilIdle()
     assertEquals(content(item(bread), item(milk, purchased = true)), viewModel.uiState.value)
   }

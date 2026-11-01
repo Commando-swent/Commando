@@ -7,6 +7,8 @@ data class Product(
     val name: String,
     val priceCents: Int,
     val imageUrl: String? = null,
+    /** Pack size as the store writes it ("100g", "6 x 1,5 l"); null when unknown. */
+    val sizeText: String? = null,
 )
 
 /**

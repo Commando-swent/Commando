@@ -64,6 +64,19 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun getProducts_mapsAnOptionalSizeAndKeepsProductsWithAMissingOrMalformedOne() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(" 100g ", null, "  ", 100L).mapIndexed { index, size ->
+          productDocument("migros:$index", sizeText = size)
+        }
+
+    val products = ProductRepositoryFirestore(dataSource).getProducts("migros", 4).successData()
+
+    assertEquals(listOf("100g", null, null, null), products.map { it.sizeText })
+  }
+
+  @Test
   fun getProducts_requiresAGlobalIdBelongingToTheRequestedStore() = runTest {
     val valid = productDocument("coop:4446520")
     val invalidIds =
@@ -414,6 +427,7 @@ class ProductRepositoryFirestoreTest {
       imageUrl: Any? = null,
       removedAt: Any? = null,
       category: String = "",
+      sizeText: Any? = null,
   ) =
       ProductFirestoreDocument(
           documentId = (id as? String)?.substringAfter(':') ?: "$id",
@@ -425,6 +439,7 @@ class ProductRepositoryFirestoreTest {
                   "image_url" to imageUrl,
                   "removed_at" to removedAt,
                   "search_prefixes" to productSearchPrefixes(name, category),
+                  "size_text" to sizeText,
               ),
       )
 

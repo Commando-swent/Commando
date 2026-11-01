@@ -158,6 +158,9 @@ dependencies {
   // Integration with ViewModels
   implementation(libs.compose.viewmodel)
   implementation(libs.compose.navigation)
+  // Product images
+  implementation(libs.coil.compose)
+  implementation(libs.coil.network.okhttp)
   // Android Studio Preview support
   implementation(libs.compose.preview)
 

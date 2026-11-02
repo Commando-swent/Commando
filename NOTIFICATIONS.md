@@ -2,27 +2,28 @@
 
 AI assistance: OpenAI Codex (implementation, tests and documentation).
 
-NotificationRepository exposes the authenticated recipient's inbox, idempotent read action and
-preferences. Its Firestore adapter uses SERVER reads and session checks around asynchronous work.
-Screens use the interface; they cannot supply a recipient or create an event.
+NotificationRepository uses authenticated session identity, SERVER reads and account-change guards.
+Screens cannot supply recipients or publish events directly. #204 publishes events through order
+writes; #202 adds state management. Screens/navigation are planned for S5. No push/background delivery.
 
-orderEvents/{orderId}_{eventType} is the immutable source (orderId, recipientId, type, occurredAt).
-Supported types: ORDER_PLACED, ORDER_ACCEPTED and ORDER_REJECTED. Order creation publishes ORDER_PLACED in the same batch; a decision publishes its event in the same
-transaction. Rules require both writes together, verify the persisted order transition and recipient,
-and deny event updates/deletes. Repeated decisions read the final state without publishing again.
-Recipient storage tests use admin fixtures; integration tests use real authenticated order writes.
+orderEvents/{orderId}_{eventType} stores immutable orderId, recipientId, type and occurredAt.
+Types: ORDER_PLACED/ORDER_ACCEPTED/ORDER_REJECTED. Valid future types are skipped; extra fields ignored.
+Malformed required fields still fail. Order creation publishes ORDER_PLACED in the same batch;
+Accept/Reject publishes its event in the same transaction. Rules require both writes together,
+validate the persisted transition and recipient, and deny event updates/deletes. Repeated decisions
+read the final state without publishing again. Recipient storage tests use admin-seeded events;
+integration tests exercise real authenticated order writes.
 
-users/{uid}/notificationPreferences/settings stores boolean newOrders and orderDecisions, both enabled
-by default. users/{uid}/notifications/{eventId} copies its canonical event and stores visible/isRead.
-First processing transactionally reads preferences and creates this record. Muted events keep an
-invisible record: re-enabling a category never replays them. Existing entries remain visible/read.
-Evaluating preferences at first processing rather than event time remains a proposal for teammate review.
+users/{uid}/notificationPreferences/settings stores newOrders/orderDecisions (both default true).
+Saves specify only changed toggles; transactions preserve other-device updates and initialize defaults.
+users/{uid}/notifications/{eventId} copies its event with visible/isRead. First processing reads current
+preferences transactionally; muted records prevent replay, while existing entries retain visibility/read.
+Applying preferences at processing time remains a contract proposal for teammate review.
 
-Rules enforce recipient-only reads, exact preference types, canonical event identity, immutable
-notification content and read-only-to-true updates. Results sort by event time descending then ID.
-No composite index is required. Run ./gradlew check assembleDebug and the production-rules Firebase
-security profile. Emulator validation does not establish deployed-backend configuration.
-
-#201 delivers storage; #204 adds atomic order-event publication and order regression tests.
-#202 provides state management. Screens and navigation remain separate S5 increments.
-Shared Firebase uses an additive rollout; activate the versioned event-required policy only after client migration.
+Rules enforce recipient privacy, typed settings, canonical identity, immutable content and read-to-true.
+Refresh reloads full recipient history and processes unseen events sequentially; reads/latency grow.
+Results sort newest first, then ID (no composite index). Follow-up: pagination/incremental sync
+preserving ordering/deduplication (proposal, not implemented).
+Run ./gradlew check assembleDebug and Firebase emulator profiles; these do not verify deployed rules.
+Shared Firebase uses an additive rollout. Activate the versioned event-required rules only after
+client migration; emulator runs do not deploy the policy to the shared project.

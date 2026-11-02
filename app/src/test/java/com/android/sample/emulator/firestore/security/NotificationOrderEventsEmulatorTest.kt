@@ -152,10 +152,10 @@ class NotificationOrderEventsEmulatorTest {
   fun preferencesFilterRealOrderEventsAndReadStatePersists() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val repo = notifications(owner)
-      repo.updatePreferences(NotificationPreferences(newOrders = false))
+      repo.updatePreferences(newOrders = false)
       val muted = place(owner, requester)
       assertTrue(inbox(owner).isEmpty())
-      repo.updatePreferences(NotificationPreferences())
+      repo.updatePreferences(newOrders = true, orderDecisions = true)
       assertTrue(inbox(owner).isEmpty())
       val visible = place(owner, requester)
       val notification = inbox(owner).single()

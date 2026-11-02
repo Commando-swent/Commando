@@ -25,16 +25,13 @@ data class OrderNotificationEvent(
   }
 
   /** Stable across retries; scoped to the recipient's inbox by the repository. */
-  val id: String
-    get() = type.eventId(orderId)
+  val id: String = type.eventId(orderId)
 }
 
 /** The recipient's read state for an immutable event. */
 data class OrderNotification(val event: OrderNotificationEvent, val isRead: Boolean = false)
 
-/**
- * Proposed defaults: both categories enabled; changes affect subsequently processed events only.
- */
+/** Both categories default to enabled; changes affect subsequently processed events only. */
 data class NotificationPreferences(
     val newOrders: Boolean = true,
     val orderDecisions: Boolean = true,

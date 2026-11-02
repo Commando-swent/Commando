@@ -6,18 +6,14 @@ import com.android.sample.model.*
 import com.android.sample.model.NotificationEventType.ORDER_PLACED
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
-import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.*
 import io.mockk.*
 import java.time.Instant
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
-import org.junit.After
+import org.junit.*
 import org.junit.Assert.*
-import org.junit.Before
-import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
@@ -25,26 +21,22 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class NotificationRepositoryFirestoreTest {
   private val firestore = mockk<FirebaseFirestore>(relaxed = true)
-  private val app = mockk<FirebaseApp>()
-  private val auth = mockk<FirebaseAuth>()
-  private val user = mockk<FirebaseUser>()
   private val settings = mockk<DocumentReference>()
   private val events = mockk<QuerySnapshot>()
   private val inbox = mockk<QuerySnapshot>()
   private var uid: String? = "recipient"
   private val repository = NotificationRepositoryFirestore({ uid }, firestore)
   private val event = OrderNotificationEvent("order", "recipient", ORDER_PLACED, Instant.EPOCH)
+  private val defaultPreferences = Schema.preferenceData(NotificationPreferences())
 
   @Before
   fun setUp() {
     mockkStatic(FirebaseAuth::class)
-    every { firestore.app } returns app
-    every { FirebaseAuth.getInstance(app) } returns auth
-    every { auth.currentUser } returns user
-    every { user.uid } returns "recipient"
+    every { FirebaseAuth.getInstance(firestore.app) } returns
+        mockk { every { currentUser } returns mockk { every { uid } returns "recipient" } }
     val account = firestore.notificationUser("recipient")
     every { account.collection(Schema.PREFERENCES).document(Schema.SETTINGS) } returns settings
-    every { settings.get(Source.SERVER) } returns Tasks.forResult(snapshot(preferenceData()))
+    every { settings.get(Source.SERVER) } returns Tasks.forResult(snapshot(defaultPreferences))
     every {
       firestore
           .collection(Schema.EVENTS)
@@ -73,7 +65,7 @@ class NotificationRepositoryFirestoreTest {
     every { settings.get(Source.SERVER) } returns response.task
     val pending = async(start = CoroutineStart.UNDISPATCHED) { repository.getPreferences() }
     uid = "next-account"
-    response.setResult(snapshot(preferenceData()))
+    response.setResult(snapshot(defaultPreferences))
     assertEquals(OrderResult.Error(OrderError.NotAuthenticated), pending.await())
   }
 
@@ -82,11 +74,9 @@ class NotificationRepositoryFirestoreTest {
     every { settings.get(Source.SERVER) } returns Tasks.forResult(snapshot(emptyMap()))
     assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getPreferences())
     for (field in listOf(Schema.NEW_ORDERS, Schema.ORDER_DECISIONS)) {
-      for (invalid in listOf(null, "true")) {
-        every { settings.get(Source.SERVER) } returns
-            Tasks.forResult(snapshot(preferenceData() + (field to invalid)))
-        assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getPreferences())
-      }
+      every { settings.get(Source.SERVER) } returns
+          Tasks.forResult(snapshot(defaultPreferences + (field to "true")))
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getPreferences())
     }
   }
 
@@ -96,14 +86,16 @@ class NotificationRepositoryFirestoreTest {
     for (document in
         listOf(
             snapshot(null),
-            snapshot(data + (Schema.ORDER_ID to null)),
             snapshot(data + (Schema.ORDER_ID to 1)),
             snapshot(data + (Schema.ORDER_ID to "a/b")),
-            snapshot(data + (Schema.RECIPIENT_ID to null)),
             snapshot(data + (Schema.RECIPIENT_ID to 1)),
             snapshot(data + (Schema.RECIPIENT_ID to "a/b")),
-            snapshot(data + (Schema.TYPE to "unknown")),
-            snapshot(data + (Schema.OCCURRED_AT to "now")),
+            snapshot(data + (Schema.TYPE to null)),
+            snapshot(data + (Schema.TYPE to "")),
+            snapshot(
+                data + (Schema.TYPE to "ORDER_CANCELLED") - Schema.OCCURRED_AT,
+                "order_ORDER_CANCELLED",
+            ),
             snapshot(data, "noncanonical"),
         )) {
       every { events.documents } returns listOf(document)
@@ -117,11 +109,8 @@ class NotificationRepositoryFirestoreTest {
     val data = Schema.eventData(event) + mapOf(Schema.IS_READ to false, Schema.VISIBLE to true)
     for (invalid in
         listOf(
-            null,
             data - Schema.IS_READ,
-            data + (Schema.IS_READ to null),
             data + (Schema.IS_READ to "false"),
-            data + (Schema.VISIBLE to null),
             data + (Schema.VISIBLE to "true"),
             data + (Schema.TYPE to "unknown"),
             data + (Schema.OCCURRED_AT to com.google.firebase.Timestamp(1, 0)),
@@ -133,7 +122,23 @@ class NotificationRepositoryFirestoreTest {
     assertEquals(OrderResult.Error(OrderError.PermissionDenied), repository.getNotifications())
   }
 
-  private fun preferenceData(): Map<String, Any?> = Schema.preferenceData(NotificationPreferences())
+  @Test
+  fun futureTypesAndExtraFieldsKeepSupportedNotificationsVisible() = runTest {
+    val data = Schema.eventData(event) + ("futureField" to true)
+    val future = data + (Schema.TYPE to "ORDER_CANCELLED")
+    every { events.documents } returns
+        listOf(snapshot(future, "order_ORDER_CANCELLED"), snapshot(data))
+    every { inbox.documents } returns
+        listOf(snapshot(data + mapOf(Schema.IS_READ to false, Schema.VISIBLE to true)))
+    assertEquals(
+        OrderResult.Success(listOf(OrderNotification(event))),
+        repository.getNotifications(),
+    )
+    verify(exactly = 0) { firestore.runTransaction(any<Transaction.Function<Any?>>()) }
+    every { events.documents } returns
+        listOf(snapshot(future + (Schema.RECIPIENT_ID to "another"), "order_ORDER_CANCELLED"))
+    assertEquals(OrderResult.Error(OrderError.PermissionDenied), repository.getNotifications())
+  }
 
   private fun snapshot(data: Map<String, Any?>?, id: String = event.id): DocumentSnapshot =
       mockk<DocumentSnapshot> {

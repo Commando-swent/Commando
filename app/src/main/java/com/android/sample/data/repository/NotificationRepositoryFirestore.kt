@@ -11,38 +11,24 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
-/**
- * Server-backed recipient inbox. Persisted events are processed with the recipient's private
- * preferences in a transaction. An invisible record permanently deduplicates a muted event.
- */
+/** Transactional recipient inbox; invisible records permanently deduplicate muted events. */
 class NotificationRepositoryFirestore(
     private val currentUserId: () -> String?,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : NotificationRepository {
   override suspend fun getNotifications(): OrderResult<List<OrderNotification>> =
       session { uid, guard ->
-        val documents =
-            firestore
-                .collection(Schema.EVENTS)
-                .whereEqualTo(Schema.RECIPIENT_ID, uid)
-                .get(Source.SERVER)
-                .await()
-                .documents
+        val events = firestore.collection(Schema.EVENTS).whereEqualTo(Schema.RECIPIENT_ID, uid)
+        val documents = events.get(Source.SERVER).await().documents
         guard()
-        val stored =
-            firestore
-                .notificationUser(uid)
-                .collection(Schema.INBOX)
-                .get(Source.SERVER)
-                .await()
-                .documents
-                .associateBy { it.id }
+        val inbox = firestore.notificationUser(uid).collection(Schema.INBOX)
+        val stored = inbox.get(Source.SERVER).await().documents.associateBy { it.id }
         guard()
         val notifications = documents.mapNotNull { document ->
-          val event =
-              Schema.decodeEvent(document.id, document.data.orEmpty())
-                  ?: throw error(Code.DATA_LOSS)
-          if (event.recipientId != uid) throw error(Code.PERMISSION_DENIED)
+          val data = document.data.orEmpty()
+          val event = Schema.decodeEvent(document.id, data)
+          if (data[Schema.RECIPIENT_ID] != uid) throw error(Code.PERMISSION_DENIED)
+          if (event == null) return@mapNotNull null
           val existing = stored[event.id]
           if (existing == null) process(event, uid, guard)
           else {
@@ -81,11 +67,28 @@ class NotificationRepositoryFirestore(
         Schema.decodePreferences(data) ?: throw error(Code.DATA_LOSS)
       }
 
-  override suspend fun updatePreferences(preferences: NotificationPreferences): OrderResult<Unit> =
-      session { uid, guard ->
-        guard()
-        preferenceRef(uid).set(Schema.preferenceData(preferences)).await()
-      }
+  override suspend fun updatePreferences(
+      newOrders: Boolean?,
+      orderDecisions: Boolean?,
+  ): OrderResult<Unit> = session { uid, guard ->
+    val changes =
+        mapOf(Schema.NEW_ORDERS to newOrders, Schema.ORDER_DECISIONS to orderDecisions)
+            .filterValues { it != null }
+    if (changes.isNotEmpty()) {
+      val ref = preferenceRef(uid)
+      firestore
+          .runTransaction { transaction ->
+            guard()
+            val stored = transaction.get(ref)
+            val current = Schema.decodePreferences(stored.data) ?: throw error(Code.DATA_LOSS)
+            guard()
+            if (stored.exists()) transaction.update(ref, changes)
+            else transaction.set(ref, Schema.preferenceData(current) + changes)
+            Unit
+          }
+          .await()
+    }
+  }
 
   private suspend fun process(
       event: OrderNotificationEvent,
@@ -121,17 +124,10 @@ class NotificationRepositoryFirestore(
         .await()
   }
 
-  private fun decodeInbox(
-      snapshot: DocumentSnapshot,
-      uid: String,
-  ): InboxEntry {
+  private fun decodeInbox(snapshot: DocumentSnapshot, uid: String): InboxEntry {
     val data = snapshot.data.orEmpty()
-    if (data.keys != Schema.INBOX_FIELDS) throw error(Code.DATA_LOSS)
-    val event =
-        Schema.decodeEvent(
-            snapshot.id,
-            data.filterKeys { it in Schema.EVENT_FIELDS },
-        ) ?: throw error(Code.DATA_LOSS)
+    if (!data.keys.containsAll(Schema.INBOX_FIELDS)) throw error(Code.DATA_LOSS)
+    val event = Schema.decodeEvent(snapshot.id, data) ?: throw error(Code.NOT_FOUND)
     val read = data[Schema.IS_READ] as? Boolean ?: throw error(Code.DATA_LOSS)
     val visible = data[Schema.VISIBLE] as? Boolean ?: throw error(Code.DATA_LOSS)
     if (event.recipientId != uid) throw error(Code.PERMISSION_DENIED)

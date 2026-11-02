@@ -1,26 +1,23 @@
-# Notification storage — #201, first increment
+# Notification storage — #201
 
 AI assistance: OpenAI Codex (implementation, tests and documentation).
 
-NotificationRepository exposes the authenticated recipient's inbox, idempotent read action and
-preferences. Its Firestore adapter uses SERVER reads and session checks around asynchronous work.
-Screens use the interface; they cannot supply a recipient or create an event.
+NotificationRepository uses authenticated session identity, SERVER reads and account-change guards.
+Screens cannot supply recipients or publish events. #204 adds publication, #202 state management;
+screens/navigation are planned for S5. No push/background delivery.
 
-orderEvents/{orderId}_{eventType} is the immutable source (orderId, recipientId, type, occurredAt).
-Supported types: ORDER_PLACED, ORDER_ACCEPTED and ORDER_REJECTED. Client publication is denied in
-this increment; emulator tests seed canonical events through the admin fixture API. Validated atomic
-publication alongside order writes comes in the next PR.
+orderEvents/{orderId}_{eventType} stores immutable orderId, recipientId, type and occurredAt.
+Types: ORDER_PLACED/ORDER_ACCEPTED/ORDER_REJECTED. Valid future types are skipped; extra fields ignored.
+Malformed required fields still fail. Publication is denied here; tests use admin-seeded events.
 
-users/{uid}/notificationPreferences/settings stores boolean newOrders and orderDecisions, both enabled
-by default. users/{uid}/notifications/{eventId} copies its canonical event and stores visible/isRead.
-First processing transactionally reads preferences and creates this record. Muted events keep an
-invisible record: re-enabling a category never replays them. Existing entries remain visible/read.
-Evaluating preferences at first processing rather than event time remains a proposal for teammate review.
+users/{uid}/notificationPreferences/settings stores newOrders/orderDecisions (both default true).
+Saves specify only changed toggles; transactions preserve other-device updates and initialize defaults.
+users/{uid}/notifications/{eventId} copies its event with visible/isRead. First processing reads current
+preferences transactionally; muted records prevent replay, while existing entries retain visibility/read.
+Applying preferences at processing time remains a contract proposal for teammate review.
 
-Rules enforce recipient-only reads, exact preference types, canonical event identity, immutable
-notification content and read-only-to-true updates. Results sort by event time descending then ID.
-No composite index is required. Run ./gradlew check assembleDebug and the production-rules Firebase
-security profile. Emulator validation does not establish deployed-backend configuration.
-
-#201 delivers recipient storage and preferences. #204 adds atomic order-event publication.
-#202 provides state management; screens and navigation are planned separately for S5.
+Rules enforce recipient privacy, typed settings, canonical identity, immutable content and read-to-true.
+Refresh reloads full recipient history and processes unseen events sequentially; reads/latency grow.
+Results sort newest first, then ID (no composite index). Follow-up: pagination/incremental sync
+preserving ordering/deduplication (proposal, not implemented).
+Run ./gradlew check assembleDebug and Firebase emulator profiles; these do not verify deployed rules.

@@ -21,9 +21,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/**
- * Recipient storage/rules with admin-seeded canonical events; publication is a separate increment.
- */
+/** Recipient storage/rules using admin-seeded events; publication is a separate increment. */
 @RunWith(RobolectricTestRunner::class)
 class NotificationFirestoreSecurityRulesEmulatorTest {
   @Test
@@ -32,15 +30,18 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
       val email = "notifications-${UUID.randomUUID()}@example.test"
       val password = "emulator-password"
       first.auth.createUserWithEmailAndPassword(email, password).await()
+      fresh.auth.signInWithEmailAndPassword(email, password).await()
+      assertEquals(NotificationPreferences(), successful(repo(fresh).getPreferences()))
       val event = seed(first)
       assertEquals(listOf(OrderNotification(event)), inbox(first))
-      assertEquals(OrderResult.Success(Unit), repo(first).markAsRead(event.id))
-      assertEquals(OrderResult.Success(Unit), repo(first).markAsRead(event.id))
-      val settings = NotificationPreferences(false, true)
-      assertEquals(OrderResult.Success(Unit), repo(first).updatePreferences(settings))
-      fresh.auth.signInWithEmailAndPassword(email, password).await()
+      successful(repo(first).markAsRead(event.id))
+      successful(repo(first).markAsRead(event.id))
+      val settings = NotificationPreferences(false, false)
+      successful(repo(first).updatePreferences(newOrders = false))
+      successful(repo(fresh).updatePreferences(orderDecisions = false))
+      assertEquals(settings, successful(repo(first).getPreferences()))
       assertEquals(listOf(OrderNotification(event, true)), inbox(fresh))
-      assertEquals(OrderResult.Success(settings), repo(fresh).getPreferences())
+      assertEquals(settings, successful(repo(fresh).getPreferences()))
     }
   }
 
@@ -49,10 +50,10 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
     withClients("recipient" to true) { (client) ->
       val existing = seed(client)
       inbox(client)
-      repo(client).updatePreferences(NotificationPreferences(false, false))
+      successful(repo(client).updatePreferences(false, false))
       val muted = NotificationEventType.entries.map { seed(client, it) }
       assertEquals(listOf(OrderNotification(existing)), inbox(client))
-      repo(client).updatePreferences(NotificationPreferences())
+      successful(repo(client).updatePreferences(true, true))
       assertEquals(listOf(OrderNotification(existing)), inbox(client))
       assertEquals(
           OrderResult.Error(OrderError.NotFound),
@@ -103,7 +104,7 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
           )) {
         assertPermissionDenied { ref.update(mutation).await() }
       }
-      assertEquals(OrderResult.Success(Unit), repo(client).markAsRead(event.id))
+      successful(repo(client).markAsRead(event.id))
       assertTrue(inbox(client).single().isRead)
       assertPermissionDenied { ref.update(Schema.IS_READ, false).await() }
       assertPermissionDenied { ref.delete().await() }
@@ -146,7 +147,7 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
           )) {
         assertPermissionDenied { settings.set(invalid).await() }
       }
-      assertEquals(OrderResult.Success(NotificationPreferences()), repo(client).getPreferences())
+      assertEquals(NotificationPreferences(), successful(repo(client).getPreferences()))
       assertEquals(OrderResult.Error(OrderError.InvalidData), repo(client).markAsRead("a/b"))
       assertEquals(OrderResult.Error(OrderError.NotFound), repo(client).markAsRead("missing"))
     }
@@ -163,7 +164,7 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
       assertEquals(denied, stale.getNotifications())
       assertEquals(denied, stale.getPreferences())
       assertEquals(denied, stale.markAsRead("missing"))
-      assertEquals(denied, stale.updatePreferences(NotificationPreferences(false, false)))
+      assertEquals(denied, stale.updatePreferences(false, false))
     }
   }
 
@@ -186,7 +187,9 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
             NotificationPreferences(true, false) to setOf(ORDER_PLACED),
         )) {
       withClients("recipient" to true) { (client) ->
-        assertEquals(OrderResult.Success(Unit), repo(client).updatePreferences(preferences))
+        successful(
+            repo(client).updatePreferences(preferences.newOrders, preferences.orderDecisions)
+        )
         NotificationEventType.entries.forEach { seed(client, it) }
         assertEquals(visible, inbox(client).map { it.event.type }.toSet())
       }
@@ -230,7 +233,7 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
           pending.onAwait { fail("Processing completed before the conflict: $it") }
         }
         assertEquals(listOf(OrderNotification(event)), inbox(second))
-        assertEquals(OrderResult.Success(Unit), repo(second).markAsRead(event.id))
+        successful(repo(second).markAsRead(event.id))
       } finally {
         resume.countDown()
       }
@@ -259,9 +262,10 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
   private fun repo(client: EmulatorClient) =
       NotificationRepositoryFirestore({ client.auth.currentUser?.uid }, client.firestore)
 
-  private suspend fun inbox(client: EmulatorClient): List<OrderNotification> {
-    val result = repo(client).getNotifications()
-    assertTrue("Inbox failed: $result", result is OrderResult.Success)
+  private suspend fun inbox(client: EmulatorClient) = successful(repo(client).getNotifications())
+
+  private fun <T> successful(result: OrderResult<T>): T {
+    assertTrue("Unexpected result: $result", result is OrderResult.Success)
     return (result as OrderResult.Success).data
   }
 }

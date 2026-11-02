@@ -166,6 +166,52 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    // The following increment adds validated atomic publication with order writes.
+    match /orderEvents/{eventId} {
+      allow read: if isAuthenticated() && resource.data.recipientId == request.auth.uid;
+      allow write: if false;
+    }
+
+    function ownsNotificationData(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function notificationEnabled(userId, type) {
+      let path = /databases/$(database)/documents/users/$(userId)/notificationPreferences/settings;
+      return !exists(path) || (type == "ORDER_PLACED"
+        ? get(path).data.newOrders : get(path).data.orderDecisions);
+    }
+
+    function validInboxEntry(data, userId, eventId) {
+      let event = get(/databases/$(database)/documents/orderEvents/$(eventId)).data;
+      return data.keys().hasAll(["orderId", "recipientId", "type", "occurredAt", "visible", "isRead"])
+        && data.keys().hasOnly(["orderId", "recipientId", "type", "occurredAt", "visible", "isRead"])
+        && event.recipientId == userId && data.recipientId == userId
+        && data.orderId == event.orderId && data.type == event.type
+        && data.occurredAt == event.occurredAt
+        && data.isRead == false && data.visible is bool
+        && data.visible == notificationEnabled(userId, event.type);
+    }
+
+    match /users/{userId}/notifications/{eventId} {
+      allow read: if ownsNotificationData(userId);
+      allow create: if ownsNotificationData(userId)
+        && validInboxEntry(request.resource.data, userId, eventId);
+      allow update: if ownsNotificationData(userId) && resource.data.visible == true
+        && request.resource.data.isRead == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["isRead"]);
+      allow delete: if false;
+    }
+
+    match /users/{userId}/notificationPreferences/settings {
+      allow get: if ownsNotificationData(userId);
+      allow create, update: if ownsNotificationData(userId)
+        && request.resource.data.keys().hasAll(["newOrders", "orderDecisions"])
+        && request.resource.data.keys().hasOnly(["newOrders", "orderDecisions"])
+        && request.resource.data.newOrders is bool && request.resource.data.orderDecisions is bool;
+      allow delete: if false;
+    }
+
     match /stores/{storeId}/products/{productId} {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated()

@@ -231,12 +231,7 @@ internal class FirebaseOrderFirestoreDataSource(
     // Decisions verify session and Firebase identities; creation uses repository guards and rules.
     fun ensureSession() {
       context.ensureActive()
-      if (
-          FirebaseAuth.getInstance(database.app).currentUser?.uid != ownerId ||
-              (currentUserId != null && currentUserId.invoke() != ownerId)
-      ) {
-        throw decisionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
-      }
+      database.ensureDecisionIdentity(ownerId)
     }
     ensureSession()
     fun attempt(write: Boolean) = database.runTransaction { transaction ->
@@ -267,6 +262,16 @@ internal class FirebaseOrderFirestoreDataSource(
         ensureSession()
         if (it.data["status"] == OrderStatus.PENDING.name) throw denied
       }
+    }
+  }
+
+  /** Verifies Firebase and session identities on each transaction attempt. */
+  private fun FirebaseFirestore.ensureDecisionIdentity(ownerId: String) {
+    if (
+        FirebaseAuth.getInstance(app).currentUser?.uid != ownerId ||
+            (currentUserId != null && currentUserId.invoke() != ownerId)
+    ) {
+      throw decisionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
     }
   }
 

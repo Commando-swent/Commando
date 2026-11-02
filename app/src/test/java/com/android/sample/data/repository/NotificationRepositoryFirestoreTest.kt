@@ -79,16 +79,14 @@ class NotificationRepositoryFirestoreTest {
 
   @Test
   fun malformedSettingsReturnInvalidData() = runTest {
-    for (data in
-        listOf(
-            emptyMap(),
-            preferenceData() + (Schema.NEW_ORDERS to null),
-            preferenceData() + (Schema.NEW_ORDERS to "true"),
-            preferenceData() + (Schema.ORDER_DECISIONS to null),
-            preferenceData() + (Schema.ORDER_DECISIONS to "true"),
-        )) {
-      every { settings.get(Source.SERVER) } returns Tasks.forResult(snapshot(data))
-      assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getPreferences())
+    every { settings.get(Source.SERVER) } returns Tasks.forResult(snapshot(emptyMap()))
+    assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getPreferences())
+    for (field in listOf(Schema.NEW_ORDERS, Schema.ORDER_DECISIONS)) {
+      for (invalid in listOf(null, "true")) {
+        every { settings.get(Source.SERVER) } returns
+            Tasks.forResult(snapshot(preferenceData() + (field to invalid)))
+        assertEquals(OrderResult.Error(OrderError.InvalidData), repository.getPreferences())
+      }
     }
   }
 

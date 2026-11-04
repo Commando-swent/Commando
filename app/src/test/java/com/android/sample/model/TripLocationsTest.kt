@@ -16,4 +16,12 @@ class TripLocationsTest {
       assertTrue(it.name, it.latitude in -90.0..90.0 && it.longitude in -180.0..180.0)
     }
   }
+
+  @Test
+  fun everyPickableStoreResolvesToItsOwnChainCatalogue() {
+    assertEquals(
+        listOf("migros", "denner", "coop"),
+        TripLocations.stores.map { storeIdFor(it.name) },
+    )
+  }
 }

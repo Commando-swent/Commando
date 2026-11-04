@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: Claude Code for the incoming-orders destination (#147).
+// AI assistance: Claude Code for the incoming-orders (#147) and checklist (#193) destinations.
 import android.net.Uri
 import androidx.annotation.StringRes
 import com.android.sample.R
@@ -27,6 +27,8 @@ enum class CommandoScreens(
   OrderDetails(title = R.string.order_details_title),
   /** Orders placed on one of the owner's trips; reached from that trip's details. */
   IncomingOrders(title = R.string.incoming_orders_title),
+  /** Products to buy for one of the owner's trips; reached from its incoming orders. */
+  ShoppingChecklist(title = R.string.shopping_checklist_title),
   /** Product catalogue of the selected trip's chain; titled after the Trip Details action. */
   Catalogue(title = R.string.add_items_title),
   ReviewOrder(title = R.string.order_review);
@@ -38,7 +40,8 @@ enum class CommandoScreens(
           TripDetails,
           Catalogue,
           ReviewOrder,
-          IncomingOrders -> "$name/{$TRIP_ID_ARGUMENT}"
+          IncomingOrders,
+          ShoppingChecklist -> "$name/{$TRIP_ID_ARGUMENT}"
           OrderDetails -> "$name/{$ORDER_ID_ARGUMENT}"
           else -> name
         }
@@ -61,6 +64,10 @@ enum class CommandoScreens(
 
     /** Opens the incoming orders of the owner's trip, preserving its opaque ID. */
     fun incomingOrdersRoute(tripId: String): String = "${IncomingOrders.name}/${Uri.encode(tripId)}"
+
+    /** Opens the shopping checklist of the owner's trip, preserving its opaque ID. */
+    fun shoppingChecklistRoute(tripId: String): String =
+        "${ShoppingChecklist.name}/${Uri.encode(tripId)}"
 
     /** Encodes the opaque order ID once; consumers use Navigation's decoded string argument. */
     fun orderDetailsRoute(orderId: String): String = "${OrderDetails.name}/${Uri.encode(orderId)}"

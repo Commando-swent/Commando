@@ -71,7 +71,7 @@ fun EditProfileScreen(
         contentAlignment = Alignment.Center,
     ) {
       val onPreview =
-          ProfilePhotoPreview(profileInitials(avatarFullName), photo?.image, avatarFullName)
+          rememberProfilePhotoPreview(profileInitials(avatarFullName), photo?.image, avatarFullName)
       ProfileAvatar(
           profileInitials(avatarFullName),
           showPhotoAction = onPhotoClick != null,

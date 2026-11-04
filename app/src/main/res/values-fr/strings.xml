@@ -355,4 +355,18 @@
         <item quantity="many">%1$d articles · %2$s</item>
         <item quantity="other">%1$d articles · %2$s</item>
     </plurals>
+    <string name="shopping_checklist_title">Liste de courses</string>
+    <string name="shopping_checklist_open">Ouvrir la liste de courses</string>
+    <string name="shopping_checklist_loading">Chargement de la liste de courses</string>
+    <string name="shopping_checklist_empty">Aucune commande acceptée sur ce trajet pour le moment.</string>
+    <string name="shopping_checklist_refresh">Actualiser</string>
+    <string name="shopping_checklist_error">Une erreur est survenue lors du chargement de la liste de courses.</string>
+    <string name="shopping_checklist_retry">Réessayer</string>
+    <string name="shopping_checklist_save_error">Cet article n\'a pas pu être enregistré. Veuillez réessayer.</string>
+    <plurals name="shopping_checklist_progress">
+        <item quantity="one">%1$d sur %2$d acheté</item>
+        <item quantity="many">%1$d sur %2$d achetés</item>
+        <item quantity="other">%1$d sur %2$d achetés</item>
+    </plurals>
+    <string name="shopping_checklist_quantity">Qté %1$d</string>
 </resources>

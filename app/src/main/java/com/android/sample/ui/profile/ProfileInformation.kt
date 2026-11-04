@@ -50,7 +50,7 @@ internal fun ProfileInformation(
 ) {
   Column(modifier) {
     val fullName = profile.fullName?.takeUnless { it.isBlank() }
-    val onPreview = ProfilePhotoPreview(profileInitials(fullName), photo?.image, fullName)
+    val onPreview = rememberProfilePhotoPreview(profileInitials(fullName), photo?.image, fullName)
     Column(
         Modifier.fillMaxWidth().heightIn(min = 148.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -252,7 +252,11 @@ private fun ProfileField(
 }
 
 @Composable
-internal fun ProfilePhotoPreview(initials: String?, photo: String?, name: String?): () -> Unit {
+internal fun rememberProfilePhotoPreview(
+    initials: String?,
+    photo: String?,
+    name: String?,
+): () -> Unit {
   var open by remember { mutableStateOf(false) }
   if (open)
       Dialog(

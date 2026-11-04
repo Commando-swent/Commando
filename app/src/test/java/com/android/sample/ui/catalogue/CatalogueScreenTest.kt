@@ -363,6 +363,43 @@ class CatalogueScreenTest {
   }
 
   @Test
+  fun coopTripSearchesSelectsAndShowsCoopPhotosAndSizes() {
+    val coopTrip = catalogueTrip("trip-coop", "Coop Lausanne")
+    val avocado =
+        Product("coop:1", "coop", "Bio Avocado", 195, imageUrl = COOP_IMAGE, sizeText = "1 Stück")
+    val oat = Product("coop:2", "coop", "Oat drink", 210)
+    products.result = ProductResult.Success(listOf(avocado, oat, milk))
+    show(coopTrip)
+    compose.onNodeWithText("ALL PRODUCTS · 2").assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.row(milk.id)).assertDoesNotExist()
+    compose.onNodeWithText("1 Stück · CHF 1.95").assertIsDisplayed()
+    // Coop URLs have no Migros rendition placeholder, so they are loaded as imported.
+    imageWasRequested(COOP_IMAGE)
+
+    compose.onNodeWithTag(CatalogueTestTags.add(oat.id)).performClick()
+    compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("avocado")
+    compose.onNodeWithText("1 RESULT FOR “AVOCADO”").assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.add(avocado.id)).performClick()
+    compose.onNodeWithTag(CatalogueTestTags.increase(avocado.id)).performClick()
+    compose.onNodeWithTag(CatalogueTestTags.increase(avocado.id)).performClick()
+    compose.onNodeWithContentDescription("Decrease Bio Avocado quantity").performClick()
+    compose.onNodeWithTag(CatalogueTestTags.SUMMARY).assertTextContains("Est. CHF 6.00")
+    compose.runOnIdle {
+      assertEquals(listOf("coop"), products.requests.map { it.storeId }.distinct())
+      assertEquals(coopTrip.id, draft.draft.value.tripId)
+      assertEquals(
+          listOf(
+              OrderItem(oat.id, "Oat drink", 210, 1),
+              OrderItem(avocado.id, "Bio Avocado", 195, 2),
+          ),
+          draft.draft.value.items,
+      )
+    }
+    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).performClick()
+    compose.runOnIdle { assertEquals(listOf(coopTrip), continued) }
+  }
+
+  @Test
   fun permissionFailureIsAnErrorWithRetryNotAnEmptyCatalogue() {
     products.result = ProductResult.Error(ProductError.PermissionDenied)
     show()
@@ -434,5 +471,8 @@ class CatalogueScreenTest {
 
 private const val MIGROS_IMAGE =
     "https://image.migros.ch/d/%7Bstack%7D/o-af-1-t.clr-fff/abc/m-budget-lait.jpg"
+
+private const val COOP_IMAGE =
+    "https://www.coop.ch/img/produkte/310_310/RGB/3465933_001.jpg?_=1710535453816"
 
 private const val IMAGE_TIMEOUT_MILLIS = 5_000L

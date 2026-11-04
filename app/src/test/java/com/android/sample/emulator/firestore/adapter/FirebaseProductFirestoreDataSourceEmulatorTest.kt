@@ -41,7 +41,10 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           .set(storedProduct("migros:150", "No removal field", 1.0) - "removed_at")
           .await()
       val coop = stores.document("coop").collection("products")
-      coop.document("4446520").set(storedProduct("coop:4446520", "Example product", 3.95)).await()
+      coop
+          .document("4446520")
+          .set(storedProduct("coop:4446520", "Example product", 3.95) + ("size_text" to "1 Stück"))
+          .await()
       coop.document("4446521").set(storedProduct("coop:4446521", "Gone", 1.0, REMOVED_AT)).await()
       coop.document("4446522").set(storedProduct("migros:4446522", "Wrong store", 1.0)).await()
 
@@ -59,6 +62,7 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
                   "Example product",
                   395,
                   "https://example.com/product.jpg",
+                  sizeText = "1 Stück",
               )
           ),
           repository.getProducts("coop").successData(),

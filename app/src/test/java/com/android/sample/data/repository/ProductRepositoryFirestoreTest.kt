@@ -221,6 +221,33 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun getProducts_mapsUnlistedFirestoreCodesAndWrappedFailuresToUnknown() = runTest {
+    val mappedCodes =
+        setOf(
+            Code.OK,
+            Code.PERMISSION_DENIED,
+            Code.UNAUTHENTICATED,
+            Code.UNAVAILABLE,
+            Code.DEADLINE_EXCEEDED,
+            Code.INVALID_ARGUMENT,
+            Code.OUT_OF_RANGE,
+            Code.DATA_LOSS,
+        )
+    val failures =
+        (Code.entries - mappedCodes).map(::firebaseException) +
+            RuntimeException(firebaseException(Code.UNAVAILABLE))
+
+    failures.forEach { failure ->
+      val dataSource = InMemoryProductFirestoreDataSource().apply { this.failure = failure }
+      assertEquals(
+          "Unexpected mapping for $failure",
+          ProductResult.Error(ProductError.Unknown),
+          ProductRepositoryFirestore(dataSource).getProducts("coop"),
+      )
+    }
+  }
+
+  @Test
   fun productSearchTerms_normalizeFrenchAccentsLigaturesAndPunctuation() {
     // Shared vectors with the catalogue importer's (#153) searchTerms; keep both lists in sync.
     assertEquals(listOf("creme", "brulee"), productSearchTerms("  Crème BRÛLÉE "))

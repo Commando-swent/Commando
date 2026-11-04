@@ -1,12 +1,21 @@
 // AI assistance: Claude Code. Run with: node --test tools/catalog-import/import.test.mjs
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { displayName, emulatorHost, firestoreClient, importProducts, parseArgs, parseExport, parseSizes, searchPrefixes, toProduct } from './import.mjs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  displayName, emulatorHost, FIREBASE_TOOLS_VERSION, firebaseTools, firestoreClient, firestoreTarget, importProducts, parseArgs,
+  parseExport, parseSizes, planWrites, searchPrefixes, skippedReport, toProduct,
+} from './import.mjs';
 
 const row = (number, overrides = {}) =>
   ({ id: `migros:${number}`, store: 'migros', name: 'Lait entier', price: 1.95, image_url: null, category: 'Lait > Lait UHT', ...overrides });
 const exportOf = (...rows) => parseExport(rows.map((item) => JSON.stringify(item)).join('\n'), rows[0]?.store ?? 'migros').products;
 const path = (number, store = 'migros') => `stores/${store}/products/${number}`;
+// The delisting date of the removal tests, as swiss-cli exports it and as Firestore returns it.
+const REMOVED_AT = '2026-10-20T08:00:00Z';
+const STORED_REMOVED_AT = new Date(REMOVED_AT).toISOString();
 // A product from swiss-cli's Coop listing fixture (test/fixtures/coop-listing.json), as `export` writes it.
 const coopRow = (overrides = {}) => ({
   id: 'coop:3465933', store: 'coop', name: 'Naturaplan Bio Avocado 1 Stück', price: 1.95, category: 'Avocados', removed_at: null,
@@ -100,6 +109,7 @@ test('displayName writes brand, name and variant once each and never drops a dif
     ['Läckerlis de Bâle Piccolo', 'Läckerli Huus', null, 'Läckerli Huus Läckerlis de Bâle Piccolo'],
     ['Tourist', 'Frey', ' Lait ', 'Frey Tourist Lait'], ['Crémant 55%', 'Frey', 'crémant', 'Frey Crémant 55%'],
     ['Emmental', null, 'doux', 'Emmental doux'], ['Tresse', null, null, 'Tresse'], ['Tresse', ' ', ' ', 'Tresse'],
+    ['Lait  M-Drink', null, null, 'Lait M-Drink'], ['Ice Tea ·', 'Vivi', null, 'Vivi Ice Tea'],
   ];
   for (const [name, brand, variant, expected] of cases) assert.equal(displayName(name, brand, variant), expected);
 });
@@ -121,6 +131,20 @@ test('parseExport takes missing sizes from a manifest by product ID, never over 
   const lines = [row('1'), row('2', { size_text: '6 x 500 g' }), row('3')].map((item) => JSON.stringify(item)).join('\n');
   const { products } = parseExport(lines, 'migros', sizes);
   assert.deepEqual(products.map((product) => product.data.size_text), ['1 l', '6 x 500 g', null]);
+});
+
+test('a Migros size that only repeats the variant counts as missing, as swiss-cli exports it without a quantity', () => {
+  // Cases of swiss-cli's test/unit/migros-metadata.test.ts ("preserves the legacy size fallback").
+  const lines = [
+    row('1', { name: 'Emmental', variant: 'doux', size: 'doux' }),
+    row('2', { name: 'Emmental', variant: ' Doux ', size: 'doux' }),
+    row('3', { name: 'Tourist', brand: 'Frey', variant: 'Lait', size: '100g' }),
+    row('4', { name: 'Pastilles', variant: null, size: '175' }),
+  ].map((item) => JSON.stringify(item)).join('\n');
+  const parsed = (sizes) => parseExport(lines, 'migros', sizes).products.map(({ data }) => [data.name, data.size_text]);
+  assert.deepEqual(parsed(new Map()), [['Emmental doux', null], ['Emmental Doux', null], ['Frey Tourist Lait', '100g'], ['Pastilles', '175']]);
+  const sizes = new Map([['migros:1', '1 kg'], ['migros:3', '200 g']]);
+  assert.deepEqual(parsed(sizes).map(([, size]) => size), ['1 kg', null, '100g', '175']);
 });
 
 test('a brand, size or variant change is an update and a rerun of the corrected export writes nothing', async () => {
@@ -198,23 +222,21 @@ test('reruns update by stable id, skip unchanged products and keep other documen
 test('delisted products are only marked removed when active in Firestore, and relisted ones come back', async () => {
   const client = fakeClient();
   await importProducts(exportOf(row('1')), { client, write: true, log: () => {} });
-  const removedAt = '2026-10-20T08:00:00Z';
-  const removal = await importProducts(exportOf(row('1', { removed_at: removedAt }), row('2', { removed_at: removedAt })), { client, write: true, log: () => {} });
+  const removal = await importProducts(exportOf(row('1', { removed_at: REMOVED_AT }), row('2', { removed_at: REMOVED_AT })), { client, write: true, log: () => {} });
   assert.deepEqual([removal.counts.remove, removal.counts.removedNotInFirestore, removal.written], [1, 1, 1]);
-  assert.equal(client.documents.get(path('1')).data.removed_at, '2026-10-20T08:00:00.000Z');
+  assert.equal(client.documents.get(path('1')).data.removed_at, STORED_REMOVED_AT);
   assert.equal(client.documents.get(path('1')).data.name, 'Lait entier');
   assert.equal(client.documents.has(path('2')), false);
-  assert.equal((await importProducts(exportOf(row('1', { removed_at: removedAt })), { client, write: true, log: () => {} })).written, 0);
+  assert.equal((await importProducts(exportOf(row('1', { removed_at: REMOVED_AT })), { client, write: true, log: () => {} })).written, 0);
   await importProducts(exportOf(row('1')), { client, write: true, log: () => {} });
   assert.equal(client.documents.get(path('1')).data.removed_at, null);
 });
 
 test('delisted rows need only an id and removed_at, while listed rows still need a valid price', () => {
-  const removedAt = '2026-10-20T08:00:00Z';
   // Below one cent, CHF 0.00, a fraction of a cent, or above Int.MAX_VALUE cents.
   for (const price of [undefined, null, 0, -1, '2.50', 1.955, 0.000000001, 0.004, 0.001, 21_474_836.48, 1e300, Infinity, NaN]) {
-    const delisted = row('1', { price, name: null, image_url: 'ftp://x', category: 3, removed_at: removedAt });
-    assert.deepEqual(toProduct(delisted, 'migros'), { path: path('1'), data: null, removedAt }, `delisted, price ${price}`);
+    const delisted = row('1', { price, name: null, image_url: 'ftp://x', category: 3, removed_at: REMOVED_AT });
+    assert.deepEqual(toProduct(delisted, 'migros'), { path: path('1'), data: null, removedAt: REMOVED_AT }, `delisted, price ${price}`);
     assert.deepEqual(toProduct(row('1', { price }), 'migros'), { error: 'invalid price' }, `listed, price ${price}`);
   }
   // removed_at must be a timestamp string as toISOString() writes it, not anything Date.parse takes.
@@ -227,7 +249,7 @@ test('delisted rows need only an id and removed_at, while listed rows still need
     assert.deepEqual(toProduct(row('1', { price: null, removed_at: removed }), 'migros'), { path: path('1'), data: null, removedAt: removed });
   }
   const lines = [
-    { id: 'migros:2', store: 'migros', removed_at: removedAt },
+    { id: 'migros:2', store: 'migros', removed_at: REMOVED_AT },
     { id: 'migros:3', store: 'migros', name: 'Pain' },
     { id: 'migros:4', store: 'migros', name: 'Pain', price: 2, removed_at: 0 },
   ];
@@ -238,16 +260,15 @@ test('delisted rows need only an id and removed_at, while listed rows still need
 test('a delisted product without a price is marked removed, keeps its other fields and reruns without writes', async () => {
   const listed = { ...toProduct(row('1'), 'migros').data, price_history: [1.9] };
   const client = fakeClient(new Map([[path('1'), { data: structuredClone(listed), updateTime: 'old' }]]));
-  const removedAt = '2026-10-20T08:00:00Z';
   const products = exportOf(
-    row('1', { price: undefined, removed_at: removedAt }),
-    row('2', { price: null, removed_at: removedAt }),
-    row('3', { price: 'n/a', removed_at: removedAt }),
+    row('1', { price: undefined, removed_at: REMOVED_AT }),
+    row('2', { price: null, removed_at: REMOVED_AT }),
+    row('3', { price: 'n/a', removed_at: REMOVED_AT }),
   );
   const removal = await importProducts(products, { client, write: true, log: () => {} });
   assert.deepEqual(removal.counts, { create: 0, update: 0, remove: 1, unchanged: 0, removedNotInFirestore: 2 });
   assert.equal(removal.written, 1);
-  assert.deepEqual(client.documents.get(path('1')).data, { ...listed, removed_at: '2026-10-20T08:00:00.000Z' });
+  assert.deepEqual(client.documents.get(path('1')).data, { ...listed, removed_at: STORED_REMOVED_AT });
   assert.deepEqual([...client.documents.keys()], [path('1')], 'a delisted product is never created');
 
   const updateTime = client.documents.get(path('1')).updateTime;
@@ -289,23 +310,133 @@ test('a Coop import never touches Migros documents and reruns without writes', a
   assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 0);
 });
 
-test('parseArgs is a dry run unless --write, and production writes need --project command-o', () => {
-  const env = process.env.FIRESTORE_EMULATOR_HOST;
-  delete process.env.FIRESTORE_EMULATOR_HOST;
+// Lines of `swiss-grocery export coop.jsonl --store coop --fields id,store,name,brand,size,price,image_url,category,removed_at
+// --include-removed` (SWISS_GROCERY_COOP_LANG=fr, 4 November 2026); image URLs are shortened to their product.
+const coopLine = (number, name, brand, size, price, category, image = '001') =>
+  coopRow({ id: `coop:${number}`, name, brand, size, price, category, image_url: `https://www.coop.ch/img/produkte/310_310/RGB/${number}_${image}.jpg` });
+const coopExport = [
+  coopLine('6506829', '1664 Blonde Bière 12x25cl', 'Kronenbourg', '12x25cl', 11.95, 'Bières en multipacks'),
+  coopLine('3376082', 'Acqua Eau minérale Panna non gazéifiée 6x1.5l', 'Acqua Panna', '6x1.5l', 5.95, 'Eau minérale plate'),
+  coopLine('6097874', '2go Drinks énergétiques 6x25cl', '2 go', '6x25cl', 6, 'Boissons énergétiques'),
+  coopLine('7251132', '9.0 Original canette 3x  50cl', 'Oettinger', '3x  50cl', 4.05, 'Bières blondes en canette', '900'),
+  coopLine('4826443', 'Ail frais 1 pièce', 'Coop', '1 pce', 1.3, 'Oignons & Ail'),
+  // Two vintages of one wine: one name, two products. Wines have no brand, and some no price.
+  coopLine('1014349008', '19 Crimes Cabernet Sauvignon/Syrah South Eastern Australia', null, '75 cl', 7.95, 'Vins rouges'),
+  coopLine('1014349009', '19 Crimes Cabernet Sauvignon/Syrah South Eastern Australia', null, '75 cl', 7.95, 'Vins rouges'),
+  coopLine('1019605001', 'Alava DOC Tempranillo El Carretil Bodegas y Viñedos Artadi', null, '75 cl', null, 'Vins rouges'),
+];
+
+test('Coop names keep the title Coop shows and sizes come from the size column of swiss-cli', () => {
+  const { products, skipped } = parseExport(coopExport.map((item) => JSON.stringify(item)).join('\n'), 'coop');
+  assert.deepEqual(skipped, ['line 8: invalid price']);
+  assert.deepEqual(products.map(({ data }) => [data.name, data.size_text, data.brand]), [
+    ['1664 Blonde Bière 12x25cl', '12x25cl', 'Kronenbourg'],
+    ['Acqua Eau minérale Panna non gazéifiée 6x1.5l', '6x1.5l', 'Acqua Panna'],
+    ['2go Drinks énergétiques 6x25cl', '6x25cl', '2 go'],
+    ['9.0 Original canette 3x 50cl', '3x 50cl', 'Oettinger'],
+    ['Ail frais 1 pièce', '1 pce', 'Coop'],
+    ['19 Crimes Cabernet Sauvignon/Syrah South Eastern Australia', '75 cl', null],
+    ['19 Crimes Cabernet Sauvignon/Syrah South Eastern Australia', '75 cl', null],
+  ]);
+  const [beer] = products;
+  assert.deepEqual([beer.path, beer.data.id, beer.data.source_name, beer.data.variant], [path('6506829', 'coop'), 'coop:6506829', '1664 Blonde Bière 12x25cl', null]);
+  assert.ok(['16', '1664', 'blonde', 'biere', 'bieres', '12x25cl', 'multipacks'].every((term) => beer.data.search_prefixes[term]));
+  assert.equal(beer.data.search_prefixes.kronenbourg, undefined, 'like Migros, only the name and the last category are indexed');
+  // Migros keeps its brand, name and variant order, and also reads swiss-cli's size column.
+  const migros = toProduct(row('1', { name: 'Tourist', brand: 'Frey', size: '100 g' }), 'migros').data;
+  assert.deepEqual([migros.name, migros.size_text], ['Frey Tourist', '100 g']);
+  assert.equal(toProduct(row('1', { size: '100 g', size_text: '0.1 kg' }), 'migros').data.size_text, '0.1 kg');
+  assert.deepEqual(toProduct(coopRow({ size: 7 }), 'coop'), { error: 'invalid size' });
+  assert.deepEqual(parseExport(JSON.stringify(coopRow({ size: 7 })), 'coop').skipped, ['line 1: invalid size']);
+  assert.deepEqual(toProduct(coopRow({ store: 'aldi' }), 'aldi'), { error: 'not a aldi product' });
+});
+
+test('a Coop export is imported once, reruns write nothing and a confirmed delisting only sets removed_at', async () => {
+  const client = fakeClient();
+  const products = parseExport(coopExport.map((item) => JSON.stringify(item)).join('\n'), 'coop').products;
+  assert.deepEqual([(await importProducts(products, { client, log: () => {} })).counts.create, client.commits.length], [7, 0]);
+  assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 7);
+  assert.ok([...client.documents.keys()].every((key) => key.startsWith('stores/coop/products/')));
+  assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 0);
+  const delisted = exportOf(coopRow({ id: 'coop:6506829', price: null, removed_at: REMOVED_AT }));
+  assert.equal((await importProducts(delisted, { client, write: true, log: () => {} })).counts.remove, 1);
+  assert.deepEqual([client.documents.get(path('6506829', 'coop')).data.removed_at, client.documents.get(path('6506829', 'coop')).data.price], [STORED_REMOVED_AT, 11.95]);
+});
+
+test('parseArgs reads only its arguments: the same arguments give the same options in any environment', () => {
+  const saved = process.env.FIRESTORE_EMULATOR_HOST;
+  const args = ['export.jsonl', '--store', 'migros', '--write', '--project', 'command-o', '--sizes', 'manifest.jsonl'];
   try {
-    assert.equal(parseArgs(['export.jsonl', '--store', 'migros']).write, false);
-    assert.throws(() => parseArgs(['export.jsonl', '--store', 'migros', '--write']), /Production write blocked/);
-    assert.throws(() => parseArgs(['export.jsonl', '--store', 'migros', '--write', '--project', 'other']), /only targets command-o/);
-    assert.equal(parseArgs(['export.jsonl', '--store', 'migros', '--write', '--project', 'command-o']).write, true);
-    assert.throws(() => parseArgs(['export.jsonl', '--store', 'migros', '--max-writes', '0']), /--max-writes/);
-    assert.throws(() => parseArgs([]), /Usage/);
-    assert.throws(() => parseArgs(['export.jsonl']), /--store must be migros or coop/);
-    assert.throws(() => parseArgs(['export.jsonl', '--store', 'denner']), /--store must be migros or coop/);
-    assert.equal(parseArgs(['export.jsonl', '--store', 'coop']).store, 'coop');
-    assert.equal(parseArgs(['export.jsonl', '--store', 'migros', '--sizes', 'manifest.jsonl']).sizes, 'manifest.jsonl');
+    const options = [undefined, '127.0.0.1:8080'].map((host) => {
+      if (host) process.env.FIRESTORE_EMULATOR_HOST = host;
+      else delete process.env.FIRESTORE_EMULATOR_HOST;
+      return parseArgs(args);
+    });
+    assert.deepEqual(options[0], options[1]);
+    assert.deepEqual([options[0].write, options[0].project, options[0].sizes], [true, 'command-o', 'manifest.jsonl']);
   } finally {
-    if (env !== undefined) process.env.FIRESTORE_EMULATOR_HOST = env;
+    if (saved === undefined) delete process.env.FIRESTORE_EMULATOR_HOST;
+    else process.env.FIRESTORE_EMULATOR_HOST = saved;
   }
+  assert.equal(parseArgs(['export.jsonl', '--store', 'migros']).write, false);
+  assert.throws(() => parseArgs(['export.jsonl', '--store', 'migros', '--write', '--project', 'other']), /only targets command-o/);
+  assert.throws(() => parseArgs(['export.jsonl', '--store', 'migros', '--max-writes', '0']), /--max-writes/);
+  assert.throws(() => parseArgs([]), /Usage/);
+  assert.throws(() => parseArgs(['export.jsonl']), /--store must be migros or coop/);
+  assert.throws(() => parseArgs(['export.jsonl', '--store', 'denner']), /--store must be migros or coop/);
+  assert.equal(parseArgs(['export.jsonl', '--store', 'coop']).store, 'coop');
+});
+
+test('the Firestore target is chosen explicitly: never production by default, never two at once', async () => {
+  const local = { FIRESTORE_EMULATOR_HOST: ' 127.0.0.1:8080 ' };
+  assert.deepEqual(firestoreTarget(null, local), { emulator: '127.0.0.1:8080' });
+  assert.deepEqual(firestoreTarget('command-o', {}), { project: 'command-o' });
+  assert.throws(() => firestoreTarget(null, {}), /No Firestore target/);
+  assert.throws(() => firestoreTarget(null, { FIRESTORE_EMULATOR_HOST: '  ' }), /No Firestore target/);
+  assert.throws(() => firestoreTarget('command-o', local), /choose one target/);
+  assert.throws(() => firestoreTarget(null, { FIRESTORE_EMULATOR_HOST: 'firestore.googleapis.com:443' }), /must be a local host:port/);
+  // firestoreClient refuses before any request or credential lookup.
+  for (const target of [undefined, null, {}, { emulator: '' }, { project: 'other' }]) {
+    await assert.rejects(firestoreClient(target), /firestoreClient needs/, JSON.stringify(target));
+  }
+  await assert.rejects(firestoreClient({ emulator: 'example.com:8080' }), /must be a local host:port/);
+});
+
+test('firebase-tools must be the pinned release CI uses, whose login modules the tool reads', () => {
+  const root = mkdtempSync(join(tmpdir(), 'firebase-tools-'));
+  try {
+    mkdirSync(join(root, 'firebase-tools'));
+    const install = (version) => writeFileSync(join(root, 'firebase-tools', 'package.json'), JSON.stringify({ name: 'firebase-tools', version }));
+    install('15.30.2');
+    assert.throws(() => firebaseTools(root), /firebase-tools 15\.30\.2 .* needs 15\.32\.1/);
+    install(FIREBASE_TOOLS_VERSION);
+    assert.equal(typeof firebaseTools(root), 'function');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+  const ci = readFileSync(new URL('../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  assert.equal(/FIREBASE_TOOLS_VERSION: "([^"]+)"/.exec(ci)?.[1], FIREBASE_TOOLS_VERSION);
+});
+
+test('skippedReport shows the first skipped lines and counts the rest', () => {
+  const skipped = Array.from({ length: 23 }, (_, i) => `line ${i + 1}: invalid price`);
+  const report = skippedReport(skipped);
+  assert.deepEqual([report.length, report[0], report.at(-2), report.at(-1)], [21, 'Skipped line 1: invalid price', 'Skipped line 20: invalid price', '... and 3 more skipped lines']);
+  assert.deepEqual(skippedReport(skipped.slice(0, 20)).length, 20);
+  assert.deepEqual(skippedReport([]), []);
+  assert.deepEqual(skippedReport(skipped, 1), ['Skipped line 1: invalid price', '... and 22 more skipped lines']);
+});
+
+test('the update mask and the unchanged check both follow the fields toProduct builds', () => {
+  const product = toProduct(row('1', { size_text: '1 l' }), 'migros');
+  const { writes } = planWrites([product], new Map());
+  assert.deepEqual(writes[0].updateMask.fieldPaths, Object.keys(product.data));
+  // A field added to the product shape is written and compared with nothing else to update.
+  const stored = new Map([[product.path, { data: product.data, updateTime: 't1' }]]);
+  const extended = { ...product, data: { ...product.data, unit_price: 1.95 } };
+  const plan = planWrites([extended], stored);
+  assert.deepEqual([plan.counts.update, plan.writes[0].updateMask.fieldPaths.at(-1)], [1, 'unit_price']);
+  assert.equal(planWrites([product], stored).counts.unchanged, 1);
 });
 
 // CI sets CATALOG_IMPORT_REQUIRE_EMULATOR, so a missing emulator fails the run instead of skipping it.
@@ -313,10 +444,10 @@ const requireEmulator = process.env.CATALOG_IMPORT_REQUIRE_EMULATOR === 'true';
 const emulatorSkip = !requireEmulator && !process.env.FIRESTORE_EMULATOR_HOST && 'needs FIRESTORE_EMULATOR_HOST';
 
 test('imports into the Firestore emulator, marks a delisted product removed and reruns without writes', { skip: emulatorSkip }, async () => {
-  // Without an emulator host, firestoreClient would target command-o: never let this test get there.
   const host = emulatorHost();
   assert.ok(host, 'FIRESTORE_EMULATOR_HOST is not set: run this test with the Firestore emulator (see README.md)');
-  const client = await firestoreClient(host);
+  const client = await firestoreClient(firestoreTarget(null, process.env));
+  assert.equal(client.target, `emulator ${host}`);
   const number = `test-${Date.now()}`;
   const products = exportOf(row(number, { name: 'Œufs frais', brand: 'Migros Bio', size_text: '6 pièces', price: 4.6 }));
   assert.equal(products[0].data.name, 'Migros Bio Œufs frais');
@@ -333,10 +464,17 @@ test('imports into the Firestore emulator, marks a delisted product removed and 
   assert.equal(renamedDocument.data.search_prefixes.oeufs, undefined);
   await importProducts(products, { client, write: true, log: () => {} });
 
-  const removedAt = '2026-10-20T08:00:00Z';
-  const removal = exportOf(row(number, { price: null, removed_at: removedAt }));
+  const removal = exportOf(row(number, { price: null, removed_at: REMOVED_AT }));
   assert.equal((await importProducts(removal, { client, write: true, log: () => {} })).written, 1);
   const [[, removed]] = await client.get([path(number)]);
-  assert.deepEqual({ ...removed.data, removed_at: Date.parse(removed.data.removed_at) }, { ...document.data, removed_at: Date.parse(removedAt) });
+  assert.deepEqual({ ...removed.data, removed_at: Date.parse(removed.data.removed_at) }, { ...document.data, removed_at: Date.parse(REMOVED_AT) });
   assert.equal((await importProducts(removal, { client, write: true, log: () => {} })).written, 0);
+
+  // The same product number at Coop is a separate document, and the Migros one is left as it is.
+  const coop = exportOf(coopLine(number, '1664 Blonde Bière 12x25cl', 'Kronenbourg', '12x25cl', 11.95, 'Bières en multipacks'));
+  assert.equal((await importProducts(coop, { client, write: true, log: () => {} })).written, 1);
+  const [[, coopDocument]] = await client.get([path(number, 'coop')]);
+  assert.deepEqual(coopDocument.data, coop[0].data);
+  assert.equal((await client.get([path(number)]))[0][1].updateTime, removed.updateTime);
+  assert.equal((await importProducts(coop, { client, write: true, log: () => {} })).written, 0);
 });

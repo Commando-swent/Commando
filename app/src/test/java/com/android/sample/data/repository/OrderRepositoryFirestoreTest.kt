@@ -9,6 +9,7 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import java.time.Instant
 import kotlinx.coroutines.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -322,6 +323,7 @@ class OrderRepositoryFirestoreTest {
       repository.decideOrder(id, decision)
 
   @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
   fun readinessUsesPersistedSnapshotsAndAuthorizesBeforeReadOnlyOutcomes() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     val original = source.documents.getValue("b")

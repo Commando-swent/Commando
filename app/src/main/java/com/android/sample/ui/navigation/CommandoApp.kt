@@ -77,11 +77,11 @@ import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileHelpScreen
 import com.android.sample.ui.profile.ProfileLanguageScreen
-import com.android.sample.ui.profile.ProfilePhotoActions
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
+import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
@@ -584,7 +584,7 @@ private fun AuthenticatedApp(
       }
       composable(route = CommandoScreens.Profile.name) {
         val profileUiState by profileViewModel.uiState.collectAsState()
-        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
+        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
@@ -628,7 +628,7 @@ private fun AuthenticatedApp(
           Unit
         }
         BackHandler { onCancel() }
-        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
+        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
         draft?.let {
           EditProfileScreen(
               it,

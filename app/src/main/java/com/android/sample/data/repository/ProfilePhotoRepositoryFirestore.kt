@@ -3,6 +3,7 @@ package com.android.sample.data.repository
 import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
+import androidx.core.graphics.scale
 import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthRepository
 import com.google.firebase.firestore.Blob
@@ -10,14 +11,17 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
+/** Private Firestore photos with image encoding delegated to the injected IO dispatcher. */
 class ProfilePhotoRepositoryFirestore(
     private val resolver: ContentResolver,
     private val auth: AuthRepository,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ProfilePhotoRepository {
   private fun document(userId: String) = firestore.collection("profilePhotos").document(userId)
 
@@ -32,7 +36,7 @@ class ProfilePhotoRepositoryFirestore(
 
   override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? {
     checkSession(userId)
-    val bytes = source?.let { withContext(Dispatchers.IO) { encode(it) } }
+    val bytes = source?.let { withContext(ioDispatcher) { encode(it) } }
     checkSession(userId)
     val document = document(userId)
     if (bytes == null) document.delete().await()
@@ -60,11 +64,10 @@ class ProfilePhotoRepositoryFirestore(
         }
     val scale = minOf(1f, MAX_SIDE.toFloat() / maxOf(bitmap.width, bitmap.height))
     val resized =
-        Bitmap.createScaledBitmap(
-            bitmap,
+        bitmap.scale(
             maxOf(1, (bitmap.width * scale).toInt()),
             maxOf(1, (bitmap.height * scale).toInt()),
-            true,
+            filter = true,
         )
     val output = ByteArrayOutputStream()
     check(resized.compress(Bitmap.CompressFormat.JPEG, 80, output))

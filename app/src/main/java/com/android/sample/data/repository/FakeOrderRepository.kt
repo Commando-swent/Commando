@@ -99,6 +99,14 @@ class FakeOrderRepository(
   override suspend fun decideOrder(
       orderId: String,
       decision: OrderDecision,
+  ): OrderResult<Order> = transitionOrder(orderId, decision.ownerTransition())
+
+  override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OwnerOrderTransition.MARK_READY)
+
+  private suspend fun transitionOrder(
+      orderId: String,
+      transition: OwnerOrderTransition,
   ): OrderResult<Order> = withSession { userId ->
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
@@ -109,13 +117,12 @@ class FakeOrderRepository(
     if (error != null || order.requesterId == userId) {
       return@withSession OrderResult.Error(error ?: OrderError.PermissionDenied)
     }
-    val target = decision.targetStatus()
     val persisted =
-        if (order.status == OrderStatus.PENDING) {
-          order.copy(status = target).also { orders[orderId] = it }
+        if (order.status == transition.source) {
+          order.copy(status = transition.target).also { orders[orderId] = it }
         } else order
     val snapshot = persisted.snapshot()
-    if (snapshot.status == target) OrderResult.Success(snapshot)
+    if (snapshot.status == transition.target) OrderResult.Success(snapshot)
     else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
   }
 

@@ -410,6 +410,49 @@ class TripRepositoryFirestoreTest {
   }
 
   @Test
+  fun unlistedFirestoreCodesAndWrappedFailures_mapToUnknown() = runTest {
+    val mappedCodes =
+        setOf(
+            Code.OK,
+            Code.PERMISSION_DENIED,
+            Code.UNAUTHENTICATED,
+            Code.UNAVAILABLE,
+            Code.DEADLINE_EXCEEDED,
+            Code.NOT_FOUND,
+            Code.INVALID_ARGUMENT,
+            Code.OUT_OF_RANGE,
+            Code.DATA_LOSS,
+        )
+    val failures =
+        (Code.entries - mappedCodes).map(::firebaseException) +
+            RuntimeException(firebaseException(Code.NOT_FOUND))
+
+    failures.forEach { exception ->
+      val dataSource = InMemoryTripFirestoreDataSource()
+      dataSource.failure = exception
+      assertTripError(
+          TripError.Unknown,
+          createRepository(dataSource).getTripById("trip"),
+          "Unexpected mapping for $exception",
+      )
+    }
+  }
+
+  @Test
+  fun getMyTrips_whenFirestoreReportsNotFound_returnsUnknown() = runTest {
+    val repository =
+        createRepository(
+            InMemoryTripFirestoreDataSource().apply { failure = firebaseException(Code.NOT_FOUND) }
+        )
+
+    assertTripError(
+        TripError.Unknown,
+        repository.getMyTrips(),
+        "Only getTripById may report a missing trip",
+    )
+  }
+
+  @Test
   fun getUpcomingTrips_whenFirestoreReportsNotFound_returnsUnknown() = runTest {
     val repository =
         createRepository(

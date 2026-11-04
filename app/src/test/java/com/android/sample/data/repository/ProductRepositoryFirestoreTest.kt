@@ -64,6 +64,19 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun getProducts_mapsAnOptionalSizeAndKeepsProductsWithAMissingOrMalformedOne() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(" 100g ", null, "  ", 100L).mapIndexed { index, size ->
+          productDocument("migros:$index", sizeText = size)
+        }
+
+    val products = ProductRepositoryFirestore(dataSource).getProducts("migros", 4).successData()
+
+    assertEquals(listOf("100g", null, null, null), products.map { it.sizeText })
+  }
+
+  @Test
   fun getProducts_requiresAGlobalIdBelongingToTheRequestedStore() = runTest {
     val valid = productDocument("coop:4446520")
     val invalidIds =
@@ -364,6 +377,37 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun searchProducts_coopPagesStayInTheCoopCatalogueWithTheirPhotosAndSizes() = runTest {
+    val image = "https://www.coop.ch/img/produkte/310_310/RGB/1_001.jpg"
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["coop"] =
+        listOf(
+            productDocument("coop:1", "Bio Avocado", imageUrl = image, sizeText = "1 Stück"),
+            productDocument("coop:2", "Avocado Hass", sizeText = "2 Stück"),
+            productDocument("migros:3", "Avocado"), // Another chain's ID: never shown.
+            productDocument("coop:4", "Lait"),
+        )
+    dataSource.documentsByStore["migros"] = listOf(productDocument("migros:9", "Avocado"))
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val first = repository.searchProducts("coop", "avo", limit = 2).successData()
+    val second = repository.searchProducts("coop", "avo", first.nextCursor, 2).successData()
+
+    assertEquals(
+        ProductPage(
+            listOf(
+                Product("coop:1", "coop", "Bio Avocado", 250, image, sizeText = "1 Stück"),
+                Product("coop:2", "coop", "Avocado Hass", 250, sizeText = "2 Stück"),
+            ),
+            "2",
+        ),
+        first,
+    )
+    assertEquals(ProductPage(emptyList(), null), second)
+    assertEquals("coop", dataSource.lastStoreId)
+  }
+
+  @Test
   fun searchProducts_fullPageCursorAdvancesPastMalformedDocuments() = runTest {
     val dataSource = InMemoryProductFirestoreDataSource()
     dataSource.documentsByStore["coop"] =
@@ -441,6 +485,7 @@ class ProductRepositoryFirestoreTest {
       imageUrl: Any? = null,
       removedAt: Any? = null,
       category: String = "",
+      sizeText: Any? = null,
   ) =
       ProductFirestoreDocument(
           documentId = (id as? String)?.substringAfter(':') ?: "$id",
@@ -452,6 +497,7 @@ class ProductRepositoryFirestoreTest {
                   "image_url" to imageUrl,
                   "removed_at" to removedAt,
                   "search_prefixes" to productSearchPrefixes(name, category),
+                  "size_text" to sizeText,
               ),
       )
 

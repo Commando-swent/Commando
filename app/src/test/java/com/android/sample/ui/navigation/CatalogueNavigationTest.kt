@@ -39,7 +39,10 @@ class CatalogueNavigationTest {
   private val auth = FakeAuthRepository(alice)
   private val time = Instant.parse("2030-01-01T12:00:00Z")
   private val migrosTrip = publishedTrip("trip / % 雪", "Migros EPFL", 3600)
-  private val coopTrip = publishedTrip("trip-coop", "Coop Lausanne", 7200)
+  // The Coop store a trip owner picks when creating the trip.
+  private val coopTrip =
+      publishedTrip("trip-coop", "Coop Ecublens", 7200)
+          .copy(store = TripLocations.stores.single { it.name == "Coop Ecublens" })
   private val oat = Product("migros:oat", "migros", "Oat drink", 220)
   private val bread = Product("migros:bread", "migros", "Wholemeal bread", 340)
   private val coopMilk = Product("coop:milk", "coop", "Coop milk", 180)
@@ -55,9 +58,12 @@ class CatalogueNavigationTest {
       }
   private var factoryCalls = 0
   private var createdOrders = 0
+  private var orders: OrderRepository? = null
   private val factory: (() -> String?) -> OrderRepository = { userId ->
     factoryCalls++
-    FakeOrderRepository(userId, now = { time }, newId = { "order-${++createdOrders}" })
+    FakeOrderRepository(userId, now = { time }, newId = { "order-${++createdOrders}" }).also {
+      orders = it
+    }
   }
 
   private fun publishedTrip(id: String, store: String, inSeconds: Long) =
@@ -227,6 +233,31 @@ class CatalogueNavigationTest {
     click(CatalogueTestTags.CONTINUE)
     compose.onNodeWithText(coopMilk.name).assertIsDisplayed()
     compose.onNodeWithText(oat.name).assertDoesNotExist()
+  }
+
+  @Test
+  fun coopOrderKeepsTheCoopProductQuantityPriceAndTrip() = runTest {
+    show()
+    openCatalogue(coopTrip)
+    compose.onNodeWithText(oat.name).assertDoesNotExist()
+    click(CatalogueTestTags.add(coopMilk.id))
+    click(CatalogueTestTags.increase(coopMilk.id))
+    click(CatalogueTestTags.CONTINUE)
+    compose.onNodeWithText(coopTrip.store.name).assertIsDisplayed()
+    compose.onNodeWithTag(ReviewOrderTags.COMMISSION).performScrollTo()
+    compose.onNodeWithTag(ReviewOrderTags.COMMISSION).performTextReplacement("1,00")
+    compose
+        .onNodeWithTag(ReviewOrderTags.TOTAL)
+        .performScrollTo()
+        .assertTextContains("CHF 4.60", substring = true)
+    click(ReviewOrderTags.SUBMIT)
+    compose.onNodeWithText("Your order is sent").assertIsDisplayed()
+    compose.waitForIdle()
+
+    val submitted = (requireNotNull(orders).getMyOrders() as OrderResult.Success).data.single()
+    assertEquals(coopTrip.id, submitted.tripId)
+    assertEquals(listOf(OrderItem(coopMilk.id, coopMilk.name, 180, 2)), submitted.items)
+    assertEquals(100, submitted.commissionCents)
   }
 
   @Test

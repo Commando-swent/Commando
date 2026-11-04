@@ -144,6 +144,8 @@ private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
       name = name,
       priceCents = priceCents,
       imageUrl = imageUrl,
+      // Display only: a missing or malformed size hides the size, never the product.
+      sizeText = (data[FIELD_SIZE_TEXT] as? String)?.trim()?.takeIf(String::isNotEmpty),
   )
 }
 
@@ -202,3 +204,4 @@ private const val FIELD_PRICE = "price"
 private const val FIELD_IMAGE_URL = "image_url"
 private const val FIELD_REMOVED_AT = "removed_at"
 private const val FIELD_SEARCH_PREFIXES = "search_prefixes"
+private const val FIELD_SIZE_TEXT = "size_text"

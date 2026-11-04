@@ -11,6 +11,7 @@ object TripLocations {
       listOf(
           Location("Migros EPFL", 46.5229222, 6.5656983),
           Location("Denner EPFL", 46.5228102, 6.5657045),
+          Location("Coop Ecublens", 46.5339359, 6.5666981),
       )
 
   val handoffPoints: List<Location> =

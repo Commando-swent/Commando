@@ -57,6 +57,10 @@
     <string name="catalogue_increase">Augmenter la quantité de %1$s</string>
     <string name="catalogue_decrease">Diminuer la quantité de %1$s</string>
     <string name="catalogue_remove">Retirer %1$s de la commande</string>
+    <string name="catalogue_view_photo">Voir la photo de %1$s</string>
+    <string name="catalogue_photo_of">Photo de %1$s</string>
+    <string name="catalogue_close_photo">Fermer la photo</string>
+    <string name="catalogue_photo_error">Impossible de charger la photo.</string>
     <string name="catalogue_estimate">Estimation : %1$s</string>
     <plurals name="catalogue_item_count">
         <item quantity="one">%1$d article</item>

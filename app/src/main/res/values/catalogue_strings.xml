@@ -19,6 +19,10 @@
     <string name="catalogue_increase">Increase %1$s quantity</string>
     <string name="catalogue_decrease">Decrease %1$s quantity</string>
     <string name="catalogue_remove">Remove %1$s from order</string>
+    <string name="catalogue_view_photo">View photo of %1$s</string>
+    <string name="catalogue_photo_of">Photo of %1$s</string>
+    <string name="catalogue_close_photo">Close photo</string>
+    <string name="catalogue_photo_error">Couldn’t load the photo.</string>
     <string name="catalogue_estimate">Est. %1$s</string>
     <plurals name="catalogue_item_count">
         <item quantity="one">%1$d item</item>

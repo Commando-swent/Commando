@@ -7,6 +7,9 @@ object CatalogueTestTags {
   const val PRODUCT_LIST = "catalogue_product_list"
   const val MESSAGE_ACTION = "catalogue_message_action"
   const val LOAD_MORE = "catalogue_load_more"
+  const val PRODUCT_IMAGE = "catalogue_product_image"
+  const val IMAGE_PREVIEW = "catalogue_image_preview"
+  const val IMAGE_PREVIEW_CLOSE = "catalogue_image_preview_close"
   const val SUMMARY = "catalogue_summary"
   const val CONTINUE = "catalogue_continue"
 

@@ -80,6 +80,10 @@ internal fun migrosProducts(range: IntRange) = range.map {
   Product("migros:%03d".format(it), "migros", "Product $it", 100)
 }
 
+internal fun coopProducts(range: IntRange) = range.map {
+  Product("coop:%03d".format(it), "coop", "Coop $it", 150)
+}
+
 internal fun catalogueTrip(id: String, store: String) =
     Trip(
         id = id,
@@ -151,6 +155,55 @@ class CatalogueViewModelTest {
     advanceUntilIdle()
     assertEquals(listOf(request(store = "coop")), products.requests)
     assertEquals(listOf(coopMilk), loaded(vm))
+  }
+
+  @Test
+  fun coopSearchAndPagesStayOnCoopAndDropProductsOfAnotherChain() = runTest {
+    // A Migros product inside a Coop page uses up the limit but is never shown.
+    products.result =
+        ProductResult.Success(coopProducts(0..48) + migrosProducts(0..0) + coopProducts(49..50))
+    val vm = viewModel(coopTrip.id)
+    advanceUntilIdle()
+    assertEquals(coopProducts(0..48), loaded(vm))
+
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(
+        listOf(request(store = "coop"), request(cursor = "migros:000", store = "coop")),
+        products.requests,
+    )
+    assertEquals(coopProducts(0..50), loaded(vm))
+    assertNull(content(vm).nextCursor)
+
+    vm.onQueryChange("Coop 50")
+    advanceUntilIdle()
+    assertEquals(request("Coop 50", store = "coop"), products.requests.last())
+    assertEquals(coopProducts(50..50), loaded(vm))
+  }
+
+  @Test
+  fun switchingFromAMigrosPageInFlightToCoopShowsOnlyCoopProducts() = runTest {
+    products.result = ProductResult.Success(coopProducts(0..1) + migrosProducts(0..59))
+    val draft = OrderDraftState(migrosTrip.id)
+    val migros = viewModel(draft = draft)
+    advanceUntilIdle()
+    migros.add("migros:001")
+    val late = CompletableDeferred<Unit>()
+    products.gate = late
+    migros.loadMore() // Still pending when the requester opens the Coop trip.
+    runCurrent()
+
+    products.gate = null
+    val coop = viewModel(coopTrip.id, draft)
+    advanceUntilIdle()
+    late.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(coopProducts(0..1), loaded(coop))
+    assertTrue(coop.uiState.value.items.isEmpty())
+    coop.add("coop:001")
+    coop.increment("coop:001")
+    assertEquals(coopTrip.id, draft.draft.value.tripId)
+    assertEquals(listOf(OrderItem("coop:001", "Coop 1", 150, 2)), draft.draft.value.items)
   }
 
   @Test

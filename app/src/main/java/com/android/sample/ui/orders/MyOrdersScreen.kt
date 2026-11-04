@@ -198,13 +198,7 @@ private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
 private fun StatusBadge(status: OrderStatus) {
   val colors = MaterialTheme.colorScheme
   Text(
-      stringResource(
-          when (status) {
-            OrderStatus.PENDING -> R.string.order_details_pending
-            OrderStatus.ACCEPTED -> R.string.order_details_accepted
-            OrderStatus.REJECTED -> R.string.order_details_rejected
-          }
-      ),
+      stringResource(orderStatusLabel(status)),
       Modifier.background(colors.secondaryContainer, CircleShape)
           .border(1.dp, colors.outline, CircleShape)
           .padding(horizontal = 10.dp, vertical = 2.dp),

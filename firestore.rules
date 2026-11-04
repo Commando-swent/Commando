@@ -140,8 +140,10 @@ service cloud.firestore {
       allow update: if isAuthenticated()
         && ownsOrderTrip(resource.data)
         && resource.data.requesterId != request.auth.uid
-        && resource.data.status == "PENDING"
-        && request.resource.data.status in ["ACCEPTED", "REJECTED"]
+        && ((resource.data.status == "PENDING"
+            && request.resource.data.status in ["ACCEPTED", "REJECTED"])
+          || (resource.data.status == "ACCEPTED"
+            && request.resource.data.status == "READY_FOR_HANDOFF"))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"]);
       allow delete: if false;
     }

@@ -22,12 +22,32 @@ or publication validation; those remain enforced by the production adapter and r
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
 Detail reads allow the requester or the associated trip's current owner. Deletes, and updates other
-than owner decisions, remain denied.
+than the owner transitions below, remain denied.
 
 `decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
 ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
 without writing. Rules denials reconcile only authorized final snapshots through a read-only transaction.
 Decisions ignore trip status/time and deny legacy self-orders, which remain readable.
+
+#194: `markReadyForHandoff(id)` uses the same owner-authorized transaction infrastructure to change
+only ACCEPTED to READY_FOR_HANDOFF. Ownership comes from the persisted associated trip; requesters,
+outsiders and legacy self-orders are denied before idempotency or conflict details are returned.
+Authorized repeats at READY_FOR_HANDOFF return Success(persistedOrder) without writing; every other
+status returns AlreadyDecided(persistedOrder), which means an invalid transition, not a terminal order.
+Only status changes: items, requester, trip, commission and creation timestamp stay immutable.
+Rules independently enforce both owner transition edges and deny repeated direct writes. Transactions
+read current order/trip state and recheck session identity on retries; permission denials reconcile
+through an authorized read-only transaction without retrying the denied write. Missing/unreadable
+documents retain the existing error mapping. Committed status survives fresh repositories/restarts;
+session loss or cancellation cannot undo a commit, but ended sessions cannot display its late result.
+Order Details shares one saving/outcome state for decisions and readiness, displays persisted results,
+uses authoritative conflicts, and keeps confirmed content on recoverable failures for retry.
+
+Integration boundaries: cancellation remains Adam's separate requester operation; it must not reuse
+owner-only authorization. No notification event is published here; coordinate future atomic publication
+with #204. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
+saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
+No shopping-completion prerequisite, trip-status/time restriction, CANCELLED or DELIVERED is added.
 
 #147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
 like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered

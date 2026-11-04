@@ -580,6 +580,7 @@ private fun AuthenticatedApp(
             onBack = { navController.popBackStack() },
             onRetry = model::retry,
             onDecision = model::decide,
+            onMarkReadyForHandoff = model::markReadyForHandoff,
         )
       }
       composable(route = CommandoScreens.Profile.name) {

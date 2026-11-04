@@ -359,6 +359,9 @@ class MyOrdersViewModelTest {
 
     override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = error("Not used")
 
+    override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
+        error("Not used")
+
     override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> =
         error("Not used")
 

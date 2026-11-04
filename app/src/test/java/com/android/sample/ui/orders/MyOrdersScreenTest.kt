@@ -162,15 +162,33 @@ class MyOrdersScreenTest {
   }
 
   @Test
-  fun finalStatusesRenderOnTheirOrderCards() {
-    val rows =
-        listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED).map {
-          MyOrderRow(aliceMigros.copy(id = it.name, status = it), migrosTrip)
-        }
-    show(MyOrdersUiState.Content(rows))
-    for (label in listOf("ACCEPTED", "REJECTED")) {
-      compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + label).assert(hasText(label))
+  fun acceptedRejectedAndReadyForHandoffStatusesRenderOnTheirOrderCards() {
+    val statuses =
+        listOf(
+            OrderStatus.ACCEPTED to "ACCEPTED",
+            OrderStatus.REJECTED to "REJECTED",
+            OrderStatus.READY_FOR_HANDOFF to "READY FOR HANDOFF",
+        )
+    val rows = statuses.map { (status, _) ->
+      MyOrderRow(aliceMigros.copy(id = status.name, status = status), migrosTrip)
     }
+    show(MyOrdersUiState.Content(rows))
+    for ((status, label) in statuses) {
+      val tag = MyOrdersTestTags.ORDER_CARD_PREFIX + status.name
+      compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag(tag))
+      compose.onNodeWithTag(tag).assert(hasText(label))
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun readyForHandoffOrderCardUsesFrenchLabel() {
+    val ready = aliceMigros.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(MyOrdersUiState.Content(listOf(MyOrderRow(ready, migrosTrip))))
+    compose
+        .onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + ready.id)
+        .assertIsDisplayed()
+        .assert(hasText("PRÊTE À ÊTRE REMISE"))
   }
 
   @Test

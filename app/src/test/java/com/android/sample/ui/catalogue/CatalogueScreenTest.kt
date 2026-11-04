@@ -344,6 +344,8 @@ class CatalogueScreenTest {
       compose.onAllNodesWithText("Couldn’t load the photo.").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("Couldn’t load the photo.").assertIsDisplayed()
+    // Screen readers hear the error, not a photo that is not there.
+    compose.onNodeWithContentDescription("Photo of M-Budget Lait").assertDoesNotExist()
     compose.onNodeWithTag(CatalogueTestTags.IMAGE_PREVIEW_CLOSE).performClick()
     compose.onNodeWithTag(CatalogueTestTags.IMAGE_PREVIEW).assertDoesNotExist()
   }

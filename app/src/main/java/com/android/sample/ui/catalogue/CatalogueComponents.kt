@@ -268,7 +268,10 @@ private fun ProductImagePreview(name: String, imageUrl: String, onDismiss: () ->
       ) {
         AsyncImage(
             model = productImageUrl(imageUrl, PREVIEW_PX),
-            contentDescription = stringResource(R.string.catalogue_photo_of, name),
+            // A failed photo is not announced; the error text below explains it instead.
+            contentDescription =
+                if (state is AsyncImagePainter.State.Error) null
+                else stringResource(R.string.catalogue_photo_of, name),
             modifier = Modifier.fillMaxSize().padding(16.dp),
             contentScale = ContentScale.Fit,
             onState = { state = it },

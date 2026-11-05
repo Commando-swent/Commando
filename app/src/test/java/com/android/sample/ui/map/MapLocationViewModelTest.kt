@@ -22,6 +22,7 @@ class MapLocationViewModelTest {
   @get:Rule val main = MainDispatcherRule()
   private val position = DeviceLocationResult.Available(DeviceLocation(46.52, 6.56, 200f, 200_000))
   private var calls = 0
+  private var elapsedMillis = 200_000L
   private var read: suspend () -> DeviceLocationResult = { position }
 
   private fun model() =
@@ -30,7 +31,7 @@ class MapLocationViewModelTest {
             calls++
             read()
           },
-          { 200_000 },
+          { elapsedMillis },
       )
 
   private fun result(model: MapLocationViewModel) =
@@ -209,5 +210,46 @@ class MapLocationViewModelTest {
     runCurrent()
     assertEquals(MapLocationUiState.Loading, model.uiState.value)
     model.stop()
+  }
+
+  @Test
+  fun resumeDropsExpiredFixEvenWhenTheExpiryTimerHasNotAdvanced() = runTest {
+    val model = model()
+    model.request(true)
+    runCurrent()
+    elapsedMillis += DeviceLocation.MAX_AGE_MILLIS + 1
+    model.refreshLocationValidity()
+    assertEquals(MapLocationUiState.Idle, model.uiState.value)
+    assertEquals(1, calls)
+  }
+
+  @Test
+  fun resumeDropsFixAtItsExactExpiryBoundary() = runTest {
+    val model = model()
+    model.request(true)
+    runCurrent()
+    elapsedMillis += DeviceLocation.MAX_AGE_MILLIS
+    model.refreshLocationValidity()
+    assertEquals(MapLocationUiState.Idle, model.uiState.value)
+  }
+
+  @Test
+  fun resumeKeepsFreshFixWithoutAnotherProviderRead() = runTest {
+    val model = model()
+    model.request(true)
+    runCurrent()
+    elapsedMillis += 1
+    model.refreshLocationValidity()
+    assertEquals(position, result(model))
+    assertEquals(1, calls)
+    model.stop()
+  }
+
+  @Test
+  fun resumeWithoutAFixDoesNotAcquireLocation() = runTest {
+    val model = model()
+    model.refreshLocationValidity()
+    assertEquals(MapLocationUiState.Idle, model.uiState.value)
+    assertEquals(0, calls)
   }
 }

@@ -10,18 +10,33 @@ private const val MIN_CAMERA_ZOOM = 1f
 private const val VIEWPORT_CENTER = 0.5
 
 /** Camera transform shared by the static background, trip pins and device position. */
-internal data class MapCamera(
-    val center: MapPosition = MapPosition(VIEWPORT_CENTER, VIEWPORT_CENTER),
-    val zoom: Float = MIN_CAMERA_ZOOM,
+internal data class MapCamera
+private constructor(
+    val center: MapPosition,
+    val zoom: Float,
 ) {
-  /** Applies a viewport-relative drag and clamps zoom to the supported campus scale. */
+  constructor() : this(MapPosition(VIEWPORT_CENTER, VIEWPORT_CENTER), MIN_CAMERA_ZOOM)
+
+  companion object {
+    /** Keeps the drawing covering the viewport, including when recentering near campus edges. */
+    fun centeredAt(center: MapPosition, zoom: Float): MapCamera {
+      val boundedZoom = zoom.coerceIn(MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM)
+      val margin = VIEWPORT_CENTER / boundedZoom
+      return MapCamera(
+          MapPosition(center.x.coerceIn(margin, 1 - margin), center.y.coerceIn(margin, 1 - margin)),
+          boundedZoom,
+      )
+    }
+  }
+
+  /** Applies a viewport-relative drag, bounding the center using the resulting zoom. */
   fun moved(horizontalPanFraction: Double, verticalPanFraction: Double, zoomFactor: Float) =
-      MapCamera(
+      centeredAt(
           MapPosition(
-              (center.x - horizontalPanFraction / zoom).coerceIn(0.0, 1.0),
-              (center.y - verticalPanFraction / zoom).coerceIn(0.0, 1.0),
+              center.x - horizontalPanFraction / zoom,
+              center.y - verticalPanFraction / zoom,
           ),
-          (zoom * zoomFactor).coerceIn(MIN_CAMERA_ZOOM, MAX_CAMERA_ZOOM),
+          zoom * zoomFactor,
       )
 
   /** Projects geographic fractions into the visible camera without scaling labels. */

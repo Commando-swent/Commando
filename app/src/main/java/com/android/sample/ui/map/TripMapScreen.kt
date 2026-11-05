@@ -88,7 +88,8 @@ fun TripMapScreen(
   var camera by
       remember(fix) {
         mutableStateOf(
-            fix?.campusPosition()?.let { MapCamera(it, LOCATION_CAMERA_ZOOM) } ?: MapCamera()
+            fix?.campusPosition()?.let { MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+                ?: MapCamera()
         )
       }
   val nearby =

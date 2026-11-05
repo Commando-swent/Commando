@@ -29,8 +29,9 @@ sealed interface MapLocationUiState {
 }
 
 /**
- * Owns a user-triggered location request. The map host must call [stop] on leaving the foreground
- * or ending the session, and [request] only from an explicit action/permission result.
+ * Owns a user-triggered request and expires its fix. The host calls [stop] when really leaving the
+ * foreground or ending the session, but not during a configuration change: this ViewModel survives
+ * rotation and keeps its state. Call [request] only from an explicit user action.
  */
 class MapLocationViewModel(
     private val provider: DeviceLocationProvider,

@@ -16,9 +16,10 @@ before until the screen integration in part 2.
   When permission is already granted, the action can call `request(true)` directly.
 - Render Idle, Loading and each Resolved outcome, with localized feedback. A denial,
   disabled services or an unavailable provider must leave trip discovery usable.
-- Call `stop()` when the screen leaves the foreground or the authenticated session ends;
-  it cancels pending acquisition and immediately clears the coordinates. ViewModel
-  disposal also cancels its coroutine. Do not automatically restart on resume.
+- Call `stop()` when the screen really leaves the foreground or the authenticated session
+  ends, but not during a configuration change (`activity.isChangingConfigurations`): the
+  ViewModel survives rotation and must keep its state. `stop()` cancels pending acquisition
+  and immediately clears the coordinates. Do not automatically restart on resume.
 - A fix is a snapshot, not continuous tracking. The ViewModel returns to Idle when a fix
   reaches `DeviceLocation.MAX_AGE_MILLIS`; do not retain it across sessions.
 - Keep device position separate from the selected handoff filter. Reuse the existing

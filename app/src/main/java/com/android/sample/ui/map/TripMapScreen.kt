@@ -155,8 +155,9 @@ fun TripMapScreen(
           is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
           else ->
               if (fix?.canIdentifyNearbyTrips() == true && content != null)
-                  stringResource(
-                      R.string.map_location_nearby_count,
+                  pluralStringResource(
+                      R.plurals.map_location_nearby_count,
+                      nearby.size,
                       nearby.size,
                       HANDOFF_RADIUS_METERS.toInt(),
                   )

@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -519,7 +520,10 @@ private fun OrderDetailsSkeleton() {
 
 @Preview(name = "Order details · Content", widthDp = 412, heightDp = 917)
 @Composable
-private fun OrderDetailsContentPreview() {
+private fun OrderDetailsContentPreview(
+    status: OrderStatus = OrderStatus.PENDING,
+    requester: Boolean = false,
+) {
   val time = Instant.parse("2026-10-13T16:30:00Z")
   val trip =
       Trip(
@@ -538,9 +542,20 @@ private fun OrderDetailsContentPreview() {
           OrderItem("bread", "Bread", 180, 1),
           OrderItem("bananas", "Bananas", 60, 3),
       )
-  val order = Order("preview-order", trip.id, "requester", items, 450, OrderStatus.PENDING, time)
-  OrderDetailsPreview(OrderDetailsUiState.Content(order, trip))
+  val order = Order("preview-order", trip.id, "requester", items, 450, status, time)
+  val viewerId = order.requesterId.takeIf { requester }
+  OrderDetailsPreview(OrderDetailsUiState.Content(order, trip, viewerId))
 }
+
+/** Local preview; confirm the real dialog to update only the fixture. */
+@Preview(name = "Cancellation · Pending requester", widthDp = 412, heightDp = 917)
+@Composable
+private fun OrderCancellationPendingPreview() = OrderDetailsContentPreview(requester = true)
+
+@Preview(name = "Cancellation · Cancelled requester", widthDp = 412, heightDp = 917)
+@Composable
+private fun OrderCancellationConfirmedPreview() =
+    OrderDetailsContentPreview(OrderStatus.CANCELLED, requester = true)
 
 @Preview(name = "Order details · Loading", widthDp = 412, heightDp = 917)
 @Composable
@@ -557,5 +572,21 @@ private fun OrderDetailsErrorPreview() =
 
 @Composable
 private fun OrderDetailsPreview(state: OrderDetailsUiState) {
-  SampleAppTheme { OrderDetailsScreen(state = state, onBack = {}, onRetry = {}) }
+  var current by remember(state) { mutableStateOf(state) }
+  SampleAppTheme {
+    OrderDetailsScreen(
+        state = current,
+        onBack = {},
+        onRetry = {},
+        onCancel = {
+          (current as? OrderDetailsUiState.Content)?.let {
+            current =
+                it.copy(
+                    order = it.order.copy(status = OrderStatus.CANCELLED),
+                    mutation = OrderMutationState.Saved,
+                )
+          }
+        },
+    )
+  }
 }

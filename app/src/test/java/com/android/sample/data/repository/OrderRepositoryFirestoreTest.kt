@@ -451,6 +451,59 @@ class OrderRepositoryFirestoreTest {
 
   private fun sourceError(code: Code): Nothing = throw FirebaseFirestoreException("test", code)
 
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun receiptUsesAuthorizedPersistedResultsAndRecoversUncertainCommits() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue("b")
+    for ((status, succeeds) in
+        listOf(
+            OrderStatus.PENDING to false,
+            OrderStatus.ACCEPTED to false,
+            OrderStatus.REJECTED to false,
+            OrderStatus.READY_FOR_HANDOFF to true,
+            OrderStatus.DELIVERED to true,
+        )) {
+      source.documents["b"] = original.copy(data = original.data + ("status" to status.name))
+      val before = source.writes
+      for (caller in listOf("owner", "other", null)) {
+        uid = caller
+        assertEquals(
+            error(if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied),
+            repository.confirmReceipt("b"),
+        )
+      }
+      uid = "alice"
+      val expected =
+          if (succeeds) OrderResult.Success(saved.copy(status = OrderStatus.DELIVERED))
+          else error(OrderError.AlreadyDecided(saved.copy(status = status)))
+      repeat(2) { assertEquals(expected, repository.confirmReceipt("b")) }
+      assertEquals(before + if (status == OrderStatus.READY_FOR_HANDOFF) 1 else 0, source.writes)
+    }
+    for (id in listOf("", "a/b", ".", "..")) assertEquals(
+        error(OrderError.InvalidData),
+        repository.confirmReceipt(id),
+    )
+    assertEquals(error(OrderError.NotFound), repository.confirmReceipt("missing"))
+    source.documents["b"] = original.copy(data = original.data + ("status" to "READY_FOR_HANDOFF"))
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.confirmReceipt("b"))
+    source.confirmationFails = false
+    val before = source.writes
+    assertEquals(
+        OrderResult.Success(saved.copy(status = OrderStatus.DELIVERED)),
+        OrderRepositoryFirestore(source, { uid }).confirmReceipt("b"),
+    )
+    assertEquals(before, source.writes)
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.confirmReceipt("b") }
+    runCurrent()
+    uid = "other"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+  }
+
   private inner class MemorySource : OrderFirestoreDataSource {
     val documents = linkedMapOf<String, OrderFirestoreDocument>()
     var decisionResult: OrderFirestoreDocument? = null
@@ -494,6 +547,18 @@ class OrderRepositoryFirestoreTest {
 
     override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
         transition(id, ownerId, "ACCEPTED", "READY_FOR_HANDOFF")
+
+    override suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument {
+      beforeRead()
+      val document = documents[id] ?: sourceError(Code.NOT_FOUND)
+      if (document.data["requesterId"] != requesterId) sourceError(Code.PERMISSION_DENIED)
+      if (document.data["status"] != "READY_FOR_HANDOFF") return document
+      return document.copy(data = document.data + ("status" to "DELIVERED")).also {
+        documents[id] = it
+        writes++
+        if (confirmationFails) error("Confirmation unavailable")
+      }
+    }
 
     private suspend fun transition(
         id: String,

@@ -661,6 +661,99 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         }
       }
 
+  @Test
+  fun receiptRequiresRequesterAndReadyStatusAndPreservesEveryOtherField() = runTest {
+    withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
+        (requester, owner, other, signedOut) ->
+      for (status in listOf(OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+        val saved = createOrder(requester, publish(owner))
+        val ref = requester.firestore.collection("orders").document(saved.id)
+        if (status != OrderStatus.PENDING) {
+          orders(owner)
+              .decideOrder(saved.id, if (status == OrderStatus.ACCEPTED) ACCEPT else REJECT)
+        }
+        assertEquals(
+            OrderResult.Error(OrderError.AlreadyDecided(saved.copy(status = status))),
+            orders(requester).confirmReceipt(saved.id),
+        )
+        assertPermissionDenied { ref.update("status", "DELIVERED").await() }
+      }
+      val saved = createOrder(requester, publish(owner))
+      orders(owner).decideOrder(saved.id, ACCEPT)
+      orders(owner).markReadyForHandoff(saved.id)
+      val ref = requester.firestore.collection("orders").document(saved.id)
+      val original = ref.get(Source.SERVER).await().data!!
+      for (client in listOf(owner, other, signedOut)) {
+        assertEquals(
+            OrderResult.Error(
+                if (client == signedOut) OrderError.NotAuthenticated
+                else OrderError.PermissionDenied
+            ),
+            orders(client).confirmReceipt(saved.id),
+        )
+        assertPermissionDenied {
+          client.firestore
+              .collection("orders")
+              .document(saved.id)
+              .update("status", "DELIVERED")
+              .await()
+        }
+      }
+      for (mutation in
+          listOf(
+              mapOf("requesterId" to other.auth.currentUser!!.uid),
+              mapOf("tripId" to "other"),
+              mapOf("items" to emptyList<Any>()),
+              mapOf("commissionCents" to 999),
+              mapOf("createdAt" to Timestamp(0, 0)),
+              mapOf("extra" to true),
+              mapOf("commissionCents" to FieldValue.delete()),
+          )) assertPermissionDenied { ref.update(mutation + ("status" to "DELIVERED")).await() }
+      val expected = OrderResult.Success(saved.copy(status = OrderStatus.DELIVERED))
+      val gate = CompletableDeferred<Unit>()
+      val calls =
+          List(2) {
+            async(Dispatchers.Default) {
+              gate.await()
+              orders(requester).confirmReceipt(saved.id)
+            }
+          }
+      gate.complete(Unit)
+      assertEquals(listOf(expected, expected), calls.awaitAll())
+      assertEquals(expected, orders(requester).confirmReceipt(saved.id))
+      assertEquals(original + ("status" to "DELIVERED"), ref.get(Source.SERVER).await().data)
+      assertEquals(expected, orders(requester).getOrderById(saved.id))
+      for (status in OrderStatus.entries) assertPermissionDenied {
+        ref.update("status", status.name).await()
+      }
+      for (client in listOf(owner, other)) assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          orders(client).confirmReceipt(saved.id),
+      )
+      val direct = createOrder(requester, publish(owner))
+      orders(owner).decideOrder(direct.id, ACCEPT)
+      orders(owner).markReadyForHandoff(direct.id)
+      requester.firestore
+          .collection("orders")
+          .document(direct.id)
+          .update("status", "DELIVERED")
+          .await()
+      assertEquals(
+          OrderResult.Success(direct.copy(status = OrderStatus.DELIVERED)),
+          orders(requester).confirmReceipt(direct.id),
+      )
+      val uid = requester.auth.currentUser!!.uid
+      assertEquals(
+          OrderResult.Error(OrderError.NotAuthenticated),
+          OrderRepositoryFirestore(
+                  FirebaseOrderFirestoreDataSource(requester.firestore) { null },
+                  { uid },
+              )
+              .confirmReceipt(saved.id),
+      )
+    }
+  }
+
   private suspend fun writeOrder(
       client: EmulatorClient,
       data: Map<String, Any?>,

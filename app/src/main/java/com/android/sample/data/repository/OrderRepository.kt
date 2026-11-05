@@ -51,6 +51,13 @@ interface OrderRepository {
    *   Cancelling the coroutine cannot undo a server commit.
    */
   suspend fun cancelOrder(orderId: String): OrderResult<Order>
+
+  /**
+   * Authenticated requester only; atomically changes READY_FOR_HANDOFF to DELIVERED, preserving
+   * every other field. Authorized repeats at DELIVERED return Success without writing; other
+   * statuses return AlreadyDecided with the persisted order. Authorization precedes both outcomes.
+   */
+  suspend fun confirmReceipt(orderId: String): OrderResult<Order>
 }
 
 /** Shared list order of every order query. */

@@ -150,7 +150,10 @@ service cloud.firestore {
                     && request.resource.data.status == "READY_FOR_HANDOFF")))
             || (resource.data.status == "PENDING"
               && resource.data.requesterId == request.auth.uid
-              && request.resource.data.status == "CANCELLED"));
+              && request.resource.data.status == "CANCELLED")
+            || (resource.data.requesterId == request.auth.uid
+              && resource.data.status == "READY_FOR_HANDOFF"
+              && request.resource.data.status == "DELIVERED"));
       allow delete: if false;
     }
 

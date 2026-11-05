@@ -355,6 +355,8 @@ class MyOrdersViewModelTest {
    */
   private class GatedOrderRepository(private val swallowCancellation: Boolean = false) :
       OrderRepository {
+    override suspend fun confirmReceipt(orderId: String): OrderResult<Order> = error("Not used")
+
     val gates = mutableListOf<CompletableDeferred<OrderResult<List<Order>>>>()
     var staleReturns = 0
 

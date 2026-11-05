@@ -56,6 +56,16 @@ sealed class OrderDetailsUiState {
     val canMarkReadyForHandoff: Boolean
       get() = isEligibleOwner && order.status == OrderStatus.ACCEPTED
 
+    /**
+     * Presentation eligibility; the repository independently authorizes the persisted requester.
+     */
+    val canConfirmReceipt: Boolean
+      get() =
+          !viewerId.isNullOrBlank() &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.status == OrderStatus.READY_FOR_HANDOFF
+
     val isSaving: Boolean
       get() = mutation == OrderMutationState.Saving
 
@@ -159,6 +169,10 @@ class OrderDetailsViewModel(
    * arriving after the session ends are discarded.
    */
   fun cancel() = saveOrder(isAllowed = { it.canCancel }) { orderRepository.cancelOrder(orderId) }
+
+  /** Confirms requester receipt, displaying only repository-confirmed status and feedback. */
+  fun confirmReceipt() =
+      saveOrder(isAllowed = { it.canConfirmReceipt }) { orderRepository.confirmReceipt(orderId) }
 
   private fun saveOrder(
       isAllowed: (OrderDetailsUiState.Content) -> Boolean,

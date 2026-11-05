@@ -105,6 +105,13 @@ class IncomingOrdersScreenTest {
   }
 
   @Test
+  fun deliveredOrderCardDisplaysStatus() {
+    val delivered = accepted.copy(status = OrderStatus.DELIVERED)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(delivered))))
+    card(delivered).assertIsDisplayed().assert(hasText("DELIVERED"))
+  }
+
+  @Test
   @Config(qualifiers = "fr-rFR")
   fun readyForHandoffOrderCardUsesFrenchLabel() {
     val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)

@@ -30,6 +30,8 @@ enum class OrderStatus {
   READY_FOR_HANDOFF,
   /** The requester cancelled the order while it was pending; its history remains readable. */
   CANCELLED,
+  /** The requester has confirmed receipt of the order. */
+  DELIVERED,
 }
 
 enum class OrderDecision {

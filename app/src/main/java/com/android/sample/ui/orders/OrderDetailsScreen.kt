@@ -46,6 +46,7 @@ object OrderDetailsTestTags {
   const val CONFIRM_CANCEL = "order_details_confirm_cancel"
   const val KEEP_ORDER = "order_details_keep_order"
   const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
+  const val CONFIRM_RECEIPT = "order_details_confirm_receipt"
 }
 
 /**
@@ -62,6 +63,7 @@ object OrderDetailsTestTags {
  * @param onDecision Requests an eligible owner's Accept/Reject decision.
  * @param onMarkReadyForHandoff Requests an eligible owner's handoff-readiness transition.
  * @param onCancel Requests cancellation only after the requester confirms the dialog.
+ * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -72,6 +74,7 @@ fun OrderDetailsScreen(
     onDecision: (OrderDecision) -> Unit = {},
     onMarkReadyForHandoff: () -> Unit = {},
     onCancel: () -> Unit = {},
+    onConfirmReceipt: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -129,7 +132,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
-          OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel)
+          OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel, onConfirmReceipt)
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
@@ -166,6 +169,7 @@ private fun OrderStatusActions(
     onDecision: (OrderDecision) -> Unit,
     onMarkReadyForHandoff: () -> Unit,
     onCancel: () -> Unit,
+    onConfirmReceipt: () -> Unit,
 ) {
   var confirmCancellation by
       rememberSaveable(state.order.id, state.viewerId, state.canCancel) { mutableStateOf(false) }
@@ -215,6 +219,15 @@ private fun OrderStatusActions(
         modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF),
     ) {
       Text(stringResource(R.string.order_mark_ready_for_handoff))
+    }
+  }
+  if (state.canConfirmReceipt) {
+    Button(
+        onClick = onConfirmReceipt,
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.CONFIRM_RECEIPT),
+    ) {
+      Text(stringResource(R.string.order_confirm_receipt))
     }
   }
   if (state.isSaving) {
@@ -344,9 +357,10 @@ internal fun orderStatusLabel(status: OrderStatus): Int =
       OrderStatus.REJECTED -> R.string.order_details_rejected
       OrderStatus.READY_FOR_HANDOFF -> R.string.order_details_ready_for_handoff
       OrderStatus.CANCELLED -> R.string.order_details_cancelled
+      OrderStatus.DELIVERED -> R.string.order_details_delivered
     }
 
-/** Localized order [status] with a distinct color per status; shared with incoming orders. */
+/** Localized order [status] with status-based colors; shared with incoming orders. */
 @Composable
 internal fun OrderStatusBadge(status: OrderStatus) {
   val label = orderStatusLabel(status)
@@ -358,6 +372,7 @@ internal fun OrderStatusBadge(status: OrderStatus) {
         OrderStatus.REJECTED -> colors.errorContainer to colors.onErrorContainer
         OrderStatus.READY_FOR_HANDOFF -> colors.tertiaryContainer to colors.onTertiaryContainer
         OrderStatus.CANCELLED -> colors.surfaceVariant to colors.onSurfaceVariant
+        OrderStatus.DELIVERED -> colors.primaryContainer to colors.onPrimaryContainer
       }
   Surface(
       shape = CircleShape,

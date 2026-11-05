@@ -582,6 +582,7 @@ private fun AuthenticatedApp(
             onDecision = model::decide,
             onMarkReadyForHandoff = model::markReadyForHandoff,
             onCancel = model::cancel,
+            onConfirmReceipt = model::confirmReceipt,
         )
       }
       composable(route = CommandoScreens.Profile.name) {

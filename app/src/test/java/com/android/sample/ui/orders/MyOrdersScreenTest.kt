@@ -197,6 +197,7 @@ class MyOrdersScreenTest {
             OrderStatus.ACCEPTED to "ACCEPTED",
             OrderStatus.REJECTED to "REJECTED",
             OrderStatus.READY_FOR_HANDOFF to "READY FOR HANDOFF",
+            OrderStatus.DELIVERED to "DELIVERED",
         )
     val rows = statuses.map { (status, _) ->
       MyOrderRow(aliceMigros.copy(id = status.name, status = status), migrosTrip)

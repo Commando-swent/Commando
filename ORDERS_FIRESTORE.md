@@ -34,7 +34,7 @@ than the lifecycle transitions below, remain denied.
 | ACCEPTED | Mark ready for handoff | READY_FOR_HANDOFF | Associated trip owner |
 | READY_FOR_HANDOFF | Confirm receipt | DELIVERED | Order requester |
 
-READY_FOR_HANDOFF is implemented by #194; DELIVERED remains reserved for receipt confirmation. No other transition is valid. A repeated request whose stored status is
+READY_FOR_HANDOFF and DELIVERED are implemented by #194. No other transition is valid. A repeated request whose stored status is
 already the requested target is idempotent and returns Success without writing. If a competing or
 earlier action produced any other status, the operation returns AlreadyDecided with the latest persisted
 order. Every transition must run in a Firestore transaction, change only `status`, re-check the active
@@ -65,12 +65,31 @@ atomically with the order write. Cancellation uses requester authorization and c
 it does not publish a notification or remove earlier placement events. Readiness also publishes no
 additional event. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
 saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
-No shopping-completion prerequisite or trip-status/time restriction is added. DELIVERED remains
-outside this cancellation PR.
+No shopping-completion prerequisite or trip-status/time restriction is added.
 `cancelOrder(id)` atomically verifies requester ownership and changes only PENDING to CANCELLED.
 Repeating cancellation returns the persisted CANCELLED order without another write. Accepted or rejected
 orders cannot be cancelled. A trip owner, outsider or signed-out caller cannot cancel the requester's
 order. Cancelled orders remain queryable history; no document or immutable order field is deleted.
+
+#194 receipt confirmation: `confirmReceipt(id)` authorizes the persisted requester before any outcome
+and atomically changes only READY_FOR_HANDOFF to DELIVERED. Authorized DELIVERED repeats return
+Success without writing; other statuses return AlreadyDecided with the persisted order. Owners who
+are not the requester and unrelated callers are denied, including repeats and conflicts. Rules enforce
+the exact transition and status-only changes independently, rejecting repeated direct writes and
+reversals. No delivery timestamp, payment, reward, or trip completion is introduced.
+The requester transaction needs no trip lookup; Order Details still requires a readable associated
+trip to render. The existing route exposes confirmation only to the ready order's requester, disables
+it while saving, and displays repository-confirmed results through the shared mutation state. Session
+changes suppress late results but cannot undo committed delivery. Older clients that do not recognize
+DELIVERED cannot decode delivered orders; coordinate application and production rules rollout.
+
+Integration boundaries: cancellation remains Adam's separate requester operation; it must not reuse
+owner-only authorization. ORDER_PLACED is published atomically with creation; ORDER_ACCEPTED and
+ORDER_REJECTED are published atomically with their corresponding decisions. Rules require matching
+events for those writes. READY_FOR_HANDOFF and DELIVERED publish no event and preserve existing events.
+Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
+saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
+No shopping-completion prerequisite or trip-status/time restriction is added.
 
 #147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
 like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered

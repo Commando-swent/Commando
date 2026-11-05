@@ -14,7 +14,8 @@ validate the persisted transition and recipient, and deny event updates/deletes.
 read the final state without publishing again. Recipient storage tests use admin-seeded events;
 integration tests exercise real authenticated order writes.
 The existing ACCEPTED -> READY_FOR_HANDOFF transition remains available without publishing another
-notification event; its retries preserve the already-published decision event.
+notification event; its retries preserve the already-published decision event. Requester confirmation
+from READY_FOR_HANDOFF to DELIVERED also publishes no event, including authorized repeated confirmations.
 
 users/{uid}/notificationPreferences/settings stores newOrders/orderDecisions (both default true).
 Saves specify only changed toggles; transactions preserve other-device updates and initialize defaults.

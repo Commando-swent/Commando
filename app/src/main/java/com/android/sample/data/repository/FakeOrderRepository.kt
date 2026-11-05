@@ -105,6 +105,21 @@ class FakeOrderRepository(
   override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
       transitionOrder(orderId, OwnerOrderTransition.MARK_READY)
 
+  override suspend fun confirmReceipt(orderId: String): OrderResult<Order> = withSession { userId ->
+    if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
+    val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
+    if (order.requesterId != userId) {
+      return@withSession OrderResult.Error(OrderError.PermissionDenied)
+    }
+    val persisted =
+        if (order.status == OrderStatus.READY_FOR_HANDOFF) {
+          order.copy(status = OrderStatus.DELIVERED).also { orders[orderId] = it }
+        } else order
+    val snapshot = persisted.snapshot()
+    if (snapshot.status == OrderStatus.DELIVERED) OrderResult.Success(snapshot)
+    else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
+  }
+
   private suspend fun transitionOrder(
       orderId: String,
       transition: OwnerOrderTransition,

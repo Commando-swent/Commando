@@ -88,6 +88,52 @@ class OrderDetailsScreenTest {
     compose.onNodeWithText("Cancel this order?").assertDoesNotExist()
   }
 
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun cancellationRemainsReachableWithLargeTextAndUsesConfirmedStatus() {
+    val content = OrderDetailsUiState.Content(order, trip, order.requesterId)
+    show(content, fontScale = 1.5f)
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    val cancel = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+    cancel.performScrollTo().assertIsDisplayed().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertIsDisplayed().performClick()
+    compose.runOnIdle {
+      assertEquals(1, cancellations)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    cancel.performScrollTo().assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, cancellations)
+      state.value =
+          content.copy(
+              order = order.copy(status = OrderStatus.CANCELLED),
+              mutation = OrderMutationState.Saved,
+          )
+    }
+    cancel.assertDoesNotExist()
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun cancellationIsHiddenForOtherViewersAndNonPendingOrders() {
+    show()
+    for (content in
+        listOf(
+            OrderDetailsUiState.Content(order, trip, trip.ownerId),
+            OrderDetailsUiState.Content(order, trip, "outsider"),
+            OrderDetailsUiState.Content(order, trip),
+        ) +
+            OrderStatus.entries
+                .filter { it != OrderStatus.PENDING }
+                .map {
+                  OrderDetailsUiState.Content(order.copy(status = it), trip, order.requesterId)
+                }) {
+      compose.runOnIdle { state.value = content }
+      compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+    }
+  }
+
   @After
   fun tearDown() {
     TimeZone.setDefault(originalTimeZone)

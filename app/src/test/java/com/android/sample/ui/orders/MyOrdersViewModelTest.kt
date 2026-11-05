@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude (Anthropic).
 
 import com.android.sample.data.repository.FakeOrderRepository

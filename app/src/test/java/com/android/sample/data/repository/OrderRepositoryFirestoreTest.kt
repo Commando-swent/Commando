@@ -312,6 +312,44 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun cancellationRecoversUncertainCommitAndDiscardsAnEndedSession() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.cancelOrder(saved.id))
+    source.confirmationFails = false
+    val writes = source.writes
+    assertEquals(
+        OrderResult.Success(saved.copy(status = OrderStatus.CANCELLED)),
+        OrderRepositoryFirestore(source, { uid }).cancelOrder(saved.id),
+    )
+    assertEquals(writes, source.writes)
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.cancelOrder(saved.id) }
+    runCurrent()
+    uid = "another-requester"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+    assertEquals(writes, source.writes)
+  }
+
+  @Test
+  fun cancellationRejectsMalformedOrInconsistentSourceResponses() = runTest {
+    repository.createOrder(draft)
+    val document = source.documents.getValue("b")
+    for (response in
+        listOf(
+            document,
+            document.copy(id = "other"),
+            document.copy(data = document.data - "status"),
+        )) {
+      source.decisionResult = response
+      assertEquals(error(OrderError.InvalidData), repository.cancelOrder("b"))
+    }
+  }
+
+  @Test
   fun suspendedDecisionsHandleSessionLossCancellationAndUncertainCommits() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     uid = "owner"

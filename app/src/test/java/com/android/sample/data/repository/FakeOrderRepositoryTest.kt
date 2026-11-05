@@ -714,6 +714,20 @@ class FakeOrderRepositoryTest {
     assertEquals(failure(OrderError.NotAuthenticated), orders.cancelOrder(order().id))
   }
 
+  @Test
+  fun invalidOrFailedCancellationLeavesTheOrderUnchanged() = runTest {
+    val stored = order()
+    val orders = fake(listOf(stored))
+    for (id in listOf("", "a/b", ".", "..")) {
+      assertEquals(failure(OrderError.InvalidData), orders.cancelOrder(id))
+    }
+    assertEquals(failure(OrderError.NotFound), orders.cancelOrder("missing"))
+    orders.forcedError = OrderError.Unknown
+    assertEquals(failure(OrderError.Unknown), orders.cancelOrder(stored.id))
+    orders.forcedError = null
+    assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+  }
+
   private fun failure(error: OrderError) = OrderResult.Error(error)
 
   @Test

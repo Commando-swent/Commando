@@ -59,6 +59,9 @@ sealed class OrderDetailsUiState {
     val isSaving: Boolean
       get() = mutation == OrderMutationState.Saving
 
+    /**
+     * Presentation eligibility only; [OrderRepository.cancelOrder] enforces persisted ownership.
+     */
     val canCancel: Boolean
       get() =
           viewerId != null &&
@@ -147,7 +150,14 @@ class OrderDetailsViewModel(
         orderRepository.markReadyForHandoff(orderId)
       }
 
-  /** Cancels a pending requester order through the shared mutation flow. */
+  /**
+   * Submits a confirmed cancellation for the currently eligible requester.
+   *
+   * The screen asks for confirmation before calling this action. Repeated taps while saving are
+   * ignored. Only the repository result updates the displayed order; a recoverable failure keeps
+   * the last confirmed content for retry, and a conflict displays the persisted winner. Results
+   * arriving after the session ends are discarded.
+   */
   fun cancel() = saveOrder(isAllowed = { it.canCancel }) { orderRepository.cancelOrder(orderId) }
 
   private fun saveOrder(

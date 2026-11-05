@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+// AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision

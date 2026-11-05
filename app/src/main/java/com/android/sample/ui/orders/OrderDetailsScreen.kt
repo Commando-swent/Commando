@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: Claude Code for sharing the status badge (#147).
+// AI assistance: Claude Code (#147); OpenAI Codex (cancellation dialog and KDoc).
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -41,13 +41,26 @@ import java.time.Instant
 object OrderDetailsTestTags {
   const val ACCEPT = "order_details_accept"
   const val REJECT = "order_details_reject"
+  const val CANCEL = "order_details_cancel"
+  const val CONFIRM_CANCEL = "order_details_confirm_cancel"
+  const val KEEP_ORDER = "order_details_keep_order"
   const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
 }
 
 /**
- * Shared presentation; the caller owns loading, authorization and navigation. [onDecision] and
- * [onMarkReadyForHandoff] request status changes; [state] supplies eligibility and persisted
- * results.
+ * Displays an authorized order and the status actions eligible in [state].
+ *
+ * The caller owns loading, authorization, persistence and navigation. All mutation actions are
+ * disabled while saving; the displayed status always comes from the supplied persisted order.
+ * Cancellation first opens a confirmation dialog, and dismissing it performs no mutation.
+ *
+ * @param state Loading, error or confirmed content supplied by the shared ViewModel.
+ * @param onBack Returns to the existing caller-owned destination.
+ * @param onRetry Reloads content after a recoverable loading failure.
+ * @param modifier Layout modifier applied to the screen root.
+ * @param onDecision Requests an eligible owner's Accept/Reject decision.
+ * @param onMarkReadyForHandoff Requests an eligible owner's handoff-readiness transition.
+ * @param onCancel Requests cancellation only after the requester confirms the dialog.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -187,7 +200,7 @@ private fun OrderStatusActions(
     OutlinedButton(
         onClick = { confirmCancellation = true },
         enabled = !state.isSaving,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.CANCEL),
         colors =
             ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
     ) {
@@ -220,13 +233,17 @@ private fun OrderStatusActions(
               onClick = {
                 confirmCancellation = false
                 onCancel()
-              }
+              },
+              modifier = Modifier.testTag(OrderDetailsTestTags.CONFIRM_CANCEL),
           ) {
             Text(stringResource(R.string.order_cancel_confirm))
           }
         },
         dismissButton = {
-          TextButton(onClick = { confirmCancellation = false }) {
+          TextButton(
+              onClick = { confirmCancellation = false },
+              modifier = Modifier.testTag(OrderDetailsTestTags.KEEP_ORDER),
+          ) {
             Text(stringResource(R.string.order_cancel_keep))
           }
         },

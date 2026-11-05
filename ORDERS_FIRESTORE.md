@@ -60,11 +60,13 @@ session loss or cancellation cannot undo a commit, but ended sessions cannot dis
 Order Details shares one saving/outcome state for decisions and readiness, displays persisted results,
 uses authoritative conflicts, and keeps confirmed content on recoverable failures for retry.
 
-Integration boundaries: cancellation remains Adam's separate requester operation; it must not reuse
-owner-only authorization. No notification event is published here; coordinate future atomic publication
-with #204. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
+Integration with #206: order creation and Accept/Reject publish their canonical notification event
+atomically with the order write. Cancellation uses requester authorization and changes only status;
+it does not publish a notification or remove earlier placement events. Readiness also publishes no
+additional event. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
 saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
-No shopping-completion prerequisite, trip-status/time restriction, CANCELLED or DELIVERED is added.
+No shopping-completion prerequisite or trip-status/time restriction is added. DELIVERED remains
+outside this cancellation PR.
 `cancelOrder(id)` atomically verifies requester ownership and changes only PENDING to CANCELLED.
 Repeating cancellation returns the persisted CANCELLED order without another write. Accepted or rejected
 orders cannot be cancelled. A trip owner, outsider or signed-out caller cannot cancel the requester's

@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: Claude Code for the trip-owner query (#147).
+// AI assistance: Claude Code (#147); OpenAI Codex (cancellation contract and KDoc).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
@@ -38,8 +38,19 @@ interface OrderRepository {
   suspend fun markReadyForHandoff(orderId: String): OrderResult<Order>
 
   /**
-   * Requester only; a pending order becomes cancelled atomically. Repeating the same cancellation
-   * is idempotent, while a different persisted status returns [OrderError.AlreadyDecided].
+   * Cancels the authenticated requester's pending order without deleting its history.
+   *
+   * Authorization uses the persisted requester before returning any result. Only
+   * [OrderStatus.PENDING] changes to [OrderStatus.CANCELLED]; all other fields stay immutable. An
+   * authorized repeat at CANCELLED succeeds without writing. A competing owner decision is returned
+   * as [OrderError.AlreadyDecided] with the persisted order, never overwritten.
+   *
+   * @param orderId Firestore document ID of the order; blank IDs and document paths are invalid.
+   * @return The persisted cancelled order, or a typed [OrderError]. Ended/changed sessions return
+   *   [OrderError.NotAuthenticated]; other users receive [OrderError.PermissionDenied]. A failed
+   *   confirmation can follow a committed write: retry the same ID to recover its stored outcome.
+   * @throws kotlinx.coroutines.CancellationException When the calling coroutine is cancelled.
+   *   Cancelling the coroutine cannot undo a server commit.
    */
   suspend fun cancelOrder(orderId: String): OrderResult<Order>
 }

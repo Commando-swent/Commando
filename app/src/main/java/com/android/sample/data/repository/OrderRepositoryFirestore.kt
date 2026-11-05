@@ -157,6 +157,11 @@ internal constructor(
     else failure(OrderError.AlreadyDecided(order))
   }
 
+  override suspend fun cancelOrder(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OrderStatus.PENDING, OrderStatus.CANCELLED) { uid ->
+        source.cancel(orderId, uid)
+      }
+
   private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
     currentCoroutineContext().ensureActive()
     val uid =
@@ -185,9 +190,9 @@ internal typealias OrderFirestoreDocument = FirestoreDocument
 /**
  * Persistence boundary for raw order snapshots; repositories validate input and decoded results.
  *
- * Reads use the server, while owner transitions authorize the latest order/trip inside a
- * transaction. Implementations throw storage failures; the repository maps them after checking the
- * active session.
+ * Reads use the server. Transactions authorize owners against the latest order/trip, and authorize
+ * cancellation and receipt confirmation against the persisted requester. Implementations throw
+ * storage failures; the repository maps them after checking the active session.
  */
 internal interface OrderFirestoreDataSource {
   /** Writes the order and placement event atomically, then confirms the server snapshot. */
@@ -210,6 +215,9 @@ internal interface OrderFirestoreDataSource {
 
   /** Owner-only ACCEPTED → READY_FOR_HANDOFF; repeats return a stored snapshot without writing. */
   suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument
+
+  /** Authorizes the stored requester before atomically cancelling or returning a stored outcome. */
+  suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument
 
   /** Authorizes the persisted requester before returning any transition outcome. */
   suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument
@@ -340,6 +348,10 @@ internal class FirebaseOrderFirestoreDataSource(
       }
     }
   }
+
+  // Cancellation changes status only; order placement and decisions retain their atomic events.
+  override suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument =
+      transitionOrder(id, requesterId, OrderStatus.PENDING, OrderStatus.CANCELLED, requester = true)
 
   /** Verifies Firebase and session identities on each transaction attempt. */
   private fun ensureDecisionIdentity(app: FirebaseApp, uid: String) {

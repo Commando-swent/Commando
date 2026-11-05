@@ -77,6 +77,23 @@ class NotificationOrderEventsEmulatorTest {
   }
 
   @Test
+  fun cancellationPreservesPlacementNotificationWithoutPublishingAnotherEvent() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = place(owner, requester)
+      val placed = inbox(owner).single()
+      assertEquals(NotificationEventType.ORDER_PLACED, placed.event.type)
+      repeat(2) {
+        assertEquals(
+            OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)),
+            orders(requester).cancelOrder(order.id),
+        )
+      }
+      assertEquals(listOf(placed), inbox(owner))
+      assertTrue(inbox(requester).isEmpty())
+    }
+  }
+
+  @Test
   fun competingDecisionsPublishOnlyThePersistedWinner() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = place(owner, requester)

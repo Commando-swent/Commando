@@ -328,6 +328,150 @@ class OrderFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun requesterCancellationPersistsAndIsIdempotent() = runTest {
+    withClients("requester" to true, "owner" to true, "other" to true) { (requester, owner, other)
+      ->
+      val saved = createOrder(requester, publish(owner))
+      val expected = saved.copy(status = OrderStatus.CANCELLED)
+      repeat(2) {
+        assertEquals(OrderResult.Success(expected), orders(requester).cancelOrder(saved.id))
+      }
+      assertEquals(OrderResult.Success(expected), orders(owner).getOrderById(saved.id))
+      for (client in listOf(owner, other)) {
+        assertEquals(
+            OrderResult.Error(OrderError.PermissionDenied),
+            orders(client).cancelOrder(saved.id),
+        )
+      }
+    }
+  }
+
+  @Test
+  fun cancellationRejectsMissingOrMalformedStoredOrdersWithoutWriting() = runTest {
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      val saved = createOrder(requester, publish(owner))
+      val repository = orders(requester)
+      assertEquals(OrderResult.Error(OrderError.NotFound), repository.cancelOrder("missing"))
+      val malformed = "malformed-${saved.id}"
+      val fields =
+          requester.firestore
+              .collection("orders")
+              .document(saved.id)
+              .get(Source.SERVER)
+              .await()
+              .data!! + ("status" to "UNKNOWN_STATUS")
+      createDocumentAsOwner("orders", malformed, fields)
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repository.cancelOrder(malformed))
+      assertEquals(
+          fields,
+          requester.firestore
+              .collection("orders")
+              .document(malformed)
+              .get(Source.SERVER)
+              .await()
+              .data,
+      )
+    }
+  }
+
+  @Test
+  fun directCancellationRequiresRequesterAndPreservesImmutableFields() = runTest {
+    withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
+        (requester, owner, other, signedOut) ->
+      val saved = createOrder(requester, publish(owner))
+      val ref = requester.firestore.collection("orders").document(saved.id)
+      val original = ref.get(Source.SERVER).await().data!!
+      for (client in listOf(owner, other, signedOut)) {
+        assertPermissionDenied {
+          client.firestore
+              .collection("orders")
+              .document(saved.id)
+              .update("status", "CANCELLED")
+              .await()
+        }
+      }
+      for (mutation in
+          listOf(
+              mapOf("commissionCents" to 999),
+              mapOf("items" to emptyList<Any>()),
+              mapOf("requesterId" to owner.auth.currentUser!!.uid),
+              mapOf("tripId" to publish(owner)),
+              mapOf("createdAt" to Timestamp(0, 0)),
+              mapOf("extra" to true),
+          )) {
+        assertPermissionDenied { ref.update(mutation + ("status" to "CANCELLED")).await() }
+      }
+      assertEquals(original, ref.get(Source.SERVER).await().data)
+      ref.update("status", "CANCELLED").await()
+      assertEquals(original + ("status" to "CANCELLED"), ref.get(Source.SERVER).await().data)
+      for (client in listOf(requester, owner)) for (status in OrderStatus.entries) {
+        assertPermissionDenied {
+          client.firestore
+              .collection("orders")
+              .document(saved.id)
+              .update("status", status.name)
+              .await()
+        }
+      }
+    }
+  }
+
+  @Test
+  fun requesterCannotCancelAcceptedOrRejectedOrdersThroughDirectSdk() = runTest {
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      for (decision in OrderDecision.entries) {
+        val saved = createOrder(requester, publish(owner))
+        val decided = (orders(owner).decideOrder(saved.id, decision) as OrderResult.Success).data
+        assertPermissionDenied {
+          requester.firestore
+              .collection("orders")
+              .document(saved.id)
+              .update("status", "CANCELLED")
+              .await()
+        }
+        assertEquals(
+            OrderResult.Error(OrderError.AlreadyDecided(decided)),
+            orders(requester).cancelOrder(saved.id),
+        )
+        assertEquals(OrderResult.Success(decided), orders(requester).getOrderById(saved.id))
+      }
+    }
+  }
+
+  @Test
+  fun cancellationAndOwnerDecisionCannotOverwriteEachOther() = runTest {
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      repeat(6) {
+        val saved = createOrder(requester, publish(owner))
+        val gate = CompletableDeferred<Unit>()
+        val cancel =
+            async(Dispatchers.Default) {
+              gate.await()
+              orders(requester).cancelOrder(saved.id)
+            }
+        val accept =
+            async(Dispatchers.Default) {
+              gate.await()
+              orders(owner).decideOrder(saved.id, ACCEPT)
+            }
+        gate.complete(Unit)
+        val results = awaitAll(cancel, accept)
+        val persisted = (orders(requester).getOrderById(saved.id) as OrderResult.Success).data
+        assertTrue(persisted.status in listOf(OrderStatus.CANCELLED, OrderStatus.ACCEPTED))
+        assertEquals(1, results.count { it is OrderResult.Success })
+        results.forEach { result ->
+          val snapshot =
+              when (result) {
+                is OrderResult.Success -> result.data
+                is OrderResult.Error -> (result.error as OrderError.AlreadyDecided).persistedOrder
+              }
+          assertEquals(persisted, snapshot)
+        }
+      }
+    }
+  }
+
+  @Test
   fun directSdkDecisionsRequirePersistedOwnerAndOnlyStatusMayChange() = runTest {
     withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
         (requester, owner, other, signedOut) ->

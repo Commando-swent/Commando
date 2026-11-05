@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+// AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
@@ -138,6 +139,23 @@ class FakeOrderRepository(
         } else order
     val snapshot = persisted.snapshot()
     if (snapshot.status == transition.target) OrderResult.Success(snapshot)
+    else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
+  }
+
+  override suspend fun cancelOrder(orderId: String): OrderResult<Order> = withSession { userId ->
+    if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
+    val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
+    if (order.requesterId != userId) {
+      return@withSession OrderResult.Error(OrderError.PermissionDenied)
+    }
+    currentCoroutineContext().ensureActive()
+    if (currentUserId() != userId) return@withSession OrderResult.Error(OrderError.NotAuthenticated)
+    val persisted =
+        if (order.status == OrderStatus.PENDING) {
+          order.copy(status = OrderStatus.CANCELLED).also { orders[orderId] = it }
+        } else order
+    val snapshot = persisted.snapshot()
+    if (snapshot.status == OrderStatus.CANCELLED) OrderResult.Success(snapshot)
     else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
   }
 

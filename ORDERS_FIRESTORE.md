@@ -21,9 +21,25 @@ or publication validation; those remain enforced by the production adapter and r
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
-Detail reads allow the requester or the associated trip's current owner. Deletes remain denied.
-Updates allow only the owner transitions and requester receipt confirmation described below, subject
-to their authorization, source-status and status-only change rules.
+Detail reads allow the requester or the associated trip's current owner. Deletes, and updates other
+than the lifecycle transitions below, remain denied.
+
+## Shared Sprint 4 lifecycle contract
+
+| Source | Action | Target | Actor |
+| --- | --- | --- | --- |
+| PENDING | Accept | ACCEPTED | Associated trip owner |
+| PENDING | Reject | REJECTED | Associated trip owner |
+| PENDING | Cancel | CANCELLED | Order requester |
+| ACCEPTED | Mark ready for handoff | READY_FOR_HANDOFF | Associated trip owner |
+| READY_FOR_HANDOFF | Confirm receipt | DELIVERED | Order requester |
+
+READY_FOR_HANDOFF and DELIVERED are implemented by #194. No other transition is valid. A repeated request whose stored status is
+already the requested target is idempotent and returns Success without writing. If a competing or
+earlier action produced any other status, the operation returns AlreadyDecided with the latest persisted
+order. Every transition must run in a Firestore transaction, change only `status`, re-check the active
+session, and be enforced independently by production rules. Consequently, cancellation racing with an
+owner decision has exactly one winner; the loser receives the persisted winner rather than overwriting it.
 
 `decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
 ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
@@ -44,6 +60,17 @@ session loss or cancellation cannot undo a commit, but ended sessions cannot dis
 Order Details shares one saving/outcome state for decisions and readiness, displays persisted results,
 uses authoritative conflicts, and keeps confirmed content on recoverable failures for retry.
 
+Integration with #206: order creation and Accept/Reject publish their canonical notification event
+atomically with the order write. Cancellation uses requester authorization and changes only status;
+it does not publish a notification or remove earlier placement events. Readiness also publishes no
+additional event. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
+saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
+No shopping-completion prerequisite or trip-status/time restriction is added.
+`cancelOrder(id)` atomically verifies requester ownership and changes only PENDING to CANCELLED.
+Repeating cancellation returns the persisted CANCELLED order without another write. Accepted or rejected
+orders cannot be cancelled. A trip owner, outsider or signed-out caller cannot cancel the requester's
+order. Cancelled orders remain queryable history; no document or immutable order field is deleted.
+
 #194 receipt confirmation: `confirmReceipt(id)` authorizes the persisted requester before any outcome
 and atomically changes only READY_FOR_HANDOFF to DELIVERED. Authorized DELIVERED repeats return
 Success without writing; other statuses return AlreadyDecided with the persisted order. Owners who
@@ -62,7 +89,7 @@ ORDER_REJECTED are published atomically with their corresponding decisions. Rule
 events for those writes. READY_FOR_HANDOFF and DELIVERED publish no event and preserve existing events.
 Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
 saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
-No shopping-completion prerequisite, trip-status/time restriction or CANCELLED status is added.
+No shopping-completion prerequisite or trip-status/time restriction is added.
 
 #147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
 like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered

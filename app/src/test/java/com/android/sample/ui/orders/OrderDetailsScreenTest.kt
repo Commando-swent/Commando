@@ -66,6 +66,7 @@ class OrderDetailsScreenTest {
   private var backs = 0
   private var retries = 0
   private var readyRequests = 0
+  private var cancellations = 0
   private var receiptRequests = 0
   private val decisions = mutableListOf<OrderDecision>()
 
@@ -73,6 +74,94 @@ class OrderDetailsScreenTest {
   fun setUp() {
     originalTimeZone = TimeZone.getDefault()
     TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+  }
+
+  @Test
+  fun cancellationRequiresConfirmationAndCanBeDismissed() {
+    show(OrderDetailsUiState.Content(order, trip, viewerId = order.requesterId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithText("Cancel this order?").assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.KEEP_ORDER).performClick()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.runOnIdle { assertEquals(1, cancellations) }
+    compose.onNodeWithText("Cancel this order?").assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun cancellationRemainsReachableWithLargeTextAndUsesConfirmedStatus() {
+    val content = OrderDetailsUiState.Content(order, trip, order.requesterId)
+    show(content, fontScale = 1.5f)
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    val cancel = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+    cancel.performScrollTo().assertIsDisplayed().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertIsDisplayed().performClick()
+    compose.runOnIdle {
+      assertEquals(1, cancellations)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    cancel.performScrollTo().assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, cancellations)
+      state.value =
+          content.copy(
+              order = order.copy(status = OrderStatus.CANCELLED),
+              mutation = OrderMutationState.Saved,
+          )
+    }
+    cancel.assertDoesNotExist()
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun cancellationIsAvailableOnlyToThePendingOrdersRequester() {
+    show()
+    for (viewer in listOf(null, trip.ownerId, "outsider", order.requesterId)) for (status in
+        OrderStatus.entries) {
+      compose.runOnIdle {
+        state.value = OrderDetailsUiState.Content(order.copy(status = status), trip, viewer)
+      }
+      val action = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+      if (viewer == order.requesterId && status == OrderStatus.PENDING) action.assertExists()
+      else action.assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun interactiveCancellationPreviewSupportsKeepingAndConfirmingWithoutFirebase() {
+    compose.setContent { OrderCancellationPendingPreview() }
+    val cancel = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+    cancel.performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.KEEP_ORDER).performClick()
+    compose.onNodeWithText("PENDING").assertIsDisplayed()
+    cancel.performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+    cancel.assertDoesNotExist()
+  }
+
+  @Test
+  fun cancelledPreviewKeepsTheOrderContentAndOffersNoFurtherCancellation() {
+    compose.setContent { OrderCancellationConfirmedPreview() }
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Migros EPFL").assertIsDisplayed()
+    compose.onNodeWithText("2 × Milk").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+  }
+
+  @Test
+  fun sessionEndRemovesAnOpenCancellationDialogWithoutSubmitting() {
+    show(OrderDetailsUiState.Content(order, trip, order.requesterId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(0, cancellations) }
   }
 
   @After
@@ -100,6 +189,7 @@ class OrderDetailsScreenTest {
               onRetry = { retries++ },
               onDecision = { decisions += it },
               onMarkReadyForHandoff = { readyRequests++ },
+              onCancel = { cancellations++ },
               onConfirmReceipt = { receiptRequests++ },
           )
         }

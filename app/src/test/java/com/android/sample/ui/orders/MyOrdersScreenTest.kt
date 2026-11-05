@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex (cancellation regression tests).
 // AI assistance: Claude (Anthropic).
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
@@ -150,6 +151,34 @@ class MyOrdersScreenTest {
     inCard("PENDING")
     compose.onAllNodesWithText("CHF 6.20", substring = true).assertCountEquals(0)
     compose.onAllNodesWithText("Trip unavailable").assertCountEquals(0)
+  }
+
+  @Test
+  fun cancelledOrderStaysVisibleAndCanOpenDetails() {
+    assertCancelledHistoryRow("CANCELLED", "3 items · CHF 4.50")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h640dp-mdpi")
+  fun cancelledOrderUsesFrenchLabelOnNarrowScreen() {
+    assertCancelledHistoryRow("ANNULÉE", "3 articles · CHF 4.50")
+  }
+
+  private fun assertCancelledHistoryRow(label: String, summary: String) {
+    val cancelled = aliceMigros.copy(status = OrderStatus.CANCELLED)
+    val opened = mutableListOf<String>()
+    show(
+        MyOrdersUiState.Content(listOf(MyOrderRow(cancelled, migrosTrip))),
+        onOrderClick = { opened += it },
+    )
+    compose
+        .onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + cancelled.id)
+        .assertIsDisplayed()
+        .assert(hasText(label))
+        .assert(hasText("Migros EPFL"))
+        .assert(hasText(summary))
+        .performClick()
+    compose.runOnIdle { assertEquals(listOf(cancelled.id), opened) }
   }
 
   @Test

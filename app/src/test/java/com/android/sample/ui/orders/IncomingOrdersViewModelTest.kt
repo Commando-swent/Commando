@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code; OpenAI Codex (cancellation regression tests).
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderError
@@ -70,6 +70,25 @@ class IncomingOrdersViewModelTest {
 
   private fun rowIds(state: IncomingOrdersUiState) =
       (state as IncomingOrdersUiState.Content).rows.map { it.order.id }
+
+  @Test
+  fun refreshAfterRequesterCancellationRetainsCancelledOrderAndOtherPendingOrders() = runTest {
+    val vm = IncomingOrdersViewModel(orders, trip.id)
+    advanceUntilIdle()
+    sessionUser = newer.requesterId
+    val cancelled = newer.copy(status = OrderStatus.CANCELLED)
+    assertEquals(OrderResult.Success(cancelled), orders.cancelOrder(newer.id))
+    sessionUser = trip.ownerId
+    vm.refresh()
+    advanceUntilIdle()
+    val rows = (vm.uiState.value as IncomingOrdersUiState.Content).rows
+    assertEquals(listOf(cancelled, older), rows.map { it.order })
+    assertEquals(3L, rows.first().itemCount)
+    assertEquals(690L, rows.first().totalCents)
+    val reopened = IncomingOrdersViewModel(orders, trip.id)
+    advanceUntilIdle()
+    assertEquals(rows, (reopened.uiState.value as IncomingOrdersUiState.Content).rows)
+  }
 
   @Test
   fun ownerSeesOnlyThisTripsOrdersNewestFirstWithTheirSummary() = runTest {

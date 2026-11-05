@@ -581,6 +581,7 @@ private fun AuthenticatedApp(
             onRetry = model::retry,
             onDecision = model::decide,
             onMarkReadyForHandoff = model::markReadyForHandoff,
+            onCancel = model::cancel,
             onConfirmReceipt = model::confirmReceipt,
         )
       }

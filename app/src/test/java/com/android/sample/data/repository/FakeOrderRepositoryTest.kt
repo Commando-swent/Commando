@@ -685,6 +685,49 @@ class FakeOrderRepositoryTest {
     }
   }
 
+  @Test
+  fun requesterCanCancelPendingOrderIdempotently() = runTest {
+    userId = "requester-demo"
+    val original = order().copy(items = listOf(item, item.copy(productId = "bread")))
+    val orders = FakeOrderRepository({ userId }, listOf(original), tripRepository = trips())
+    val cancelled = original.copy(status = OrderStatus.CANCELLED)
+
+    repeat(2) { assertEquals(OrderResult.Success(cancelled), orders.cancelOrder(original.id)) }
+    assertEquals(OrderResult.Success(cancelled), orders.getOrderById(original.id))
+  }
+
+  @Test
+  fun cancellationRequiresRequesterAndPendingStatus() = runTest {
+    for (status in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      userId = "requester-demo"
+      val persisted = order().copy(status = status)
+      val orders = FakeOrderRepository({ userId }, listOf(persisted), tripRepository = trips())
+      assertEquals(
+          failure(OrderError.AlreadyDecided(persisted)),
+          orders.cancelOrder(persisted.id),
+      )
+    }
+    val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = trips())
+    userId = "commando"
+    assertEquals(failure(OrderError.PermissionDenied), orders.cancelOrder(order().id))
+    userId = null
+    assertEquals(failure(OrderError.NotAuthenticated), orders.cancelOrder(order().id))
+  }
+
+  @Test
+  fun invalidOrFailedCancellationLeavesTheOrderUnchanged() = runTest {
+    val stored = order()
+    val orders = fake(listOf(stored))
+    for (id in listOf("", "a/b", ".", "..")) {
+      assertEquals(failure(OrderError.InvalidData), orders.cancelOrder(id))
+    }
+    assertEquals(failure(OrderError.NotFound), orders.cancelOrder("missing"))
+    orders.forcedError = OrderError.Unknown
+    assertEquals(failure(OrderError.Unknown), orders.cancelOrder(stored.id))
+    orders.forcedError = null
+    assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+  }
+
   private fun failure(error: OrderError) = OrderResult.Error(error)
 
   @Test

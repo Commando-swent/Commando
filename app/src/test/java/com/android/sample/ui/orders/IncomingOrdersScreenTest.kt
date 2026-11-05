@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex (cancellation regression tests).
 // AI assistance: Claude Code.
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.test.*
@@ -54,6 +55,32 @@ class IncomingOrdersScreenTest {
     card(accepted).assert(hasText("ACCEPTED")).assert(hasText("1 item · CHF 1.80"))
     card(accepted).performClick()
     compose.runOnIdle { assertEquals(listOf(accepted.id), opened) }
+  }
+
+  @Test
+  fun cancelledOrderStaysVisibleAndCanOpenDetails() {
+    assertCancelledHistoryRow("CANCELLED", "3 items · CHF 7.70")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h640dp-mdpi")
+  fun cancelledOrderUsesFrenchLabelOnNarrowScreen() {
+    assertCancelledHistoryRow("ANNULÉE", "3 articles · CHF 7.70")
+  }
+
+  private fun assertCancelledHistoryRow(label: String, summary: String) {
+    val cancelled = pending.copy(status = OrderStatus.CANCELLED)
+    val opened = mutableListOf<String>()
+    show(
+        IncomingOrdersUiState.Content(listOf(IncomingOrderRow(cancelled))),
+        onOrderClick = { opened += it },
+    )
+    card(cancelled)
+        .assertIsDisplayed()
+        .assert(hasText(label))
+        .assert(hasText(summary))
+        .performClick()
+    compose.runOnIdle { assertEquals(listOf(cancelled.id), opened) }
   }
 
   @Test

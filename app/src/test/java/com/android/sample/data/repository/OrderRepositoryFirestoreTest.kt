@@ -277,6 +277,79 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  fun requesterCancellationIsIdempotentAndPreservesFinalOrders() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val cancelled = saved.copy(status = OrderStatus.CANCELLED)
+    assertEquals(OrderResult.Success(cancelled), repository.cancelOrder(saved.id))
+    assertEquals(OrderResult.Success(cancelled), repository.cancelOrder(saved.id))
+    assertEquals(cancelled, source.documents.getValue(saved.id).toOrder())
+    assertEquals(2, source.writes)
+
+    for (status in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      val persisted = saved.copy(status = status)
+      source.documents[saved.id] =
+          source.documents
+              .getValue(saved.id)
+              .copy(data = source.documents.getValue(saved.id).data + ("status" to status.name))
+      assertEquals(
+          error(OrderError.AlreadyDecided(persisted)),
+          repository.cancelOrder(saved.id),
+      )
+    }
+  }
+
+  @Test
+  fun cancellationRejectsInvalidMissingAndUnauthorizedRequests() = runTest {
+    repository.createOrder(draft)
+    for (id in listOf("", " ", "a/b", ".", "..")) {
+      assertEquals(error(OrderError.InvalidData), repository.cancelOrder(id))
+    }
+    assertEquals(error(OrderError.NotFound), repository.cancelOrder("missing"))
+    uid = "owner"
+    assertEquals(error(OrderError.PermissionDenied), repository.cancelOrder("b"))
+    uid = null
+    assertEquals(error(OrderError.NotAuthenticated), repository.cancelOrder("b"))
+  }
+
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun cancellationRecoversUncertainCommitAndDiscardsAnEndedSession() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.cancelOrder(saved.id))
+    source.confirmationFails = false
+    val writes = source.writes
+    assertEquals(
+        OrderResult.Success(saved.copy(status = OrderStatus.CANCELLED)),
+        OrderRepositoryFirestore(source, { uid }).cancelOrder(saved.id),
+    )
+    assertEquals(writes, source.writes)
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.cancelOrder(saved.id) }
+    runCurrent()
+    uid = "another-requester"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+    assertEquals(writes, source.writes)
+  }
+
+  @Test
+  fun cancellationRejectsMalformedOrInconsistentSourceResponses() = runTest {
+    repository.createOrder(draft)
+    val document = source.documents.getValue("b")
+    for (response in
+        listOf(
+            document,
+            document.copy(id = "other"),
+            document.copy(data = document.data - "status"),
+        )) {
+      source.decisionResult = response
+      assertEquals(error(OrderError.InvalidData), repository.cancelOrder("b"))
+    }
+  }
+
+  @Test
   fun suspendedDecisionsHandleSessionLossCancellationAndUncertainCommits() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     uid = "owner"
@@ -504,6 +577,22 @@ class OrderRepositoryFirestoreTest {
       }
       if (document.data["status"] != from) return document
       return document.copy(data = document.data + ("status" to target)).also {
+        documents[id] = it
+        writes++
+        if (confirmationFails) throw IllegalStateException("Confirmation unavailable")
+      }
+    }
+
+    override suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument {
+      beforeRead()
+      decisionResult?.let {
+        return it
+      }
+      val document = documents[id] ?: sourceError(Code.NOT_FOUND)
+      val order = document.toOrder() ?: sourceError(Code.INVALID_ARGUMENT)
+      if (order.requesterId != requesterId) sourceError(Code.PERMISSION_DENIED)
+      if (order.status != OrderStatus.PENDING) return document
+      return document.copy(data = document.data + ("status" to OrderStatus.CANCELLED.name)).also {
         documents[id] = it
         writes++
         if (confirmationFails) throw IllegalStateException("Confirmation unavailable")

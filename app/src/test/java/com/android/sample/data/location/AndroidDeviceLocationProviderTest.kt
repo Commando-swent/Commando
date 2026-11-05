@@ -71,10 +71,13 @@ class AndroidDeviceLocationProviderTest {
   }
 
   @Test
-  fun missingServiceAndDisabledServicesHaveDistinctFallbacks() = runTest {
+  fun missingServiceIsUnavailable() = runTest {
     every { context.getSystemService(LocationManager::class.java) } returns null
     assertEquals(DeviceLocationResult.Unavailable, provider.currentLocation())
-    every { context.getSystemService(LocationManager::class.java) } returns manager
+  }
+
+  @Test
+  fun disabledServicesAreReported() = runTest {
     every { manager.isLocationEnabled } returns false
     assertEquals(DeviceLocationResult.ServicesDisabled, provider.currentLocation())
   }
@@ -113,15 +116,19 @@ class AndroidDeviceLocationProviderTest {
   }
 
   @Test
-  fun nullFixAndMissingAccuracyAreUnavailable() = runTest {
-    val first = async { provider.currentLocation() }
+  fun nullFixIsUnavailable() = runTest {
+    val pending = async { provider.currentLocation() }
     runCurrent()
     callback.captured.accept(null)
-    assertEquals(DeviceLocationResult.Unavailable, first.await())
-    val second = async { provider.currentLocation() }
+    assertEquals(DeviceLocationResult.Unavailable, pending.await())
+  }
+
+  @Test
+  fun fixWithoutAccuracyIsUnavailable() = runTest {
+    val pending = async { provider.currentLocation() }
     runCurrent()
     callback.captured.accept(Location(LocationManager.NETWORK_PROVIDER))
-    assertEquals(DeviceLocationResult.Unavailable, second.await())
+    assertEquals(DeviceLocationResult.Unavailable, pending.await())
   }
 
   @Test

@@ -44,11 +44,17 @@ class MapLocationViewModelTest {
   }
 
   @Test
-  fun denialDoesNotReadAndRetryAfterGrantSucceeds() = runTest {
+  fun denialDoesNotReadLocation() = runTest {
     val model = model()
     model.request(false)
     assertEquals(DeviceLocationResult.PermissionDenied, result(model))
     assertEquals(0, calls)
+  }
+
+  @Test
+  fun requestAfterDenialReadsLocation() = runTest {
+    val model = model()
+    model.request(false)
     model.request(true)
     assertEquals(MapLocationUiState.Loading, model.uiState.value)
     runCurrent()
@@ -111,12 +117,16 @@ class MapLocationViewModelTest {
   }
 
   @Test
-  fun leavingScreenCancelsRequestAndForgetsResolvedCoordinates() = runTest {
+  fun stopForgetsResolvedCoordinates() = runTest {
     val model = model()
     model.request(true)
     runCurrent()
     model.stop()
     assertEquals(MapLocationUiState.Idle, model.uiState.value)
+  }
+
+  @Test
+  fun stopCancelsPendingRequest() = runTest {
     var cancelled = false
     read = {
       try {
@@ -125,6 +135,7 @@ class MapLocationViewModelTest {
         cancelled = true
       }
     }
+    val model = model()
     model.request(true)
     runCurrent()
     model.stop()

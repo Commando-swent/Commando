@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -85,13 +86,15 @@ fun TripMapScreen(
   val fix =
       ((locationState as? MapLocationUiState.Resolved)?.result as? DeviceLocationResult.Available)
           ?.location
-  var camera by
-      remember(fix) {
-        mutableStateOf(
-            fix?.campusPosition()?.let { MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
-                ?: MapCamera()
-        )
-      }
+  var camera by rememberSaveable(stateSaver = MapCamera.Saver) { mutableStateOf(MapCamera()) }
+  var lastCenteredFixTimestamp by rememberSaveable { mutableStateOf<Long?>(null) }
+  LaunchedEffect(fix) {
+    if (fix == null) lastCenteredFixTimestamp = null
+    else if (lastCenteredFixTimestamp != fix.elapsedRealtimeMillis) {
+      fix.campusPosition()?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+      lastCenteredFixTimestamp = fix.elapsedRealtimeMillis
+    }
+  }
   val nearby =
       remember(content?.trips, fix) {
         fix?.let { nearbyTrips(content?.trips.orEmpty(), it) }.orEmpty()

@@ -7,6 +7,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
@@ -51,8 +52,12 @@ class TripMapScreenTest {
   private var locationState by mutableStateOf<MapLocationUiState>(MapLocationUiState.Idle)
   private var locate: (() -> Unit)? = null
 
-  private fun show(realBackground: Boolean = false, fontScale: Float = 1f) {
-    compose.setContent {
+  private fun show(
+      realBackground: Boolean = false,
+      fontScale: Float = 1f,
+      restoration: StateRestorationTester? = null,
+  ) {
+    val screen: @Composable () -> Unit = {
       val density = LocalDensity.current
       CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
         SampleAppTheme {
@@ -72,6 +77,7 @@ class TripMapScreenTest {
         }
       }
     }
+    if (restoration != null) restoration.setContent(screen) else compose.setContent(screen)
   }
 
   @Test
@@ -392,5 +398,57 @@ class TripMapScreenTest {
     compose
         .onNodeWithText(context.resources.getQuantityString(R.plurals.trip_map_count, 1, 1))
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun loadingKeepsTheUserCamera() {
+    assertCameraSurvives(MapLocationUiState.Loading)
+  }
+
+  @Test
+  fun expiredFixKeepsTheUserCamera() {
+    assertCameraSurvives(MapLocationUiState.Idle)
+  }
+
+  private fun assertCameraSurvives(next: MapLocationUiState) {
+    locationState =
+        MapLocationUiState.Resolved(
+            DeviceLocationResult.Available(
+                DeviceLocation(point.latitude, point.longitude, 150f, 1000)
+            )
+        )
+    show()
+    val marker = compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id)
+    compose.onNodeWithTag(TripMapTestTags.SURFACE).performTouchInput {
+      swipe(Offset(center.x, center.y + 90), Offset(center.x + 60, center.y + 90))
+    }
+    val before = marker.fetchSemanticsNode().boundsInRoot.center
+    compose.runOnIdle { locationState = next }
+    val after = marker.fetchSemanticsNode().boundsInRoot.center
+    assertEquals(before.x, after.x, 1f)
+    assertEquals(before.y, after.y, 1f)
+  }
+
+  @Test
+  fun restoredCameraKeepsUserPanInsteadOfRecenteringTheSameFix() {
+    val restoration = StateRestorationTester(compose)
+    locationState =
+        MapLocationUiState.Resolved(
+            DeviceLocationResult.Available(
+                DeviceLocation(point.latitude, point.longitude, 150f, 1000)
+            )
+        )
+    show(restoration = restoration)
+    val dot = compose.onNodeWithTag(MapLocationTestTags.POSITION)
+    val initial = dot.fetchSemanticsNode().boundsInRoot.center
+    compose.onNodeWithTag(TripMapTestTags.SURFACE).performTouchInput {
+      swipe(Offset(center.x, center.y + 90), Offset(center.x + 60, center.y + 90))
+    }
+    val before = dot.fetchSemanticsNode().boundsInRoot.center
+    assertTrue(before.x > initial.x + 10)
+    restoration.emulateSavedInstanceStateRestore()
+    val after = dot.fetchSemanticsNode().boundsInRoot.center
+    assertEquals(before.x, after.x, 1f)
+    assertEquals(before.y, after.y, 1f)
   }
 }

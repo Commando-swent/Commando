@@ -58,3 +58,5 @@ delivery filter. The background, pins and position share a camera transform; off
 trips remain selectable. Out-of-campus fixes are explained without drawing a false position.
 
 Nearby counts and badges require accuracy no larger than `HANDOFF_RADIUS_METERS` (500 m). Less precise fixes retain the approximate position and straight-line distance, but display an explanation and the total trip count instead of nearby claims. No precise-location permission is requested.
+
+The camera center is bounded by the visible extent at its zoom, so campus-edge fixes cannot expose blank space. Camera framing survives loading, expiry and activity recreation. Only a newly acquired fix recenters it; restoring the same fix preserves user pan and zoom. Saved viewport state is separate from the transient ViewModel location fix.

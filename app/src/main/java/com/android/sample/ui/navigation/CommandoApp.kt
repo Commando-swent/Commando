@@ -581,6 +581,7 @@ private fun AuthenticatedApp(
             onRetry = model::retry,
             onDecision = model::decide,
             onMarkReadyForHandoff = model::markReadyForHandoff,
+            onConfirmReceipt = model::confirmReceipt,
         )
       }
       composable(route = CommandoScreens.Profile.name) {

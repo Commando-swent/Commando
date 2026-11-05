@@ -66,6 +66,7 @@ class OrderDetailsScreenTest {
   private var backs = 0
   private var retries = 0
   private var readyRequests = 0
+  private var receiptRequests = 0
   private val decisions = mutableListOf<OrderDecision>()
 
   @Before
@@ -99,6 +100,7 @@ class OrderDetailsScreenTest {
               onRetry = { retries++ },
               onDecision = { decisions += it },
               onMarkReadyForHandoff = { readyRequests++ },
+              onConfirmReceipt = { receiptRequests++ },
           )
         }
       }
@@ -271,6 +273,75 @@ class OrderDetailsScreenTest {
           OrderDetailsUiState.Content(order.copy(status = OrderStatus.READY_FOR_HANDOFF), trip)
     }
     compose.onNodeWithText("PRÊTE À ÊTRE REMISE").assertIsDisplayed()
+  }
+
+  @Test
+  fun receiptActionDispatchesDisablesWhileSavingAndDisappearsAfterDelivery() {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val content = OrderDetailsUiState.Content(ready, trip, order.requesterId)
+    show(content)
+    val action = compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT)
+    action.performScrollTo().assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, receiptRequests)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    action.performScrollTo().assertIsNotEnabled().performClick()
+    compose.runOnIdle { assertEquals(1, receiptRequests) }
+    compose.onNodeWithText("Saving order status\u2026").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle {
+      state.value =
+          content.copy(
+              order = ready.copy(status = OrderStatus.DELIVERED),
+              mutation = OrderMutationState.Saved,
+          )
+    }
+    action.assertDoesNotExist()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun receiptActionIsHiddenForOwnersOutsidersAndNonReadyRequesterOrders() {
+    show()
+    for (content in
+        listOf(
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+                trip,
+                trip.ownerId,
+            ),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+                trip,
+                "other",
+            ),
+            OrderDetailsUiState.Content(order.copy(status = OrderStatus.READY_FOR_HANDOFF), trip),
+        ) +
+            listOf(
+                    OrderStatus.PENDING,
+                    OrderStatus.ACCEPTED,
+                    OrderStatus.REJECTED,
+                    OrderStatus.DELIVERED,
+                )
+                .map {
+                  OrderDetailsUiState.Content(order.copy(status = it), trip, order.requesterId)
+                }) {
+      compose.runOnIdle { state.value = content }
+      compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun receiptActionAndDeliveredStatusUseFrenchLabels() {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(OrderDetailsUiState.Content(ready, trip, order.requesterId))
+    compose.onNodeWithText("Confirmer la réception").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle {
+      state.value = OrderDetailsUiState.Content(ready.copy(status = OrderStatus.DELIVERED), trip)
+    }
+    compose.onNodeWithText("LIVRÉE").assertIsDisplayed()
   }
 
   private fun assertReadOnlyContent(status: OrderStatus, label: String) {

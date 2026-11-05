@@ -1,4 +1,6 @@
 <resources>
+    <string name="order_confirm_receipt">Confirmer la réception</string>
+    <string name="order_details_delivered">LIVRÉE</string>
     <string name="add_items_title">Ajouter des articles</string>
     <string name="auth_brand">Command’o</string>
     <string name="auth_back">←  Retour</string>

@@ -138,12 +138,15 @@ service cloud.firestore {
       allow list: if isAuthenticated()
         && (resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
       allow update: if isAuthenticated()
-        && ownsOrderTrip(resource.data)
-        && resource.data.requesterId != request.auth.uid
-        && ((resource.data.status == "PENDING"
-            && request.resource.data.status in ["ACCEPTED", "REJECTED"])
-          || (resource.data.status == "ACCEPTED"
-            && request.resource.data.status == "READY_FOR_HANDOFF"))
+        && ((ownsOrderTrip(resource.data)
+            && resource.data.requesterId != request.auth.uid
+            && ((resource.data.status == "PENDING"
+                && request.resource.data.status in ["ACCEPTED", "REJECTED"])
+              || (resource.data.status == "ACCEPTED"
+                && request.resource.data.status == "READY_FOR_HANDOFF")))
+          || (resource.data.requesterId == request.auth.uid
+            && resource.data.status == "READY_FOR_HANDOFF"
+            && request.resource.data.status == "DELIVERED"))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"]);
       allow delete: if false;
     }

@@ -94,9 +94,8 @@ class ProductRepositoryFirestoreTest {
     val dataSource = InMemoryProductFirestoreDataSource()
     // Each malformed `id` belongs to its own document, as Firestore document IDs are unique.
     dataSource.documentsByStore["coop"] =
-        invalidIds.mapIndexed { index, document ->
-          document.copy(documentId = "${4446521 + index}")
-        } + valid
+        invalidIds.mapIndexed { index, document -> document.copy(id = "${4446521 + index}") } +
+            valid
 
     val products =
         ProductRepositoryFirestore(dataSource)
@@ -348,7 +347,7 @@ class ProductRepositoryFirestoreTest {
 
     val first = repository.searchProducts("migros", "milk", limit = 2).successData()
     dataSource.documentsByStore["migros"] =
-        dataSource.documentsByStore.getValue("migros").filterNot { it.documentId == "2" }
+        dataSource.documentsByStore.getValue("migros").filterNot { it.id == "2" }
     val second = repository.searchProducts("migros", "milk", first.nextCursor, 2).successData()
 
     assertEquals("2", first.nextCursor)
@@ -488,7 +487,7 @@ class ProductRepositoryFirestoreTest {
       sizeText: Any? = null,
   ) =
       ProductFirestoreDocument(
-          documentId = (id as? String)?.substringAfter(':') ?: "$id",
+          id = (id as? String)?.substringAfter(':') ?: "$id",
           data =
               mapOf(
                   "id" to id,
@@ -533,8 +532,8 @@ class ProductRepositoryFirestoreTest {
       failure?.let { throw it }
       return documentsByStore[storeId]
           .orEmpty()
-          .sortedBy { it.documentId }
-          .filter { afterDocumentId == null || it.documentId > afterDocumentId }
+          .sortedBy { it.id }
+          .filter { afterDocumentId == null || it.id > afterDocumentId }
           .filter { "removed_at" in it.data && it.data["removed_at"] == null }
           .filter { document ->
             val prefixes = document.data["search_prefixes"] as? Map<*, *>

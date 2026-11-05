@@ -49,7 +49,7 @@ internal constructor(private val dataSource: ProductFirestoreDataSource) : Produ
           ProductPage(
               products = documents.mapNotNull { it.toProduct(normalizedStoreId) },
               // A full page may be followed by more documents, malformed ones included.
-              nextCursor = documents.takeIf { it.size == limit }?.last()?.documentId,
+              nextCursor = documents.takeIf { it.size == limit }?.last()?.id,
           )
       )
     }
@@ -81,8 +81,15 @@ internal fun normalizeProductSearchText(text: String): String =
         )
         .replace(COMBINING_MARKS, "")
 
-internal data class ProductFirestoreDocument(val documentId: String, val data: Map<String, Any?>)
+/**
+ * Raw product transport; [FirestoreDocument.id] is the pagination cursor, distinct from the stored
+ * global product ID in its fields. Product decoding remains local to this repository.
+ */
+internal typealias ProductFirestoreDocument = FirestoreDocument
 
+/**
+ * Product-query boundary; raw pages include malformed records so cursor advancement stays stable.
+ */
 internal fun interface ProductFirestoreDataSource {
   /** Active products of [storeId] whose search text holds every term, after [afterDocumentId]. */
   suspend fun queryProducts(
@@ -93,6 +100,9 @@ internal fun interface ProductFirestoreDataSource {
   ): List<ProductFirestoreDocument>
 }
 
+/**
+ * Server-only active-product queries; cached pages must not masquerade as the end of the catalogue.
+ */
 internal class FirebaseProductFirestoreDataSource(private val firestore: FirebaseFirestore) :
     ProductFirestoreDataSource {
   override suspend fun queryProducts(
@@ -121,7 +131,7 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
         .get(Source.SERVER)
         .await()
         .documents
-        .map { ProductFirestoreDocument(it.id, it.data.orEmpty()) }
+        .map { it.toFirestoreDocument() }
   }
 }
 

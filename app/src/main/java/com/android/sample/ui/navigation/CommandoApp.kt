@@ -60,7 +60,9 @@ import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.map.MapLocationHost
 import com.android.sample.ui.map.TripMapScreen
+import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
@@ -526,16 +528,20 @@ private fun AuthenticatedApp(
         RefreshOnResume(map, map::refresh)
         val state by map.uiState.collectAsState()
         val selectedPoint by locationFilter.selected.collectAsState()
-        TripMapScreen(
-            state,
-            map::refresh,
-            map::selectTrip,
-            map::clearSelection,
-            onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
-            onBack = { navController.popBackStack() },
-            selectedPoint = selectedPoint,
-            onClearPoint = locationFilter::clear,
-        )
+        MapLocationHost(state == TripMapUiState.SessionEnded) { locationState, locate ->
+          TripMapScreen(
+              state,
+              map::refresh,
+              map::selectTrip,
+              map::clearSelection,
+              onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
+              onBack = { navController.popBackStack() },
+              selectedPoint = selectedPoint,
+              onClearPoint = locationFilter::clear,
+              locationState = locationState,
+              onLocate = locate,
+          )
+        }
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->
         val model: MyOrdersViewModel =

@@ -1,0 +1,11 @@
+<resources>
+    <string name="map_location_loading">Finding your approximate location…</string>
+    <string name="map_location_denied">Location permission was denied. You can still browse trips. Allow location in app settings or retry Locate me.</string>
+    <string name="map_location_disabled">Location services are disabled. Enable them in device settings, then retry.</string>
+    <string name="map_location_failure">Couldn’t obtain your location. You can still browse trips. Please retry.</string>
+    <string name="map_location_outside">Your approximate position is outside the campus map. Trip distances are still available.</string>
+    <string name="map_location_nearby_count">%1$d nearby trips · within ≈ %2$d m</string>
+    <string name="map_location_distance">≈ %1$d m · straight line</string>
+    <string name="map_location_nearby_distance">Nearby · ≈ %1$d m straight line</string>
+    <string name="map_location_position">Approximate position · accuracy ± %1$d m</string>
+</resources>

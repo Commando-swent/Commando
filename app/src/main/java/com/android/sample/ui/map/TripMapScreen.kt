@@ -3,8 +3,10 @@ package com.android.sample.ui.map
 // AI assistance: OpenAI Codex. Layout: Figma 424:2112, 424:2408 and 424:3648–424:3917.
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -16,6 +18,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.findRootCoordinates
@@ -28,13 +32,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
+import com.android.sample.data.location.DeviceLocationResult
+import com.android.sample.model.DeviceLocation
+import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.distanceMeters
+import com.android.sample.model.distanceTo
 import com.android.sample.model.hasValidCoordinates
+import com.android.sample.model.nearbyTrips
 import com.android.sample.ui.components.formatTripTime
 import java.time.Instant
 import java.time.ZoneId
@@ -44,6 +55,10 @@ import kotlinx.coroutines.launch
 
 /** Geographic extent shared by the bundled drawing and the marker projection. */
 internal val CAMPUS_MAP_PROJECTION = CampusMapProjection(46.516, 46.526, 6.559, 6.573)
+
+private val DEVICE_POSITION_DIAMETER = 24.dp
+private val DEVICE_POSITION_INSET = 5.dp
+private const val DEVICE_POSITION_HALO_ALPHA = 0.25f
 
 /** Full-viewport map with the Figma header, list/map switch and floating trip/state cards. */
 @Composable
@@ -57,6 +72,8 @@ fun TripMapScreen(
     modifier: Modifier = Modifier,
     selectedPoint: Location? = null,
     onClearPoint: () -> Unit = {},
+    locationState: MapLocationUiState = MapLocationUiState.Idle,
+    onLocate: (() -> Unit)? = null,
     mapSurface: @Composable (Modifier) -> Unit = { CampusMapBackground(it) },
 ) {
   val content = state as? TripMapUiState.Content
@@ -64,13 +81,28 @@ fun TripMapScreen(
   val snackbar = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val locationMessage = stringResource(R.string.trip_map_location_unavailable)
+  val fix =
+      ((locationState as? MapLocationUiState.Resolved)?.result as? DeviceLocationResult.Available)
+          ?.location
+  var camera by
+      remember(fix) {
+        mutableStateOf(
+            fix?.campusPosition()?.let { MapCamera(it, LOCATION_CAMERA_ZOOM) } ?: MapCamera()
+        )
+      }
+  val nearby =
+      remember(content?.trips, fix) {
+        fix?.let { nearbyTrips(content?.trips.orEmpty(), it) }.orEmpty()
+      }
+  val feedback = mapLocationFeedback(locationState)
+  LaunchedEffect(feedback) { if (feedback != null) snackbar.showSnackbar(feedback) }
   val uri = LocalUriHandler.current
   val density = LocalDensity.current
   var viewportBounds by remember { mutableStateOf(Rect.Zero) }
   var controlsBounds by remember { mutableStateOf(Rect.Zero) }
   var selectorBounds by
-      remember(groups, viewportBounds, controlsBounds) { mutableStateOf(Rect.Zero) }
-  val markerBounds = remember(groups) { mutableStateMapOf<String, Rect>() }
+      remember(groups, viewportBounds, controlsBounds, camera) { mutableStateOf(Rect.Zero) }
+  val markerBounds = remember(groups, camera) { mutableStateMapOf<String, Rect>() }
   BoxWithConstraints(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
     val showLocateWithCard = maxHeight >= 400.dp
     val controlsHeight = with(density) { controlsBounds.height.toDp() }
@@ -79,7 +111,10 @@ fun TripMapScreen(
       MapRoundAction(
           R.drawable.map_locate,
           R.string.trip_map_locate,
-          { scope.launch { snackbar.showSnackbar(locationMessage) } },
+          {
+            if (onLocate != null) onLocate()
+            else scope.launch { snackbar.showSnackbar(locationMessage) }
+          },
           Modifier.testTag(TripMapTestTags.LOCATE),
       )
     }
@@ -89,6 +124,9 @@ fun TripMapScreen(
         selectedPoint,
         onSelectTrip,
         mapSurface,
+        fix,
+        camera,
+        { dx, dy, zoom -> camera = camera.moved(dx, dy, zoom) },
         onViewportBounds = { viewportBounds = it },
     ) { id, bounds ->
       markerBounds[id] = bounds
@@ -110,7 +148,14 @@ fun TripMapScreen(
         when (state) {
           TripMapUiState.Loading -> stringResource(R.string.trip_map_loading_subtitle)
           is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
-          else -> pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
+          else ->
+              if (fix != null && content != null)
+                  stringResource(
+                      R.string.map_location_nearby_count,
+                      nearby.size,
+                      HANDOFF_RADIUS_METERS.toInt(),
+                  )
+              else pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
         }
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
@@ -124,6 +169,12 @@ fun TripMapScreen(
           state != TripMapUiState.Loading && state != TripMapUiState.SessionEnded,
           Modifier.fillMaxWidth(),
       )
+      fix?.let {
+        Text(
+            stringResource(R.string.map_location_position, it.accuracyMeters.roundToInt()),
+            style = MaterialTheme.typography.labelSmall,
+        )
+      }
       selectedPoint?.let {
         TextButton(onClearPoint, Modifier.testTag(TripMapTestTags.CLEAR_FILTER)) {
           Text(stringResource(R.string.trip_map_clear_filter, it.name), fontSize = 12.sp)
@@ -149,7 +200,9 @@ fun TripMapScreen(
       }
       is TripMapUiState.Content -> {
         val offMap = groups.filter { group ->
-          CAMPUS_MAP_PROJECTION.project(group.first().handoffLocation) == null ||
+          CAMPUS_MAP_PROJECTION.project(group.first().handoffLocation)?.let {
+            camera.project(it).inViewport
+          } != true ||
               markerBounds[group.first().id]?.let { bounds ->
                 bounds.overlaps(controlsBounds) ||
                     bounds.overlaps(selectorBounds) ||
@@ -199,8 +252,10 @@ fun TripMapScreen(
           ) {
             if (showLocateWithCard) locate()
             MapTripPreview(
-                trip.mapSummary(selectedPoint = selectedPoint),
-                state.selectedGroup.map { it.mapSummary(selectedPoint = selectedPoint) },
+                trip.mapSummary(selectedPoint = selectedPoint, devicePosition = fix),
+                state.selectedGroup.map {
+                  it.mapSummary(selectedPoint = selectedPoint, devicePosition = fix)
+                },
                 onSelectTrip,
                 onClearSelection,
                 { onTripDetails(trip.id) },
@@ -239,7 +294,10 @@ fun TripMapScreen(
     if (content?.selectedTrip == null) {
       Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
     }
-    SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
+    SnackbarHost(
+        snackbar,
+        Modifier.align(Alignment.TopCenter).padding(top = controlsHeight + 16.dp),
+    )
   }
 }
 
@@ -272,6 +330,7 @@ private fun Trip.markerTime(): String {
 private fun Trip.mapSummary(
     position: MapPosition = MapPosition(0.0, 0.0),
     selectedPoint: Location? = null,
+    devicePosition: DeviceLocation? = null,
 ): MapTripSummary {
   val locale = LocalConfiguration.current.locales[0]
   val departure =
@@ -284,10 +343,20 @@ private fun Trip.mapSummary(
           tomorrow = stringResource(R.string.trip_tomorrow),
       )
   val meters =
-      selectedPoint
-          ?.takeIf { it.hasValidCoordinates() && handoffLocation.hasValidCoordinates() }
-          ?.let { distanceMeters(it, handoffLocation).roundToInt() }
-  val distance = meters?.let { stringResource(R.string.trip_map_distance, it) }
+      remember(selectedPoint, handoffLocation) {
+        selectedPoint
+            ?.takeIf { it.hasValidCoordinates() && handoffLocation.hasValidCoordinates() }
+            ?.let { distanceMeters(it, handoffLocation).roundToInt() }
+      }
+  val deviceMeters = remember(devicePosition, handoffLocation) { devicePosition?.distanceTo(this) }
+  val distance =
+      if (deviceMeters != null)
+          stringResource(
+              if (deviceMeters <= HANDOFF_RADIUS_METERS) R.string.map_location_nearby_distance
+              else R.string.map_location_distance,
+              deviceMeters.roundToInt(),
+          )
+      else meters?.let { stringResource(R.string.trip_map_distance, it) }
   return MapTripSummary(
       id,
       store.name,
@@ -308,19 +377,64 @@ private fun MapTripCanvas(
     selectedPoint: Location?,
     onSelectTrip: (String) -> Unit,
     mapSurface: @Composable (Modifier) -> Unit,
+    devicePosition: DeviceLocation?,
+    camera: MapCamera,
+    onCameraChange: (Double, Double, Float) -> Unit,
     onViewportBounds: (Rect) -> Unit,
+    modifier: Modifier = Modifier,
     onMarkerBounds: (String, Rect) -> Unit,
 ) {
   BoxWithConstraints(
-      Modifier.fillMaxSize().clipToBounds().testTag(TripMapTestTags.SURFACE).onGloballyPositioned {
-        onViewportBounds(it.boundsInRoot())
-      }
+      modifier
+          .fillMaxSize()
+          .clipToBounds()
+          .testTag(TripMapTestTags.SURFACE)
+          .pointerInput(devicePosition) {
+            detectTransformGestures { _, pan, zoom, _ ->
+              onCameraChange(
+                  pan.x.toDouble() / size.width,
+                  pan.y.toDouble() / size.height,
+                  zoom,
+              )
+            }
+          }
+          .onGloballyPositioned { onViewportBounds(it.boundsInRoot()) }
   ) {
-    mapSurface(Modifier.matchParentSize())
+    mapSurface(
+        Modifier.matchParentSize().graphicsLayer {
+          scaleX = camera.zoom
+          scaleY = camera.zoom
+          translationX = ((.5 - camera.center.x) * camera.zoom * size.width).toFloat()
+          translationY = ((.5 - camera.center.y) * camera.zoom * size.height).toFloat()
+        }
+    )
+    devicePosition?.campusPosition()?.let { point ->
+      val projected = camera.project(point)
+      if (!projected.inViewport) return@let
+      val description =
+          stringResource(R.string.map_location_position, devicePosition.accuracyMeters.roundToInt())
+      Box(
+          Modifier.offset(
+                  maxWidth * projected.x.toFloat() - DEVICE_POSITION_DIAMETER / 2,
+                  maxHeight * projected.y.toFloat() - DEVICE_POSITION_DIAMETER / 2,
+              )
+              .size(DEVICE_POSITION_DIAMETER)
+              .background(
+                  MaterialTheme.colorScheme.primary.copy(alpha = DEVICE_POSITION_HALO_ALPHA),
+                  CircleShape,
+              )
+              .padding(DEVICE_POSITION_INSET)
+              .background(MaterialTheme.colorScheme.primary, CircleShape)
+              .testTag(MapLocationTestTags.POSITION)
+              .semantics { contentDescription = description }
+      )
+    }
     groups.forEach { group ->
       val trip = group.firstOrNull { it.id == selectedTripId } ?: group.first()
-      CAMPUS_MAP_PROJECTION.project(trip.handoffLocation)?.let { position ->
-        val summary = trip.mapSummary(position, selectedPoint)
+      CAMPUS_MAP_PROJECTION.project(trip.handoffLocation)?.let { original ->
+        val position = camera.project(original)
+        if (!position.inViewport) return@let
+        val summary = trip.mapSummary(position, selectedPoint, devicePosition)
         val selected = trip.id == selectedTripId
         val x = maxWidth * summary.x
         val half =

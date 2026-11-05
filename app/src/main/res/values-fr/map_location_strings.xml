@@ -1,0 +1,11 @@
+<resources>
+    <string name="map_location_loading">Recherche de votre position approximative…</string>
+    <string name="map_location_denied">La localisation a été refusée. Vous pouvez consulter les trajets. Autorisez-la dans les réglages de l’application ou réessayez Me localiser.</string>
+    <string name="map_location_disabled">La localisation est désactivée. Activez-la dans les réglages de l’appareil, puis réessayez.</string>
+    <string name="map_location_failure">Impossible d’obtenir votre position. Vous pouvez consulter les trajets. Réessayez.</string>
+    <string name="map_location_outside">Votre position approximative est hors de la carte du campus. Les distances restent disponibles.</string>
+    <string name="map_location_nearby_count">%1$d trajets proches · à moins de ≈ %2$d m</string>
+    <string name="map_location_distance">≈ %1$d m · à vol d’oiseau</string>
+    <string name="map_location_nearby_distance">Proche · ≈ %1$d m à vol d’oiseau</string>
+    <string name="map_location_position">Position approximative · précision ± %1$d m</string>
+</resources>

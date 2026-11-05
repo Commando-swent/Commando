@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
+import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.*
 import com.android.sample.ui.navigation.NavigationTestTags
@@ -47,6 +48,8 @@ class TripMapScreenTest {
   private var details: String? = null
   private var refreshes = 0
   private var clears = 0
+  private var locationState by mutableStateOf<MapLocationUiState>(MapLocationUiState.Idle)
+  private var locate: (() -> Unit)? = null
 
   private fun show(realBackground: Boolean = false, fontScale: Float = 1f) {
     compose.setContent {
@@ -61,6 +64,8 @@ class TripMapScreenTest {
               { details = it },
               {},
               selectedPoint = point,
+              locationState = locationState,
+              onLocate = locate,
               onClearPoint = { clears++ },
               mapSurface = { if (realBackground) CampusMapBackground(it) else Box(it) },
           )
@@ -246,5 +251,130 @@ class TripMapScreenTest {
         .onNodeWithTag(TripMapTestTags.MARKER_LABEL_PREFIX + trip.id, useUnmergedTree = true)
         .performTouchInput { click(Offset(width - 2f, center.y)) }
     compose.onNodeWithTag(MockMapTestTags.SUMMARY).assertIsDisplayed()
+  }
+
+  @Test
+  fun locateShowsPositionAndDeviceDistanceWithoutChangingDeliveryFilter() {
+    var requests = 0
+    val fix = DeviceLocation(point.latitude, point.longitude, 150f, 1000)
+    locate = { requests++ }
+    show()
+    compose.onNodeWithTag(TripMapTestTags.LOCATE).performClick()
+    assertEquals(1, requests)
+    compose.runOnIdle {
+      locationState = MapLocationUiState.Resolved(DeviceLocationResult.Available(fix))
+    }
+    val surface = compose.onNodeWithTag(TripMapTestTags.SURFACE).fetchSemanticsNode().boundsInRoot
+    val position =
+        compose.onNodeWithTag(MapLocationTestTags.POSITION).fetchSemanticsNode().boundsInRoot
+    assertEquals(surface.center.x, position.center.x, 1f)
+    assertEquals(surface.center.y, position.center.y, 1f)
+    compose.onNodeWithTag(TripMapTestTags.CLEAR_FILTER).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).performClick()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    compose
+        .onNodeWithText(context.getString(R.string.map_location_nearby_distance, 0))
+        .assertExists()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    assertEquals(trip.id, details)
+    assertEquals(0, clears)
+  }
+
+  @Test
+  fun everyLocationFallbackKeepsTripMarkersAndSelectionUsable() {
+    show()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    for ((result, message) in
+        listOf(
+            DeviceLocationResult.PermissionDenied to R.string.map_location_denied,
+            DeviceLocationResult.ServicesDisabled to R.string.map_location_disabled,
+            DeviceLocationResult.Unavailable to R.string.trip_map_location_unavailable,
+            DeviceLocationResult.Failure to R.string.map_location_failure,
+        )) {
+      compose.runOnIdle { locationState = MapLocationUiState.Resolved(result) }
+      compose.onNodeWithText(context.getString(message)).assertIsDisplayed()
+      compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
+      compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).assertExists()
+    }
+  }
+
+  @Test
+  fun offCampusLocationIsExplainedWithoutDrawingAFalsePosition() {
+    locationState =
+        MapLocationUiState.Resolved(
+            DeviceLocationResult.Available(DeviceLocation(47.0, 6.56, 150f, 1000))
+        )
+    show()
+    compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
+    compose
+        .onNodeWithText(
+            ApplicationProvider.getApplicationContext<Context>()
+                .getString(R.string.map_location_outside)
+        )
+        .assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).performClick()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.waitForIdle()
+    assertEquals(trip.id, details)
+  }
+
+  @Test
+  fun cameraPanMovesTheDotAndNewFixRecentersIt() {
+    val fix = DeviceLocation(point.latitude, point.longitude, 150f, 1000)
+    locationState = MapLocationUiState.Resolved(DeviceLocationResult.Available(fix))
+    show()
+    val surface = compose.onNodeWithTag(TripMapTestTags.SURFACE)
+    val before =
+        compose.onNodeWithTag(MapLocationTestTags.POSITION).fetchSemanticsNode().boundsInRoot.center
+    surface.performTouchInput {
+      swipe(Offset(center.x, center.y + 90), Offset(center.x + 60, center.y + 90))
+    }
+    val after =
+        compose.onNodeWithTag(MapLocationTestTags.POSITION).fetchSemanticsNode().boundsInRoot.center
+    assertTrue("Dot before=$before after=$after", after.x > before.x + 10)
+    compose.runOnIdle {
+      locationState =
+          MapLocationUiState.Resolved(
+              DeviceLocationResult.Available(fix.copy(elapsedRealtimeMillis = 1001))
+          )
+    }
+    val recentered =
+        compose.onNodeWithTag(MapLocationTestTags.POSITION).fetchSemanticsNode().boundsInRoot.center
+    assertEquals(before.x, recentered.x, 1f)
+    assertEquals(before.y, recentered.y, 1f)
+  }
+
+  @Test
+  fun recenteringKeepsTripsOutsideTheNewViewportSelectable() {
+    val far = trip.copy(id = "edge", handoffLocation = Location("Campus edge", 46.525, 6.572))
+    state = TripMapUiState.Content(listOf(far))
+    locationState =
+        MapLocationUiState.Resolved(
+            DeviceLocationResult.Available(
+                DeviceLocation(point.latitude, point.longitude, 150f, 1000)
+            )
+        )
+    show()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + far.id).assertDoesNotExist()
+    compose.onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + far.id).performScrollTo().performClick()
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.waitForIdle()
+    assertEquals(far.id, details)
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
+  fun locationEnabledKeepsTripDetailsReachableWithLargeFontsInLandscape() {
+    state = TripMapUiState.Content(listOf(trip), trip.id)
+    locationState =
+        MapLocationUiState.Resolved(
+            DeviceLocationResult.Available(
+                DeviceLocation(point.latitude, point.longitude, 150f, 1000)
+            )
+        )
+    show(fontScale = 2f)
+    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.waitForIdle()
+    assertEquals(trip.id, details)
   }
 }

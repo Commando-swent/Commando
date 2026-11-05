@@ -1,11 +1,10 @@
-# Optional map location — issue #195, part 1
+# Optional map location — issue #195
 
 AI assistance: OpenAI Codex (implementation and tests).
 
 This foundation is intentionally independent of the trip feed and shared delivery-location
 filter. It adds no automatic permission request, network upload, location persistence,
-background tracking, external SDK or second trip repository. The existing map behaves as
-before until the screen integration in part 2.
+background tracking, external SDK or second trip repository. The map integration connects this optional foundation to the campus map.
 
 ## Contract for the map host (part 2)
 
@@ -45,6 +44,15 @@ invalid coordinates, nonfinite/negative accuracy, future timestamps or fixes old
 References: [Android runtime permission guidance](https://developer.android.com/develop/sensors-and-location/location/permissions/runtime)
 and [AndroidX single-fix contract](https://developer.android.com/reference/androidx/core/location/LocationManagerCompat#getCurrentLocation(android.location.LocationManager,java.lang.String,android.os.CancellationSignal,java.util.concurrent.Executor,androidx.core.util.Consumer)).
 
-Part 2 still needs the actual permission dialog, lifecycle/session wiring, map position,
-recentring, nearby-trip presentation, screen tests and on-device verification. Part 1 does
-not close #195.
+## Map integration (part 2)
+
+`MapLocationHost` launches permission access only from Locate and scopes its ViewModel
+to the map destination. It stops acquisition on real background, navigation exit or session
+end, while configuration changes preserve the ViewModel state. The ViewModel owns expiry.
+On resume, the host asks the ViewModel to recheck monotonic fix age, including the exact
+expiry boundary, without restarting acquisition.
+
+The map shows approximate-position accuracy, straight-line distances and the count of
+eligible filtered trips within the shared 500 m radius. Device location does not change the
+delivery filter. The background, pins and position share a camera transform; offscreen
+trips remain selectable. Out-of-campus fixes are explained without drawing a false position.

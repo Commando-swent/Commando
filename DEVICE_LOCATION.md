@@ -40,21 +40,3 @@ and [AndroidX single-fix contract](https://developer.android.com/reference/andro
 Part 2 still needs the actual permission dialog, lifecycle/session wiring, map position,
 recentring, nearby-trip presentation, screen tests and on-device verification. Part 1 does
 not close #195.
-
-## Local validation
-
-Validated on main baseline `3579f26` with Temurin Java 21, matching CI:
-
-- `./gradlew ktfmtCheck`: passed.
-- `./gradlew check assembleDebug jacocoTestReport`: passed; 769 tests, no failures,
-  errors or skipped tests, including 20 new foundation tests.
-- JaCoCo for the four new production files: 86/87 lines (98.85%) and all 56 branches
-  covered. These are local figures, not a SonarCloud quality-gate result.
-- No running Android emulator/device was available. Actual permission-dialog and device
-  verification remain with the screen integration.
-- Open PRs #220 and #222 shared none of this part's modified production paths when checked.
-  This does not guarantee against future changes.
-
-An initial lint invocation under Java 22 crashed internally. The final Java 21 run passed
-with every check enabled. Existing coverage execution files produced mismatch warnings for
-unrelated repository classes; none of the new location classes had mismatches.

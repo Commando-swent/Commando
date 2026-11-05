@@ -8,11 +8,8 @@ import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthRepository
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
-import java.io.IOException
 import java.time.Instant
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
 class TripRepositoryFirestore
@@ -229,33 +226,19 @@ private suspend fun <T> runRepositoryOperation(
     notFoundError: TripError = TripError.Unknown,
     operation: suspend () -> TripResult<T>,
 ): TripResult<T> =
-    try {
-      operation()
-    } catch (exception: CancellationException) {
-      throw exception
-    } catch (exception: Exception) {
-      exception.toTripErrorResult(notFoundError)
-    }
+    runFirestoreOperation(
+        onFailure = { TripResult.Error(it.toTripError(notFoundError)) },
+        operation,
+    )
 
-private fun Exception.toTripErrorResult(notFoundError: TripError): TripResult.Error =
-    TripResult.Error(toTripError(notFoundError))
-
-private fun Exception.toTripError(notFoundError: TripError): TripError =
+private fun FirestoreFailure.toTripError(notFoundError: TripError): TripError =
     when (this) {
-      is FirebaseFirestoreException ->
-          when (code) {
-            FirebaseFirestoreException.Code.PERMISSION_DENIED,
-            FirebaseFirestoreException.Code.UNAUTHENTICATED -> TripError.PermissionDenied
-            FirebaseFirestoreException.Code.UNAVAILABLE,
-            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED -> TripError.NetworkError
-            FirebaseFirestoreException.Code.NOT_FOUND -> notFoundError
-            FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-            FirebaseFirestoreException.Code.OUT_OF_RANGE,
-            FirebaseFirestoreException.Code.DATA_LOSS -> TripError.InvalidData
-            else -> TripError.Unknown
-          }
-      is IOException -> TripError.NetworkError
-      else -> TripError.Unknown
+      FirestoreFailure.PERMISSION_DENIED,
+      FirestoreFailure.UNAUTHENTICATED -> TripError.PermissionDenied
+      FirestoreFailure.NETWORK_UNAVAILABLE -> TripError.NetworkError
+      FirestoreFailure.NOT_FOUND -> notFoundError
+      FirestoreFailure.INVALID_DATA -> TripError.InvalidData
+      FirestoreFailure.UNKNOWN -> TripError.Unknown
     }
 
 private const val TRIPS_COLLECTION = "trips"

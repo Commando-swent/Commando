@@ -64,6 +64,28 @@ class IncomingOrdersScreenTest {
   }
 
   @Test
+  fun rejectedOrderCardDisplaysStatus() {
+    val rejected = accepted.copy(status = OrderStatus.REJECTED)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(rejected))))
+    card(rejected).assertIsDisplayed().assert(hasText("REJECTED"))
+  }
+
+  @Test
+  fun readyForHandoffOrderCardDisplaysStatus() {
+    val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(ready))))
+    card(ready).assertIsDisplayed().assert(hasText("READY FOR HANDOFF"))
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun readyForHandoffOrderCardUsesFrenchLabel() {
+    val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(ready))))
+    card(ready).assertIsDisplayed().assert(hasText("PRÊTE À ÊTRE REMISE"))
+  }
+
+  @Test
   fun emptyStateRefreshesTheList() {
     var reloads = 0
     show(IncomingOrdersUiState.Empty, onRefresh = { reloads++ })

@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
 import com.android.sample.model.*
+import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
@@ -119,15 +120,27 @@ internal constructor(
   override suspend fun decideOrder(
       orderId: String,
       decision: OrderDecision,
+  ): OrderResult<Order> =
+      transitionOrder(orderId, decision.ownerTransition()) { uid ->
+        source.decide(orderId, uid, decision)
+      }
+
+  override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OwnerOrderTransition.MARK_READY) { uid ->
+        source.markReadyForHandoff(orderId, uid)
+      }
+
+  private suspend fun transitionOrder(
+      orderId: String,
+      transition: OwnerOrderTransition,
+      update: suspend (String) -> OrderFirestoreDocument,
   ): OrderResult<Order> = session { uid ->
     if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
-    val order =
-        source.decide(orderId, uid, decision).toOrder()
-            ?: return@session failure(OrderError.InvalidData)
-    if (order.id != orderId || order.status == OrderStatus.PENDING) {
+    val order = update(uid).toOrder() ?: return@session failure(OrderError.InvalidData)
+    if (order.id != orderId || order.status == transition.source) {
       return@session failure(OrderError.InvalidData)
     }
-    if (order.status == decision.targetStatus()) OrderResult.Success(order)
+    if (order.status == transition.target) OrderResult.Success(order)
     else failure(OrderError.AlreadyDecided(order))
   }
 
@@ -168,6 +181,8 @@ internal interface OrderFirestoreDataSource {
   suspend fun getTrip(id: String): Map<String, Any?>?
 
   suspend fun decide(id: String, ownerId: String, decision: OrderDecision): OrderFirestoreDocument
+
+  suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument
 }
 
 internal class FirebaseOrderFirestoreDataSource(
@@ -185,7 +200,10 @@ internal class FirebaseOrderFirestoreDataSource(
     val trip = getTrip(data.getValue("tripId") as String)
     val recipient =
         trip?.get("ownerId") as? String
-            ?: throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
+            ?: throw FirebaseFirestoreException(
+                "Order creation failed",
+                FirebaseFirestoreException.Code.NOT_FOUND,
+            )
     firestore
         .runBatch { batch ->
           batch.set(ref, data)
@@ -225,18 +243,22 @@ internal class FirebaseOrderFirestoreDataSource(
       id: String,
       ownerId: String,
       decision: OrderDecision,
+  ): OrderFirestoreDocument = transitionOrder(id, ownerId, decision.ownerTransition())
+
+  override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
+      transitionOrder(id, ownerId, OwnerOrderTransition.MARK_READY)
+
+  private suspend fun transitionOrder(
+      id: String,
+      ownerId: String,
+      transition: OwnerOrderTransition,
   ): OrderFirestoreDocument {
     val context = currentCoroutineContext()
     val database = firestore
-    // Decisions verify session and Firebase identities; creation uses repository guards and rules.
+    // Owner transitions verify both identities; creation uses repository guards and rules.
     fun ensureSession() {
       context.ensureActive()
-      if (
-          FirebaseAuth.getInstance(database.app).currentUser?.uid != ownerId ||
-              (currentUserId != null && currentUserId.invoke() != ownerId)
-      ) {
-        throw decisionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
-      }
+      ensureDecisionIdentity(database.app, ownerId)
     }
     ensureSession()
     fun attempt(write: Boolean) = database.runTransaction { transaction ->
@@ -245,46 +267,68 @@ internal class FirebaseOrderFirestoreDataSource(
       val document = transaction.readOrder(ref, ownerId)
       // Retried callbacks read both documents before writing and recheck session/cancellation.
       ensureSession()
-      if (write && document.data["status"] == OrderStatus.PENDING.name) {
-        val status = decision.targetStatus().name
+      if (write && document.data["status"] == transition.source.name) {
+        val status = transition.target.name
         transaction.update(ref, "status", status)
-        val type =
-            if (decision == OrderDecision.ACCEPT) NotificationEventType.ORDER_ACCEPTED
-            else NotificationEventType.ORDER_REJECTED
-        transaction.set(
-            database.collection(NotificationFirestoreData.EVENTS).document(type.eventId(id)),
-            publishedEvent(id, document.data.getValue("requesterId") as String, type),
-        )
+        transaction.setDecisionEvent(ref, document, transition)
         document.copy(data = document.data + ("status" to status))
       } else document
     }
     return try {
-      attempt(true).await()
+      attempt(write = true).await()
     } catch (denied: FirebaseFirestoreException) {
       if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
-      // Rules can reject a stale PENDING write after a competing commit. Never retry that write.
-      attempt(false).await().also {
+      // Reconcile a competing commit without retrying a denied write or bypassing authorization.
+      attempt(write = false).await().also {
         ensureSession()
-        if (it.data["status"] == OrderStatus.PENDING.name) throw denied
+        if (it.data["status"] == transition.source.name) throw denied
       }
+    }
+  }
+
+  /** Verifies Firebase and session identities on each transaction attempt. */
+  private fun ensureDecisionIdentity(app: FirebaseApp, ownerId: String) {
+    if (
+        FirebaseAuth.getInstance(app).currentUser?.uid != ownerId ||
+            (currentUserId != null && currentUserId.invoke() != ownerId)
+    ) {
+      throw transitionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
     }
   }
 
   private fun Transaction.readOrder(ref: DocumentReference, uid: String): OrderFirestoreDocument {
     val stored = get(ref)
-    if (!stored.exists()) throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
+    if (!stored.exists()) throw transitionError(FirebaseFirestoreException.Code.NOT_FOUND)
     val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
     val order =
-        document.toOrder() ?: throw decisionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+        document.toOrder()
+            ?: throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
     val trip = get(ref.firestore.collection("trips").document(order.tripId))
     if (!trip.exists() || trip.getString("ownerId") != uid || order.requesterId == uid) {
-      throw decisionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+      throw transitionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
     }
     return document
   }
 
-  private fun decisionError(code: FirebaseFirestoreException.Code) =
-      FirebaseFirestoreException("Order decision failed", code)
+  private fun transitionError(code: FirebaseFirestoreException.Code) =
+      FirebaseFirestoreException("Order transition failed", code)
+
+  private fun Transaction.setDecisionEvent(
+      ref: DocumentReference,
+      order: OrderFirestoreDocument,
+      transition: OwnerOrderTransition,
+  ) {
+    val type =
+        when (transition) {
+          OwnerOrderTransition.ACCEPT -> NotificationEventType.ORDER_ACCEPTED
+          OwnerOrderTransition.REJECT -> NotificationEventType.ORDER_REJECTED
+          OwnerOrderTransition.MARK_READY -> return
+        }
+    set(
+        ref.firestore.collection(NotificationFirestoreData.EVENTS).document(type.eventId(ref.id)),
+        publishedEvent(ref.id, order.data.getValue("requesterId") as String, type),
+    )
+  }
 
   private fun WriteBatch.setEvent(id: String, recipient: String, type: NotificationEventType) {
     set(

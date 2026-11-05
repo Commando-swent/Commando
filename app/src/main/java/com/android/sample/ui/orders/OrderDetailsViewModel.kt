@@ -23,6 +23,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
+/** Mutually exclusive feedback for the latest order-status operation. */
+sealed interface OrderMutationState {
+  data object Idle : OrderMutationState
+
+  data object Saving : OrderMutationState
+
+  data object Saved : OrderMutationState
+
+  data class Failed(val error: OrderError) : OrderMutationState
+}
+
 sealed class OrderDetailsUiState {
   data object Loading : OrderDetailsUiState()
 
@@ -30,17 +41,23 @@ sealed class OrderDetailsUiState {
       val order: Order,
       val trip: Trip,
       val viewerId: String? = null,
-      val isSaving: Boolean = false,
-      val decisionError: OrderError? = null,
-      val decisionSaved: Boolean = false,
+      val mutation: OrderMutationState = OrderMutationState.Idle,
   ) : OrderDetailsUiState() {
-    val canDecide: Boolean
+    private val isEligibleOwner: Boolean
       get() =
           viewerId != null &&
               viewerId == trip.ownerId &&
               order.tripId == trip.id &&
-              order.requesterId != trip.ownerId &&
-              order.status == OrderStatus.PENDING
+              order.requesterId != trip.ownerId
+
+    val canDecide: Boolean
+      get() = isEligibleOwner && order.status == OrderStatus.PENDING
+
+    val canMarkReadyForHandoff: Boolean
+      get() = isEligibleOwner && order.status == OrderStatus.ACCEPTED
+
+    val isSaving: Boolean
+      get() = mutation == OrderMutationState.Saving
   }
 
   data object NotFound : OrderDetailsUiState()
@@ -98,51 +115,72 @@ class OrderDetailsViewModel(
         val state = fetchOrder()
         // A repository may return even after the destination's coroutine was cancelled.
         currentCoroutineContext().ensureActive()
-        if (sessionIsValid()) mutableState.value = state
+        if (!endSessionIfChanged()) mutableState.value = state
       } finally {
         isLoading = false
       }
     }
   }
 
-  private fun sessionIsValid(): Boolean {
+  private fun endSessionIfChanged(): Boolean {
     if (session.hasEnded()) {
       mutableState.value = OrderDetailsUiState.SessionEnded
-      return false
+      return true
     }
-    return true
+    return false
   }
 
-  fun decide(decision: OrderDecision) {
-    if (!sessionIsValid()) return
+  /** Saves an eligible owner's decision; concurrent taps are ignored until it finishes. */
+  fun decide(decision: OrderDecision) =
+      saveOrder(isAllowed = { it.canDecide }) { orderRepository.decideOrder(orderId, decision) }
+
+  /** Marks an accepted order ready, displaying only repository-confirmed status and feedback. */
+  fun markReadyForHandoff() =
+      saveOrder(isAllowed = { it.canMarkReadyForHandoff }) {
+        orderRepository.markReadyForHandoff(orderId)
+      }
+
+  private fun saveOrder(
+      isAllowed: (OrderDetailsUiState.Content) -> Boolean,
+      save: suspend () -> OrderResult<Order>,
+  ) {
+    if (endSessionIfChanged()) return
     val content = mutableState.value as? OrderDetailsUiState.Content ?: return
-    if (!content.canDecide || content.isSaving || isLoading) return
-    mutableState.value = content.copy(isSaving = true, decisionError = null, decisionSaved = false)
+    if (!isAllowed(content) || content.isSaving || isLoading) return
+    mutableState.value = content.copy(mutation = OrderMutationState.Saving)
     viewModelScope.launch {
       val result =
           try {
-            orderRepository.decideOrder(orderId, decision)
+            save()
           } catch (_: Exception) {
             currentCoroutineContext().ensureActive()
             OrderResult.Error(OrderError.Unknown)
           }
       currentCoroutineContext().ensureActive()
-      if (!sessionIsValid()) return@launch
-      mutableState.value =
-          when (result) {
-            is OrderResult.Success -> content.copy(order = result.data, decisionSaved = true)
-            is OrderResult.Error ->
-                when (val error = result.error) {
-                  OrderError.NotFound -> OrderDetailsUiState.NotFound
-                  OrderError.NotAuthenticated,
-                  OrderError.PermissionDenied -> OrderDetailsUiState.Error.OrderFailure(error)
-                  is OrderError.AlreadyDecided ->
-                      content.copy(order = error.persistedOrder, decisionError = error)
-                  else -> content.copy(decisionError = error)
-                }
-          }
+      if (!endSessionIfChanged()) mutableState.value = mutationResult(content, result)
     }
   }
+
+  private fun mutationResult(
+      content: OrderDetailsUiState.Content,
+      result: OrderResult<Order>,
+  ): OrderDetailsUiState =
+      when (result) {
+        is OrderResult.Success ->
+            content.copy(order = result.data, mutation = OrderMutationState.Saved)
+        is OrderResult.Error ->
+            when (val error = result.error) {
+              OrderError.NotFound -> OrderDetailsUiState.NotFound
+              OrderError.NotAuthenticated,
+              OrderError.PermissionDenied -> OrderDetailsUiState.Error.OrderFailure(error)
+              is OrderError.AlreadyDecided ->
+                  content.copy(
+                      order = error.persistedOrder,
+                      mutation = OrderMutationState.Failed(error),
+                  )
+              else -> content.copy(mutation = OrderMutationState.Failed(error))
+            }
+      }
 
   private suspend fun fetchOrder(): OrderDetailsUiState {
     val result =

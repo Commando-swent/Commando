@@ -168,6 +168,51 @@ class NotificationsViewModelTest {
   }
 
   @Test
+  fun refreshDuringFailedReadSaveRunsAfterSuccessfulRetry() = runTest {
+    val saved = CompletableDeferred<OrderResult<Unit>>()
+    repository.mark = { saved.await() }
+    val vm = model()
+    vm.refreshInbox()
+    advanceUntilIdle()
+    vm.markAsRead(notice.event.id)
+    runCurrent()
+    vm.refreshInbox()
+    saved.complete(OrderResult.Error(OrderError.Unknown))
+    advanceUntilIdle()
+    assertEquals(1, repository.inboxReads)
+    assertEquals(OrderError.Unknown, (vm.inbox.value as NotificationPageState.Content).saveError)
+    repository.mark = { OrderResult.Success(Unit) }
+    vm.retryReadUpdate()
+    advanceUntilIdle()
+    assertEquals(2, repository.inboxReads)
+    assertEquals(NotificationPageState.Content(listOf(notice.copy(isRead = true))), vm.inbox.value)
+  }
+
+  @Test
+  fun savingOneInboxEntryRejectsAnotherWriteButDoesNotBlockPreferences() = runTest {
+    val other = notice.copy(event = notice.event.copy(orderId = "other"))
+    repository.entries = listOf(notice, other)
+    val saved = CompletableDeferred<OrderResult<Unit>>()
+    repository.mark = { saved.await() }
+    val vm = model()
+    vm.refreshInbox()
+    advanceUntilIdle()
+    vm.markAsRead(notice.event.id)
+    runCurrent()
+    vm.markAsRead(other.event.id)
+    vm.refreshPreferences()
+    runCurrent()
+    assertEquals(NotificationPageState.Content(NotificationPreferences()), vm.preferences.value)
+    saved.complete(OrderResult.Success(Unit))
+    advanceUntilIdle()
+    assertEquals(listOf(notice.event.id), repository.markedIds)
+    assertEquals(
+        NotificationPageState.Content(listOf(notice.copy(isRead = true), other)),
+        vm.inbox.value,
+    )
+  }
+
+  @Test
   fun preferenceSaveSurvivesConcurrentRefreshAndReopening() = runTest {
     val saved = CompletableDeferred<OrderResult<Unit>>()
     repository.savePreferences = { saved.await() }
@@ -279,6 +324,35 @@ class NotificationsViewModelTest {
   }
 
   @Test
+  fun savingOneToggleReloadsTheOtherDevicesChange() = runTest {
+    val vm = model()
+    vm.refreshPreferences()
+    advanceUntilIdle()
+    repository.settings = NotificationPreferences(orderDecisions = false)
+    vm.updatePreferences(NotificationPreferences(newOrders = false))
+    advanceUntilIdle()
+    val bothDisabled = NotificationPreferences(false, false)
+    assertEquals(listOf(bothDisabled), repository.savedSettings)
+    assertEquals(NotificationPageState.Content(bothDisabled), vm.preferences.value)
+  }
+
+  @Test
+  fun reloadAfterImmediateSaveCannotOverwriteANewerRefresh() = runTest {
+    Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+    val vm = model()
+    vm.refreshPreferences()
+    val stale = CompletableDeferred<OrderResult<NotificationPreferences>>()
+    repository.loadPreferences = { stale.await() }
+    vm.updatePreferences(NotificationPreferences(newOrders = false))
+    val latest = NotificationPreferences(false, false)
+    repository.loadPreferences = { OrderResult.Success(latest) }
+    vm.refreshPreferences()
+    stale.complete(OrderResult.Success(NotificationPreferences(newOrders = false)))
+    advanceUntilIdle()
+    assertEquals(NotificationPageState.Content(latest), vm.preferences.value)
+  }
+
+  @Test
   fun missingSessionDoesNotLoadAnyProtectedData() = runTest {
     identity.value = null
     val vm = model()
@@ -323,9 +397,18 @@ private class RecordingNotifications(var entries: List<OrderNotification>) :
             }
       }
 
-  override suspend fun updatePreferences(preferences: NotificationPreferences) =
-      savePreferences(preferences).also {
-        savedSettings += preferences
-        if (it is OrderResult.Success) settings = preferences
-      }
+  override suspend fun updatePreferences(
+      newOrders: Boolean?,
+      orderDecisions: Boolean?,
+  ): OrderResult<Unit> {
+    val preferences =
+        settings.copy(
+            newOrders = newOrders ?: settings.newOrders,
+            orderDecisions = orderDecisions ?: settings.orderDecisions,
+        )
+    return savePreferences(preferences).also {
+      savedSettings += preferences
+      if (it is OrderResult.Success) settings = preferences
+    }
+  }
 }

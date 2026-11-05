@@ -1,6 +1,7 @@
 package com.android.sample.ui.orders
 
 // AI assistance: Claude Code for sharing the status badge (#147).
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -31,7 +33,18 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
 import java.time.Instant
 
-/** Shared presentation; the caller owns loading, authorization and navigation. */
+/** Stable action selectors, independent of the presentation language. */
+object OrderDetailsTestTags {
+  const val ACCEPT = "order_details_accept"
+  const val REJECT = "order_details_reject"
+  const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
+}
+
+/**
+ * Shared presentation; the caller owns loading, authorization and navigation. [onDecision] and
+ * [onMarkReadyForHandoff] request status changes; [state] supplies eligibility and persisted
+ * results.
+ */
 @Composable
 fun OrderDetailsScreen(
     state: OrderDetailsUiState,
@@ -39,6 +52,7 @@ fun OrderDetailsScreen(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     onDecision: (OrderDecision) -> Unit = {},
+    onMarkReadyForHandoff: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -96,7 +110,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
-          OrderDecisionActions(state, onDecision)
+          OrderStatusActions(state, onDecision, onMarkReadyForHandoff)
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
@@ -128,15 +142,17 @@ fun OrderDetailsScreen(
 }
 
 @Composable
-private fun OrderDecisionActions(
+private fun OrderStatusActions(
     state: OrderDetailsUiState.Content,
     onDecision: (OrderDecision) -> Unit,
+    onMarkReadyForHandoff: () -> Unit,
 ) {
   val message =
-      when {
-        state.decisionSaved -> R.string.order_decision_saved
-        state.decisionError is OrderError.AlreadyDecided -> R.string.order_decision_conflict
-        state.decisionError != null -> R.string.order_decision_error
+      when (val mutation = state.mutation) {
+        OrderMutationState.Saved -> R.string.order_decision_saved
+        is OrderMutationState.Failed ->
+            if (mutation.error is OrderError.AlreadyDecided) R.string.order_status_conflict
+            else R.string.order_status_error
         else -> null
       }
   if (message != null)
@@ -146,25 +162,34 @@ private fun OrderDecisionActions(
       OutlinedButton(
           onClick = { onDecision(OrderDecision.REJECT) },
           enabled = !state.isSaving,
-          modifier = Modifier.weight(1f),
+          modifier = Modifier.weight(1f).testTag(OrderDetailsTestTags.REJECT),
       ) {
         Text(stringResource(R.string.order_decision_reject))
       }
       Button(
           onClick = { onDecision(OrderDecision.ACCEPT) },
           enabled = !state.isSaving,
-          modifier = Modifier.weight(1f),
+          modifier = Modifier.weight(1f).testTag(OrderDetailsTestTags.ACCEPT),
       ) {
         Text(stringResource(R.string.order_decision_accept))
       }
     }
-    if (state.isSaving) {
-      LinearProgressIndicator(Modifier.fillMaxWidth())
-      Text(
-          stringResource(R.string.order_decision_saving),
-          Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-      )
+  }
+  if (state.canMarkReadyForHandoff) {
+    Button(
+        onClick = onMarkReadyForHandoff,
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF),
+    ) {
+      Text(stringResource(R.string.order_mark_ready_for_handoff))
     }
+  }
+  if (state.isSaving) {
+    LinearProgressIndicator(Modifier.fillMaxWidth())
+    Text(
+        stringResource(R.string.order_status_saving),
+        Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
   }
 }
 
@@ -251,21 +276,27 @@ private fun OrderDetailsSection(label: String) {
   )
 }
 
+/** String resource for the persisted [status], shared by all order screens. */
+@StringRes
+internal fun orderStatusLabel(status: OrderStatus): Int =
+    when (status) {
+      OrderStatus.PENDING -> R.string.order_details_pending
+      OrderStatus.ACCEPTED -> R.string.order_details_accepted
+      OrderStatus.REJECTED -> R.string.order_details_rejected
+      OrderStatus.READY_FOR_HANDOFF -> R.string.order_details_ready_for_handoff
+    }
+
 /** Localized order [status] with a distinct color per status; shared with incoming orders. */
 @Composable
 internal fun OrderStatusBadge(status: OrderStatus) {
-  val label =
-      when (status) {
-        OrderStatus.PENDING -> R.string.order_details_pending
-        OrderStatus.ACCEPTED -> R.string.order_details_accepted
-        OrderStatus.REJECTED -> R.string.order_details_rejected
-      }
+  val label = orderStatusLabel(status)
   val colors = MaterialTheme.colorScheme
   val (container, foreground) =
       when (status) {
         OrderStatus.PENDING -> colors.secondaryContainer to colors.onSecondaryContainer
         OrderStatus.ACCEPTED -> colors.primaryContainer to colors.onPrimaryContainer
         OrderStatus.REJECTED -> colors.errorContainer to colors.onErrorContainer
+        OrderStatus.READY_FOR_HANDOFF -> colors.tertiaryContainer to colors.onTertiaryContainer
       }
   Surface(
       shape = CircleShape,

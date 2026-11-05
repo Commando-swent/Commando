@@ -9,6 +9,8 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import java.time.Instant
 import kotlinx.coroutines.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -320,6 +322,60 @@ class OrderRepositoryFirestoreTest {
   private suspend fun decide(decision: OrderDecision = ACCEPT, id: String = "b") =
       repository.decideOrder(id, decision)
 
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun readinessUsesPersistedSnapshotsAndAuthorizesBeforeReadOnlyOutcomes() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue("b")
+    for (status in OrderStatus.entries) {
+      val stored = saved.copy(status = status)
+      source.documents["b"] = original.copy(data = original.data + ("status" to status.name))
+      val before = source.writes
+      for (caller in listOf("alice", "outsider", null)) {
+        uid = caller
+        val denied =
+            if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
+        assertEquals(error(denied), repository.markReadyForHandoff("b"))
+      }
+      uid = "owner"
+      val expected = saved.copy(status = OrderStatus.READY_FOR_HANDOFF)
+      val result =
+          if (status in listOf(OrderStatus.ACCEPTED, OrderStatus.READY_FOR_HANDOFF))
+              OrderResult.Success(expected)
+          else error(OrderError.AlreadyDecided(stored))
+      repeat(2) { assertEquals(result, repository.markReadyForHandoff("b")) }
+      assertEquals(before + if (status == OrderStatus.ACCEPTED) 1 else 0, source.writes)
+      assertEquals(
+          if (result is OrderResult.Success) expected else stored,
+          source.documents.getValue("b").toOrder(),
+      )
+    }
+    source.documents["b"] = original.copy(data = original.data + ("status" to "ACCEPTED"))
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.markReadyForHandoff("b") }
+    runCurrent()
+    uid = "outsider"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+    source.beforeRead = {}
+    uid = "owner"
+    val ready = saved.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    assertEquals(OrderResult.Success(ready), repository.getOrderById("b"))
+    source.documents["uncertain"] =
+        original.copy(id = "uncertain", data = original.data + ("status" to "ACCEPTED"))
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.markReadyForHandoff("uncertain"))
+    source.confirmationFails = false
+    val before = source.writes
+    val fresh = OrderRepositoryFirestore(source, { uid })
+    assertEquals(
+        OrderResult.Success(ready.copy(id = "uncertain")),
+        fresh.markReadyForHandoff("uncertain"),
+    )
+    assertEquals(before, source.writes)
+  }
+
   private fun sourceError(code: Code): Nothing = throw FirebaseFirestoreException("test", code)
 
   private inner class MemorySource : OrderFirestoreDataSource {
@@ -361,6 +417,16 @@ class OrderRepositoryFirestoreTest {
         id: String,
         ownerId: String,
         decision: OrderDecision,
+    ): OrderFirestoreDocument = transition(id, ownerId, "PENDING", decision.targetStatus().name)
+
+    override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
+        transition(id, ownerId, "ACCEPTED", "READY_FOR_HANDOFF")
+
+    private suspend fun transition(
+        id: String,
+        ownerId: String,
+        from: String,
+        target: String,
     ): OrderFirestoreDocument {
       beforeRead()
       decisionResult?.let {
@@ -371,8 +437,8 @@ class OrderRepositoryFirestoreTest {
       if (trip?.get("ownerId") != ownerId || document.data["requesterId"] == ownerId) {
         sourceError(Code.PERMISSION_DENIED)
       }
-      if (document.data["status"] != OrderStatus.PENDING.name) return document
-      return document.copy(data = document.data + ("status" to decision.targetStatus().name)).also {
+      if (document.data["status"] != from) return document
+      return document.copy(data = document.data + ("status" to target)).also {
         documents[id] = it
         writes++
         if (confirmationFails) throw IllegalStateException("Confirmation unavailable")

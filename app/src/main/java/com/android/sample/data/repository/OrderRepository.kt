@@ -29,14 +29,30 @@ interface OrderRepository {
    * Trip owner only; identical final decisions are read-only, opposite ones return AlreadyDecided.
    */
   suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order>
+
+  /**
+   * Trip owner only, excluding self-orders; atomically changes only ACCEPTED to READY_FOR_HANDOFF.
+   * Authorization precedes read-only repeats and AlreadyDecided conflicts containing persisted
+   * state. Ended sessions cannot receive results; cancellation cannot undo a committed transition.
+   */
+  suspend fun markReadyForHandoff(orderId: String): OrderResult<Order>
 }
 
 /** Shared list order of every order query. */
 internal val NEWEST_ORDER_FIRST: Comparator<Order> =
     compareByDescending<Order> { it.createdAt }.thenBy { it.id }
 
-internal fun OrderDecision.targetStatus(): OrderStatus =
+/** Owner operations only; requester cancellation needs its own authorization policy. */
+internal enum class OwnerOrderTransition(val source: OrderStatus, val target: OrderStatus) {
+  ACCEPT(OrderStatus.PENDING, OrderStatus.ACCEPTED),
+  REJECT(OrderStatus.PENDING, OrderStatus.REJECTED),
+  MARK_READY(OrderStatus.ACCEPTED, OrderStatus.READY_FOR_HANDOFF),
+}
+
+internal fun OrderDecision.ownerTransition(): OwnerOrderTransition =
     when (this) {
-      OrderDecision.ACCEPT -> OrderStatus.ACCEPTED
-      OrderDecision.REJECT -> OrderStatus.REJECTED
+      OrderDecision.ACCEPT -> OwnerOrderTransition.ACCEPT
+      OrderDecision.REJECT -> OwnerOrderTransition.REJECT
     }
+
+internal fun OrderDecision.targetStatus(): OrderStatus = ownerTransition().target

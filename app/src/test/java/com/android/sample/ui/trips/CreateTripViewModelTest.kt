@@ -10,6 +10,7 @@ import com.android.sample.model.NewTrip
 import com.android.sample.model.Trip
 import com.android.sample.model.TripLocations
 import com.android.sample.model.TripStatus.PUBLISHED
+import com.android.sample.model.storeIdFor
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -160,6 +161,23 @@ class CreateTripViewModelTest {
     assertEquals(HANDOFF, trip.handoffLocation)
     assertEquals(NEW_TRIP.scheduledAt, trip.scheduledAt)
     assertEquals(listOf(trip), (fake.getMyTrips() as TripResult.Success).data)
+  }
+
+  @Test
+  fun publish_coopTripKeepsTheCoopStoreSoItsCatalogueIsCoop() = runTest {
+    val coop = TripLocations.stores.single { it.name == "Coop Ecublens" }
+    val fake = FakeTripRepository(currentUserId = "me", now = { NOW })
+    val viewModel = CreateTripViewModel(fake, Clock.fixed(NOW, ZONE))
+    viewModel.fillValidForm()
+    viewModel.setStore(coop)
+
+    viewModel.publish()
+    advanceUntilIdle()
+
+    val trip = requireNotNull(viewModel.uiState.value.publishedTrip)
+    assertEquals(coop, trip.store)
+    assertEquals(coop, (fake.getTripById(trip.id) as TripResult.Success).data.store)
+    assertEquals("coop", storeIdFor(trip.store.name))
   }
 
   @Test

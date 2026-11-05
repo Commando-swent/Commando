@@ -96,6 +96,22 @@ class MyOrdersViewModelTest {
       (state as MyOrdersUiState.Content).rows.map { it.order.id }
 
   @Test
+  fun refreshAfterCancellationRetainsHistoryWithPersistedStatusAndUnchangedOtherRows() = runTest {
+    val vm = MyOrdersViewModel(orders, trips, "alice")
+    advanceUntilIdle()
+    val cancelled = aliceNew.copy(status = OrderStatus.CANCELLED)
+    assertEquals(OrderResult.Success(cancelled), orders.cancelOrder(aliceNew.id))
+    vm.retry()
+    advanceUntilIdle()
+    val rows = (vm.uiState.value as MyOrdersUiState.Content).rows
+    assertEquals(listOf(cancelled, aliceOld), rows.map { it.order })
+    assertEquals(trip, rows.first().trip)
+    val reopened = MyOrdersViewModel(orders, trips, "alice")
+    advanceUntilIdle()
+    assertEquals(rows, (reopened.uiState.value as MyOrdersUiState.Content).rows)
+  }
+
+  @Test
   fun startsLoadingThenShowsOnlyRequesterOrdersNewestFirst() = runTest {
     val viewModel = MyOrdersViewModel(orders, trips, "alice")
     assertEquals(MyOrdersUiState.Loading, viewModel.uiState.value)

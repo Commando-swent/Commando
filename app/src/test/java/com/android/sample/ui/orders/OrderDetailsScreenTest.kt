@@ -78,12 +78,12 @@ class OrderDetailsScreenTest {
   @Test
   fun cancellationRequiresConfirmationAndCanBeDismissed() {
     show(OrderDetailsUiState.Content(order, trip, viewerId = order.requesterId))
-    compose.onNodeWithText("Cancel order").performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithText("Cancel this order?").assertIsDisplayed()
-    compose.onNodeWithText("Keep order").performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.KEEP_ORDER).performClick()
     compose.runOnIdle { assertEquals(0, cancellations) }
-    compose.onNodeWithText("Cancel order").performClick()
-    compose.onAllNodesWithText("Cancel order").onLast().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
     compose.runOnIdle { assertEquals(1, cancellations) }
     compose.onNodeWithText("Cancel this order?").assertDoesNotExist()
   }

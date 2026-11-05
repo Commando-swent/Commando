@@ -9,30 +9,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Location
 import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
-import java.time.Instant
 
-/** Shared fixtures and lookups for the trip discovery (Available trips) tests. */
-fun discoveryTrip(
-    id: String,
-    store: Location,
-    handoff: Location,
-    scheduledAt: Instant,
-    ownerId: String = "owner",
-    createdAt: Instant = scheduledAt,
-) =
-    Trip(
-        id = id,
-        ownerId = ownerId,
-        store = store,
-        scheduledAt = scheduledAt,
-        handoffLocation = handoff,
-        status = TripStatus.PUBLISHED,
-        createdAt = createdAt,
-        updatedAt = createdAt,
-    )
+/** Shared lookups and repository wrapper for the trip discovery tests; see [discoveryTrip]. */
 
 /** Delegates to [base], counting list loads and recording every requested trip ID. */
 class ScriptedTripRepository(

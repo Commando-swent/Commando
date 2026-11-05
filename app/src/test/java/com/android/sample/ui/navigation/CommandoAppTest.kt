@@ -28,6 +28,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
@@ -548,7 +549,7 @@ class CommandoAppTest {
     click(HomeTestTags.TRIP_ACTION)
     compose
         .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
-        .assert(hasText("All locations"))
+        .assert(hasText(compose.activity.getString(R.string.trips_location_placeholder)))
     compose.assertTripCard(secondTrip)
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
   }

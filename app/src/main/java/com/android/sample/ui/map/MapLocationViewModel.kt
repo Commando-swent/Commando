@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationResult
+import com.android.sample.model.DeviceLocation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,16 +53,21 @@ class MapLocationViewModel(
           withTimeoutOrNull(REQUEST_TIMEOUT_MILLIS) { provider.currentLocation() }
               ?: DeviceLocationResult.Unavailable
       currentCoroutineContext().ensureActive()
-      mutableState.value =
-          MapLocationUiState.Resolved(
-              if (
-                  result is DeviceLocationResult.Available &&
-                      !result.location.isUsable(nowElapsedMillis())
-              )
-                  DeviceLocationResult.Unavailable
-              else result
-          )
+      if (result is DeviceLocationResult.Available) showUntilExpired(result)
+      else mutableState.value = MapLocationUiState.Resolved(result)
     }
+  }
+
+  /** Publishes a fresh fix, then hides it when it reaches [DeviceLocation.MAX_AGE_MILLIS]. */
+  private suspend fun showUntilExpired(fix: DeviceLocationResult.Available) {
+    val now = nowElapsedMillis()
+    if (!fix.location.isUsable(now)) {
+      mutableState.value = MapLocationUiState.Resolved(DeviceLocationResult.Unavailable)
+      return
+    }
+    mutableState.value = MapLocationUiState.Resolved(fix)
+    delay(fix.location.elapsedRealtimeMillis + DeviceLocation.MAX_AGE_MILLIS - now)
+    mutableState.value = MapLocationUiState.Idle
   }
 
   /** Cancels acquisition and forgets coordinates so an old session cannot restore a position. */

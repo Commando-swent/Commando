@@ -51,7 +51,7 @@ class MapLocationViewModelTest {
     assertEquals(0, calls)
     model.request(true)
     assertEquals(MapLocationUiState.Loading, model.uiState.value)
-    advanceUntilIdle()
+    runCurrent()
     assertEquals(position, result(model))
     assertEquals(1, calls)
   }
@@ -106,7 +106,7 @@ class MapLocationViewModelTest {
     assertEquals(DeviceLocationResult.Unavailable, result(model))
     read = { position }
     model.request(true)
-    advanceUntilIdle()
+    runCurrent()
     assertEquals(position, result(model))
   }
 
@@ -114,7 +114,7 @@ class MapLocationViewModelTest {
   fun leavingScreenCancelsRequestAndForgetsResolvedCoordinates() = runTest {
     val model = model()
     model.request(true)
-    advanceUntilIdle()
+    runCurrent()
     model.stop()
     assertEquals(MapLocationUiState.Idle, model.uiState.value)
     var cancelled = false
@@ -164,6 +164,20 @@ class MapLocationViewModelTest {
     store.clear()
     advanceUntilIdle()
     assertTrue(cancelled)
+    assertEquals(MapLocationUiState.Idle, model.uiState.value)
+  }
+
+  @Test
+  fun retainedFixExpiresAfterMaxAge() = runTest {
+    val model = model()
+    model.request(true)
+    runCurrent()
+    assertEquals(position, result(model))
+    advanceTimeBy(DeviceLocation.MAX_AGE_MILLIS - 1)
+    runCurrent()
+    assertEquals(position, result(model))
+    advanceTimeBy(1)
+    runCurrent()
     assertEquals(MapLocationUiState.Idle, model.uiState.value)
   }
 }

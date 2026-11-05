@@ -19,9 +19,8 @@ before until the screen integration in part 2.
 - Call `stop()` when the screen leaves the foreground or the authenticated session ends;
   it cancels pending acquisition and immediately clears the coordinates. ViewModel
   disposal also cancels its coroutine. Do not automatically restart on resume.
-- A fix is a snapshot, not continuous tracking. Recheck `isUsable(SystemClock.elapsedRealtime())`
-  before using a retained fix for recentering or nearby-trip distances. Hide it once it
-  exceeds `DeviceLocation.MAX_AGE_MILLIS`; do not retain it across sessions.
+- A fix is a snapshot, not continuous tracking. The ViewModel returns to Idle when a fix
+  reaches `DeviceLocation.MAX_AGE_MILLIS`; do not retain it across sessions.
 - Keep device position separate from the selected handoff filter. Reuse the existing
   `distanceMeters` model helper for straight-line estimates in part 2.
 

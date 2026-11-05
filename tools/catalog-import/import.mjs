@@ -81,12 +81,16 @@ const isTimestamp = (value) => {
 /**
  * The size of an export row: swiss-cli's `export` calls it `size`, the --sizes file and older exports
  * `size_text`. Without a Migros quantity, swiss-cli puts the variant line there ("doux" as size and
- * variant): that is not a size, so it counts as missing.
+ * variant): that is not a size, so it counts as missing. Blank candidates are missing too; when both
+ * fields contain a size, the older `size_text` field keeps precedence.
  */
 const exportSize = (row) => {
-  const size = row.size_text ?? row.size;
   const clean = (text) => (typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().toLowerCase() : text);
-  return size != null && clean(size) === clean(row.variant) ? null : size;
+  const variant = clean(row.variant);
+  return [row.size_text, row.size].find((size) => {
+    const value = clean(size);
+    return value != null && value !== '' && value !== variant;
+  }) ?? null;
 };
 
 /**
@@ -303,12 +307,21 @@ export async function firestoreClient(target) {
 
 export function parseArgs(args) {
   const options = { file: null, store: null, sizes: null, write: false, project: null, maxWrites: Infinity };
+  const valueOptions = {
+    '--store': (value) => { options.store = value; },
+    '--project': (value) => { options.project = value; },
+    '--sizes': (value) => { options.sizes = value; },
+    '--max-writes': (value) => { options.maxWrites = Number(value); },
+  };
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === '--write') options.write = true;
-    else if (args[i] === '--store') options.store = args[++i];
-    else if (args[i] === '--project') options.project = args[++i];
-    else if (args[i] === '--sizes') options.sizes = args[++i];
-    else if (args[i] === '--max-writes') options.maxWrites = Number(args[++i]);
+    else if (valueOptions[args[i]]) {
+      const option = args[i];
+      const value = args[i + 1];
+      if (!value || value.startsWith('--')) throw new Error(`${option} requires a value. ${USAGE}`);
+      valueOptions[option](value);
+      i += 1;
+    }
     else if (!args[i].startsWith('--') && !options.file) options.file = args[i];
     else throw new Error(`Unexpected argument ${args[i]}. ${USAGE}`);
   }

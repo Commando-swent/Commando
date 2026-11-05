@@ -133,6 +133,16 @@ test('parseExport takes missing sizes from a manifest by product ID, never over 
   assert.deepEqual(products.map((product) => product.data.size_text), ['1 l', '6 x 500 g', null]);
 });
 
+test('blank size_text falls back to the export size and then the optional manifest', () => {
+  const lines = [
+    row('1', { size_text: '  ', size: '100 g' }),
+    row('2', { size_text: '\t' }),
+  ].map((item) => JSON.stringify(item)).join('\n');
+  const sizes = new Map([['migros:1', '200 g'], ['migros:2', '500 g']]);
+  const { products } = parseExport(lines, 'migros', sizes);
+  assert.deepEqual(products.map(({ data }) => data.size_text), ['100 g', '500 g']);
+});
+
 test('a Migros size that only repeats the variant counts as missing, as swiss-cli exports it without a quantity', () => {
   // Cases of swiss-cli's test/unit/migros-metadata.test.ts ("preserves the legacy size fallback").
   const lines = [
@@ -385,6 +395,16 @@ test('parseArgs reads only its arguments: the same arguments give the same optio
   assert.throws(() => parseArgs(['export.jsonl']), /--store must be migros or coop/);
   assert.throws(() => parseArgs(['export.jsonl', '--store', 'denner']), /--store must be migros or coop/);
   assert.equal(parseArgs(['export.jsonl', '--store', 'coop']).store, 'coop');
+});
+
+test('--sizes rejects a missing, flag-like or empty manifest filename', () => {
+  for (const args of [
+    ['export.jsonl', '--store', 'migros', '--sizes'],
+    ['export.jsonl', '--store', 'migros', '--sizes', '--write'],
+    ['export.jsonl', '--store', 'migros', '--sizes', ''],
+  ]) {
+    assert.throws(() => parseArgs(args), /--sizes requires a value/);
+  }
 });
 
 test('the Firestore target is chosen explicitly: never production by default, never two at once', async () => {

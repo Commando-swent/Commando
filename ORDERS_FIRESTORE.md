@@ -57,8 +57,10 @@ changes suppress late results but cannot undo committed delivery. Older clients 
 DELIVERED cannot decode delivered orders; coordinate application and production rules rollout.
 
 Integration boundaries: cancellation remains Adam's separate requester operation; it must not reuse
-owner-only authorization. No notification event is published here; coordinate future atomic publication
-with #204. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
+owner-only authorization. ORDER_PLACED is published atomically with creation; ORDER_ACCEPTED and
+ORDER_REJECTED are published atomically with their corresponding decisions. Rules require matching
+events for those writes. READY_FOR_HANDOFF and DELIVERED publish no event and preserve existing events.
+Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
 saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
 No shopping-completion prerequisite, trip-status/time restriction or CANCELLED status is added.
 

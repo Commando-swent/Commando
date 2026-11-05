@@ -6,6 +6,7 @@ import com.android.sample.model.*
 import com.android.sample.model.OrderDecision.ACCEPT
 import com.android.sample.model.OrderDecision.REJECT
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source
 import java.time.Instant
@@ -44,16 +45,15 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               .data!!
       // Bypass the Kotlin guard with an otherwise valid document belonging to the trip owner.
       assertPermissionDenied {
-        owner.firestore
-            .collection("orders")
-            .add(
-                data +
-                    mapOf(
-                        "requesterId" to ownerId,
-                        "createdAt" to FieldValue.serverTimestamp(),
-                    )
-            )
-            .await()
+        writeOrder(
+            owner,
+            data +
+                mapOf(
+                    "requesterId" to ownerId,
+                    "createdAt" to FieldValue.serverTimestamp(),
+                ),
+            ownerId,
+        )
       }
       assertEquals(OrderResult.Success(emptyList<Order>()), ownerOrders.getMyOrders())
       assertEquals(OrderResult.Success(listOf(saved)), requesterOrders.getMyOrders())
@@ -111,7 +111,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
           client.firestore.collection("orders").document(saved.id).delete().await()
         }
       }
-      owner.firestore.collection("orders").document(saved.id).update("status", "ACCEPTED").await()
+      writeDecision(owner, saved.id, "ACCEPTED")
       assertEquals(
           OrderResult.Success(saved.copy(status = OrderStatus.ACCEPTED)),
           fresh.getOrderById(saved.id),
@@ -188,26 +188,26 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               five + (item + ("productId" to "sixth")),
           )
       for (items in invalidItems) assertPermissionDenied {
-        requester.firestore.collection("orders").add(data + ("items" to items)).await()
+        writeOrder(requester, data + ("items" to items), owner.auth.currentUser!!.uid)
       }
       assertPermissionDenied {
-        requester.firestore
-            .collection("orders")
-            .add(
-                data +
-                    mapOf(
-                        "items" to listOf(item + ("unitPriceCents" to Int.MAX_VALUE)),
-                        "commissionCents" to 1,
-                    )
-            )
-            .await()
+        writeOrder(
+            requester,
+            data +
+                mapOf(
+                    "items" to listOf(item + ("unitPriceCents" to Int.MAX_VALUE)),
+                    "commissionCents" to 1,
+                ),
+            owner.auth.currentUser!!.uid,
+        )
       }
       // Exercise the last permitted index and the inclusive Int boundary with direct writes.
-      requester.firestore.collection("orders").add(data + ("items" to five)).await()
-      requester.firestore
-          .collection("orders")
-          .add(data + ("items" to listOf(item + ("unitPriceCents" to Int.MAX_VALUE))))
-          .await()
+      writeOrder(requester, data + ("items" to five), owner.auth.currentUser!!.uid)
+      writeOrder(
+          requester,
+          data + ("items" to listOf(item + ("unitPriceCents" to Int.MAX_VALUE))),
+          owner.auth.currentUser!!.uid,
+      )
       val malformed =
           listOf(
               data + ("requesterId" to "spoofed"),
@@ -222,14 +222,14 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               data + ("tripId" to "missing-${UUID.randomUUID()}"),
           )
       for (invalid in malformed) assertPermissionDenied {
-        requester.firestore.collection("orders").add(invalid).await()
+        writeOrder(requester, invalid, owner.auth.currentUser!!.uid)
       }
-      assertPermissionDenied { signedOut.firestore.collection("orders").add(data).await() }
+      assertPermissionDenied { writeOrder(signedOut, data, owner.auth.currentUser!!.uid) }
       val ref = owner.firestore.collection("trips").document(trip)
       ref.update("status", "CANCELLED").await()
-      assertPermissionDenied { requester.firestore.collection("orders").add(data).await() }
+      assertPermissionDenied { writeOrder(requester, data, owner.auth.currentUser!!.uid) }
       ref.update(mapOf("status" to "PUBLISHED", "scheduledAt" to Timestamp(0, 0))).await()
-      assertPermissionDenied { requester.firestore.collection("orders").add(data).await() }
+      assertPermissionDenied { writeOrder(requester, data, owner.auth.currentUser!!.uid) }
     }
   }
 
@@ -335,7 +335,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       for (client in listOf(requester, other, signedOut)) for (status in
           listOf("ACCEPTED", "REJECTED")) {
         assertPermissionDenied {
-          client.firestore.collection("orders").document(saved.id).update("status", status).await()
+          writeDecision(client, saved.id, status, requester.auth.currentUser!!.uid)
         }
       }
       val ref = owner.firestore.collection("orders").document(saved.id)
@@ -354,19 +354,25 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               mapOf("commissionCents" to FieldValue.delete()),
           )
       for (mutation in mutations) assertPermissionDenied("immutable fields $mutation") {
-        ref.update(mutation + ("status" to "ACCEPTED")).await()
+        writeDecision(owner, saved.id, "ACCEPTED", mutation = mutation)
       }
       val attackTrip = publish(other)
       assertPermissionDenied("tripId owner impersonation") {
         val attack = other.firestore.collection("orders").document(saved.id)
-        attack.update(mapOf("tripId" to attackTrip, "status" to "ACCEPTED")).await()
+        writeDecision(
+            other,
+            attack.id,
+            "ACCEPTED",
+            requester.auth.currentUser!!.uid,
+            mapOf("tripId" to attackTrip),
+        )
       }
       for (status in listOf("PENDING", "UNKNOWN")) assertPermissionDenied {
         ref.update("status", status).await()
       }
       assertPermissionDenied { ref.delete().await() }
       assertEquals(original, ref.get(Source.SERVER).await().data)
-      ref.update("status", "REJECTED").await()
+      writeDecision(owner, saved.id, "REJECTED")
       assertEquals(original + ("status" to "REJECTED"), ref.get(Source.SERVER).await().data)
       assertEquals(
           OrderResult.Error(OrderError.AlreadyDecided(saved.copy(status = OrderStatus.REJECTED))),
@@ -382,7 +388,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       }
       val accepted = createOrder(requester, publish(owner))
       val readyRef = owner.firestore.collection("orders").document(accepted.id)
-      readyRef.update("status", "ACCEPTED").await()
+      writeDecision(owner, accepted.id, "ACCEPTED")
       for (mutation in mutations) assertPermissionDenied {
         readyRef.update(mutation + ("status" to "READY_FOR_HANDOFF")).await()
       }
@@ -603,6 +609,52 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       )
     }
   }
+
+  private suspend fun writeOrder(
+      client: EmulatorClient,
+      data: Map<String, Any?>,
+      recipient: String,
+  ): DocumentReference {
+    val ref = client.firestore.collection("orders").document()
+    client.firestore
+        .runBatch {
+          it.set(ref, data)
+          it.set(
+              client.firestore.collection("orderEvents").document("${ref.id}_ORDER_PLACED"),
+              event(ref.id, recipient, "ORDER_PLACED"),
+          )
+        }
+        .await()
+    return ref
+  }
+
+  private suspend fun writeDecision(
+      client: EmulatorClient,
+      id: String,
+      status: String,
+      recipient: String? = null,
+      mutation: Map<String, Any> = emptyMap(),
+  ) {
+    val ref = client.firestore.collection("orders").document(id)
+    val requester = recipient ?: ref.get(Source.SERVER).await().getString("requesterId")!!
+    client.firestore
+        .runBatch {
+          it.update(ref, mutation + ("status" to status))
+          it.set(
+              client.firestore.collection("orderEvents").document("${id}_ORDER_$status"),
+              event(id, requester, "ORDER_$status"),
+          )
+        }
+        .await()
+  }
+
+  private fun event(id: String, recipient: String, type: String) =
+      mapOf(
+          "orderId" to id,
+          "recipientId" to recipient,
+          "type" to type,
+          "occurredAt" to FieldValue.serverTimestamp(),
+      )
 
   private fun expectedDecisionStatus(decision: OrderDecision): OrderStatus =
       when (decision) {

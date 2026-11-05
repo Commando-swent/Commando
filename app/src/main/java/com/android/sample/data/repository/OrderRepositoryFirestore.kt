@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
 import com.android.sample.model.*
+import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
@@ -196,7 +197,19 @@ internal class FirebaseOrderFirestoreDataSource(
 
   override suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument {
     val ref = orders.document(id)
-    ref.set(data).await()
+    val trip = getTrip(data.getValue("tripId") as String)
+    val recipient =
+        trip?.get("ownerId") as? String
+            ?: throw FirebaseFirestoreException(
+                "Order creation failed",
+                FirebaseFirestoreException.Code.NOT_FOUND,
+            )
+    firestore
+        .runBatch { batch ->
+          batch.set(ref, data)
+          batch.setEvent(id, recipient, NotificationEventType.ORDER_PLACED)
+        }
+        .await()
     return checkNotNull(get(ref.id))
   }
 
@@ -245,12 +258,7 @@ internal class FirebaseOrderFirestoreDataSource(
     // Owner transitions verify both identities; creation uses repository guards and rules.
     fun ensureSession() {
       context.ensureActive()
-      if (
-          FirebaseAuth.getInstance(database.app).currentUser?.uid != ownerId ||
-              (currentUserId != null && currentUserId.invoke() != ownerId)
-      ) {
-        throw transitionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
-      }
+      ensureDecisionIdentity(database.app, ownerId)
     }
     ensureSession()
     fun attempt(write: Boolean) = database.runTransaction { transaction ->
@@ -262,6 +270,7 @@ internal class FirebaseOrderFirestoreDataSource(
       if (write && document.data["status"] == transition.source.name) {
         val status = transition.target.name
         transaction.update(ref, "status", status)
+        transaction.setDecisionEvent(ref, document, transition)
         document.copy(data = document.data + ("status" to status))
       } else document
     }
@@ -274,6 +283,16 @@ internal class FirebaseOrderFirestoreDataSource(
         ensureSession()
         if (it.data["status"] == transition.source.name) throw denied
       }
+    }
+  }
+
+  /** Verifies Firebase and session identities on each transaction attempt. */
+  private fun ensureDecisionIdentity(app: FirebaseApp, ownerId: String) {
+    if (
+        FirebaseAuth.getInstance(app).currentUser?.uid != ownerId ||
+            (currentUserId != null && currentUserId.invoke() != ownerId)
+    ) {
+      throw transitionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
     }
   }
 
@@ -293,6 +312,38 @@ internal class FirebaseOrderFirestoreDataSource(
 
   private fun transitionError(code: FirebaseFirestoreException.Code) =
       FirebaseFirestoreException("Order transition failed", code)
+
+  private fun Transaction.setDecisionEvent(
+      ref: DocumentReference,
+      order: OrderFirestoreDocument,
+      transition: OwnerOrderTransition,
+  ) {
+    val type =
+        when (transition) {
+          OwnerOrderTransition.ACCEPT -> NotificationEventType.ORDER_ACCEPTED
+          OwnerOrderTransition.REJECT -> NotificationEventType.ORDER_REJECTED
+          OwnerOrderTransition.MARK_READY -> return
+        }
+    set(
+        ref.firestore.collection(NotificationFirestoreData.EVENTS).document(type.eventId(ref.id)),
+        publishedEvent(ref.id, order.data.getValue("requesterId") as String, type),
+    )
+  }
+
+  private fun WriteBatch.setEvent(id: String, recipient: String, type: NotificationEventType) {
+    set(
+        firestore.collection(NotificationFirestoreData.EVENTS).document(type.eventId(id)),
+        publishedEvent(id, recipient, type),
+    )
+  }
+
+  private fun publishedEvent(id: String, recipient: String, type: NotificationEventType) =
+      mapOf(
+          NotificationFirestoreData.ORDER_ID to id,
+          NotificationFirestoreData.RECIPIENT_ID to recipient,
+          NotificationFirestoreData.TYPE to type.name,
+          NotificationFirestoreData.OCCURRED_AT to FieldValue.serverTimestamp(),
+      )
 }
 
 private fun failure(error: OrderError) = OrderResult.Error(error)

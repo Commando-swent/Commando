@@ -533,6 +533,28 @@ class OrderDetailsScreenTest {
 
   @Test
   @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun shortViewportAndLargeTextKeepReceiptActionAndBackReachable() {
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+            trip,
+            viewerId = order.requesterId,
+        ),
+        fontScale = 1.5f,
+    )
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    compose
+        .onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    compose.runOnIdle { assertEquals(1, receiptRequests) }
+    backWorks()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
   fun shortViewportKeepsErrorRetryAndBackReachable() {
     show(OrderDetailsUiState.Error.TripFailure(TripError.Unknown), fontScale = 1.5f)
     compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)

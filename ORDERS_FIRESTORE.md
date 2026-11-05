@@ -21,8 +21,9 @@ or publication validation; those remain enforced by the production adapter and r
 
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
-Detail reads allow the requester or the associated trip's current owner. Deletes, and updates other
-than the owner transitions below, remain denied.
+Detail reads allow the requester or the associated trip's current owner. Deletes remain denied.
+Updates allow only the owner transitions and requester receipt confirmation described below, subject
+to their authorization, source-status and status-only change rules.
 
 `decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
 ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
@@ -43,11 +44,25 @@ session loss or cancellation cannot undo a commit, but ended sessions cannot dis
 Order Details shares one saving/outcome state for decisions and readiness, displays persisted results,
 uses authoritative conflicts, and keeps confirmed content on recoverable failures for retry.
 
+#194 receipt confirmation: `confirmReceipt(id)` authorizes the persisted requester before any outcome
+and atomically changes only READY_FOR_HANDOFF to DELIVERED. Authorized DELIVERED repeats return
+Success without writing; other statuses return AlreadyDecided with the persisted order. Owners who
+are not the requester and unrelated callers are denied, including repeats and conflicts. Rules enforce
+the exact transition and status-only changes independently, rejecting repeated direct writes and
+reversals. No delivery timestamp, payment, reward, or trip completion is introduced.
+The requester transaction needs no trip lookup; Order Details still requires a readable associated
+trip to render. The existing route exposes confirmation only to the ready order's requester, disables
+it while saving, and displays repository-confirmed results through the shared mutation state. Session
+changes suppress late results but cannot undo committed delivery. Older clients that do not recognize
+DELIVERED cannot decode delivered orders; coordinate application and production rules rollout.
+
 Integration boundaries: cancellation remains Adam's separate requester operation; it must not reuse
-owner-only authorization. No notification event is published here; coordinate future atomic publication
-with #204. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
+owner-only authorization. ORDER_PLACED is published atomically with creation; ORDER_ACCEPTED and
+ORDER_REJECTED are published atomically with their corresponding decisions. Rules require matching
+events for those writes. READY_FOR_HANDOFF and DELIVERED publish no event and preserve existing events.
+Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
 saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
-No shopping-completion prerequisite, trip-status/time restriction, CANCELLED or DELIVERED is added.
+No shopping-completion prerequisite, trip-status/time restriction or CANCELLED status is added.
 
 #147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
 like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered

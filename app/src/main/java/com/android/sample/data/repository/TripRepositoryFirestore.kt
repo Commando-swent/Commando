@@ -96,21 +96,35 @@ internal constructor(
       store.isValid() && handoffLocation.isValid() && scheduledAt > currentTime
 }
 
-internal data class TripFirestoreDocument(val id: String, val data: Map<String, Any?>)
+/** Raw trip transport; [FirestoreDocument] is decoded with Trip-specific validation below. */
+internal typealias TripFirestoreDocument = FirestoreDocument
 
+/**
+ * SDK-independent trip persistence; typed validation and missing-trip policy stay in the
+ * repository.
+ */
 internal interface TripFirestoreDataSource {
+  /**
+   * Stores supplied fields under a generated document ID and returns that ID after confirmation.
+   */
   suspend fun createTrip(data: Map<String, Any?>): String
 
+  /** Uses the SDK default read source; returns null only for a readable missing document. */
   suspend fun getTrip(tripId: String): TripFirestoreDocument?
 
+  /** Filters by status and future departure, ordered by scheduled time ascending. */
   suspend fun getUpcomingTrips(
       status: String,
       scheduledAfter: Instant,
   ): List<TripFirestoreDocument>
 
+  /**
+   * Queries persisted owner identity; callers and rules retain responsibility for access control.
+   */
   suspend fun getTripsByOwner(ownerId: String): List<TripFirestoreDocument>
 }
 
+/** Trip SDK adapter; intentionally preserves default-source reads and existing query filters. */
 internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
     TripFirestoreDataSource {
 
@@ -124,9 +138,7 @@ internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
 
   override suspend fun getTrip(tripId: String): TripFirestoreDocument? {
     val snapshot = trips.document(tripId).get().await()
-    return snapshot
-        .takeIf { it.exists() }
-        ?.let { TripFirestoreDocument(id = it.id, data = it.data.orEmpty()) }
+    return snapshot.takeIf { it.exists() }?.let { it.toFirestoreDocument() }
   }
 
   override suspend fun getUpcomingTrips(
@@ -140,11 +152,11 @@ internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
           .get()
           .await()
           .documents
-          .map { TripFirestoreDocument(id = it.id, data = it.data.orEmpty()) }
+          .map { it.toFirestoreDocument() }
 
   override suspend fun getTripsByOwner(ownerId: String): List<TripFirestoreDocument> =
       trips.whereEqualTo(FIELD_OWNER_ID, ownerId).get().await().documents.map {
-        TripFirestoreDocument(id = it.id, data = it.data.orEmpty())
+        it.toFirestoreDocument()
       }
 }
 

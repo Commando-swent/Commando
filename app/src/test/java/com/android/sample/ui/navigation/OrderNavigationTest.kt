@@ -17,6 +17,7 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.MockMapTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
+import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -228,6 +229,29 @@ class OrderNavigationTest {
     back()
     card().assertIsDisplayed()
     compose.runOnIdle { assertEquals(2, reads) }
+  }
+
+  @Test
+  fun receiptCallbackUsesExistingDetailsRouteAndShowsConfirmedDelivery() {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val confirmedIds = mutableListOf<String>()
+    decorate = { delegate ->
+      object : OrderRepository by delegate {
+        override suspend fun getOrderById(orderId: String) = OrderResult.Success(ready)
+
+        override suspend fun confirmReceipt(orderId: String): OrderResult<Order> {
+          confirmedIds += orderId
+          return OrderResult.Success(ready.copy(status = OrderStatus.DELIVERED))
+        }
+      }
+    }
+    show()
+    click(AppTestTags.ORDERS_BUTTON)
+    card().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).performScrollTo().performClick()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(listOf(order.id), confirmedIds) }
   }
 
   @Test

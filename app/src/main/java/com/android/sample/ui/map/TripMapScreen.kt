@@ -148,21 +148,7 @@ fun TripMapScreen(
                 )
             )
     )
-    val tripCount = content?.trips?.size ?: 0
-    val subtitle =
-        when (state) {
-          TripMapUiState.Loading -> stringResource(R.string.trip_map_loading_subtitle)
-          is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
-          else ->
-              if (fix?.canIdentifyNearbyTrips() == true && content != null)
-                  pluralStringResource(
-                      R.plurals.map_location_nearby_count,
-                      nearby.size,
-                      nearby.size,
-                      HANDOFF_RADIUS_METERS.toInt(),
-                  )
-              else pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
-        }
+    val subtitle = mapSubtitle(state, fix, nearby.size)
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
           controlsBounds = it.boundsInRoot()
@@ -306,6 +292,32 @@ fun TripMapScreen(
     )
   }
 }
+
+/** Header subtitle shared by the loading, error and location-aware discovery states. */
+@Composable
+private fun mapSubtitle(
+    state: TripMapUiState,
+    fix: DeviceLocation?,
+    nearbyCount: Int,
+): String =
+    when (state) {
+      TripMapUiState.Loading -> stringResource(R.string.trip_map_loading_subtitle)
+      is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
+      else -> {
+        val content = state as? TripMapUiState.Content
+        if (fix?.canIdentifyNearbyTrips() == true && content != null)
+            pluralStringResource(
+                R.plurals.map_location_nearby_count,
+                nearbyCount,
+                nearbyCount,
+                HANDOFF_RADIUS_METERS.toInt(),
+            )
+        else {
+          val tripCount = content?.trips?.size ?: 0
+          pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
+        }
+      }
+    }
 
 /** Geographical drawing and pins fill exactly the same viewport without independent cropping. */
 @Composable

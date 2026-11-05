@@ -78,6 +78,17 @@ class MapLocationViewModel(
     mutableState.value = MapLocationUiState.Idle
   }
 
+  /** Rechecks the monotonic age after resume without requesting a new position. */
+  fun refreshLocationValidity() {
+    val fix =
+        ((mutableState.value as? MapLocationUiState.Resolved)?.result
+                as? DeviceLocationResult.Available)
+            ?.location ?: return
+    val now = nowElapsedMillis()
+    if (!fix.isUsable(now) || now - fix.elapsedRealtimeMillis >= DeviceLocation.MAX_AGE_MILLIS)
+        stop()
+  }
+
   /** Cancels acquisition and forgets coordinates so an old session cannot restore a position. */
   fun stop() {
     requestJob?.cancel()

@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import com.android.sample.model.DeviceLocation
 import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 /** Approximate one-shot location through Android's network provider, without a new SDK. */
@@ -39,6 +40,8 @@ class AndroidDeviceLocationProvider(context: Context) : DeviceLocationProvider {
             DeviceLocationResult.Unavailable
         else -> read(manager)
       }
+    } catch (cancelled: CancellationException) {
+      throw cancelled
     } catch (_: SecurityException) {
       DeviceLocationResult.PermissionDenied
     } catch (_: IllegalArgumentException) {

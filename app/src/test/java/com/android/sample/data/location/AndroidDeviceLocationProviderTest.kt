@@ -14,6 +14,7 @@ import io.mockk.*
 import java.util.concurrent.Executor
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -159,5 +160,16 @@ class AndroidDeviceLocationProviderTest {
       )
     } throws SecurityException()
     assertEquals(DeviceLocationResult.PermissionDenied, provider.currentLocation())
+  }
+
+  @Test
+  fun cancellationPropagatesInsteadOfReturningFailure() = runTest {
+    var recorded: DeviceLocationResult? = null
+    val job = launch { recorded = provider.currentLocation() }
+    runCurrent()
+    job.cancel()
+    runCurrent()
+    assertNull(recorded)
+    assertTrue(job.isCancelled)
   }
 }

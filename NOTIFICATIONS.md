@@ -54,3 +54,13 @@ emulator runs do not publish rules to the shared backend.
 
 No shared-backend deployment is performed by this PR's local preparation.
 [Firebase deployment reference](https://firebase.google.com/docs/rules/manage-deploy).
+
+## Notification state management — #202
+
+NotificationsViewModel loads inbox and preferences independently and clears both on session changes.
+Saves are serialized per page: its UI must disable mutation controls while Content.isSaving is true.
+Other pages remain usable. Further writes on the saving page are ignored, rather than queued.
+Preference saves send only changed toggles, then reload authoritative settings from all devices.
+Failed saves preserve confirmed data and their retry action. A refresh requested during a save is
+retained after failure and runs after a successful retry, or when an explicit refresh dismisses it.
+Screens and navigation remain separate S5 increments.

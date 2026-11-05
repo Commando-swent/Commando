@@ -365,6 +365,8 @@ class MyOrdersViewModelTest {
     override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> =
         error("Not used")
 
+    override suspend fun cancelOrder(orderId: String): OrderResult<Order> = error("Not used")
+
     override suspend fun getOrderById(orderId: String): OrderResult<Order> = error("Not used")
 
     override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> =

@@ -58,6 +58,13 @@ sealed class OrderDetailsUiState {
 
     val isSaving: Boolean
       get() = mutation == OrderMutationState.Saving
+
+    val canCancel: Boolean
+      get() =
+          viewerId != null &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.status == OrderStatus.PENDING
   }
 
   data object NotFound : OrderDetailsUiState()
@@ -139,6 +146,9 @@ class OrderDetailsViewModel(
       saveOrder(isAllowed = { it.canMarkReadyForHandoff }) {
         orderRepository.markReadyForHandoff(orderId)
       }
+
+  /** Cancels a pending requester order through the shared mutation flow. */
+  fun cancel() = saveOrder(isAllowed = { it.canCancel }) { orderRepository.cancelOrder(orderId) }
 
   private fun saveOrder(
       isAllowed: (OrderDetailsUiState.Content) -> Boolean,

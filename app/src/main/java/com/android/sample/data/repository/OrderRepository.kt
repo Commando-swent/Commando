@@ -36,6 +36,12 @@ interface OrderRepository {
    * state. Ended sessions cannot receive results; cancellation cannot undo a committed transition.
    */
   suspend fun markReadyForHandoff(orderId: String): OrderResult<Order>
+
+  /**
+   * Requester only; a pending order becomes cancelled atomically. Repeating the same cancellation
+   * is idempotent, while a different persisted status returns [OrderError.AlreadyDecided].
+   */
+  suspend fun cancelOrder(orderId: String): OrderResult<Order>
 }
 
 /** Shared list order of every order query. */

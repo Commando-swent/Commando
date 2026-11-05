@@ -143,6 +143,17 @@ internal constructor(
     else failure(OrderError.AlreadyDecided(order))
   }
 
+  override suspend fun cancelOrder(orderId: String): OrderResult<Order> = session { uid ->
+    if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
+    val order =
+        source.cancel(orderId, uid).toOrder() ?: return@session failure(OrderError.InvalidData)
+    if (order.id != orderId || order.status == OrderStatus.PENDING) {
+      return@session failure(OrderError.InvalidData)
+    }
+    if (order.status == OrderStatus.CANCELLED) OrderResult.Success(order)
+    else failure(OrderError.AlreadyDecided(order))
+  }
+
   private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
     currentCoroutineContext().ensureActive()
     val uid =
@@ -182,6 +193,8 @@ internal interface OrderFirestoreDataSource {
   suspend fun decide(id: String, ownerId: String, decision: OrderDecision): OrderFirestoreDocument
 
   suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument
+
+  suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument
 }
 
 internal class FirebaseOrderFirestoreDataSource(
@@ -273,6 +286,48 @@ internal class FirebaseOrderFirestoreDataSource(
       attempt(write = false).await().also {
         ensureSession()
         if (it.data["status"] == transition.source.name) throw denied
+      }
+    }
+  }
+
+  override suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument {
+    val context = currentCoroutineContext()
+    val database = firestore
+    fun ensureSession() {
+      context.ensureActive()
+      if (
+          FirebaseAuth.getInstance(database.app).currentUser?.uid != requesterId ||
+              (currentUserId != null && currentUserId.invoke() != requesterId)
+      ) {
+        throw transitionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
+      }
+    }
+    ensureSession()
+    fun attempt(write: Boolean) = database.runTransaction { transaction ->
+      ensureSession()
+      val ref = database.collection("orders").document(id)
+      val stored = transaction.get(ref)
+      if (!stored.exists()) throw transitionError(FirebaseFirestoreException.Code.NOT_FOUND)
+      val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
+      val order =
+          document.toOrder()
+              ?: throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+      if (order.requesterId != requesterId) {
+        throw transitionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+      }
+      ensureSession()
+      if (write && order.status == OrderStatus.PENDING) {
+        transaction.update(ref, "status", OrderStatus.CANCELLED.name)
+        document.copy(data = document.data + ("status" to OrderStatus.CANCELLED.name))
+      } else document
+    }
+    return try {
+      attempt(true).await()
+    } catch (denied: FirebaseFirestoreException) {
+      if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+      attempt(false).await().also {
+        ensureSession()
+        if (it.data["status"] == OrderStatus.PENDING.name) throw denied
       }
     }
   }

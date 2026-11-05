@@ -200,6 +200,12 @@
     <string name="order_status_saving">Enregistrement du statut de la commande…</string>
     <string name="order_status_error">Impossible de mettre à jour le statut de la commande. Vérifiez votre connexion et réessayez.</string>
     <string name="order_status_conflict">Cette action n\'est plus disponible. Le statut actuel de la commande est affiché.</string>
+    <string name="order_details_cancelled">ANNULÉE</string>
+    <string name="order_cancel_action">Annuler la commande</string>
+    <string name="order_cancel_dialog_title">Annuler cette commande ?</string>
+    <string name="order_cancel_dialog_message">Cette action est irréversible. Le commando ne pourra plus accepter cette commande.</string>
+    <string name="order_cancel_confirm">Annuler la commande</string>
+    <string name="order_cancel_keep">Garder la commande</string>
     <string name="order_details_loading">Chargement des détails de la commande</string>
     <string name="order_details_not_found">Cette commande est introuvable.</string>
     <string name="order_details_error">Une erreur est survenue lors du chargement de cette commande.</string>

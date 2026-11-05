@@ -27,6 +27,7 @@ enum class OrderStatus {
   REJECTED,
   /** The trip owner has marked the order as ready to hand over to its requester. */
   READY_FOR_HANDOFF,
+  CANCELLED,
 }
 
 enum class OrderDecision {

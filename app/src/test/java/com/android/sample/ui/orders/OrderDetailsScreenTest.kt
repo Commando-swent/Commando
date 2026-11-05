@@ -66,12 +66,26 @@ class OrderDetailsScreenTest {
   private var backs = 0
   private var retries = 0
   private var readyRequests = 0
+  private var cancellations = 0
   private val decisions = mutableListOf<OrderDecision>()
 
   @Before
   fun setUp() {
     originalTimeZone = TimeZone.getDefault()
     TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+  }
+
+  @Test
+  fun cancellationRequiresConfirmationAndCanBeDismissed() {
+    show(OrderDetailsUiState.Content(order, trip, viewerId = order.requesterId))
+    compose.onNodeWithText("Cancel order").performScrollTo().performClick()
+    compose.onNodeWithText("Cancel this order?").assertIsDisplayed()
+    compose.onNodeWithText("Keep order").performClick()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+    compose.onNodeWithText("Cancel order").performClick()
+    compose.onAllNodesWithText("Cancel order").onLast().performClick()
+    compose.runOnIdle { assertEquals(1, cancellations) }
+    compose.onNodeWithText("Cancel this order?").assertDoesNotExist()
   }
 
   @After
@@ -99,6 +113,7 @@ class OrderDetailsScreenTest {
               onRetry = { retries++ },
               onDecision = { decisions += it },
               onMarkReadyForHandoff = { readyRequests++ },
+              onCancel = { cancellations++ },
           )
         }
       }

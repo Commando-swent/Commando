@@ -11,6 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -53,6 +57,7 @@ fun OrderDetailsScreen(
     modifier: Modifier = Modifier,
     onDecision: (OrderDecision) -> Unit = {},
     onMarkReadyForHandoff: () -> Unit = {},
+    onCancel: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -110,7 +115,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
-          OrderStatusActions(state, onDecision, onMarkReadyForHandoff)
+          OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel)
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
@@ -146,7 +151,10 @@ private fun OrderStatusActions(
     state: OrderDetailsUiState.Content,
     onDecision: (OrderDecision) -> Unit,
     onMarkReadyForHandoff: () -> Unit,
+    onCancel: () -> Unit,
 ) {
+  var confirmCancellation by
+      rememberSaveable(state.order.id, state.viewerId, state.canCancel) { mutableStateOf(false) }
   val message =
       when (val mutation = state.mutation) {
         OrderMutationState.Saved -> R.string.order_decision_saved
@@ -175,6 +183,17 @@ private fun OrderStatusActions(
       }
     }
   }
+  if (state.canCancel) {
+    OutlinedButton(
+        onClick = { confirmCancellation = true },
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth(),
+        colors =
+            ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+    ) {
+      Text(stringResource(R.string.order_cancel_action))
+    }
+  }
   if (state.canMarkReadyForHandoff) {
     Button(
         onClick = onMarkReadyForHandoff,
@@ -189,6 +208,28 @@ private fun OrderStatusActions(
     Text(
         stringResource(R.string.order_status_saving),
         Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+  }
+  if (confirmCancellation && state.canCancel && !state.isSaving) {
+    AlertDialog(
+        onDismissRequest = { confirmCancellation = false },
+        title = { Text(stringResource(R.string.order_cancel_dialog_title)) },
+        text = { Text(stringResource(R.string.order_cancel_dialog_message)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                confirmCancellation = false
+                onCancel()
+              }
+          ) {
+            Text(stringResource(R.string.order_cancel_confirm))
+          }
+        },
+        dismissButton = {
+          TextButton(onClick = { confirmCancellation = false }) {
+            Text(stringResource(R.string.order_cancel_keep))
+          }
+        },
     )
   }
 }
@@ -284,6 +325,7 @@ internal fun orderStatusLabel(status: OrderStatus): Int =
       OrderStatus.ACCEPTED -> R.string.order_details_accepted
       OrderStatus.REJECTED -> R.string.order_details_rejected
       OrderStatus.READY_FOR_HANDOFF -> R.string.order_details_ready_for_handoff
+      OrderStatus.CANCELLED -> R.string.order_details_cancelled
     }
 
 /** Localized order [status] with a distinct color per status; shared with incoming orders. */
@@ -297,6 +339,7 @@ internal fun OrderStatusBadge(status: OrderStatus) {
         OrderStatus.ACCEPTED -> colors.primaryContainer to colors.onPrimaryContainer
         OrderStatus.REJECTED -> colors.errorContainer to colors.onErrorContainer
         OrderStatus.READY_FOR_HANDOFF -> colors.tertiaryContainer to colors.onTertiaryContainer
+        OrderStatus.CANCELLED -> colors.surfaceVariant to colors.onSurfaceVariant
       }
   Surface(
       shape = CircleShape,

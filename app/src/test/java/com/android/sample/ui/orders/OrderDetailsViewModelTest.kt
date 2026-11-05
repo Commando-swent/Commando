@@ -93,6 +93,26 @@ class OrderDetailsViewModelTest {
   private fun viewModel() = OrderDetailsViewModel(order.id, orders, trips)
 
   @Test
+  fun cancellationPreventsDuplicateSubmissionAndShowsPersistedConflict() = runTest {
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.decision = { gate.await() }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+    advanceUntilIdle()
+    vm.cancel()
+    vm.cancel()
+    runCurrent()
+    assertEquals(1, orders.cancellations)
+    assertTrue((vm.uiState.value as OrderDetailsUiState.Content).isSaving)
+    val accepted = order.copy(status = OrderStatus.ACCEPTED)
+    gate.complete(OrderResult.Error(OrderError.AlreadyDecided(accepted)))
+    advanceUntilIdle()
+    val content = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(accepted, content.order)
+    assertTrue(!content.canCancel)
+    assertTrue(!content.isSaving)
+  }
+
+  @Test
   fun automaticallyLoadsExactIdsInSequenceAndPreservesBothOriginalObjects() = runTest {
     val orderGate = CompletableDeferred<OrderResult<Order>>()
     val tripGate = CompletableDeferred<TripResult<Trip>>()
@@ -718,6 +738,7 @@ class OrderDetailsViewModelTest {
   }
 
   private inner class RecordingOrders : OrderRepository {
+    var cancellations = 0
     val ids = mutableListOf<String>()
     val decisions = mutableListOf<Pair<String, OrderDecision>>()
     val readyIds = mutableListOf<String>()
@@ -739,6 +760,11 @@ class OrderDetailsViewModelTest {
     override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> {
       decisions += orderId to decision
       return this.decision()
+    }
+
+    override suspend fun cancelOrder(orderId: String): OrderResult<Order> {
+      cancellations++
+      return decision()
     }
 
     override suspend fun getMyOrders(): OrderResult<List<Order>> = error("Not used")

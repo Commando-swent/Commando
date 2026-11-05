@@ -22,7 +22,24 @@ or publication validation; those remain enforced by the production adapter and r
 Requester queries filter `requesterId == uid`, then sort by createdAt descending / ID ascending locally.
 The automatic single-field index suffices; no composite Orders index is required by these queries.
 Detail reads allow the requester or the associated trip's current owner. Deletes, and updates other
-than the owner transitions below, remain denied.
+than the lifecycle transitions below, remain denied.
+
+## Shared Sprint 4 lifecycle contract
+
+| Source | Action | Target | Actor |
+| --- | --- | --- | --- |
+| PENDING | Accept | ACCEPTED | Associated trip owner |
+| PENDING | Reject | REJECTED | Associated trip owner |
+| PENDING | Cancel | CANCELLED | Order requester |
+| ACCEPTED | Mark ready for handoff | READY_FOR_HANDOFF | Associated trip owner |
+| READY_FOR_HANDOFF | Confirm receipt | DELIVERED | Order requester |
+
+READY_FOR_HANDOFF is implemented by #194; DELIVERED remains reserved for receipt confirmation. No other transition is valid. A repeated request whose stored status is
+already the requested target is idempotent and returns Success without writing. If a competing or
+earlier action produced any other status, the operation returns AlreadyDecided with the latest persisted
+order. Every transition must run in a Firestore transaction, change only `status`, re-check the active
+session, and be enforced independently by production rules. Consequently, cancellation racing with an
+owner decision has exactly one winner; the loser receives the persisted winner rather than overwriting it.
 
 `decideOrder(id, ACCEPT/REJECT)` atomically validates ownership and changes only PENDING status to
 ACCEPTED/REJECTED. Identical finals return Success; opposite finals return AlreadyDecided(persistedOrder),
@@ -48,6 +65,10 @@ owner-only authorization. No notification event is published here; coordinate fu
 with #204. Checklist eligibility remains ACCEPTED only, so ready orders leave its aggregation while
 saved purchased quantities remain. Ghali/team must agree quantity accounting across lifecycle changes.
 No shopping-completion prerequisite, trip-status/time restriction, CANCELLED or DELIVERED is added.
+`cancelOrder(id)` atomically verifies requester ownership and changes only PENDING to CANCELLED.
+Repeating cancellation returns the persisted CANCELLED order without another write. Accepted or rejected
+orders cannot be cancelled. A trip owner, outsider or signed-out caller cannot cancel the requester's
+order. Cancelled orders remain queryable history; no document or immutable order field is deleted.
 
 #147: `getOrdersForTrip(tripId)` checks the trip owner, then queries `tripId == id` and sorts locally
 like requester queries. Rules allow that list only when the caller owns `trips/{tripId}`; an unfiltered

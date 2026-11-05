@@ -96,13 +96,19 @@ class AppJourneyTest {
     click(AppTestTags.TRIPS_BUTTON)
     // From the handoff (46.52, 6.56): SV building is about 240 m away, Rolex about 660 m.
     // The list is lazy, so scroll it to each node first: small screens show only the header.
+    val tripCard =
+        hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id)) and hasText(trip.store.name)
     pickLocation("SV building")
-    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    scrollTripsTo(tripCard).assertIsDisplayed()
     pickLocation("Rolex Learning Center")
-    scrollTripsTo(hasText("No trips near Rolex Learning Center yet.")).assertIsDisplayed()
+    scrollTripsTo(
+            hasText("No trips near Rolex Learning Center yet.") and
+                hasAnyAncestor(hasTestTag(AvailableTripsScreenTestTags.NO_MATCHES))
+        )
+        .assertIsDisplayed()
     compose.onNodeWithText(trip.store.name).assertDoesNotExist()
-    scrollTripsTo(hasText("Clear location")).performClick()
-    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    scrollTripsTo(hasTestTag(AvailableTripsScreenTestTags.CLEAR_LOCATION)).performClick()
+    scrollTripsTo(tripCard).assertIsDisplayed()
     scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled().performClick()
@@ -113,7 +119,7 @@ class AppJourneyTest {
     compose.onNodeWithText(trip.handoffLocation.name).assertIsDisplayed()
     back()
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
-    compose.onNodeWithText(trip.store.name).performClick()
+    compose.onNode(tripCard).performClick()
     compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
 
     click(CatalogueTestTags.add(oat.id))

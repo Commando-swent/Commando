@@ -687,6 +687,35 @@ class FakeOrderRepositoryTest {
 
   private fun failure(error: OrderError) = OrderResult.Error(error)
 
+  @Test
+  fun readinessPreservesFieldsAndAuthorizesBeforeIdempotencyOrConflicts() = runTest {
+    for (status in OrderStatus.entries) for (selfOrder in listOf(false, true)) {
+      val stored =
+          order()
+              .copy(status = status, requesterId = if (selfOrder) "commando" else "requester-demo")
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      for (caller in listOf("requester-demo", "outsider", null, "commando")) {
+        userId = caller
+        val result = orders.markReadyForHandoff(stored.id)
+        val expected =
+            when {
+              caller == null -> failure(OrderError.NotAuthenticated)
+              caller != "commando" || selfOrder -> failure(OrderError.PermissionDenied)
+              status in listOf(OrderStatus.ACCEPTED, OrderStatus.READY_FOR_HANDOFF) ->
+                  OrderResult.Success(stored.copy(status = OrderStatus.READY_FOR_HANDOFF))
+              else -> failure(OrderError.AlreadyDecided(stored))
+            }
+        assertEquals(expected, result)
+        assertEquals(expected, orders.markReadyForHandoff(stored.id))
+      }
+      val expected =
+          if (!selfOrder && status == OrderStatus.ACCEPTED)
+              stored.copy(status = OrderStatus.READY_FOR_HANDOFF)
+          else stored
+      assertEquals(OrderResult.Success(expected), orders.getOrderById(stored.id))
+    }
+  }
+
   private fun OrderResult<Order>.persisted(): Order =
       when (this) {
         is OrderResult.Success -> data

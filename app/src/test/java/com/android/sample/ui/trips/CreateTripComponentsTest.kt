@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.R
 import com.android.sample.model.Location
 import com.android.sample.model.TripLocations
+import com.android.sample.model.storeIdFor
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -90,6 +91,38 @@ class CreateTripComponentsTest {
     selected = TripLocations.stores[1]
 
     composeTestRule.onNodeWithTag(INPUT).assertTextContains(TripLocations.stores[1].name)
+  }
+
+  @Test
+  fun storePicker_listsEveryStoreIncludingCoopAndSelectsCoop() {
+    val coop = TripLocations.stores.single { storeIdFor(it.name) == "coop" }
+    var selected by mutableStateOf<Location?>(null)
+    composeTestRule.setContent {
+      LocationPickerField(
+          label = R.string.create_trip_store_label,
+          icon = R.drawable.ic_trip_shopping_bag,
+          selected = selected,
+          options = TripLocations.stores,
+          placeholder = R.string.create_trip_store_placeholder,
+          helper = R.string.create_trip_store_helper,
+          error = null,
+          enabled = true,
+          onSelected = { selected = it },
+          tag = INPUT,
+          errorTag = ERROR,
+      )
+    }
+    composeTestRule.onNodeWithTag(INPUT).performClick()
+    TripLocations.stores.forEach {
+      composeTestRule
+          .onNodeWithTag(CreateTripScreenTestTags.locationOption(it.name))
+          .assertExists(it.name)
+    }
+
+    composeTestRule.onNodeWithTag(CreateTripScreenTestTags.locationOption(coop.name)).performClick()
+
+    composeTestRule.onNodeWithTag(INPUT).assertTextContains("Coop Ecublens")
+    composeTestRule.runOnIdle { assertEquals(coop, selected) }
   }
 
   @Composable

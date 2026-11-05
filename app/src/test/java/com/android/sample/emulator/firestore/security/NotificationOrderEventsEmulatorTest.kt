@@ -46,6 +46,23 @@ class NotificationOrderEventsEmulatorTest {
   }
 
   @Test
+  fun handoffReadinessPreservesTheAcceptedEventWithoutPublishingAnotherNotification() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = place(owner, requester)
+      assertTrue(orders(owner).decideOrder(order.id, OrderDecision.ACCEPT) is OrderResult.Success)
+      val before = inbox(requester).single()
+      assertEquals(NotificationEventType.ORDER_ACCEPTED, before.event.type)
+      repeat(2) {
+        val ready = orders(owner).markReadyForHandoff(order.id)
+        assertTrue(ready is OrderResult.Success)
+        assertEquals(OrderStatus.READY_FOR_HANDOFF, (ready as OrderResult.Success).data.status)
+      }
+      assertEquals(listOf(before), inbox(requester))
+      assertEquals(NotificationEventType.ORDER_PLACED, inbox(owner).single().event.type)
+    }
+  }
+
+  @Test
   fun competingDecisionsPublishOnlyThePersistedWinner() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = place(owner, requester)

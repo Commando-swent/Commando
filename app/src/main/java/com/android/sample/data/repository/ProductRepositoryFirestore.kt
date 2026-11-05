@@ -6,13 +6,10 @@ import com.android.sample.model.ProductPage
 import com.android.sample.model.SUPPORTED_STORE_IDS
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
-import java.io.IOException
 import java.text.Normalizer
 import java.util.Locale
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
 class ProductRepositoryFirestore
@@ -147,6 +144,8 @@ private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
       name = name,
       priceCents = priceCents,
       imageUrl = imageUrl,
+      // Display only: a missing or malformed size hides the size, never the product.
+      sizeText = (data[FIELD_SIZE_TEXT] as? String)?.trim()?.takeIf(String::isNotEmpty),
   )
 }
 
@@ -176,29 +175,17 @@ private fun Number.toPriceCents(): Int? {
 private suspend fun <T> runProductRepositoryOperation(
     operation: suspend () -> ProductResult<T>
 ): ProductResult<T> =
-    try {
-      operation()
-    } catch (exception: CancellationException) {
-      throw exception
-    } catch (exception: Exception) {
-      ProductResult.Error(exception.toProductError())
-    }
+    runFirestoreOperation(onFailure = { ProductResult.Error(it.toProductError()) }, operation)
 
-private fun Exception.toProductError(): ProductError =
+private fun FirestoreFailure.toProductError(): ProductError =
     when (this) {
-      is FirebaseFirestoreException ->
-          when (code) {
-            FirebaseFirestoreException.Code.PERMISSION_DENIED,
-            FirebaseFirestoreException.Code.UNAUTHENTICATED -> ProductError.PermissionDenied
-            FirebaseFirestoreException.Code.UNAVAILABLE,
-            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED -> ProductError.NetworkError
-            FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-            FirebaseFirestoreException.Code.OUT_OF_RANGE,
-            FirebaseFirestoreException.Code.DATA_LOSS -> ProductError.InvalidData
-            else -> ProductError.Unknown
-          }
-      is IOException -> ProductError.NetworkError
-      else -> ProductError.Unknown
+      FirestoreFailure.PERMISSION_DENIED,
+      FirestoreFailure.UNAUTHENTICATED -> ProductError.PermissionDenied
+      FirestoreFailure.NETWORK_UNAVAILABLE -> ProductError.NetworkError
+      FirestoreFailure.INVALID_DATA -> ProductError.InvalidData
+      // Product reads are queries, which report no missing document: NOT_FOUND is unexpected.
+      FirestoreFailure.NOT_FOUND,
+      FirestoreFailure.UNKNOWN -> ProductError.Unknown
     }
 
 internal const val MAX_PRODUCT_QUERY_LIMIT = 50
@@ -217,3 +204,4 @@ private const val FIELD_PRICE = "price"
 private const val FIELD_IMAGE_URL = "image_url"
 private const val FIELD_REMOVED_AT = "removed_at"
 private const val FIELD_SEARCH_PREFIXES = "search_prefixes"
+private const val FIELD_SIZE_TEXT = "size_text"

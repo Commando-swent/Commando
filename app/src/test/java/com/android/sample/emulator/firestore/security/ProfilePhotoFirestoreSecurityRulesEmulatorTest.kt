@@ -12,6 +12,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source
 import java.io.File
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -31,15 +32,25 @@ class ProfilePhotoFirestoreSecurityRulesEmulatorTest {
       val auth = FakeAuthRepository(AuthUser(uid))
       val context = owner.app.applicationContext
       val repository =
-          ProfilePhotoRepositoryFirestore(context.contentResolver, auth, owner.firestore)
+          ProfilePhotoRepositoryFirestore(
+              context.contentResolver,
+              auth,
+              owner.firestore,
+              ioDispatcher = StandardTestDispatcher(testScheduler),
+          )
       assertEquals(null, repository.load(uid))
       val bitmap = Bitmap.createBitmap(800, 600, Bitmap.Config.ARGB_8888)
       val file = File.createTempFile("avatar", ".jpg")
       file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 80, it) }
       val gallery = repository.save(uid, ProfilePhotoSource.Gallery(Uri.fromFile(file)))!!
-      assertTrue(BitmapFactory.decodeByteArray(gallery, 0, gallery.size).width <= 512)
+      val galleryBitmap = BitmapFactory.decodeByteArray(gallery, 0, gallery.size)
+      assertEquals(400, galleryBitmap.width)
+      assertEquals(300, galleryBitmap.height)
       file.delete()
       val bytes = repository.save(uid, ProfilePhotoSource.Camera(bitmap))!!
+      val cameraBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+      assertEquals(512, cameraBitmap.width)
+      assertEquals(384, cameraBitmap.height)
       assertTrue(bytes.size < ProfilePhotoRepositoryFirestore.MAX_BYTES)
       assertTrue(bytes.contentEquals(repository.load(uid)))
       val document = owner.firestore.collection("profilePhotos").document(uid)

@@ -162,6 +162,22 @@ jobs:
         run: |
           ./gradlew jacocoTestReport
 
+      - name: Validate Coverage Report
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          report = ET.parse("app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml").getroot()
+          valid = report.tag == "report" and any(
+              any(cls.get("name", "").startswith("com/android/sample/") for cls in package.findall("class"))
+              and any(int(counter.get("covered", "0")) > 0
+                      for counter in package.findall("sourcefile/counter[@type='LINE']"))
+              for package in report.findall("package")
+          )
+          if not valid:
+              raise SystemExit("Coverage XML must contain application classes and covered source lines")
+          PY
+
       # Upload the various reports to sonar
       - name: Upload report to SonarCloud
         env:

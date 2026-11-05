@@ -65,6 +65,7 @@ class OrderDetailsScreenTest {
   private val state = mutableStateOf<OrderDetailsUiState>(OrderDetailsUiState.Content(order, trip))
   private var backs = 0
   private var retries = 0
+  private var readyRequests = 0
   private val decisions = mutableListOf<OrderDecision>()
 
   @Before
@@ -97,6 +98,7 @@ class OrderDetailsScreenTest {
               onBack = { backs++ },
               onRetry = { retries++ },
               onDecision = { decisions += it },
+              onMarkReadyForHandoff = { readyRequests++ },
           )
         }
       }
@@ -131,18 +133,22 @@ class OrderDetailsScreenTest {
   fun ownerActionsDispatchBothDecisionsAndSavingDisablesThem() {
     val content = OrderDetailsUiState.Content(order, trip, viewerId = trip.ownerId)
     show(content)
+    compose.onNodeWithTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF).assertDoesNotExist()
     compose.onNodeWithText("Accept").performScrollTo().assertIsEnabled().performClick()
     compose.onNodeWithText("Reject").performScrollTo().assertIsEnabled().performClick()
     compose.runOnIdle {
       assertEquals(listOf(OrderDecision.ACCEPT, OrderDecision.REJECT), decisions)
-      state.value = content.copy(isSaving = true)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
     }
     compose.onNodeWithText("Accept").performScrollTo().assertIsNotEnabled()
     compose.onNodeWithText("Reject").performScrollTo().assertIsNotEnabled()
-    compose.onNodeWithText("Saving decision\u2026").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("Saving order status\u2026").performScrollTo().assertIsDisplayed()
     compose.runOnIdle {
       state.value =
-          content.copy(order = order.copy(status = OrderStatus.ACCEPTED), decisionSaved = true)
+          content.copy(
+              order = order.copy(status = OrderStatus.ACCEPTED),
+              mutation = OrderMutationState.Saved,
+          )
     }
     compose.onNodeWithText("Accept").assertDoesNotExist()
     compose.onNodeWithText("Reject").assertDoesNotExist()
@@ -158,6 +164,16 @@ class OrderDetailsScreenTest {
             OrderDetailsUiState.Content(order, trip, "requester"),
             OrderDetailsUiState.Content(order, trip, "stranger"),
             OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.ACCEPTED),
+                trip,
+                "requester",
+            ),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.ACCEPTED),
+                trip,
+                "stranger",
+            ),
+            OrderDetailsUiState.Content(
                 order.copy(status = OrderStatus.REJECTED),
                 trip,
                 trip.ownerId,
@@ -167,25 +183,29 @@ class OrderDetailsScreenTest {
       compose.runOnIdle { state.value = content }
       compose.onNodeWithText("Accept").assertDoesNotExist()
       compose.onNodeWithText("Reject").assertDoesNotExist()
+      compose.onNodeWithTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF).assertDoesNotExist()
     }
   }
 
   @Test
   fun conflictShowsLatestStatusAndFeedbackWhileFailureKeepsActions() {
     val content = OrderDetailsUiState.Content(order, trip, trip.ownerId)
-    show(content.copy(decisionError = OrderError.Unknown))
+    show(content.copy(mutation = OrderMutationState.Failed(OrderError.Unknown)))
     compose
-        .onNodeWithText("Could not save the decision. Check your connection and try again.")
+        .onNodeWithText("Could not update the order status. Check your connection and try again.")
         .performScrollTo()
         .assertIsDisplayed()
     compose.onNodeWithText("Accept").performScrollTo().assertIsEnabled()
     val persisted = order.copy(status = OrderStatus.REJECTED)
     compose.runOnIdle {
       state.value =
-          content.copy(order = persisted, decisionError = OrderError.AlreadyDecided(persisted))
+          content.copy(
+              order = persisted,
+              mutation = OrderMutationState.Failed(OrderError.AlreadyDecided(persisted)),
+          )
     }
     compose
-        .onNodeWithText("This order was already decided. Its latest status is shown.")
+        .onNodeWithText("This action is no longer available. The latest order status is shown.")
         .performScrollTo()
         .assertIsDisplayed()
     compose.onNodeWithText("REJECTED").assertExists()
@@ -205,6 +225,52 @@ class OrderDetailsScreenTest {
   @Test
   fun rejectedContentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
     assertReadOnlyContent(OrderStatus.REJECTED, "REJECTED")
+  }
+
+  @Test
+  fun acceptedOwnerCanRequestReadinessAndSavingDisablesTheAction() {
+    val content =
+        OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId)
+    show(content)
+    val ready = compose.onNodeWithTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF)
+    ready.performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, readyRequests)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    ready.performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag(OrderDetailsTestTags.ACCEPT).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.REJECT).assertDoesNotExist()
+  }
+
+  @Test
+  fun readyForHandoffOwnerContentDisplaysStatusWithoutDecisionActions() {
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+            trip,
+            viewerId = trip.ownerId,
+        )
+    )
+    compose.onNodeWithText("READY FOR HANDOFF").assertIsDisplayed()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+    compose.onNodeWithText("Reject").assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun readyForHandoffStatusUsesFrenchLabel() {
+    show(OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId))
+    compose
+        .onNodeWithText("Marquer comme prête à être remise")
+        .performScrollTo()
+        .assertIsDisplayed()
+    compose.runOnIdle {
+      state.value =
+          OrderDetailsUiState.Content(order.copy(status = OrderStatus.READY_FOR_HANDOFF), trip)
+    }
+    compose.onNodeWithText("PRÊTE À ÊTRE REMISE").assertIsDisplayed()
   }
 
   private fun assertReadOnlyContent(status: OrderStatus, label: String) {
@@ -257,8 +323,10 @@ class OrderDetailsScreenTest {
 
   @Test
   fun endedSessionRemovesSavingContentAndOffersOnlyBack() {
-    show(OrderDetailsUiState.Content(order, trip, trip.ownerId, isSaving = true))
-    compose.onNodeWithText("Saving decision\u2026").performScrollTo().assertIsDisplayed()
+    show(
+        OrderDetailsUiState.Content(order, trip, trip.ownerId, mutation = OrderMutationState.Saving)
+    )
+    compose.onNodeWithText("Saving order status\u2026").performScrollTo().assertIsDisplayed()
     compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
     compose
         .onNodeWithText("This session has ended. Sign in again to view your orders.")
@@ -267,7 +335,7 @@ class OrderDetailsScreenTest {
     assertProtectedContentAbsent()
     compose.onNodeWithText("Accept").assertDoesNotExist()
     compose.onNodeWithText("Reject").assertDoesNotExist()
-    compose.onNodeWithText("Saving decision\u2026").assertDoesNotExist()
+    compose.onNodeWithText("Saving order status\u2026").assertDoesNotExist()
     compose.onNodeWithText("Retry").assertDoesNotExist()
     compose.onAllNodes(hasClickAction()).assertCountEquals(1)
     backWorks()

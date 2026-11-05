@@ -1,4 +1,5 @@
 <resources>
+    <string name="map_location_imprecise">Your position is too approximate to identify nearby trips. You can still browse all trips.</string>
     <string name="map_location_loading">Finding your approximate location…</string>
     <string name="map_location_denied">Location permission was denied. You can still browse trips. Allow location in app settings or retry Locate me.</string>
     <string name="map_location_disabled">Location services are disabled. Enable them in device settings, then retry.</string>

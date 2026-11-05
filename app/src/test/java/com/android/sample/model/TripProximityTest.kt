@@ -55,4 +55,22 @@ class TripProximityTest {
   fun emptyEligibleFeedHasNoNearbyTrips() {
     assertEquals(emptyList<Trip>(), nearbyTrips(emptyList(), fix))
   }
+
+  @Test
+  fun accuracyAtSearchRadiusAllowsNearbyTrips() {
+    val same = trip("same", fix.latitude)
+    assertEquals(
+        listOf(same),
+        nearbyTrips(listOf(same), fix.copy(accuracyMeters = HANDOFF_RADIUS_METERS.toFloat())),
+    )
+  }
+
+  @Test
+  fun accuracyAboveSearchRadiusSuppressesNearbyTrips() {
+    val same = trip("same", fix.latitude)
+    assertTrue(
+        nearbyTrips(listOf(same), fix.copy(accuracyMeters = HANDOFF_RADIUS_METERS.toFloat() + 1))
+            .isEmpty()
+    )
+  }
 }

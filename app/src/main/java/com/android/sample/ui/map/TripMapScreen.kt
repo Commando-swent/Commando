@@ -42,6 +42,7 @@ import com.android.sample.model.DeviceLocation
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
+import com.android.sample.model.canIdentifyNearbyTrips
 import com.android.sample.model.distanceMeters
 import com.android.sample.model.distanceTo
 import com.android.sample.model.hasValidCoordinates
@@ -149,7 +150,7 @@ fun TripMapScreen(
           TripMapUiState.Loading -> stringResource(R.string.trip_map_loading_subtitle)
           is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
           else ->
-              if (fix != null && content != null)
+              if (fix?.canIdentifyNearbyTrips() == true && content != null)
                   stringResource(
                       R.string.map_location_nearby_count,
                       nearby.size,
@@ -352,7 +353,11 @@ private fun Trip.mapSummary(
   val distance =
       if (deviceMeters != null)
           stringResource(
-              if (deviceMeters <= HANDOFF_RADIUS_METERS) R.string.map_location_nearby_distance
+              if (
+                  devicePosition?.canIdentifyNearbyTrips() == true &&
+                      deviceMeters <= HANDOFF_RADIUS_METERS
+              )
+                  R.string.map_location_nearby_distance
               else R.string.map_location_distance,
               deviceMeters.roundToInt(),
           )

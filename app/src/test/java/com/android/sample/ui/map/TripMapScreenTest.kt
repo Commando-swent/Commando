@@ -377,4 +377,20 @@ class TripMapScreenTest {
     compose.waitForIdle()
     assertEquals(trip.id, details)
   }
+
+  @Test
+  fun imprecisePositionDoesNotAdvertiseNearbyTrips() {
+    val fix = DeviceLocation(point.latitude, point.longitude, 2000f, 1000)
+    state = TripMapUiState.Content(listOf(trip), trip.id)
+    locationState = MapLocationUiState.Resolved(DeviceLocationResult.Available(fix))
+    show()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    compose.onNodeWithText(context.getString(R.string.map_location_imprecise)).assertIsDisplayed()
+    compose
+        .onNodeWithText(context.getString(R.string.map_location_nearby_distance, 0))
+        .assertDoesNotExist()
+    compose
+        .onNodeWithText(context.resources.getQuantityString(R.plurals.trip_map_count, 1, 1))
+        .assertIsDisplayed()
+  }
 }

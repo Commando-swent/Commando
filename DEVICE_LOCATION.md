@@ -56,3 +56,5 @@ The map shows approximate-position accuracy, straight-line distances and the cou
 eligible filtered trips within the shared 500 m radius. Device location does not change the
 delivery filter. The background, pins and position share a camera transform; offscreen
 trips remain selectable. Out-of-campus fixes are explained without drawing a false position.
+
+Nearby counts and badges require accuracy no larger than `HANDOFF_RADIUS_METERS` (500 m). Less precise fixes retain the approximate position and straight-line distance, but display an explanation and the total trip count instead of nearby claims. No precise-location permission is requested.

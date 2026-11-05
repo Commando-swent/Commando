@@ -1,4 +1,5 @@
 <resources>
+    <string name="map_location_imprecise">Votre position est trop approximative pour identifier les trajets proches. Vous pouvez consulter tous les trajets.</string>
     <string name="map_location_loading">Recherche de votre position approximative…</string>
     <string name="map_location_denied">La localisation a été refusée. Vous pouvez consulter les trajets. Autorisez-la dans les réglages de l’application ou réessayez Me localiser.</string>
     <string name="map_location_disabled">La localisation est désactivée. Activez-la dans les réglages de l’appareil, puis réessayez.</string>

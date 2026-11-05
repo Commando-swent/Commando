@@ -78,10 +78,6 @@ class MapLocationViewModel(
     mutableState.value = MapLocationUiState.Idle
   }
 
-  override fun onCleared() {
-    stop()
-  }
-
   companion object {
     const val REQUEST_TIMEOUT_MILLIS = 15_000L
   }

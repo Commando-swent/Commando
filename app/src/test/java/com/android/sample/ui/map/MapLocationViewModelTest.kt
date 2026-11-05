@@ -175,7 +175,6 @@ class MapLocationViewModelTest {
     store.clear()
     advanceUntilIdle()
     assertTrue(cancelled)
-    assertEquals(MapLocationUiState.Idle, model.uiState.value)
   }
 
   @Test

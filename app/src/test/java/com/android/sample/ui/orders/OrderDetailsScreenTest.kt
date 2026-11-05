@@ -116,22 +116,51 @@ class OrderDetailsScreenTest {
   }
 
   @Test
-  fun cancellationIsHiddenForOtherViewersAndNonPendingOrders() {
+  fun cancellationIsAvailableOnlyToThePendingOrdersRequester() {
     show()
-    for (content in
-        listOf(
-            OrderDetailsUiState.Content(order, trip, trip.ownerId),
-            OrderDetailsUiState.Content(order, trip, "outsider"),
-            OrderDetailsUiState.Content(order, trip),
-        ) +
-            OrderStatus.entries
-                .filter { it != OrderStatus.PENDING }
-                .map {
-                  OrderDetailsUiState.Content(order.copy(status = it), trip, order.requesterId)
-                }) {
-      compose.runOnIdle { state.value = content }
-      compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+    for (viewer in listOf(null, trip.ownerId, "outsider", order.requesterId)) for (status in
+        OrderStatus.entries) {
+      compose.runOnIdle {
+        state.value = OrderDetailsUiState.Content(order.copy(status = status), trip, viewer)
+      }
+      val action = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+      if (viewer == order.requesterId && status == OrderStatus.PENDING) action.assertExists()
+      else action.assertDoesNotExist()
     }
+  }
+
+  @Test
+  fun interactiveCancellationPreviewSupportsKeepingAndConfirmingWithoutFirebase() {
+    compose.setContent { OrderCancellationPendingPreview() }
+    val cancel = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+    cancel.performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.KEEP_ORDER).performClick()
+    compose.onNodeWithText("PENDING").assertIsDisplayed()
+    cancel.performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+    cancel.assertDoesNotExist()
+  }
+
+  @Test
+  fun cancelledPreviewKeepsTheOrderContentAndOffersNoFurtherCancellation() {
+    compose.setContent { OrderCancellationConfirmedPreview() }
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Migros EPFL").assertIsDisplayed()
+    compose.onNodeWithText("2 × Milk").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+  }
+
+  @Test
+  fun sessionEndRemovesAnOpenCancellationDialogWithoutSubmitting() {
+    show(OrderDetailsUiState.Content(order, trip, order.requesterId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(0, cancellations) }
   }
 
   @After

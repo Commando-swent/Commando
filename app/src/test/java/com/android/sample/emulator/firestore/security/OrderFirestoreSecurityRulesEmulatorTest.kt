@@ -347,6 +347,34 @@ class OrderFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun cancellationRejectsMissingOrMalformedStoredOrdersWithoutWriting() = runTest {
+    withClients("requester" to true, "owner" to true) { (requester, owner) ->
+      val saved = createOrder(requester, publish(owner))
+      val repository = orders(requester)
+      assertEquals(OrderResult.Error(OrderError.NotFound), repository.cancelOrder("missing"))
+      val malformed = "malformed-${saved.id}"
+      val fields =
+          requester.firestore
+              .collection("orders")
+              .document(saved.id)
+              .get(Source.SERVER)
+              .await()
+              .data!! + ("status" to "UNKNOWN_STATUS")
+      createDocumentAsOwner("orders", malformed, fields)
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repository.cancelOrder(malformed))
+      assertEquals(
+          fields,
+          requester.firestore
+              .collection("orders")
+              .document(malformed)
+              .get(Source.SERVER)
+              .await()
+              .data,
+      )
+    }
+  }
+
+  @Test
   fun directCancellationRequiresRequesterAndPreservesImmutableFields() = runTest {
     withClients("requester" to true, "owner" to true, "other" to true, "signedOut" to false) {
         (requester, owner, other, signedOut) ->

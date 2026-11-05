@@ -312,17 +312,9 @@ internal class FirebaseOrderFirestoreDataSource(
     fun attempt(write: Boolean) = database.runTransaction { transaction ->
       ensureSession()
       val ref = database.collection("orders").document(id)
-      val stored = transaction.get(ref)
-      if (!stored.exists()) throw transitionError(FirebaseFirestoreException.Code.NOT_FOUND)
-      val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
-      val order =
-          document.toOrder()
-              ?: throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
-      if (order.requesterId != requesterId) {
-        throw transitionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
-      }
+      val document = transaction.readOrder(ref, requesterId, requester = true)
       ensureSession()
-      if (write && order.status == OrderStatus.PENDING) {
+      if (write && document.data["status"] == OrderStatus.PENDING.name) {
         transaction.update(ref, "status", OrderStatus.CANCELLED.name)
         document.copy(data = document.data + ("status" to OrderStatus.CANCELLED.name))
       } else document
@@ -348,15 +340,25 @@ internal class FirebaseOrderFirestoreDataSource(
     }
   }
 
-  private fun Transaction.readOrder(ref: DocumentReference, uid: String): OrderFirestoreDocument {
+  /** Authorizes the persisted requester or associated owner before returning a valid snapshot. */
+  private fun Transaction.readOrder(
+      ref: DocumentReference,
+      uid: String,
+      requester: Boolean = false,
+  ): OrderFirestoreDocument {
     val stored = get(ref)
     if (!stored.exists()) throw transitionError(FirebaseFirestoreException.Code.NOT_FOUND)
     val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
     val order =
         document.toOrder()
             ?: throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
-    val trip = get(ref.firestore.collection("trips").document(order.tripId))
-    if (!trip.exists() || trip.getString("ownerId") != uid || order.requesterId == uid) {
+    val authorized =
+        if (requester) order.requesterId == uid
+        else {
+          val trip = get(ref.firestore.collection("trips").document(order.tripId))
+          trip.exists() && trip.getString("ownerId") == uid && order.requesterId != uid
+        }
+    if (!authorized) {
       throw transitionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
     }
     return document

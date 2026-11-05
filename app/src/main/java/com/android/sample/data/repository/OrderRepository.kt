@@ -40,15 +40,13 @@ interface OrderRepository {
   /**
    * Cancels the authenticated requester's pending order without deleting its history.
    *
-   * Authorization uses the persisted requester before returning any result. Only
-   * [OrderStatus.PENDING] changes to [OrderStatus.CANCELLED]; all other fields stay immutable. An
-   * authorized repeat at CANCELLED succeeds without writing. A competing owner decision is returned
-   * as [OrderError.AlreadyDecided] with the persisted order, never overwritten.
+   * Authorizes the persisted requester. Only [OrderStatus.PENDING] changes to
+   * [OrderStatus.CANCELLED]; other fields stay immutable. Repeats succeed without writing;
+   * conflicts return [OrderError.AlreadyDecided] with the persisted winner.
    *
-   * @param orderId Firestore document ID of the order; blank IDs and document paths are invalid.
-   * @return The persisted cancelled order, or a typed [OrderError]. Ended/changed sessions return
-   *   [OrderError.NotAuthenticated]; other users receive [OrderError.PermissionDenied]. A failed
-   *   confirmation can follow a committed write: retry the same ID to recover its stored outcome.
+   * @param orderId Firestore document ID; blank IDs and document paths are invalid.
+   * @return Persisted order or typed failure, including [OrderError.NotAuthenticated] for ended
+   *   sessions and [OrderError.PermissionDenied] for other users. Retry uncertain commits by ID.
    * @throws kotlinx.coroutines.CancellationException When the calling coroutine is cancelled.
    *   Cancelling the coroutine cannot undo a server commit.
    */

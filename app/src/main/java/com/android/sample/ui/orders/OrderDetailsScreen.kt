@@ -550,11 +550,11 @@ private fun OrderDetailsContentPreview(
 /** Local preview; confirm the real dialog to update only the fixture. */
 @Preview(name = "Cancellation · Pending requester", widthDp = 412, heightDp = 917)
 @Composable
-private fun OrderCancellationPendingPreview() = OrderDetailsContentPreview(requester = true)
+internal fun OrderCancellationPendingPreview() = OrderDetailsContentPreview(requester = true)
 
 @Preview(name = "Cancellation · Cancelled requester", widthDp = 412, heightDp = 917)
 @Composable
-private fun OrderCancellationConfirmedPreview() =
+internal fun OrderCancellationConfirmedPreview() =
     OrderDetailsContentPreview(OrderStatus.CANCELLED, requester = true)
 
 @Preview(name = "Order details · Loading", widthDp = 412, heightDp = 917)

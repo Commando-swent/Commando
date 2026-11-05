@@ -46,7 +46,7 @@ class NotificationOrderEventsEmulatorTest {
   }
 
   @Test
-  fun handoffReadinessPreservesTheAcceptedEventWithoutPublishingAnotherNotification() = runTest {
+  fun handoffAndReceiptPreserveExistingEventsWithoutPublishingAnotherNotification() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = place(owner, requester)
       assertTrue(orders(owner).decideOrder(order.id, OrderDecision.ACCEPT) is OrderResult.Success)
@@ -59,6 +59,20 @@ class NotificationOrderEventsEmulatorTest {
       }
       assertEquals(listOf(before), inbox(requester))
       assertEquals(NotificationEventType.ORDER_PLACED, inbox(owner).single().event.type)
+      val placedInbox = inbox(owner)
+      val placedEvents = rawEvents(owner)
+      val acceptedEvents = rawEvents(requester)
+      assertEquals(setOf("${order.id}_ORDER_PLACED"), placedEvents.keys)
+      assertEquals(setOf("${order.id}_ORDER_ACCEPTED"), acceptedEvents.keys)
+      val delivered = OrderResult.Success(order.copy(status = OrderStatus.DELIVERED))
+      val requesterOrders = orders(requester)
+      assertEquals(delivered, requesterOrders.confirmReceipt(order.id))
+      assertEquals(delivered, orders(requester).confirmReceipt(order.id))
+      assertEquals(delivered, orders(requester).getOrderById(order.id))
+      assertEquals(placedEvents, rawEvents(owner))
+      assertEquals(acceptedEvents, rawEvents(requester))
+      assertEquals(placedInbox, inbox(owner))
+      assertEquals(listOf(before), inbox(requester))
     }
   }
 
@@ -191,6 +205,16 @@ class NotificationOrderEventsEmulatorTest {
 
   private suspend fun inbox(client: EmulatorClient) =
       (notifications(client).getNotifications() as OrderResult.Success).data
+
+  // Inspect raw documents too: the inbox decoder skips unsupported event types.
+  private suspend fun rawEvents(client: EmulatorClient) =
+      client.firestore
+          .collection("orderEvents")
+          .whereEqualTo("recipientId", client.auth.currentUser!!.uid)
+          .get(Source.SERVER)
+          .await()
+          .documents
+          .associate { it.id to it.data.orEmpty() }
 
   private suspend fun place(owner: EmulatorClient, requester: EmulatorClient): Order {
     val id = UUID.randomUUID().toString()

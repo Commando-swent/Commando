@@ -716,6 +716,91 @@ class FakeOrderRepositoryTest {
     }
   }
 
+  @Test
+  fun receiptConfirmationPreservesFieldsAndRepeatedResultsAreIndependentSnapshots() = runTest {
+    val ready =
+        order()
+            .copy(
+                status = OrderStatus.READY_FOR_HANDOFF,
+                items = listOf(item, item.copy(productId = "bread")),
+            )
+    val orders = fake(listOf(ready))
+    val delivered = ready.copy(status = OrderStatus.DELIVERED)
+    val first = orders.confirmReceipt(ready.id).data()
+    assertEquals(delivered, first)
+    (first.items as MutableList).clear()
+    repeat(2) {
+      assertEquals(OrderResult.Success(delivered), orders.confirmReceipt(ready.id))
+      assertEquals(OrderResult.Success(delivered), orders.getOrderById(ready.id))
+    }
+  }
+
+  @Test
+  fun receiptConfirmationRejectsNonReadyStatusesWithoutChangingOrders() = runTest {
+    for (status in listOf(OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      val stored = order().copy(status = status)
+      val orders = fake(listOf(stored))
+      assertEquals(
+          failure(OrderError.AlreadyDecided(stored)),
+          orders.confirmReceipt(stored.id),
+      )
+      assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+    }
+    val delivered = order().copy(status = OrderStatus.DELIVERED)
+    assertEquals(
+        OrderResult.Success(delivered),
+        fake(listOf(delivered)).confirmReceipt(delivered.id),
+    )
+  }
+
+  @Test
+  fun receiptConfirmationAuthorizesBeforeSuccessOrConflictDetails() = runTest {
+    for (status in OrderStatus.entries) {
+      val stored = order().copy(status = status)
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      for (caller in listOf("commando", "outsider", null, " ")) {
+        userId = caller
+        val expected =
+            if (caller.isNullOrBlank()) OrderError.NotAuthenticated else OrderError.PermissionDenied
+        assertEquals(failure(expected), orders.confirmReceipt(stored.id))
+      }
+      userId = stored.requesterId
+      assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+    }
+  }
+
+  @Test
+  fun receiptConfirmationValidatesIdsAndKeepsStorageOnInjectedFailure() = runTest {
+    val ready = order().copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val orders = fake(listOf(ready))
+    for (id in listOf("", " ", "a/b", ".", "..")) {
+      assertEquals(failure(OrderError.InvalidData), orders.confirmReceipt(id))
+    }
+    assertEquals(failure(OrderError.NotFound), orders.confirmReceipt("missing"))
+    orders.forcedError = OrderError.Unknown
+    assertEquals(failure(OrderError.Unknown), orders.confirmReceipt(ready.id))
+    orders.forcedError = null
+    assertEquals(OrderResult.Success(ready), orders.getOrderById(ready.id))
+  }
+
+  @Test
+  fun concurrentReceiptConfirmationsReturnTheSameDeliveredOrder() = runTest {
+    val ready = order().copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val orders = fake(listOf(ready))
+    val gate = CompletableDeferred<Unit>()
+    val calls =
+        List(2) {
+          async(Dispatchers.Default) {
+            gate.await()
+            orders.confirmReceipt(ready.id)
+          }
+        }
+    gate.complete(Unit)
+    val delivered = OrderResult.Success(ready.copy(status = OrderStatus.DELIVERED))
+    assertEquals(listOf(delivered, delivered), calls.awaitAll())
+    assertEquals(delivered, orders.getOrderById(ready.id))
+  }
+
   private fun OrderResult<Order>.persisted(): Order =
       when (this) {
         is OrderResult.Success -> data

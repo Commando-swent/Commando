@@ -36,6 +36,13 @@ interface OrderRepository {
    * state. Ended sessions cannot receive results; cancellation cannot undo a committed transition.
    */
   suspend fun markReadyForHandoff(orderId: String): OrderResult<Order>
+
+  /**
+   * Authenticated requester only; atomically changes READY_FOR_HANDOFF to DELIVERED, preserving
+   * every other field. Authorized repeats at DELIVERED return Success without writing; other
+   * statuses return AlreadyDecided with the persisted order. Authorization precedes both outcomes.
+   */
+  suspend fun confirmReceipt(orderId: String): OrderResult<Order>
 }
 
 /** Shared list order of every order query. */

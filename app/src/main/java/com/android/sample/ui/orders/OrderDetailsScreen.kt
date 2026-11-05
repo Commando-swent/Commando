@@ -38,12 +38,13 @@ object OrderDetailsTestTags {
   const val ACCEPT = "order_details_accept"
   const val REJECT = "order_details_reject"
   const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
+  const val CONFIRM_RECEIPT = "order_details_confirm_receipt"
 }
 
 /**
  * Shared presentation; the caller owns loading, authorization and navigation. [onDecision] and
- * [onMarkReadyForHandoff] request status changes; [state] supplies eligibility and persisted
- * results.
+ * [onMarkReadyForHandoff] and [onConfirmReceipt] request status changes; [state] supplies
+ * eligibility and persisted results.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -53,6 +54,7 @@ fun OrderDetailsScreen(
     modifier: Modifier = Modifier,
     onDecision: (OrderDecision) -> Unit = {},
     onMarkReadyForHandoff: () -> Unit = {},
+    onConfirmReceipt: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -110,7 +112,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
-          OrderStatusActions(state, onDecision, onMarkReadyForHandoff)
+          OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onConfirmReceipt)
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
@@ -146,6 +148,7 @@ private fun OrderStatusActions(
     state: OrderDetailsUiState.Content,
     onDecision: (OrderDecision) -> Unit,
     onMarkReadyForHandoff: () -> Unit,
+    onConfirmReceipt: () -> Unit,
 ) {
   val message =
       when (val mutation = state.mutation) {
@@ -182,6 +185,15 @@ private fun OrderStatusActions(
         modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF),
     ) {
       Text(stringResource(R.string.order_mark_ready_for_handoff))
+    }
+  }
+  if (state.canConfirmReceipt) {
+    Button(
+        onClick = onConfirmReceipt,
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.CONFIRM_RECEIPT),
+    ) {
+      Text(stringResource(R.string.order_confirm_receipt))
     }
   }
   if (state.isSaving) {
@@ -284,9 +296,10 @@ internal fun orderStatusLabel(status: OrderStatus): Int =
       OrderStatus.ACCEPTED -> R.string.order_details_accepted
       OrderStatus.REJECTED -> R.string.order_details_rejected
       OrderStatus.READY_FOR_HANDOFF -> R.string.order_details_ready_for_handoff
+      OrderStatus.DELIVERED -> R.string.order_details_delivered
     }
 
-/** Localized order [status] with a distinct color per status; shared with incoming orders. */
+/** Localized order [status] with status-based colors; shared with incoming orders. */
 @Composable
 internal fun OrderStatusBadge(status: OrderStatus) {
   val label = orderStatusLabel(status)
@@ -297,6 +310,7 @@ internal fun OrderStatusBadge(status: OrderStatus) {
         OrderStatus.ACCEPTED -> colors.primaryContainer to colors.onPrimaryContainer
         OrderStatus.REJECTED -> colors.errorContainer to colors.onErrorContainer
         OrderStatus.READY_FOR_HANDOFF -> colors.tertiaryContainer to colors.onTertiaryContainer
+        OrderStatus.DELIVERED -> colors.primaryContainer to colors.onPrimaryContainer
       }
   Surface(
       shape = CircleShape,

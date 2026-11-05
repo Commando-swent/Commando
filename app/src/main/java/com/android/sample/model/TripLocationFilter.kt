@@ -46,12 +46,12 @@ fun filterTripsServing(
   }
 }
 
-/** Finite latitude in -90..90 and longitude in -180..180; the name is not checked. */
-fun Location.hasValidCoordinates(): Boolean =
-    latitude.isFinite() &&
-        latitude in -90.0..90.0 &&
-        longitude.isFinite() &&
-        longitude in -180.0..180.0
+/** Latitude in -90..90 and longitude in -180..180; NaN and infinities fail both ranges. */
+internal fun isValidCoordinate(latitude: Double, longitude: Double): Boolean =
+    latitude in -90.0..90.0 && longitude in -180.0..180.0
+
+/** Whether this location has valid geographic coordinates; its name is not checked. */
+fun Location.hasValidCoordinates(): Boolean = isValidCoordinate(latitude, longitude)
 
 /** Shared filtered-feed outcomes for the requester list and map. */
 sealed interface TripFeed {

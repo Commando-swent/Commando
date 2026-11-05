@@ -10,10 +10,7 @@ data class DeviceLocation(
 ) {
   /** Rejects invalid, future and older-than-two-minute fixes before displaying a position. */
   fun isUsable(nowElapsedMillis: Long): Boolean =
-      latitude.isFinite() &&
-          latitude in -90.0..90.0 &&
-          longitude.isFinite() &&
-          longitude in -180.0..180.0 &&
+      isValidCoordinate(latitude, longitude) &&
           accuracyMeters.isFinite() &&
           accuracyMeters >= 0f &&
           elapsedRealtimeMillis >= 0 &&

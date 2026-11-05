@@ -6,6 +6,7 @@ import com.android.sample.MainDispatcherRule
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.model.DeviceLocation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
@@ -189,5 +190,24 @@ class MapLocationViewModelTest {
     advanceTimeBy(1)
     runCurrent()
     assertEquals(MapLocationUiState.Idle, model.uiState.value)
+  }
+
+  @Test
+  fun unexpectedProviderExceptionIsReportedAsFailure() = runTest {
+    read = { throw UnsupportedOperationException("Platform location failure") }
+    val model = model()
+    model.request(true)
+    runCurrent()
+    assertEquals(DeviceLocationResult.Failure, result(model))
+  }
+
+  @Test
+  fun providerCancellationIsNotPresentedAsFailure() = runTest {
+    read = { throw CancellationException("Location request cancelled") }
+    val model = model()
+    model.request(true)
+    runCurrent()
+    assertEquals(MapLocationUiState.Loading, model.uiState.value)
+    model.stop()
   }
 }

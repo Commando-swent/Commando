@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.model.DeviceLocation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -51,8 +52,14 @@ class MapLocationViewModel(
     mutableState.value = MapLocationUiState.Loading
     requestJob = viewModelScope.launch {
       val result =
-          withTimeoutOrNull(REQUEST_TIMEOUT_MILLIS) { provider.currentLocation() }
-              ?: DeviceLocationResult.Unavailable
+          try {
+            withTimeoutOrNull(REQUEST_TIMEOUT_MILLIS) { provider.currentLocation() }
+                ?: DeviceLocationResult.Unavailable
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            DeviceLocationResult.Failure
+          }
       currentCoroutineContext().ensureActive()
       if (result is DeviceLocationResult.Available) showUntilExpired(result)
       else mutableState.value = MapLocationUiState.Resolved(result)

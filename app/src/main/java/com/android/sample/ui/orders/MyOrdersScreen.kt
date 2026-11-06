@@ -1,6 +1,7 @@
 package com.android.sample.ui.orders
 
 // AI assistance: Claude (Anthropic).
+// AI assistance: OpenAI Codex (stored order total and price breakdown).
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +31,7 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.totalCents
 import com.android.sample.ui.components.SkeletonCard
 import com.android.sample.ui.components.StateCard
 import com.android.sample.ui.components.TripDepartureRow
@@ -144,10 +146,12 @@ fun MyOrdersScreen(
   }
 }
 
+/** Shows snapshot prices, including the commission exactly once in the shared order total. */
 @Composable
 private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
   val trip = row.trip
+  val totalCents = row.order.totalCents
   // Plural category only; the displayed count stays exact.
   val quantity = row.itemCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
   Card(
@@ -175,12 +179,25 @@ private fun OrderCard(row: MyOrderRow, onClick: () -> Unit) {
                 R.plurals.my_orders_items,
                 quantity,
                 row.itemCount,
-                money(row.order.commissionCents),
             ),
             color = colors.onSurface,
             style = MaterialTheme.typography.bodyMedium,
         )
       }
+      Text(
+          stringResource(R.string.my_orders_total, money(totalCents)),
+          color = colors.onSurface,
+          style = MaterialTheme.typography.titleMedium,
+      )
+      Text(
+          stringResource(
+              R.string.my_orders_price_breakdown,
+              money(totalCents - row.order.commissionCents),
+              money(row.order.commissionCents),
+          ),
+          color = colors.onSurfaceVariant,
+          style = MaterialTheme.typography.bodySmall,
+      )
       if (trip != null) {
         TripDepartureRow(trip.scheduledAt)
         Text(

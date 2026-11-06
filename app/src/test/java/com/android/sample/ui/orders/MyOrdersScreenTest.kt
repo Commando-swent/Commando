@@ -48,7 +48,8 @@ class MyOrdersScreenTest {
   private val migrosTrip = trip("migros-trip", "Migros EPFL", migrosDeparture, "Rolex Center")
   private val coopTrip = trip("coop-trip", "Coop Ecublens", coopDeparture, "BC Building")
 
-  // Products total CHF 6.20, commission CHF 4.50: the row must show the commission.
+  // Products total CHF 6.20, commission CHF 4.50: the row must show their sum and separate
+  // breakdown.
   private val aliceMigros =
       order(
           "order-a1",
@@ -138,7 +139,7 @@ class MyOrdersScreenTest {
   }
 
   @Test
-  fun contentRowShowsStoreDepartureHandoffItemsCommissionAndStatus() {
+  fun contentRowShowsTotalProductsCommissionAndTripSummary() {
     show(MyOrdersUiState.Content(listOf(MyOrderRow(aliceMigros, migrosTrip))))
     val card = MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1"
     compose.onNodeWithTag(card).assertIsDisplayed()
@@ -147,21 +148,45 @@ class MyOrdersScreenTest {
     inCard("Migros EPFL")
     inCard(departure(migrosDeparture))
     inCard("Handoff: Rolex Center")
-    inCard("3 items · CHF 4.50")
+    inCard("3 items")
+    inCard("Total: CHF 10.70")
+    inCard("Products: CHF 6.20 · Commission: CHF 4.50")
     inCard("PENDING")
-    compose.onAllNodesWithText("CHF 6.20", substring = true).assertCountEquals(0)
     compose.onAllNodesWithText("Trip unavailable").assertCountEquals(0)
   }
 
   @Test
   fun cancelledOrderStaysVisibleAndCanOpenDetails() {
-    assertCancelledHistoryRow("CANCELLED", "3 items · CHF 4.50")
+    assertCancelledHistoryRow("CANCELLED", "3 items")
   }
 
   @Test
   @Config(qualifiers = "fr-rFR-w320dp-h640dp-mdpi")
   fun cancelledOrderUsesFrenchLabelOnNarrowScreen() {
-    assertCancelledHistoryRow("ANNULÉE", "3 articles · CHF 4.50")
+    assertCancelledHistoryRow("ANNULÉE", "3 articles")
+    compose.onNodeWithText("Total : CHF 10.70").assertIsDisplayed()
+    compose.onNodeWithText("Articles : CHF 6.20 · Commission : CHF 4.50").assertIsDisplayed()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h640dp-mdpi")
+  fun zeroCommissionTotalRemainsReadableWithLargeFont() {
+    compose.setContent {
+      CompositionLocalProvider(LocalDensity provides Density(1f, 1.5f)) {
+        SampleAppTheme {
+          MyOrdersScreen(
+              MyOrdersUiState.Content(
+                  listOf(MyOrderRow(aliceMigros.copy(commissionCents = 0), migrosTrip))
+              ),
+              onRetry = {},
+              onOrderClick = {},
+              onBrowseTrips = {},
+          )
+        }
+      }
+    }
+    compose.onNodeWithText("Total: CHF 6.20").assertIsDisplayed()
+    compose.onNodeWithText("Products: CHF 6.20 · Commission: CHF 0.00").assertIsDisplayed()
   }
 
   private fun assertCancelledHistoryRow(label: String, summary: String) {
@@ -184,7 +209,9 @@ class MyOrdersScreenTest {
   @Test
   fun singleItemUsesSingularAndPadsCents() {
     show(MyOrdersUiState.Content(listOf(MyOrderRow(aliceCoop, coopTrip))))
-    compose.onNodeWithText("1 item · CHF 2.05").assertIsDisplayed()
+    compose.onNodeWithText("1 item").assertIsDisplayed()
+    compose.onNodeWithText("Total: CHF 2.85").assertIsDisplayed()
+    compose.onNodeWithText("Products: CHF 0.80 · Commission: CHF 2.05").assertIsDisplayed()
     compose.onNodeWithText("Coop Ecublens").assertIsDisplayed()
     compose.onNodeWithText(departure(coopDeparture)).assertIsDisplayed()
     compose.onNodeWithText("Handoff: BC Building").assertIsDisplayed()
@@ -226,7 +253,7 @@ class MyOrdersScreenTest {
     show(MyOrdersUiState.Content(listOf(MyOrderRow(aliceMigros, null))))
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()
     compose.onNodeWithText("Trip unavailable").assertIsDisplayed()
-    compose.onNodeWithText("3 items · CHF 4.50").assertIsDisplayed()
+    compose.onNodeWithText("3 items").assertIsDisplayed()
     compose.onNodeWithText("PENDING").assertIsDisplayed()
     compose.onAllNodesWithText("Handoff:", substring = true).assertCountEquals(0)
     compose.onAllNodesWithText(departure(migrosDeparture)).assertCountEquals(0)
@@ -358,8 +385,8 @@ class MyOrdersScreenTest {
     compose.waitForIdle()
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertIsDisplayed()
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a2").assertIsDisplayed()
-    compose.onNodeWithText("3 items · CHF 4.50").assertIsDisplayed()
-    compose.onNodeWithText("1 item · CHF 2.05").assertIsDisplayed()
+    compose.onNodeWithText("3 items").assertIsDisplayed()
+    compose.onNodeWithText("1 item").assertIsDisplayed()
     compose.onNodeWithText("Coop Ecublens").assertIsDisplayed()
     compose.onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-b1").assertCountEquals(0)
 
@@ -372,7 +399,7 @@ class MyOrdersScreenTest {
     compose.onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a2").assertCountEquals(0)
     compose.onAllNodesWithText("Coop Ecublens").assertCountEquals(0)
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-b1").assertIsDisplayed()
-    compose.onNodeWithText("4 items · CHF 10.00").assertIsDisplayed()
+    compose.onNodeWithText("4 items").assertIsDisplayed()
     compose.onNodeWithText("Migros EPFL").assertIsDisplayed()
     compose.onNodeWithText("Handoff: Rolex Center").assertIsDisplayed()
   }
@@ -415,7 +442,7 @@ class MyOrdersScreenTest {
     compose.waitForIdle()
     compose.onAllNodesWithTag(MyOrdersTestTags.LOADING).assertCountEquals(0)
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-b1").assertIsDisplayed()
-    compose.onNodeWithText("4 items · CHF 10.00").assertIsDisplayed()
+    compose.onNodeWithText("4 items").assertIsDisplayed()
     compose.onNodeWithText("Handoff: Rolex Center").assertIsDisplayed()
     compose.onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + "order-a1").assertCountEquals(0)
   }

@@ -170,10 +170,12 @@
     <string name="my_orders_retry">Réessayer</string>
     <string name="my_orders_handoff">Remise : %1$s</string>
     <string name="my_orders_trip_unavailable">Trajet indisponible</string>
+    <string name="my_orders_total">Total : %1$s</string>
+    <string name="my_orders_price_breakdown">Articles : %1$s · Commission : %2$s</string>
     <plurals name="my_orders_items">
-        <item quantity="one">%1$d article · %2$s</item>
-        <item quantity="many">%1$d articles · %2$s</item>
-        <item quantity="other">%1$d articles · %2$s</item>
+        <item quantity="one">%1$d article</item>
+        <item quantity="many">%1$d articles</item>
+        <item quantity="other">%1$d articles</item>
     </plurals>
     <string name="my_trips_title">Mes trajets</string>
     <string name="my_trips_subtitle">Les trajets que vous avez publiés.</string>

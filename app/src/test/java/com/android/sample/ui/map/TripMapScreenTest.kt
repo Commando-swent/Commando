@@ -123,6 +123,29 @@ class TripMapScreenTest {
   }
 
   @Test
+  fun criteriaFeedbackUsesTheSharedSearchMessages() {
+    show()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    for ((next, message) in
+        listOf(
+            TripMapUiState.NoMatches(null) to R.string.trips_no_matches_filters,
+            TripMapUiState.InvalidCriteria(CriteriaProblem.INVALID_RANGE) to
+                R.string.trips_range_invalid,
+            TripMapUiState.InvalidCriteria(CriteriaProblem.EXPIRED_RANGE) to
+                R.string.trips_range_expired,
+        )) {
+      compose.runOnIdle { state = next }
+      compose
+          .onNodeWithTag(TripMapTestTags.STATUS)
+          .assertIsDisplayed()
+          .assert(hasAnyDescendant(hasText(context.getString(message))))
+      compose.onNodeWithTag(MockMapTestTags.SUMMARY).assertDoesNotExist()
+      compose.onNodeWithTag(MockMapTestTags.RETRY).assertDoesNotExist()
+    }
+    assertEquals(0, refreshes)
+  }
+
+  @Test
   @Config(qualifiers = "en-rUS-w640dp-h320dp-land-mdpi")
   fun offscreenAndHeaderCoveredTripsRemainTouchableInLandscape() {
     val outside = trip.copy(handoffLocation = Location("Lausanne", 46.5167, 6.6291))

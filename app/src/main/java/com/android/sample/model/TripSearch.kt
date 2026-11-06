@@ -90,6 +90,26 @@ fun criteriaProblem(criteria: TripSearchCriteria, now: Instant, zone: ZoneId): C
 }
 
 /**
+ * The shared list/map outcome for [trips]: an empty source stays [TripFeed.Empty] whatever the
+ * filters, then invalid or expired criteria, then zero matches, then the matching trips in order.
+ */
+fun classifyTripSearch(
+    trips: List<Trip>,
+    point: Location?,
+    criteria: TripSearchCriteria,
+    now: Instant,
+    zone: ZoneId,
+): TripFeed {
+  if (trips.isEmpty()) return TripFeed.Empty
+  criteriaProblem(criteria, now, zone)?.let {
+    return TripFeed.InvalidCriteria(it)
+  }
+  val matches = searchTrips(trips, point, criteria, now, zone)
+  return if (matches.isEmpty()) TripFeed.NoMatches(point.takeUnless { criteria.isActive })
+  else TripFeed.Matches(matches)
+}
+
+/**
  * Applies the shared delivery-location rule ([filterTripsServing]) and then [criteria] to [trips].
  * It is intended to be shared by the list and the map, so identical inputs yield identical trip IDs
  * in the same order. The repository owns ordering (earliest departure first), so only

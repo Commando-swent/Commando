@@ -1,6 +1,7 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex. Layout: Figma 424:2112, 424:2408 and 424:3648–424:3917.
+// Claude Code (search feedback states).
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
@@ -176,6 +177,7 @@ fun TripMapScreen(
     if (
         state == TripMapUiState.Empty ||
             state is TripMapUiState.NoMatches ||
+            state is TripMapUiState.InvalidCriteria ||
             state is TripMapUiState.Error ||
             state == TripMapUiState.SessionEnded
     ) {

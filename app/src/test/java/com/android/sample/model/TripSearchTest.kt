@@ -334,4 +334,85 @@ class TripSearchTest {
     assertFalse(TripSearchCriteria(sort = TripSort.DISTANCE).isActive)
     assertTrue(TripSearchCriteria(store = StoreFilter.MIGROS, sort = TripSort.DISTANCE).isActive)
   }
+
+  // --- classifyTripSearch ---
+
+  private fun classify(
+      trips: List<Trip>,
+      criteria: TripSearchCriteria = TripSearchCriteria(),
+      point: Location? = null,
+  ) = classifyTripSearch(trips, point, criteria, now, zurich)
+
+  private val inverted = period(custom("2026-06-20", "2026-06-18"))
+  private val expired = period(custom("2026-06-10", "2026-06-14"))
+
+  @Test
+  fun emptySourceIsEmptyEvenWithInvalidOrExpiredCriteria() {
+    for (criteria in listOf(TripSearchCriteria(), inverted, expired)) {
+      assertEquals(TripFeed.Empty, classify(emptyList(), criteria))
+      assertEquals(TripFeed.Empty, classify(emptyList(), criteria, point = bc))
+    }
+  }
+
+  @Test
+  fun invalidAndExpiredRangesAreInvalidCriteriaBeforeMatching() {
+    assertEquals(TripFeed.InvalidCriteria(CriteriaProblem.INVALID_RANGE), classify(mixed, inverted))
+    assertEquals(TripFeed.InvalidCriteria(CriteriaProblem.EXPIRED_RANGE), classify(mixed, expired))
+    // Even when the point alone would leave nothing, the criteria problem is reported.
+    val far = Location("Lausanne gare", 46.5167, 6.6291)
+    assertEquals(
+        TripFeed.InvalidCriteria(CriteriaProblem.INVALID_RANGE),
+        classify(mixed, inverted.copy(store = StoreFilter.COOP), far),
+    )
+    assertEquals(
+        TripFeed.InvalidCriteria(CriteriaProblem.EXPIRED_RANGE),
+        classify(mixed, expired.copy(sort = TripSort.DISTANCE), bc),
+    )
+  }
+
+  @Test
+  fun noMatchesCarriesThePointOnlyWhenCriteriaAreInactive() {
+    val far = Location("Lausanne gare", 46.5167, 6.6291)
+    assertEquals(TripFeed.NoMatches(far), classify(mixed, point = far))
+    assertEquals(
+        TripFeed.NoMatches(far),
+        classify(mixed, TripSearchCriteria(sort = TripSort.DISTANCE), far),
+    )
+    assertEquals(
+        TripFeed.NoMatches(null),
+        classify(mixed, TripSearchCriteria(store = StoreFilter.MIGROS), far),
+    )
+    assertEquals(
+        TripFeed.NoMatches(null),
+        classify(mixed, TripSearchCriteria(StoreFilter.COOP, DeparturePeriod.Tomorrow), bc),
+    )
+    assertEquals(
+        TripFeed.NoMatches(null),
+        classify(mixed, period(custom("2026-07-01", "2026-07-02"))),
+    )
+  }
+
+  @Test
+  fun matchesListsTheSearchResultInOrder() {
+    assertEquals(TripFeed.Matches(mixed), classify(mixed))
+    assertEquals(
+        listOf("mTodayNear", "mTomorrowNear"),
+        (classify(mixed, TripSearchCriteria(store = StoreFilter.MIGROS), bc) as TripFeed.Matches)
+            .trips
+            .map { it.id },
+    )
+    assertEquals(
+        listOf("mTodayNear", "cTodayNear", "mTomorrowNear"),
+        (classify(mixed, TripSearchCriteria(sort = TripSort.DISTANCE), bc) as TripFeed.Matches)
+            .trips
+            .map { it.id },
+    )
+    // A custom range still running today is valid and filters by day.
+    assertEquals(
+        listOf("mTodayNear", "cTodayNear", "mTodayFar"),
+        (classify(mixed, period(custom("2026-06-10", "2026-06-15"))) as TripFeed.Matches)
+            .trips
+            .map { it.id },
+    )
+  }
 }

@@ -163,7 +163,7 @@ class OrderNavigationTest {
     card().assertIsDisplayed()
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     auth.signInWithEmailResult = Result.success(alice)
     auth.signInWithEmail("", "")
     click(AppTestTags.ORDERS_BUTTON)

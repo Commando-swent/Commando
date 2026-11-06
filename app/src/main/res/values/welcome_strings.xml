@@ -1,0 +1,8 @@
+<resources>
+    <!-- AI assistance: OpenAI Codex; copy from the Welcome Figma screen. -->
+    <string name="welcome_title">Welcome</string>
+    <string name="welcome_headline">Groceries\nmade easy</string>
+    <string name="welcome_headline_accent">on campus.</string>
+    <string name="welcome_subtitle">Students helping students,\none trip at a time.</string>
+    <string name="welcome_create_account">Create account</string>
+</resources>

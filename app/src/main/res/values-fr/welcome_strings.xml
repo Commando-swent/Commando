@@ -1,0 +1,8 @@
+<resources>
+    <!-- AI assistance: OpenAI Codex. -->
+    <string name="welcome_title">Bienvenue</string>
+    <string name="welcome_headline">Les courses\nsimplifiées</string>
+    <string name="welcome_headline_accent">sur le campus.</string>
+    <string name="welcome_subtitle">Des étudiants qui s’entraident,\nun trajet à la fois.</string>
+    <string name="welcome_create_account">Créer un compte</string>
+</resources>

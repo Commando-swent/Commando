@@ -283,7 +283,7 @@ class CatalogueNavigationTest {
     click(ReviewOrderTags.SUBMIT)
     compose.onNodeWithText("Your order is sent").assertIsDisplayed()
     compose.runOnIdle { auth.signOut() }
-    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     auth.signInWithEmailResult = Result.success(alice)
     auth.signInWithEmail("", "")
     click(AppTestTags.ORDERS_BUTTON)

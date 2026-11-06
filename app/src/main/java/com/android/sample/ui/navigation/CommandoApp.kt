@@ -15,8 +15,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -55,6 +58,7 @@ import com.android.sample.ui.auth.AuthRoute
 import com.android.sample.ui.auth.AuthViewModel
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
+import com.android.sample.ui.auth.WelcomeScreen
 import com.android.sample.ui.catalogue.CatalogueRoute
 import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
@@ -127,13 +131,28 @@ fun CommandoApp(
     val navController = rememberNavController()
     val user = sessionUiState.user
     val signedIn = user != null
+    var initialAuthMode by rememberSaveable { mutableStateOf(AuthMode.LOGIN) }
     NavHost(
         navController = navController,
-        startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Auth.name,
+        startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Welcome.name,
     ) {
       if (!signedIn) {
+        composable(route = CommandoScreens.Welcome.name) {
+          WelcomeScreen(
+              onLogIn = {
+                initialAuthMode = AuthMode.LOGIN
+                navController.navigate(CommandoScreens.Auth.name) { launchSingleTop = true }
+              },
+              onCreateAccount = {
+                initialAuthMode = AuthMode.SIGN_UP
+                navController.navigate(CommandoScreens.Auth.name) { launchSingleTop = true }
+              },
+          )
+        }
         composable(route = CommandoScreens.Auth.name) {
-          val authViewModel: AuthViewModel = viewModel { AuthViewModel(repository) }
+          val authViewModel: AuthViewModel = viewModel {
+            AuthViewModel(repository, initialAuthMode)
+          }
           val authUiState by authViewModel.uiState.collectAsState()
           Box(
               Modifier.fillMaxSize()
@@ -154,7 +173,7 @@ fun CommandoApp(
                 },
                 // Session observation changes the graph after authentication succeeds.
                 onAuthenticated = {},
-                onBack = { activity?.finish() },
+                onBack = { navController.popBackStack() },
             )
           }
         }

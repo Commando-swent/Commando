@@ -87,6 +87,10 @@ class AppJourneyTest {
     }
 
     // Start signed out and enter through the real login form.
+    compose
+        .onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.LOGIN)
+        .performScrollTo()
+        .performClick()
     compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
     compose.onNodeWithTag("auth_email").performTextInput("alice@epfl.ch")
     compose.onNodeWithTag("auth_password").performTextInput("demo-password")
@@ -171,7 +175,7 @@ class AppJourneyTest {
     compose.onAllNodes(orderCard).assertCountEquals(1)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     compose.onAllNodes(orderCard).assertCountEquals(0)
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
   }

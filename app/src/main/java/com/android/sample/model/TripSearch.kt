@@ -28,7 +28,10 @@ sealed interface DeparturePeriod {
 enum class TripSort {
   /** Repository order, which is earliest departure first; trips are not re-sorted. */
   EARLIEST_DEPARTURE,
-  /** Closest handoff to the selected delivery point first; needs a valid selected point. */
+  /**
+   * Closest handoff to the selected delivery point first. Without a selected point the repository
+   * order is kept, so the UI should only offer this option once a point is selected.
+   */
   DISTANCE,
 }
 
@@ -73,7 +76,10 @@ internal fun DeparturePeriod.window(now: Instant, zone: ZoneId): DepartureWindow
   )
 }
 
-/** The problem with [criteria] at [now], or null when they are valid. */
+/**
+ * The problem with [criteria] at [now], or null when they are valid. Callers check this before
+ * [searchTrips], which returns no trips for an invalid or expired range.
+ */
 fun criteriaProblem(criteria: TripSearchCriteria, now: Instant, zone: ZoneId): CriteriaProblem? {
   val period = criteria.period as? DeparturePeriod.Custom ?: return null
   return when {
@@ -85,10 +91,13 @@ fun criteriaProblem(criteria: TripSearchCriteria, now: Instant, zone: ZoneId): C
 
 /**
  * Applies the shared delivery-location rule ([filterTripsServing]) and then [criteria] to [trips].
- * List and map both call this, so identical inputs yield identical trip IDs in the same order. The
- * repository owns ordering (earliest departure first), so only [TripSort.DISTANCE] with a [point]
- * re-orders; distance ties fall back to departure, then ID. Without store or departure criteria the
- * location-filtered list is returned as is.
+ * It is intended to be shared by the list and the map, so identical inputs yield identical trip IDs
+ * in the same order. The repository owns ordering (earliest departure first), so only
+ * [TripSort.DISTANCE] with a [point] re-orders; distance ties fall back to departure, then ID.
+ * Without store or departure criteria the location-filtered list is returned as is.
+ *
+ * Callers must check [criteriaProblem] first: an invalid or expired range yields an empty list
+ * here, which must be shown as a validation state, not as a regular no-match result.
  */
 fun searchTrips(
     trips: List<Trip>,

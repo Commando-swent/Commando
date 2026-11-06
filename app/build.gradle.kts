@@ -80,7 +80,11 @@ android {
     res.directories.addAll(test.res.directories)
     resources.directories.clear()
     resources.directories.addAll(test.resources.directories)
+    // Fixtures shared with the device tests (androidTest).
+    kotlin.directories.add(file("src/sharedTest/java").path)
   }
+
+  sourceSets.getByName("androidTest") { kotlin.directories.add(file("src/sharedTest/java").path) }
 
   sourceSets.getByName("test") {
     java.directories.clear()

@@ -23,6 +23,7 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.android.sample.ui.trips.discoveryTrip
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -45,15 +46,13 @@ class AppJourneyTest {
     val auth = FakeAuthRepository().apply { signInWithEmailResult = Result.success(alice) }
     val now = Instant.now()
     val trip =
-        Trip(
-            id = "trip / % 雪",
-            ownerId = "commando",
+        discoveryTrip(
+            "trip / % 雪",
             store = Location("Migros EPFL", 46.52, 6.57),
+            handoff = Location("EPFL", 46.52, 6.56),
             scheduledAt = now.plusSeconds(3600),
-            handoffLocation = Location("EPFL", 46.52, 6.56),
-            status = TripStatus.PUBLISHED,
+            ownerId = "commando",
             createdAt = now,
-            updatedAt = now,
         )
     val trips = FakeTripRepository(alice.uid, now = { now }, initialTrips = listOf(trip))
     val oat = Product("migros:oat", "migros", "Oat drink", 220)
@@ -96,13 +95,14 @@ class AppJourneyTest {
     click(AppTestTags.TRIPS_BUTTON)
     // From the handoff (46.52, 6.56): SV building is about 240 m away, Rolex about 660 m.
     // The list is lazy, so scroll it to each node first: small screens show only the header.
+    val tripCard = hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id))
     pickLocation("SV building")
-    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    scrollTripsTo(tripCard).assertIsDisplayed()
     pickLocation("Rolex Learning Center")
-    scrollTripsTo(hasText("No trips near Rolex Learning Center yet.")).assertIsDisplayed()
-    compose.onNodeWithText(trip.store.name).assertDoesNotExist()
-    scrollTripsTo(hasText("Clear location")).performClick()
-    scrollTripsTo(hasText(trip.store.name)).assertIsDisplayed()
+    scrollTripsTo(hasTestTag(AvailableTripsScreenTestTags.NO_MATCHES)).assertIsDisplayed()
+    compose.onNode(tripCard).assertDoesNotExist()
+    scrollTripsTo(hasTestTag(AvailableTripsScreenTestTags.CLEAR_LOCATION)).performClick()
+    scrollTripsTo(tripCard).assertIsDisplayed()
     scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled().performClick()
@@ -113,7 +113,7 @@ class AppJourneyTest {
     compose.onNodeWithText(trip.handoffLocation.name).assertIsDisplayed()
     back()
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
-    compose.onNodeWithText(trip.store.name).performClick()
+    compose.onNode(tripCard).performClick()
     compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
 
     click(CatalogueTestTags.add(oat.id))

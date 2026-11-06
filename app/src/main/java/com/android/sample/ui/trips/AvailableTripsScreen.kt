@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+// AI assistance: Claude Code.
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -48,6 +49,12 @@ object AvailableTripsScreenTestTags {
   const val LOCATION_FIELD = "availableTripsLocationField"
   const val CLEAR_LOCATION = "availableTripsClearLocation"
   const val NO_MATCHES = "availableTripsNoMatches"
+  const val LOADING = "availableTripsLoading"
+  const val EMPTY = "availableTripsEmpty"
+  const val ERROR = "availableTripsError"
+  const val RETRY = "availableTripsRetry"
+
+  fun tripCard(tripId: String) = "availableTripsTripCard_$tripId"
 }
 
 @Composable
@@ -149,7 +156,9 @@ fun AvailableTripsScreen(
           item {
             val loading = stringResource(R.string.trips_loading)
             Column(
-                Modifier.semantics { contentDescription = loading },
+                Modifier.testTag(AvailableTripsScreenTestTags.LOADING).semantics {
+                  contentDescription = loading
+                },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
               repeat(4) {
@@ -164,7 +173,13 @@ fun AvailableTripsScreen(
           }
       is AvailableTripsUiState.Content ->
           items(state.trips, key = Trip::id) { trip -> TripCard(trip) { onTripSelected(trip.id) } }
-      AvailableTripsUiState.Empty -> item { TripStatusCard(stringResource(R.string.trips_empty)) }
+      AvailableTripsUiState.Empty ->
+          item {
+            TripStatusCard(
+                stringResource(R.string.trips_empty),
+                Modifier.testTag(AvailableTripsScreenTestTags.EMPTY),
+            )
+          }
       is AvailableTripsUiState.NoMatches ->
           item {
             TripStatusCard(
@@ -173,7 +188,13 @@ fun AvailableTripsScreen(
             )
           }
       is AvailableTripsUiState.Error ->
-          item { TripStatusCard(stringResource(R.string.trips_error), onRetry) }
+          item {
+            TripStatusCard(
+                stringResource(R.string.trips_error),
+                Modifier.testTag(AvailableTripsScreenTestTags.ERROR),
+                onRetry = onRetry,
+            )
+          }
     }
   }
 }
@@ -184,7 +205,7 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
   val departure = formatTripDeparture(trip.scheduledAt, locale)
   Card(
       onClick = onClick,
-      modifier = Modifier.fillMaxWidth(),
+      modifier = Modifier.fillMaxWidth().testTag(AvailableTripsScreenTestTags.tripCard(trip.id)),
       shape = RoundedCornerShape(16.dp),
       colors = CardDefaults.cardColors(containerColor = runsSurfaceContainer),
       border = BorderStroke(1.dp, runsOutlineVariant),
@@ -211,8 +232,8 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
 @Composable
 private fun TripStatusCard(
     message: String,
-    onRetry: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null,
 ) {
   Card(
       modifier = modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
@@ -267,7 +288,7 @@ private fun TripStatusCard(
       if (onRetry != null) {
         Button(
             onClick = onRetry,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(AvailableTripsScreenTestTags.RETRY),
             colors =
                 ButtonDefaults.buttonColors(
                     containerColor = runsAccent,

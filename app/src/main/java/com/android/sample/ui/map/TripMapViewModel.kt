@@ -1,13 +1,15 @@
 package com.android.sample.ui.map
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; Claude Code (search criteria).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.model.Location
 import com.android.sample.model.TripFeed
+import com.android.sample.model.TripSearchCriteria
 import com.android.sample.ui.session.SessionGuard
 import com.android.sample.ui.trips.FilteredTripFeed
+import java.time.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +27,8 @@ class TripMapViewModel(
     currentUserId: () -> String?,
     sessionChanges: Flow<String?> = emptyFlow(),
     loadImmediately: Boolean = false,
+    criteria: StateFlow<TripSearchCriteria> = MutableStateFlow(TripSearchCriteria()),
+    clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<TripMapUiState>(TripMapUiState.Loading)
   val uiState: StateFlow<TripMapUiState> = mutableState.asStateFlow()
@@ -35,6 +39,8 @@ class TripMapViewModel(
           viewModelScope,
           repository,
           selectedPoint,
+          criteria,
+          clock,
           ::show,
           { mutableState.value = TripMapUiState.Loading },
           { if (!endSessionIfChanged()) mutableState.value = TripMapUiState.Error(it) },
@@ -78,6 +84,7 @@ class TripMapViewModel(
           TripFeed.Empty -> TripMapUiState.Empty
           is TripFeed.NoMatches -> TripMapUiState.NoMatches(result.location)
           is TripFeed.Matches -> TripMapUiState.Content(result.trips, selectedTripId)
+          is TripFeed.InvalidCriteria -> TripMapUiState.InvalidCriteria(result.problem)
         }
   }
 

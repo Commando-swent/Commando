@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
+import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
@@ -53,6 +54,7 @@ object AvailableTripsScreenTestTags {
   const val EMPTY = "availableTripsEmpty"
   const val ERROR = "availableTripsError"
   const val RETRY = "availableTripsRetry"
+  const val INVALID_CRITERIA = "availableTripsInvalidCriteria"
 
   fun tripCard(tripId: String) = "availableTripsTripCard_$tripId"
 }
@@ -183,8 +185,15 @@ fun AvailableTripsScreen(
       is AvailableTripsUiState.NoMatches ->
           item {
             TripStatusCard(
-                stringResource(R.string.trips_no_matches, state.location.name),
+                noMatchesMessage(state.location),
                 modifier = Modifier.testTag(AvailableTripsScreenTestTags.NO_MATCHES),
+            )
+          }
+      is AvailableTripsUiState.InvalidCriteria ->
+          item {
+            TripStatusCard(
+                criteriaProblemMessage(state.problem),
+                Modifier.testTag(AvailableTripsScreenTestTags.INVALID_CRITERIA),
             )
           }
       is AvailableTripsUiState.Error ->
@@ -312,3 +321,19 @@ internal fun formatTripDeparture(
         .withLocale(locale)
         .withZone(zoneId)
         .format(instant)
+
+/** No-match copy shared by list and map: names the point only when it alone filtered trips out. */
+@Composable
+internal fun noMatchesMessage(location: Location?): String =
+    location?.let { stringResource(R.string.trips_no_matches, it.name) }
+        ?: stringResource(R.string.trips_no_matches_filters)
+
+/** Copy for search criteria that cannot match any upcoming trip, shared by list and map. */
+@Composable
+internal fun criteriaProblemMessage(problem: CriteriaProblem): String =
+    stringResource(
+        when (problem) {
+          CriteriaProblem.INVALID_RANGE -> R.string.trips_range_invalid
+          CriteriaProblem.EXPIRED_RANGE -> R.string.trips_range_expired
+        }
+    )

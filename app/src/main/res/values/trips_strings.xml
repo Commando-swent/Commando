@@ -12,4 +12,7 @@
     <string name="trips_location_helper">Trips within %1$d m of this point</string>
     <string name="trips_location_clear">Clear location</string>
     <string name="trips_no_matches">No trips near %1$s yet.</string>
+    <string name="trips_no_matches_filters">No trips match your filters.</string>
+    <string name="trips_range_invalid">The end date is before the start date.</string>
+    <string name="trips_range_expired">This date range has already passed.</string>
 </resources>

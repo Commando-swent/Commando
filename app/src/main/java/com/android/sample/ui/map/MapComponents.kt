@@ -1,6 +1,7 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex. Reusable map components from Figma section 421:2073.
+// Claude Code (search feedback states).
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -29,6 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import com.android.sample.R
 import com.android.sample.ui.navigation.NavigationTestTags
+import com.android.sample.ui.trips.criteriaProblemMessage
+import com.android.sample.ui.trips.noMatchesMessage
 
 internal val TRIP_MARKER_WIDTH = 96.dp
 internal val GROUP_MARKER_WIDTH = 124.dp
@@ -248,8 +251,8 @@ internal fun MapFeedbackCard(
   val error = state is TripMapUiState.Error
   val title =
       when (state) {
-        is TripMapUiState.NoMatches ->
-            stringResource(R.string.trips_no_matches, state.location.name)
+        is TripMapUiState.NoMatches -> noMatchesMessage(state.location)
+        is TripMapUiState.InvalidCriteria -> criteriaProblemMessage(state.problem)
         TripMapUiState.SessionEnded -> stringResource(R.string.trip_map_session_ended)
         is TripMapUiState.Error -> stringResource(R.string.mock_map_error_title)
         else -> stringResource(R.string.mock_map_empty_title)

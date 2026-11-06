@@ -342,6 +342,7 @@ private fun AuthenticatedApp(
                   tripRepository,
                   locationFilter.selected,
                   loadImmediately = false,
+                  criteria = locationFilter.criteria,
               )
             }
         RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
@@ -542,6 +543,7 @@ private fun AuthenticatedApp(
                   locationFilter.selected,
                   orders::currentUserId,
                   orders.sessionChanges,
+                  criteria = locationFilter.criteria,
               )
             }
         RefreshOnResume(map, map::refresh)

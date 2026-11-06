@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import java.time.Instant
@@ -297,6 +298,37 @@ class AvailableTripsScreenTest {
     compose.runOnIdle { assertEquals(1, clears) }
     scrollTo(hasTestTag(AvailableTripsScreenTestTags.NO_MATCHES))
     compose.onNodeWithTag(AvailableTripsScreenTestTags.NO_MATCHES).assertIsDisplayed()
+  }
+
+  @Test
+  fun noMatchesWithoutPointShowsTheGenericFiltersMessage() {
+    showFilter(AvailableTripsUiState.NoMatches(null), selected = rolex)
+    assertStatus(AvailableTripsScreenTestTags.NO_MATCHES, string(R.string.trips_no_matches_filters))
+    compose.onNodeWithText(string(R.string.trips_no_matches, rolex.name)).assertDoesNotExist()
+    compose.onNodeWithTag(AvailableTripsScreenTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun invalidCriteriaShowsTheProblemWithoutRetry() {
+    var state by
+        mutableStateOf<AvailableTripsUiState>(
+            AvailableTripsUiState.InvalidCriteria(CriteriaProblem.INVALID_RANGE)
+        )
+    compose.setContent {
+      MaterialTheme { AvailableTripsScreen(state = state, onRetry = {}, onTripSelected = {}) }
+    }
+    for ((problem, message) in
+        listOf(
+            CriteriaProblem.INVALID_RANGE to R.string.trips_range_invalid,
+            CriteriaProblem.EXPIRED_RANGE to R.string.trips_range_expired,
+        )) {
+      compose.runOnIdle { state = AvailableTripsUiState.InvalidCriteria(problem) }
+      assertStatus(AvailableTripsScreenTestTags.INVALID_CRITERIA, string(message))
+      compose.onNodeWithTag(AvailableTripsScreenTestTags.RETRY).assertDoesNotExist()
+      compose.onNodeWithTag(AvailableTripsScreenTestTags.NO_MATCHES).assertDoesNotExist()
+      compose.onNodeWithTag(AvailableTripsScreenTestTags.ERROR).assertDoesNotExist()
+    }
+    compose.onNodeWithText(string(R.string.trips_range_invalid)).assertDoesNotExist()
   }
 
   private fun string(id: Int, vararg args: Any): String =

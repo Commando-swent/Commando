@@ -531,6 +531,38 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  fun editRejectsMismatchedIdentityTripAndItemResults() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue(saved.id)
+    for (response in
+        listOf(
+            original.copy(id = "other"),
+            original.copy(data = original.data + ("requesterId" to "other")),
+            original.copy(data = original.data + ("tripId" to "other")),
+            original.copy(
+                data =
+                    original.data +
+                        ("items" to
+                            listOf(
+                                mapOf(
+                                    "productId" to "bread",
+                                    "name" to "Bread",
+                                    "unitPriceCents" to 100L,
+                                    "quantity" to 1L,
+                                )
+                            ))
+            ),
+        )) {
+      source.decisionResult = response
+      assertEquals(error(OrderError.InvalidData), repository.editOrder(saved.id, draft))
+    }
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, draft.copy(tripId = "a/b")),
+    )
+  }
+
+  @Test
   fun editDiscardsACommittedResultWhenTheSessionChanges() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     source.decisionResult = source.documents.getValue(saved.id)

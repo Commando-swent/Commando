@@ -332,14 +332,7 @@ internal class FirebaseOrderFirestoreDataSource(
       if (stored.data["tripId"] != draft.tripId)
           throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
       if (!write || stored.data["status"] != OrderStatus.PENDING.name) return@runTransaction stored
-      val trip = transaction.get(database.collection("trips").document(draft.tripId))
-      if (
-          !trip.exists() ||
-              trip.getString("ownerId") == requesterId ||
-              trip.getString("status") != "PUBLISHED" ||
-              trip.getTimestamp("scheduledAt")?.toInstant()?.isAfter(Instant.now()) != true
-      )
-          throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+      transaction.requireEditableTrip(database, draft.tripId, requesterId)
       val fields =
           mapOf(
               "items" to
@@ -366,6 +359,22 @@ internal class FirebaseOrderFirestoreDataSource(
         if (it.data["status"] == OrderStatus.PENDING.name) throw denied
       }
     }
+  }
+
+  /** Reads trip eligibility inside the transaction so a concurrent closure forces a retry. */
+  private fun Transaction.requireEditableTrip(
+      database: FirebaseFirestore,
+      tripId: String,
+      uid: String,
+  ) {
+    val trip = get(database.collection("trips").document(tripId))
+    if (
+        !trip.exists() ||
+            trip.getString("ownerId") == uid ||
+            trip.getString("status") != "PUBLISHED" ||
+            trip.getTimestamp("scheduledAt")?.toInstant()?.isAfter(Instant.now()) != true
+    )
+        throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
   }
 
   override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
@@ -533,13 +542,14 @@ private fun Any?.cents(): Int? =
     }
 
 internal fun OrderFirestoreDocument.toOrder(): Order? {
-  val trip = data["tripId"] as? String ?: return null
-  val requester = data["requesterId"] as? String ?: return null
-  val fee = data["commissionCents"].cents() ?: return null
-  val status = OrderStatus.entries.find { it.name == data["status"] } ?: return null
-  val created = data["createdAt"] as? Timestamp ?: return null
+  val fields: Map<String, Any?> = data
+  val trip = fields["tripId"] as? String ?: return null
+  val requester = fields["requesterId"] as? String ?: return null
+  val fee = fields["commissionCents"].cents() ?: return null
+  val status = OrderStatus.entries.find { it.name == fields["status"] } ?: return null
+  val created = fields["createdAt"] as? Timestamp ?: return null
   val items =
-      (data["items"] as? List<*>)?.map { entry ->
+      (fields["items"] as? List<*>)?.map { entry ->
         val item = entry as? Map<*, *> ?: return null
         OrderItem(
             item["productId"] as? String ?: return null,

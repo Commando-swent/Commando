@@ -71,6 +71,40 @@ class OrderFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun editsRejectWrongTripsAndInvalidHistoricalEligibility() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val tripId = publish(owner)
+      val repo = OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      val draft = OrderDraft(tripId, listOf(OrderItem("milk", "Milk", 220, 1)), 100)
+      val saved = (repo.createOrder(draft) as OrderResult.Success).data
+      val tripRef = owner.firestore.collection("trips").document(tripId)
+      val fields = tripRef.get(Source.SERVER).await().data!!
+      assertEquals(
+          OrderResult.Error(OrderError.InvalidData),
+          repo.editOrder(saved.id, draft.copy(tripId = "different-trip")),
+      )
+      // Historical malformed trips remain readable when PUBLISHED; eligibility must still fail.
+      for (trip in
+          listOf(
+              fields - "scheduledAt",
+              fields + ("scheduledAt" to Timestamp(Instant.now().minusSeconds(60))),
+              fields + ("ownerId" to requester.auth.currentUser!!.uid),
+          )) {
+        deleteDocumentAsOwner("trips/$tripId")
+        createDocumentAsOwner("trips", tripId, trip)
+        assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder(saved.id, draft))
+        assertEquals(OrderResult.Success(saved), repo.getOrderById(saved.id))
+      }
+      val direct = FirebaseOrderFirestoreDataSource(requester.firestore) { null }
+      assertEquals(
+          OrderResult.Error(OrderError.NotAuthenticated),
+          OrderRepositoryFirestore(direct, { requester.auth.currentUser?.uid })
+              .editOrder(saved.id, draft),
+      )
+    }
+  }
+
+  @Test
   fun editRacesWithAcceptRejectAndCancelPreserveTheCommittedWinner() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val tripId = publish(owner)

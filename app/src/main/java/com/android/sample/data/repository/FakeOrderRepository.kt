@@ -86,32 +86,36 @@ class FakeOrderRepository(
             return@withSession OrderResult.Error(OrderError.InvalidData)
         if (stored.status != OrderStatus.PENDING)
             return@withSession OrderResult.Error(OrderError.AlreadyDecided(stored.snapshot()))
-        val trip =
-            try {
-              tripRepository?.getTripById(stored.tripId)
-            } catch (cancelled: CancellationException) {
-              throw cancelled
-            } catch (_: Exception) {
-              currentCoroutineContext().ensureActive()
-              return@withSession OrderResult.Error(
-                  if (currentUserId() != uid) OrderError.NotAuthenticated else OrderError.Unknown
-              )
-            }
-        currentCoroutineContext().ensureActive()
-        if (currentUserId() != uid)
-            return@withSession OrderResult.Error(OrderError.NotAuthenticated)
-        if (
-            trip !is TripResult.Success ||
-                trip.data.id != stored.tripId ||
-                trip.data.ownerId == uid ||
-                trip.data.status != com.android.sample.model.TripStatus.PUBLISHED ||
-                trip.data.scheduledAt <= now()
-        )
-            return@withSession OrderResult.Error(OrderError.InvalidData)
+        val tripError = editingTripError(stored.tripId, uid)
+        if (tripError != null) return@withSession OrderResult.Error(tripError)
         val updated = stored.copy(items = input.items, commissionCents = input.commissionCents)
         orders[orderId] = updated
         OrderResult.Success(updated.snapshot())
       }
+
+  /** Fails closed when the associated trip cannot be verified in the same session. */
+  private suspend fun editingTripError(tripId: String, uid: String): OrderError? {
+    val trip =
+        try {
+          tripRepository?.getTripById(tripId)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          currentCoroutineContext().ensureActive()
+          return if (currentUserId() != uid) OrderError.NotAuthenticated else OrderError.Unknown
+        }
+    currentCoroutineContext().ensureActive()
+    if (currentUserId() != uid) return OrderError.NotAuthenticated
+    return if (
+        trip !is TripResult.Success ||
+            trip.data.id != tripId ||
+            trip.data.ownerId == uid ||
+            trip.data.status != com.android.sample.model.TripStatus.PUBLISHED ||
+            trip.data.scheduledAt <= now()
+    )
+        OrderError.InvalidData
+    else null
+  }
 
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = withSession { userId ->
     if (orderId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)

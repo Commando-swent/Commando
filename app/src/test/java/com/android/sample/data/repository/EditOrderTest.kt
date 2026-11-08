@@ -107,6 +107,55 @@ class EditOrderTest {
   }
 
   @Test
+  fun unavailableOrInconsistentTripLookupNeverChangesTheOrder() = runTest {
+    val absent = FakeOrderRepository({ uid }, listOf(original), { now })
+    assertEquals(OrderResult.Error(OrderError.InvalidData), absent.editOrder("order", draft))
+    for (lookup in
+        listOf<TripResult<Trip>>(
+            TripResult.Error(TripError.NotFound),
+            TripResult.Success(trip.copy(id = "other")),
+            TripResult.Success(trip.copy(ownerId = "requester")),
+        )) {
+      val trips =
+          object : TripRepository by FakeTripRepository("owner") {
+            override suspend fun getTripById(tripId: String) = lookup
+          }
+      val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("order", draft))
+      assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
+    }
+  }
+
+  @Test
+  fun tripReadFailuresPreserveStateAndCancellationIsRethrown() = runTest {
+    for (changeAccount in listOf(false, true)) {
+      uid = "requester"
+      val trips =
+          object : TripRepository by FakeTripRepository("owner") {
+            override suspend fun getTripById(tripId: String): TripResult<Trip> {
+              if (changeAccount) uid = "other"
+              throw IllegalStateException("Trip unavailable")
+            }
+          }
+      val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
+      assertEquals(
+          OrderResult.Error(if (changeAccount) OrderError.NotAuthenticated else OrderError.Unknown),
+          repo.editOrder("order", draft),
+      )
+      uid = "requester"
+      assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
+    }
+    val cancelled = kotlinx.coroutines.CancellationException("Cancelled trip read")
+    val trips =
+        object : TripRepository by FakeTripRepository("owner") {
+          override suspend fun getTripById(tripId: String): TripResult<Trip> = throw cancelled
+        }
+    val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
+    assertSame(cancelled, runCatching { repo.editOrder("order", draft) }.exceptionOrNull())
+    assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
+  }
+
+  @Test
   fun changedSessionDuringTripReadCannotCommit() = runTest {
     val gate = CompletableDeferred<Unit>()
     val trips =

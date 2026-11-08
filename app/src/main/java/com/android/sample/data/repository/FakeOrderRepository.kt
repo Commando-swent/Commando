@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex (requester cancellation).
+// AI assistance: OpenAI Codex (requester cancellation and pending-order editing).
 // AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
@@ -72,6 +72,46 @@ class FakeOrderRepository(
             .map { it.snapshot() }
     )
   }
+
+  /** Editing requires a trip lookup, unlike standalone creation fixtures. */
+  override suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order> =
+      withSession { uid ->
+        val input = draft.copy(items = draft.items.toList())
+        if (!orderId.isDocumentId() || !input.isValid())
+            return@withSession OrderResult.Error(OrderError.InvalidData)
+        val stored = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
+        if (stored.requesterId != uid)
+            return@withSession OrderResult.Error(OrderError.PermissionDenied)
+        if (stored.tripId != input.tripId)
+            return@withSession OrderResult.Error(OrderError.InvalidData)
+        if (stored.status != OrderStatus.PENDING)
+            return@withSession OrderResult.Error(OrderError.AlreadyDecided(stored.snapshot()))
+        val trip =
+            try {
+              tripRepository?.getTripById(stored.tripId)
+            } catch (cancelled: CancellationException) {
+              throw cancelled
+            } catch (_: Exception) {
+              currentCoroutineContext().ensureActive()
+              return@withSession OrderResult.Error(
+                  if (currentUserId() != uid) OrderError.NotAuthenticated else OrderError.Unknown
+              )
+            }
+        currentCoroutineContext().ensureActive()
+        if (currentUserId() != uid)
+            return@withSession OrderResult.Error(OrderError.NotAuthenticated)
+        if (
+            trip !is TripResult.Success ||
+                trip.data.id != stored.tripId ||
+                trip.data.ownerId == uid ||
+                trip.data.status != com.android.sample.model.TripStatus.PUBLISHED ||
+                trip.data.scheduledAt <= now()
+        )
+            return@withSession OrderResult.Error(OrderError.InvalidData)
+        val updated = stored.copy(items = input.items, commissionCents = input.commissionCents)
+        orders[orderId] = updated
+        OrderResult.Success(updated.snapshot())
+      }
 
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = withSession { userId ->
     if (orderId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)

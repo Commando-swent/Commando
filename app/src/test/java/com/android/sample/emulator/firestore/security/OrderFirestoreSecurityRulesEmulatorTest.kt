@@ -26,6 +26,90 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class OrderFirestoreSecurityRulesEmulatorTest {
   @Test
+  fun requesterEditsAreAtomicValidatedAndDoNotChangeIdentity() = runTest {
+    withClients("owner" to true, "requester" to true, "outsider" to true, "anonymous" to false) {
+        (owner, requester, outsider, anonymous) ->
+      val tripId = publish(owner)
+      val repo = OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      val draft = OrderDraft(tripId, listOf(OrderItem("milk", "Milk", 220, 1)), 100)
+      val saved = (repo.createOrder(draft) as OrderResult.Success).data
+      for (client in listOf(owner, outsider, anonymous)) assertPermissionDenied {
+        client.firestore
+            .collection("orders")
+            .document(saved.id)
+            .update("commissionCents", 200)
+            .await()
+      }
+      val ref = requester.firestore.collection("orders").document(saved.id)
+      for ((field, value) in
+          listOf(
+              "tripId" to "other",
+              "requesterId" to owner.auth.currentUser!!.uid,
+              "createdAt" to FieldValue.serverTimestamp(),
+              "status" to "ACCEPTED",
+              "extra" to true,
+              "items" to emptyList<Any>(),
+              "commissionCents" to -1,
+              "commissionCents" to 2147483648L,
+          )) {
+        assertPermissionDenied { ref.update(field, value).await() }
+      }
+      val edited =
+          draft.copy(items = listOf(OrderItem("bread", "Bread", 300, 2)), commissionCents = 150)
+      val expected = saved.copy(items = edited.items, commissionCents = 150)
+      assertEquals(OrderResult.Success(expected), repo.editOrder(saved.id, edited))
+      assertEquals(OrderResult.Success(expected), repo.editOrder(saved.id, edited))
+      assertEquals(OrderResult.Success(listOf(expected)), repo.getMyOrders())
+      val ownerRepo = OrderRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+      assertEquals(OrderResult.Success(listOf(expected)), ownerRepo.getOrdersForTrip(tripId))
+      assertEquals(OrderResult.Success(expected), repo.getOrderById(saved.id))
+      // Closing the trip independently blocks raw requester edits, not just the Kotlin guard.
+      owner.firestore.collection("trips").document(tripId).update("status", "CANCELLED").await()
+      assertPermissionDenied { ref.update("commissionCents", 200).await() }
+      assertEquals(OrderResult.Error(OrderError.PermissionDenied), repo.editOrder(saved.id, draft))
+    }
+  }
+
+  @Test
+  fun editRacesWithAcceptRejectAndCancelPreserveTheCommittedWinner() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val tripId = publish(owner)
+      val repo = OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      val ownerRepo = OrderRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+      val draft = OrderDraft(tripId, listOf(OrderItem("milk", "Milk", 220, 1)), 100)
+      for (target in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED, OrderStatus.CANCELLED)) {
+        val saved = (repo.createOrder(draft) as OrderResult.Success).data
+        val edited = draft.copy(commissionCents = 250)
+        val result = async(Dispatchers.IO) { repo.editOrder(saved.id, edited) }
+        val transition =
+            async(Dispatchers.IO) {
+              when (target) {
+                OrderStatus.ACCEPTED -> ownerRepo.decideOrder(saved.id, ACCEPT)
+                OrderStatus.REJECTED -> ownerRepo.decideOrder(saved.id, REJECT)
+                else -> repo.cancelOrder(saved.id)
+              }
+            }
+        val edit = result.await()
+        assertTrue(transition.await() is OrderResult.Success)
+        val stored = (repo.getOrderById(saved.id) as OrderResult.Success).data
+        assertEquals(target, stored.status)
+        assertEquals(saved.tripId, stored.tripId)
+        assertEquals(saved.createdAt, stored.createdAt)
+        assertTrue(
+            edit is OrderResult.Success ||
+                (edit is OrderResult.Error && edit.error is OrderError.AlreadyDecided)
+        )
+        if (edit is OrderResult.Success) assertEquals(250, stored.commissionCents)
+        else assertEquals(100, stored.commissionCents)
+        assertEquals(
+            OrderResult.Error(OrderError.AlreadyDecided(stored)),
+            repo.editOrder(saved.id, edited),
+        )
+      }
+    }
+  }
+
+  @Test
   fun selfOrdersAreRejectedByTheAdapterAndDirectWrites() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val trip = publish(owner)

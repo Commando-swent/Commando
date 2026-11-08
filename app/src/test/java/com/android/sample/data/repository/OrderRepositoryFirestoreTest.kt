@@ -504,7 +504,50 @@ class OrderRepositoryFirestoreTest {
     assertEquals(error(OrderError.NotAuthenticated), pending.await())
   }
 
+  @Test
+  fun editDecodesThePersistedResultAndRejectsStaleOrMalformedResults() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue(saved.id)
+    val edited = draft.copy(commissionCents = 250)
+    source.decisionResult = original.copy(data = original.data + ("commissionCents" to 250L))
+    assertEquals(
+        OrderResult.Success(saved.copy(commissionCents = 250)),
+        repository.editOrder(saved.id, edited),
+    )
+    source.decisionResult = original
+    assertEquals(error(OrderError.InvalidData), repository.editOrder(saved.id, edited))
+    source.decisionResult = original.copy(data = original.data + ("status" to "ACCEPTED"))
+    assertEquals(
+        error(OrderError.AlreadyDecided(saved.copy(status = OrderStatus.ACCEPTED))),
+        repository.editOrder(saved.id, edited),
+    )
+    source.decisionResult = original.copy(data = original.data - "items")
+    assertEquals(error(OrderError.InvalidData), repository.editOrder(saved.id, edited))
+    assertEquals(error(OrderError.InvalidData), repository.editOrder("a/b", edited))
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, edited.copy(items = emptyList())),
+    )
+  }
+
+  @Test
+  fun editDiscardsACommittedResultWhenTheSessionChanges() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    source.decisionResult = source.documents.getValue(saved.id)
+    source.beforeRead = { uid = "other" }
+    assertEquals(error(OrderError.NotAuthenticated), repository.editOrder(saved.id, draft))
+  }
+
   private inner class MemorySource : OrderFirestoreDataSource {
+    override suspend fun edit(
+        id: String,
+        requesterId: String,
+        draft: OrderDraft,
+    ): OrderFirestoreDocument {
+      beforeRead()
+      return checkNotNull(decisionResult)
+    }
+
     val documents = linkedMapOf<String, OrderFirestoreDocument>()
     var decisionResult: OrderFirestoreDocument? = null
     var beforeRead: suspend () -> Unit = {}

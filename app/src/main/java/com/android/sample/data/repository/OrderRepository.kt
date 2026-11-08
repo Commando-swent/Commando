@@ -11,6 +11,21 @@ interface OrderRepository {
   /** Derives requester identity from the session; does not clear the caller's draft. */
   suspend fun createOrder(draft: OrderDraft): OrderResult<Order>
 
+  /**
+   * Atomically edits the persisted requester's PENDING order on an open, upcoming trip. Only items
+   * and commission change; identity, trip, creation time and status remain immutable. A competing
+   * final transition returns AlreadyDecided with the stored order. Retrying the same edit is safe;
+   * after an uncertain failure callers may reload by ID to reconcile server state. An ended session
+   * returns NotAuthenticated even if the server already committed.
+   *
+   * @param orderId Existing order document ID, never a document path.
+   * @param draft Valid replacement items and commission with the original trip ID.
+   * @return Updated order or a typed failure; totals are derived from the replacement items.
+   * @throws kotlinx.coroutines.CancellationException If the caller is cancelled; a committed server
+   *   write cannot be undone by cancelling the coroutine.
+   */
+  suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order>
+
   /** Current requester's orders, newest first; equal timestamps are ordered by ID. */
   suspend fun getMyOrders(): OrderResult<List<Order>>
 

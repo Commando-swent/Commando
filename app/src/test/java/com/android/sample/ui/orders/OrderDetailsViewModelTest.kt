@@ -932,6 +932,9 @@ class OrderDetailsViewModelTest {
   }
 
   private inner class RecordingOrders : OrderRepository {
+    override suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order> =
+        error("Not used")
+
     var cancellations = 0
 
     override suspend fun confirmReceipt(orderId: String): OrderResult<Order> {

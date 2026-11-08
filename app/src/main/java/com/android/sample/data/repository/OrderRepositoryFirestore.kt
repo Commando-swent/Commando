@@ -92,6 +92,22 @@ internal constructor(
     OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
+  override suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order> =
+      session { uid ->
+        val input = draft.copy(items = draft.items.toList())
+        if (!orderId.isDocumentId() || !input.tripId.isDocumentId() || !input.isValid())
+            return@session failure(OrderError.InvalidData)
+        val order =
+            source.edit(orderId, uid, input).toOrder()
+                ?: return@session failure(OrderError.InvalidData)
+        if (order.id != orderId || order.requesterId != uid || order.tripId != input.tripId)
+            return@session failure(OrderError.InvalidData)
+        if (order.status != OrderStatus.PENDING) failure(OrderError.AlreadyDecided(order))
+        else if (order.items != input.items || order.commissionCents != input.commissionCents)
+            failure(OrderError.InvalidData)
+        else OrderResult.Success(order)
+      }
+
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = session { uid ->
     if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
     val document = source.get(orderId) ?: return@session failure(OrderError.NotFound)
@@ -191,10 +207,15 @@ internal typealias OrderFirestoreDocument = FirestoreDocument
  * Persistence boundary for raw order snapshots; repositories validate input and decoded results.
  *
  * Reads use the server. Transactions authorize owners against the latest order/trip, and authorize
- * cancellation and receipt confirmation against the persisted requester. Implementations throw
- * storage failures; the repository maps them after checking the active session.
+ * editing, cancellation and receipt confirmation against the persisted requester. Implementations
+ * throw storage failures; the repository maps them after checking the active session.
  */
 internal interface OrderFirestoreDataSource {
+  /**
+   * Authorizes the stored requester, reads the trip and edits eligible orders in one transaction.
+   */
+  suspend fun edit(id: String, requesterId: String, draft: OrderDraft): OrderFirestoreDocument
+
   /** Writes the order and placement event atomically, then confirms the server snapshot. */
   suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument
 
@@ -288,6 +309,64 @@ internal class FirebaseOrderFirestoreDataSource(
       ownerId: String,
       decision: OrderDecision,
   ): OrderFirestoreDocument = transitionOrder(id, ownerId, decision.ownerTransition())
+
+  /**
+   * Reads both mutable eligibility documents before writing; Firestore retries conflicting reads.
+   */
+  override suspend fun edit(
+      id: String,
+      requesterId: String,
+      draft: OrderDraft,
+  ): OrderFirestoreDocument {
+    val context = currentCoroutineContext()
+    val database = firestore
+    fun ensureSession() {
+      context.ensureActive()
+      ensureDecisionIdentity(database.app, requesterId)
+    }
+    ensureSession()
+    fun attempt(write: Boolean) = database.runTransaction { transaction ->
+      ensureSession()
+      val ref = database.collection("orders").document(id)
+      val stored = transaction.readOrder(ref, requesterId, requester = true)
+      if (stored.data["tripId"] != draft.tripId)
+          throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+      if (!write || stored.data["status"] != OrderStatus.PENDING.name) return@runTransaction stored
+      val trip = transaction.get(database.collection("trips").document(draft.tripId))
+      if (
+          !trip.exists() ||
+              trip.getString("ownerId") == requesterId ||
+              trip.getString("status") != "PUBLISHED" ||
+              trip.getTimestamp("scheduledAt")?.toInstant()?.isAfter(Instant.now()) != true
+      )
+          throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+      val fields =
+          mapOf(
+              "items" to
+                  draft.items.map {
+                    mapOf(
+                        "productId" to it.productId,
+                        "name" to it.name,
+                        "unitPriceCents" to it.unitPriceCents,
+                        "quantity" to it.quantity,
+                    )
+                  },
+              "commissionCents" to draft.commissionCents,
+          )
+      ensureSession()
+      transaction.update(ref, fields)
+      stored.copy(data = stored.data + fields)
+    }
+    return try {
+      attempt(true).await()
+    } catch (denied: FirebaseFirestoreException) {
+      if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+      attempt(false).await().also {
+        ensureSession()
+        if (it.data["status"] == OrderStatus.PENDING.name) throw denied
+      }
+    }
+  }
 
   override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
       transitionOrder(id, ownerId, OwnerOrderTransition.MARK_READY)

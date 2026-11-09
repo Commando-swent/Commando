@@ -590,6 +590,7 @@ class ProductRepositoryFirestoreTest {
     val categories = listOf("Boissons", 4, "", " Lait", "x".repeat(201), "Vins rouges")
     dataSource.storesById["coop"] = FirestoreDocument("coop", mapOf("categories" to categories))
     dataSource.storesById["migros"] = FirestoreDocument("migros", mapOf("categories" to "Lait"))
+    dataSource.storesById["aldi"] = FirestoreDocument("aldi", mapOf("name" to "Aldi"))
     val repository = ProductRepositoryFirestore(dataSource)
 
     assertEquals(
@@ -599,6 +600,7 @@ class ProductRepositoryFirestoreTest {
     // Malformed metadata or a store not imported yet lists no category, as no product has one.
     assertEquals(emptyList<String>(), repository.getCategories("migros").successData())
     assertEquals(emptyList<String>(), repository.getCategories("denner").successData())
+    assertEquals(emptyList<String>(), repository.getCategories("aldi").successData())
     assertProductError(ProductError.InvalidStore, repository.getCategories("carrefour"))
     dataSource.failure = firebaseException(Code.PERMISSION_DENIED)
     assertProductError(ProductError.PermissionDenied, repository.getCategories("coop"))

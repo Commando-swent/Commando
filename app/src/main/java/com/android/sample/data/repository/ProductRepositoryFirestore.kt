@@ -75,7 +75,8 @@ internal constructor(
       return ProductResult.Error(ProductError.InvalidStore)
     }
     return runProductRepositoryOperation {
-      val stored = dataSource.getStore(normalizedStoreId)?.data?.get(FIELD_CATEGORIES) as? List<*>
+      val fields = dataSource.getStore(normalizedStoreId)?.data.orEmpty()
+      val stored = fields[FIELD_CATEGORIES] as? List<*>
       // Like a malformed product, a malformed entry is skipped rather than failing the list.
       ProductResult.Success(
           stored.orEmpty().filterIsInstance<String>().filter {

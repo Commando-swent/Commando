@@ -57,6 +57,14 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    // Trip lifecycle (#233): the owner closes (PUBLISHED -> IN_PROGRESS), then completes
+    // (IN_PROGRESS -> COMPLETED); nothing else changes. The completion rule (no open order)
+    // needs a query, so the app enforces it.
+    function isAllowedTripTransition(from, to) {
+      return (from == "PUBLISHED" && to == "IN_PROGRESS")
+        || (from == "IN_PROGRESS" && to == "COMPLETED");
+    }
+
     match /trips/{tripId} {
       allow create: if isAuthenticated()
         && isValidTrip(request.resource.data)
@@ -64,18 +72,25 @@ service cloud.firestore {
         && request.resource.data.status == "PUBLISHED"
         && request.resource.data.createdAt == request.resource.data.updatedAt;
 
-      allow read: if isAuthenticated()
+      // Requesters keep the trip of their order after it closes; listing stays PUBLISHED-or-owner.
+      allow get: if isAuthenticated()
+        && (resource == null
+          || resource.data.status in ["PUBLISHED", "IN_PROGRESS", "COMPLETED"]
+          || resource.data.ownerId == request.auth.uid);
+
+      allow list: if isAuthenticated()
         && (resource.data.status == "PUBLISHED"
           || resource.data.ownerId == request.auth.uid);
 
       allow update: if isAuthenticated()
         && resource.data.ownerId == request.auth.uid
-        && isValidTrip(request.resource.data)
-        && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"])
+        && request.resource.data.updatedAt == request.time
+        && isAllowedTripTransition(resource.data.status, request.resource.data.status);
 
-      allow delete: if isAuthenticated()
-        && resource.data.ownerId == request.auth.uid;
+      // The app never deletes trips; deleting and recreating one would bypass the transitions and
+      // strand its orders.
+      allow delete: if false;
     }
 
     // Order access is anchored to the persisted associated trip.

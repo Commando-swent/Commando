@@ -1,16 +1,23 @@
 package com.android.sample.data.repository
 
+// AI assistance: Claude Code for the trip transition (#233).
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
+import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
+import com.android.sample.model.blocksTripCompletion
 import java.time.Instant
 import java.util.UUID
 
+/** In-memory [TripRepository] for tests and previews. */
 class FakeTripRepository(
     private val currentUserId: String,
     private val now: () -> Instant = Instant::now,
     initialTrips: List<Trip> = emptyList(),
+    /** Statuses of the orders of a trip, consulted only to complete it; none by default. */
+    private val tripOrderStatuses: suspend (tripId: String) -> List<OrderStatus> = { emptyList() },
 ) : TripRepository {
 
   private val trips = initialTrips.associateByTo(linkedMapOf(), Trip::id)
@@ -66,6 +73,29 @@ class FakeTripRepository(
       return TripResult.Error(it)
     }
     return TripResult.Success(trips.values.filter { it.ownerId == currentUserId })
+  }
+
+  override suspend fun transitionTrip(
+      tripId: String,
+      transition: TripTransition,
+  ): TripResult<Trip> {
+    forcedError?.let {
+      return TripResult.Error(it)
+    }
+    if (!tripId.isDocumentId()) return TripResult.Error(TripError.InvalidData)
+    val trip = trips[tripId] ?: return TripResult.Error(TripError.NotFound)
+    trip.transitionPrecheck(currentUserId, transition)?.let {
+      return it
+    }
+    if (
+        transition == TripTransition.COMPLETE &&
+            tripOrderStatuses(tripId).any(OrderStatus::blocksTripCompletion)
+    ) {
+      return TripResult.Error(TripError.OrdersStillOpen)
+    }
+    val updated = trip.copy(status = transition.target, updatedAt = now())
+    trips[tripId] = updated
+    return TripResult.Success(updated)
   }
 
   private fun NewTrip.isValid(currentTime: Instant): Boolean =

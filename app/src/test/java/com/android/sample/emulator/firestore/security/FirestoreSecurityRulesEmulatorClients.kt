@@ -1,5 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
+// AI assistance: Claude Code for updateDocumentAsOwner (#233).
+
 import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
@@ -68,6 +70,24 @@ internal fun createDocumentAsOwner(
         JSONObject().put("fields", fields.toFirestoreFields()),
     )
 
+/**
+ * Overwrites only [fields] of the existing document at [documentPath] as the emulator owner,
+ * bypassing the security rules, to seed states that clients may no longer write.
+ */
+internal fun updateDocumentAsOwner(documentPath: String, fields: Map<String, Any?>) {
+  val write =
+      JSONObject()
+          .put(
+              "update",
+              JSONObject()
+                  .put("name", "$DOCUMENTS_PATH/$documentPath")
+                  .put("fields", fields.toFirestoreFields()),
+          )
+          .put("updateMask", JSONObject().put("fieldPaths", JSONArray(fields.keys.toList())))
+          .put("currentDocument", JSONObject().put("exists", true))
+  firestoreOwnerRequest("POST", ":commit", JSONObject().put("writes", JSONArray().put(write)))
+}
+
 /** Deletes the document at [documentPath] as the emulator owner, bypassing the security rules. */
 internal fun deleteDocumentAsOwner(documentPath: String) =
     firestoreOwnerRequest("DELETE", documentPath, body = null)
@@ -134,7 +154,9 @@ private fun firestoreOwnerRequest(method: String, path: String, body: JSONObject
   val (host, port) =
       checkNotNull(System.getenv(FIRESTORE_EMULATOR_HOST_ENVIRONMENT_VARIABLE))
           .parseEmulatorHostAndPort()
-  val url = URL("http://$host:$port/v1/projects/$PROJECT_ID/databases/(default)/documents/$path")
+  // A leading ':' targets a method of the documents resource, e.g. ":commit".
+  val separator = if (path.startsWith(":")) "" else "/"
+  val url = URL("http://$host:$port/v1/$DOCUMENTS_PATH$separator$path")
   val connection = url.openConnection() as HttpURLConnection
   try {
     connection.requestMethod = method
@@ -191,6 +213,7 @@ private fun Any?.toFirestoreValue(): JSONObject =
     }
 
 private const val PROJECT_ID = "demo-commando"
+private const val DOCUMENTS_PATH = "projects/$PROJECT_ID/databases/(default)/documents"
 private const val OWNER_REQUEST_TIMEOUT_MS = 10_000
 private const val FIRESTORE_EMULATOR_HOST_ENVIRONMENT_VARIABLE = "FIRESTORE_EMULATOR_HOST"
 private const val FIREBASE_AUTH_EMULATOR_HOST_ENVIRONMENT_VARIABLE = "FIREBASE_AUTH_EMULATOR_HOST"

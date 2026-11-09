@@ -10,6 +10,7 @@ import com.google.firebase.firestore.*
 import io.mockk.*
 import java.time.Clock
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.concurrent.Executor
 import kotlinx.coroutines.*
@@ -33,12 +34,23 @@ class CommandoPositionListenerTest {
   private val snapshots = slot<EventListener<DocumentSnapshot>>()
   private val sessions = slot<FirebaseAuth.AuthStateListener>()
   private val now = Instant.parse("2026-11-09T12:00:00Z")
+  private var wallTime = now
+  private val clock =
+      object : Clock() {
+        override fun instant(): Instant = wallTime
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+      }
+  private val orderSnapshots = slot<EventListener<DocumentSnapshot>>()
+  private val orderRegistration = mockk<ListenerRegistration>(relaxed = true)
   private val fix = CommandoPosition(46.52, 6.56, 30.0, now)
   private val repo =
       CommandoPositionRepositoryFirestore(
           { "viewer" },
           firestore,
-          Clock.fixed(now, ZoneOffset.UTC),
+          clock,
       )
 
   @Before
@@ -130,20 +142,7 @@ class CommandoPositionListenerTest {
 
   @Test
   fun terminalOrderClosesTheStreamAndRemovesAllThreeListeners() = runTest {
-    val viewers = mockk<CollectionReference>()
-    val pointer = mockk<DocumentReference>()
-    every { reference.collection("viewers") } returns viewers
-    every { viewers.document("viewer") } returns pointer
-    every { pointer.set(any<Map<String, Any>>()) } returns Tasks.forResult(null)
-    val orders = mockk<CollectionReference>()
-    val order = mockk<DocumentReference>()
-    val changes = slot<EventListener<DocumentSnapshot>>()
-    val orderRegistration = mockk<ListenerRegistration>(relaxed = true)
-    every { firestore.collection("orders") } returns orders
-    every { orders.document("order") } returns order
-    every {
-      order.addSnapshotListener(any<Executor>(), MetadataChanges.INCLUDE, capture(changes))
-    } returns orderRegistration
+    enableTracking()
     val failure = CompletableDeferred<Throwable>()
     backgroundScope.launch {
       try {
@@ -156,15 +155,97 @@ class CommandoPositionListenerTest {
     val document = snapshot()
     every { document.get("requesterId") } returns "viewer"
     every { document.get("status") } returns "ACCEPTED"
-    changes.captured.onEvent(document, null)
+    orderSnapshots.captured.onEvent(document, null)
     runCurrent()
     assertFalse(failure.isCompleted)
     every { document.get("status") } returns "DELIVERED"
-    changes.captured.onEvent(document, null)
+    orderSnapshots.captured.onEvent(document, null)
     runCurrent()
     assertTrue(failure.isCompleted)
     verifyCleanup()
     verify(exactly = 1) { orderRegistration.remove() }
+  }
+
+  private fun enableTracking() {
+    val viewers = mockk<CollectionReference>()
+    val pointer = mockk<DocumentReference>()
+    every { reference.collection("viewers") } returns viewers
+    every { viewers.document("viewer") } returns pointer
+    every { pointer.set(any<Map<String, Any>>()) } returns Tasks.forResult(null)
+    val orders = mockk<CollectionReference>()
+    val order = mockk<DocumentReference>()
+    every { firestore.collection("orders") } returns orders
+    every { orders.document("order") } returns order
+    every {
+      order.addSnapshotListener(any<Executor>(), MetadataChanges.INCLUDE, capture(orderSnapshots))
+    } returns orderRegistration
+  }
+
+  private fun orderSnapshot(pending: Boolean = false): DocumentSnapshot =
+      snapshot(pending = pending).also {
+        every { it.get("requesterId") } returns "viewer"
+        every { it.get("status") } returns "PENDING"
+      }
+
+  @Test
+  fun activeOrderConfirmationRestoresPositionWithoutAnotherPositionEvent() = runTest {
+    enableTracking()
+    val seen = mutableListOf<CommandoPosition?>()
+    val observation = backgroundScope.launch {
+      repo.observe("owner", "order").collect { seen += it }
+    }
+    runCurrent()
+    orderSnapshots.captured.onEvent(orderSnapshot(), null)
+    snapshots.captured.onEvent(snapshot(), null)
+    runCurrent()
+    assertEquals(fix, seen.last())
+    orderSnapshots.captured.onEvent(orderSnapshot(pending = true), null)
+    runCurrent()
+    assertNull(seen.last())
+    orderSnapshots.captured.onEvent(orderSnapshot(), null)
+    runCurrent()
+    assertEquals(
+        "Active server confirmation must restore the still-fresh position",
+        fix,
+        seen.last(),
+    )
+    observation.cancelAndJoin()
+    verifyCleanup()
+    verify(exactly = 1) { orderRegistration.remove() }
+  }
+
+  @Test
+  fun orderConfirmationDoesNotResurrectAnExpiredPosition() = runTest {
+    enableTracking()
+    val seen = mutableListOf<CommandoPosition?>()
+    backgroundScope.launch { repo.observe("owner", "order").collect { seen += it } }
+    runCurrent()
+    orderSnapshots.captured.onEvent(orderSnapshot(), null)
+    snapshots.captured.onEvent(snapshot(), null)
+    runCurrent()
+    assertEquals(fix, seen.last())
+    orderSnapshots.captured.onEvent(orderSnapshot(pending = true), null)
+    runCurrent()
+    assertNull(seen.last())
+    wallTime = now.plus(CommandoPosition.MAX_AGE)
+    orderSnapshots.captured.onEvent(orderSnapshot(), null)
+    runCurrent()
+    assertNull("Confirmation cannot renew the position's original capture time", seen.last())
+  }
+
+  @Test
+  fun newPositionRemainsHiddenWhileTheOrderIsUnconfirmed() = runTest {
+    enableTracking()
+    val seen = mutableListOf<CommandoPosition?>()
+    backgroundScope.launch { repo.observe("owner", "order").collect { seen += it } }
+    runCurrent()
+    orderSnapshots.captured.onEvent(orderSnapshot(pending = true), null)
+    snapshots.captured.onEvent(snapshot(), null)
+    runCurrent()
+    assertNull(seen.last())
+    orderSnapshots.captured.onEvent(orderSnapshot(), null)
+    runCurrent()
+    assertEquals(fix, seen.last())
   }
 
   private fun snapshot(cache: Boolean = false, pending: Boolean = false): DocumentSnapshot {

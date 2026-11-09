@@ -11,6 +11,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
@@ -66,42 +67,52 @@ class CommandoPositionRepositoryFirestore(
           .await()
       checkSession(uid)
     }
-    emitAll(snapshots(ownerId, uid, orderId).freshPositions(clock))
+    val positionUpdates = snapshots(ownerId, uid)
+    val visible =
+        if (orderId == null) positionUpdates
+        else
+            positionUpdates.combine(orderConfirmation(orderId, uid)) { position, confirmed ->
+              position.takeIf { confirmed }
+            }
+    // Recheck capture age on every confirmation; pending writes must not reset freshness.
+    emitAll(visible.freshPositions(clock))
   }
 
-  private fun snapshots(ownerId: String, uid: String, orderId: String?): Flow<CommandoPosition?> =
-      callbackFlow {
-        val listener =
-            positions.document(ownerId).addSnapshotListener(
-                { it.run() },
-                MetadataChanges.INCLUDE,
-            ) { doc, error ->
-              when {
-                !sameSession(uid) -> close(SecurityException("Position session ended"))
-                error != null -> close(error)
-                doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
-                    trySend(null)
-                else -> trySend(doc.toCommandoPosition())
-              }
-            }
-        val sessionListener = FirebaseAuth.AuthStateListener {
-          if (!sameSession(uid)) close(SecurityException("Position session ended"))
+  private fun snapshots(ownerId: String, uid: String): Flow<CommandoPosition?> = callbackFlow {
+    val listener =
+        positions.document(ownerId).addSnapshotListener(
+            { it.run() },
+            MetadataChanges.INCLUDE,
+        ) { doc, error ->
+          when {
+            !sameSession(uid) -> close(SecurityException("Position session ended"))
+            error != null -> close(error)
+            doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
+                trySend(null)
+            else -> trySend(doc.toCommandoPosition())
+          }
         }
-        auth.addAuthStateListener(sessionListener)
-        val orderListener = orderId?.let { watchOrder(it, uid, { trySend(null) }, { close(it) }) }
-        awaitClose {
-          listener.remove()
-          orderListener?.remove()
-          auth.removeAuthStateListener(sessionListener)
-        }
-      }
+    val sessionListener = FirebaseAuth.AuthStateListener {
+      if (!sameSession(uid)) close(SecurityException("Position session ended"))
+    }
+    auth.addAuthStateListener(sessionListener)
+    awaitClose {
+      listener.remove()
+      auth.removeAuthStateListener(sessionListener)
+    }
+  }
+
+  private fun orderConfirmation(orderId: String, uid: String): Flow<Boolean> = callbackFlow {
+    val listener = watchOrder(orderId, uid, { trySend(it) }, { close(it) })
+    awaitClose { listener.remove() }
+  }
 
   // Observe the authorization dependency as well as the position: revocation must end a quiet
   // stream.
   private fun watchOrder(
       orderId: String,
       uid: String,
-      unavailable: () -> Unit,
+      confirmed: (Boolean) -> Unit,
       revoked: (Throwable) -> Unit,
   ): ListenerRegistration =
       firestore.collection("orders").document(orderId).addSnapshotListener(
@@ -112,7 +123,7 @@ class CommandoPositionRepositoryFirestore(
           !sameSession(uid) -> revoked(SecurityException("Position session ended"))
           error != null -> revoked(error)
           doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
-              unavailable()
+              confirmed(false)
           doc.get("requesterId") != uid || doc.get("status") !in ACTIVE_ORDER_STATUSES ->
               revoked(
                   FirebaseFirestoreException(
@@ -120,6 +131,7 @@ class CommandoPositionRepositoryFirestore(
                       FirebaseFirestoreException.Code.PERMISSION_DENIED,
                   )
               )
+          else -> confirmed(true)
         }
       }
 

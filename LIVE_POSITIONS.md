@@ -26,6 +26,9 @@ A forged witness cannot grant access and a terminal order immediately fails auth
 Tracking also observes the witness order itself: terminal/deleted/foreign-order snapshots close
 the position flow even when no position changes. Cancellation or logout removes the position,
 order (when tracking) and Auth listeners together. Server rules still independently restrict reads.
+Position snapshots and order confirmation are combined independently. Pending/cached order
+snapshots hide the position; active server confirmation restores the last confirmed position
+without another position event, only if its original capture time is still fresh.
 Pointers hold no positions and are readable/deletable only by their requester. The integration
 must replace the pointer if another active order should take over; retaining a pointer does
 not retain authorization. Discovery positions are readable by any authenticated user while

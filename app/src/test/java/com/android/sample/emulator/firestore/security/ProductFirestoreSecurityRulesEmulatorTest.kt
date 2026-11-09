@@ -129,6 +129,34 @@ class ProductFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun storeCategories_areReadableOnlyWhenAuthenticatedAndNeverWritable() = runTest {
+    withClients("authenticated" to true, "unauthenticated" to false) {
+        (authenticated, unauthenticated) ->
+      val categories = listOf("Boissons", "Lait")
+      createDocumentAsOwner("stores", "coop", mapOf("categories" to categories))
+      try {
+        assertEquals(
+            ProductResult.Success(categories),
+            ProductRepositoryFirestore(authenticated.firestore).getCategories("coop"),
+        )
+        assertEquals(
+            ProductResult.Error(ProductError.PermissionDenied),
+            ProductRepositoryFirestore(unauthenticated.firestore).getCategories("coop"),
+        )
+        val store = authenticated.firestore.document("stores/coop")
+        assertPermissionDenied("a store metadata write") {
+          store.set(mapOf("categories" to listOf("Fake"))).await()
+        }
+        assertPermissionDenied("a store list") {
+          authenticated.firestore.collection("stores").limit(1).get().await()
+        }
+      } finally {
+        deleteDocumentAsOwner("stores/coop")
+      }
+    }
+  }
+
+  @Test
   fun authenticatedReads_allowGetsAndListsOfAtMostFiftyProducts() = runTest {
     withClients("authenticated" to true) { (authenticated) ->
       val products = authenticated.firestore.collection(MIGROS_PRODUCTS)

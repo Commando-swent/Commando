@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   displayName, emulatorHost, FIREBASE_TOOLS_VERSION, firebaseTools, firestoreClient, firestoreTarget, importProducts, parseArgs,
-  parseExport, parseSizes, planWrites, searchPrefixes, skippedReport, toProduct,
+  parseExport, parseSizes, planWrites, searchPrefixes, skippedReport, toProduct, writeCategories,
 } from './import.mjs';
 
 const row = (number, overrides = {}) =>
@@ -44,7 +44,7 @@ function fakeClient(documents = new Map()) {
   };
 }
 const decodeValue = (value) =>
-  'mapValue' in value ? Object.fromEntries(Object.entries(value.mapValue.fields).map(([k, v]) => [k, decodeValue(v)])) : Object.values(value)[0];
+  'arrayValue' in value ? value.arrayValue.values.map(decodeValue) : 'mapValue' in value ? Object.fromEntries(Object.entries(value.mapValue.fields).map(([k, v]) => [k, decodeValue(v)])) : Object.values(value)[0];
 
 test('searchPrefixes folds accents and the æ, œ and ß ligatures and indexes only the last category', () => {
   const prefixes = Object.keys(searchPrefixes('Bœuf haché', 'Viande > Æbleskiver Straße'));
@@ -123,6 +123,21 @@ test('a later export without category keeps the stored taxonomy and its search p
   assert.deepEqual([data.category, data.category_path, data.search_prefixes.yogourts], [
     'Food', 'Food > Yogourts nature', true,
   ]);
+});
+
+test('the store categories are the sorted distinct categories of listed products, stored ones included', async () => {
+  const stored = new Map([[path('3'), { data: { category: 'Boissons', category_path: 'Boissons' }, updateTime: 't0' }]]);
+  const products = exportOf(row('1', { category: 'Épicerie > Pâtes' }), row('2', { category: 'Lait > UHT' }), row('3', { category: null }),
+    row('4', { category: 'Épicerie' }), row('5', { price: null, removed_at: REMOVED_AT, category: 'Retiré' }));
+  assert.deepEqual(planWrites(products, stored).categories, ['Boissons', 'Épicerie', 'Lait']);
+  const client = fakeClient();
+  const { categories, complete } = await importProducts(products, { client, write: true, maxWrites: 1, log: () => {} });
+  assert.equal(complete, false, '--max-writes leaves the import incomplete, so main writes no categories');
+  assert.equal((await importProducts(products, { client, write: true, log: () => {} })).complete, true);
+  assert.equal(await writeCategories(client, 'migros', categories, () => {}), true);
+  assert.equal(await writeCategories(client, 'migros', categories, () => {}), false, 'an unchanged list is not rewritten');
+  assert.equal(await writeCategories(client, 'migros', ['Lait'], () => {}), true);
+  assert.deepEqual(client.documents.get('stores/migros').data, { categories: ['Lait'] });
 });
 
 test('displayName writes brand, name and variant once each and never drops a different word', () => {
@@ -549,4 +564,10 @@ test('imports into the Firestore emulator, marks a delisted product removed and 
   assert.deepEqual(coopDocument.data, coop[0].data);
   assert.equal((await client.get([path(number)]))[0][1].updateTime, removed.updateTime);
   assert.equal((await importProducts(coop, { client, write: true, log: () => {} })).written, 0);
+
+  // The store metadata keeps its other fields, and its list reads back as written.
+  await writeCategories(client, 'coop', ['Bières en multipacks', `Test ${number}`], () => {});
+  const [[, store]] = await client.get(['stores/coop']);
+  assert.deepEqual(store.data.categories, ['Bières en multipacks', `Test ${number}`]);
+  assert.equal(await writeCategories(client, 'coop', store.data.categories, () => {}), false);
 });

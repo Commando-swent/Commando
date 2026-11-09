@@ -89,6 +89,8 @@ internal class StubProductRepository(
   override suspend fun getFavouriteProducts(storeId: String) =
       ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
 
+  override suspend fun getCategories(storeId: String) = ProductResult.Success(emptyList<String>())
+
   override suspend fun setFavourite(storeId: String, productId: String, favourite: Boolean) =
       ProductResult.Success(Unit)
 }

@@ -208,6 +208,7 @@ const sameFields = (existing, data) => owned(existing, Object.keys(data)) === ow
 export function planWrites(products, existingByPath) {
   const counts = { create: 0, update: 0, remove: 0, unchanged: 0, removedNotInFirestore: 0 };
   const writes = [];
+  const categories = new Set();
   for (const { path, data: row, removedAt } of products) {
     const existing = existingByPath.get(path);
     // A row without a size keeps the stored one, so a rerun without --sizes never erases sizes.
@@ -226,6 +227,7 @@ export function planWrites(products, existingByPath) {
     if (removedAt) action = !existing ? 'removedNotInFirestore' : existing.data.removed_at != null ? 'unchanged' : 'remove';
     else action = !existing ? 'create' : sameFields(existing.data, data) ? 'unchanged' : 'update';
     counts[action] += 1;
+    if (!removedAt && data?.category) categories.add(data.category);
     if (action === 'remove') {
       const fields = { removed_at: { timestampValue: new Date(removedAt).toISOString() } };
       writes.push({ update: { name: documentName(path), fields }, updateMask: { fieldPaths: ['removed_at'] }, currentDocument });
@@ -234,7 +236,7 @@ export function planWrites(products, existingByPath) {
       writes.push({ update: { name: documentName(path), fields: encodeFields(data) }, updateMask: { fieldPaths: Object.keys(data) }, currentDocument });
     }
   }
-  return { counts, writes };
+  return { counts, writes, categories: [...categories].sort(new Intl.Collator('fr').compare) };
 }
 
 /** Reads the export's documents, plans and, with `write`, commits at most `maxWrites` in bounded batches. */
@@ -245,21 +247,36 @@ export async function importProducts(products, { client, write = false, maxWrite
       existing.set(path, document);
     }
   }
-  const { counts, writes } = planWrites(products, existing);
-  log(`Plan: ${JSON.stringify(counts)}`);
-  if (!write) return { counts, written: 0 };
+  const { counts, writes, categories } = planWrites(products, existing);
+  log(`Plan: ${JSON.stringify(counts)}, ${categories.length} categories`);
+  if (!write) return { counts, written: 0, categories, complete: false };
   const allowed = writes.slice(0, maxWrites);
   for (let i = 0; i < allowed.length; i += BATCH_SIZE) {
     await client.commit(allowed.slice(i, i + BATCH_SIZE));
     log(`Committed ${Math.min(i + BATCH_SIZE, allowed.length)}/${allowed.length} writes`);
   }
   if (allowed.length < writes.length) log(`--max-writes reached: ${writes.length - allowed.length} writes left, run again to continue`);
-  return { counts, written: allowed.length };
+  return { counts, written: allowed.length, categories, complete: allowed.length === writes.length };
+}
+
+/**
+ * Sets stores/{store}.categories, which the app reads instead of scanning the catalogue, once every
+ * product write of a full export is committed; an unchanged list is not rewritten.
+ */
+export async function writeCategories(client, store, categories, log = console.log) {
+  const path = `stores/${store}`;
+  const [[, existing] = []] = await client.get([path]);
+  if (JSON.stringify(existing?.data.categories) === JSON.stringify(categories)) return false;
+  const currentDocument = existing ? { updateTime: existing.updateTime } : { exists: false };
+  await client.commit([{ update: { name: documentName(path), fields: encodeFields({ categories }) }, updateMask: { fieldPaths: ['categories'] }, currentDocument }]);
+  log(`Wrote ${categories.length} categories to ${path}`);
+  return true;
 }
 
 const documentName = (path) => `${DATABASE}/documents/${path}`;
 const encode = (value) => {
   if (value === null) return { nullValue: null };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(encode) } };
   if (typeof value === 'string') return { stringValue: value };
   if (typeof value === 'number') return { doubleValue: value };
   if (typeof value === 'boolean') return { booleanValue: value };
@@ -267,6 +284,7 @@ const encode = (value) => {
 };
 const encodeFields = (data) => Object.fromEntries(Object.entries(data).map(([key, value]) => [key, encode(value)]));
 const decode = (value) => {
+  if ('arrayValue' in value) return (value.arrayValue.values ?? []).map(decode);
   if ('mapValue' in value) return Object.fromEntries(Object.entries(value.mapValue.fields ?? {}).map(([key, item]) => [key, decode(item)]));
   if ('nullValue' in value) return null;
   if ('doubleValue' in value || 'integerValue' in value) return Number(value.doubleValue ?? value.integerValue);
@@ -394,7 +412,8 @@ async function main() {
   if (products.length === 0) throw new Error(`The export has no valid ${options.store} product`);
   const client = await firestoreClient(target);
   console.log(`${options.write ? 'WRITING to' : 'Dry run against'} ${client.target}, collection stores/${options.store}/products`);
-  await importProducts(products, { client, write: options.write, maxWrites: options.maxWrites });
+  const { categories, complete } = await importProducts(products, { client, write: options.write, maxWrites: options.maxWrites });
+  if (complete) await writeCategories(client, options.store, categories);
 }
 
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {

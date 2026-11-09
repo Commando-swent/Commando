@@ -69,6 +69,22 @@ internal constructor(
     }
   }
 
+  override suspend fun getCategories(storeId: String): ProductResult<List<String>> {
+    val normalizedStoreId = storeId.trim().lowercase(Locale.ROOT)
+    if (normalizedStoreId !in SUPPORTED_STORE_IDS) {
+      return ProductResult.Error(ProductError.InvalidStore)
+    }
+    return runProductRepositoryOperation {
+      val stored = dataSource.getStore(normalizedStoreId)?.data?.get(FIELD_CATEGORIES) as? List<*>
+      // Like a malformed product, a malformed entry is skipped rather than failing the list.
+      ProductResult.Success(
+          stored.orEmpty().filterIsInstance<String>().filter {
+            it.isNotEmpty() && it == it.trim() && it.length <= MAX_CATEGORY_LENGTH
+          }
+      )
+    }
+  }
+
   override suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts> {
     val normalizedStoreId = storeId.trim().lowercase(Locale.ROOT)
     if (normalizedStoreId !in FAVOURITE_STORE_IDS) {
@@ -170,6 +186,9 @@ internal interface ProductFirestoreDataSource {
       limit: Int,
   ): List<ProductFirestoreDocument>
 
+  /** The `stores/{storeId}` metadata document, or null before the store's first import. */
+  suspend fun getStore(storeId: String): FirestoreDocument?
+
   suspend fun queryFavourites(userId: String, storeId: String): List<FirestoreDocument>
 
   suspend fun getProductsByDocumentIds(
@@ -215,6 +234,15 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
         .documents
         .map { it.toFirestoreDocument() }
   }
+
+  override suspend fun getStore(storeId: String): FirestoreDocument? =
+      firestore
+          .collection(STORES_COLLECTION)
+          .document(storeId)
+          .get(Source.SERVER)
+          .await()
+          .takeIf { it.exists() }
+          ?.toFirestoreDocument()
 
   override suspend fun queryFavourites(userId: String, storeId: String): List<FirestoreDocument> =
       firestore
@@ -364,5 +392,6 @@ private const val FIELD_SEARCH_PREFIXES = "search_prefixes"
 private const val FIELD_SIZE_TEXT = "size_text"
 private const val FIELD_CATEGORY = "category"
 private const val FIELD_CATEGORY_PATH = "category_path"
+private const val FIELD_CATEGORIES = "categories"
 private const val FIELD_PRODUCT_ID = "productId"
 private const val FIELD_STORE_ID = "storeId"

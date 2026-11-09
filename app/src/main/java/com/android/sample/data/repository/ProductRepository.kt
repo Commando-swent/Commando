@@ -35,6 +35,14 @@ interface ProductRepository {
       category: String? = null,
   ): ProductResult<ProductPage>
 
+  /**
+   * Returns the [Product.category] values of one store's listed products, sorted, as the catalogue
+   * importer last wrote them to `stores/{storeId}`: one read, never a catalogue scan. Each value is
+   * a valid [searchProducts] category. The list is empty until the store is imported with
+   * categories.
+   */
+  suspend fun getCategories(storeId: String): ProductResult<List<String>>
+
   /** Returns current products favourited by the authenticated user for one store. */
   suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts>
 

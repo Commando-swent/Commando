@@ -584,6 +584,26 @@ class ProductRepositoryFirestoreTest {
     }
   }
 
+  @Test
+  fun getCategories_readsTheStoreMetadataAndSkipsMalformedEntries() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    val categories = listOf("Boissons", 4, "", " Lait", "x".repeat(201), "Vins rouges")
+    dataSource.storesById["coop"] = FirestoreDocument("coop", mapOf("categories" to categories))
+    dataSource.storesById["migros"] = FirestoreDocument("migros", mapOf("categories" to "Lait"))
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    assertEquals(
+        listOf("Boissons", "Vins rouges"),
+        repository.getCategories(" COOP ").successData(),
+    )
+    // Malformed metadata or a store not imported yet lists no category, as no product has one.
+    assertEquals(emptyList<String>(), repository.getCategories("migros").successData())
+    assertEquals(emptyList<String>(), repository.getCategories("denner").successData())
+    assertProductError(ProductError.InvalidStore, repository.getCategories("carrefour"))
+    dataSource.failure = firebaseException(Code.PERMISSION_DENIED)
+    assertProductError(ProductError.PermissionDenied, repository.getCategories("coop"))
+  }
+
   private fun productOf(id: String, name: String = "Milk") =
       Product(id, id.substringBefore(':'), name, 250)
 
@@ -628,6 +648,7 @@ class ProductRepositoryFirestoreTest {
   private class InMemoryProductFirestoreDataSource : ProductFirestoreDataSource {
     val documentsByStore = mutableMapOf<String, List<ProductFirestoreDocument>>()
     val favouritesByUser = mutableMapOf<String, MutableMap<String, FirestoreDocument>>()
+    val storesById = mutableMapOf<String, FirestoreDocument>()
     var failure: Exception? = null
     var afterFavouriteRead: () -> Unit = {}
     var queryCalls = 0
@@ -667,6 +688,11 @@ class ProductRepositoryFirestoreTest {
             terms.all { prefixes?.get(it) == true }
           }
           .take(limit)
+    }
+
+    override suspend fun getStore(storeId: String): FirestoreDocument? {
+      failure?.let { throw it }
+      return storesById[storeId]
     }
 
     override suspend fun queryFavourites(userId: String, storeId: String): List<FirestoreDocument> =

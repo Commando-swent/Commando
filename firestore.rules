@@ -281,6 +281,11 @@ service cloud.firestore {
         && !(productId in [request.resource.data.storeId + ':.', request.resource.data.storeId + ':..']);
     }
 
+    // Importer-written store metadata, such as its sorted product categories.
+    match /stores/{storeId} {
+      allow get: if isAuthenticated();
+    }
+
     match /stores/{storeId}/products/{productId} {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated()

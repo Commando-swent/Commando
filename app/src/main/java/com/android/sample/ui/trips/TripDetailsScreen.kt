@@ -1,6 +1,7 @@
 package com.android.sample.ui.trips
 
-// AI assistance: Claude Code for the incoming-orders entry point (#147).
+// AI assistance: Claude Code for the incoming-orders entry point (#147) and the owner's close and
+// complete actions (#233).
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -27,6 +28,7 @@ import com.android.sample.model.TripStatus
 /**
  * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);
  * [onViewOrders] opens the trip's incoming orders and is shown only when not null.
+ * [showOwnerActions] is true only for the trip's owner and adds the close and complete actions.
  */
 @Composable
 fun TripDetailsScreen(
@@ -35,14 +37,32 @@ fun TripDetailsScreen(
     onAddItems: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
     onViewOrders: ((String) -> Unit)? = null,
+    showOwnerActions: Boolean = false,
 ) {
   val state by viewModel.uiState.collectAsState()
-  TripDetailsScreen(state, viewModel::retry, onBack, onAddItems, modifier, onViewOrders)
+  val ownerControls =
+      if (showOwnerActions) {
+        TripOwnerControls(
+            onRequestTransition = viewModel::requestTransition,
+            onConfirmTransition = viewModel::confirmTransition,
+            onDismissTransition = viewModel::dismissTransition,
+        )
+      } else null
+  TripDetailsScreen(
+      state,
+      viewModel::retry,
+      onBack,
+      onAddItems,
+      modifier,
+      onViewOrders,
+      ownerControls,
+  )
 }
 
 /**
  * Stateless trip details for [state]. Both actions receive the trip ID: [onAddItems] opens the
- * catalogue (disabled when null) and [onViewOrders] opens the incoming orders (hidden when null).
+ * catalogue (disabled when null, or once the trip is no longer published) and [onViewOrders] opens
+ * the incoming orders (hidden when null). [ownerControls] shows the owner's section when not null.
  */
 @Composable
 fun TripDetailsScreen(
@@ -52,6 +72,7 @@ fun TripDetailsScreen(
     onAddItems: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
     onViewOrders: ((String) -> Unit)? = null,
+    ownerControls: TripOwnerControls? = null,
 ) {
   Column(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
@@ -73,6 +94,7 @@ fun TripDetailsScreen(
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
           TripDetailsContent(state.trip)
+          ownerControls?.let { TripOwnerSection(state, it) }
           if (onViewOrders != null) {
             TripDetailsButton(
                 text = stringResource(R.string.trip_details_view_orders),
@@ -82,14 +104,8 @@ fun TripDetailsScreen(
           TripDetailsButton(
               text = stringResource(R.string.trip_details_add_items),
               onClick = { onAddItems?.invoke(state.trip.id) },
-              enabled =
-                  onAddItems != null &&
-                      when (state.trip.status) {
-                        TripStatus.PUBLISHED,
-                        TripStatus.IN_PROGRESS -> true
-                        TripStatus.COMPLETED,
-                        TripStatus.CANCELLED -> false
-                      },
+              // A closed trip refuses new orders, so only a published trip can be shopped from.
+              enabled = onAddItems != null && state.trip.status == TripStatus.PUBLISHED,
           )
         }
         is TripDetailsUiState.Error -> {
@@ -195,12 +211,18 @@ private fun TripDetailsCard(content: @Composable ColumnScope.() -> Unit) {
   }
 }
 
+/** Full-width primary action of Trip Details. */
 @Composable
-private fun TripDetailsButton(text: String, onClick: () -> Unit, enabled: Boolean = true) {
+internal fun TripDetailsButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
   Button(
       onClick = onClick,
       enabled = enabled,
-      modifier = Modifier.fillMaxWidth(),
+      modifier = modifier.fillMaxWidth(),
       colors =
           ButtonDefaults.buttonColors(
               containerColor = MaterialTheme.colorScheme.primary,

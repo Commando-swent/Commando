@@ -393,7 +393,7 @@ class OrderRepositoryFirestoreTest {
   }
 
   private suspend fun decide(decision: OrderDecision = ACCEPT, id: String = "b") =
-      repository.decideOrder(id, decision)
+      repository.decideOrder(id, decision, 0)
 
   @Test
   @OptIn(ExperimentalCoroutinesApi::class)
@@ -512,21 +512,27 @@ class OrderRepositoryFirestoreTest {
     source.decisionResult = original.copy(data = original.data + ("commissionCents" to 250L))
     assertEquals(
         OrderResult.Success(saved.copy(commissionCents = 250)),
-        repository.editOrder(saved.id, edited),
+        repository.editOrder(saved.id, edited, saved.revision),
     )
     source.decisionResult = original
-    assertEquals(error(OrderError.InvalidData), repository.editOrder(saved.id, edited))
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, edited, saved.revision),
+    )
     source.decisionResult = original.copy(data = original.data + ("status" to "ACCEPTED"))
     assertEquals(
         error(OrderError.AlreadyDecided(saved.copy(status = OrderStatus.ACCEPTED))),
-        repository.editOrder(saved.id, edited),
+        repository.editOrder(saved.id, edited, saved.revision),
     )
     source.decisionResult = original.copy(data = original.data - "items")
-    assertEquals(error(OrderError.InvalidData), repository.editOrder(saved.id, edited))
-    assertEquals(error(OrderError.InvalidData), repository.editOrder("a/b", edited))
     assertEquals(
         error(OrderError.InvalidData),
-        repository.editOrder(saved.id, edited.copy(items = emptyList())),
+        repository.editOrder(saved.id, edited, saved.revision),
+    )
+    assertEquals(error(OrderError.InvalidData), repository.editOrder("a/b", edited, 0))
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, edited.copy(items = emptyList()), saved.revision),
     )
   }
 
@@ -554,11 +560,14 @@ class OrderRepositoryFirestoreTest {
             ),
         )) {
       source.decisionResult = response
-      assertEquals(error(OrderError.InvalidData), repository.editOrder(saved.id, draft))
+      assertEquals(
+          error(OrderError.InvalidData),
+          repository.editOrder(saved.id, draft, saved.revision),
+      )
     }
     assertEquals(
         error(OrderError.InvalidData),
-        repository.editOrder(saved.id, draft.copy(tripId = "a/b")),
+        repository.editOrder(saved.id, draft.copy(tripId = "a/b"), saved.revision),
     )
   }
 
@@ -569,7 +578,7 @@ class OrderRepositoryFirestoreTest {
     source.decisionResult = document.copy(data = document.data + ("revision" to 1L))
     assertEquals(
         error(OrderError.AlreadyDecided(saved.copy(revision = 1))),
-        repository.editOrder(saved.id, draft.copy(commissionCents = 999)),
+        repository.editOrder(saved.id, draft.copy(commissionCents = 999), saved.revision),
     )
     uid = "owner"
     assertEquals(
@@ -590,7 +599,10 @@ class OrderRepositoryFirestoreTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     source.decisionResult = source.documents.getValue(saved.id)
     source.beforeRead = { uid = "other" }
-    assertEquals(error(OrderError.NotAuthenticated), repository.editOrder(saved.id, draft))
+    assertEquals(
+        error(OrderError.NotAuthenticated),
+        repository.editOrder(saved.id, draft, saved.revision),
+    )
   }
 
   private inner class MemorySource : OrderFirestoreDataSource {

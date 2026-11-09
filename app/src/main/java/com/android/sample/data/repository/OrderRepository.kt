@@ -22,7 +22,8 @@ interface OrderRepository {
    *
    * @param orderId Existing order document ID, never a document path.
    * @param draft Valid replacement items and commission with the original trip ID.
-   * @param expectedRevision Revision displayed when editing began; zero supports legacy orders.
+   * @param expectedRevision Required revision displayed when editing began; legacy orders have
+   *   revision zero.
    * @return Updated order or a typed failure; totals are derived from the replacement items.
    * @throws kotlinx.coroutines.CancellationException If the caller is cancelled; a committed server
    *   write cannot be undone by cancelling the coroutine.
@@ -30,7 +31,7 @@ interface OrderRepository {
   suspend fun editOrder(
       orderId: String,
       draft: OrderDraft,
-      expectedRevision: Int = 0,
+      expectedRevision: Int,
   ): OrderResult<Order>
 
   /** Current requester's orders, newest first; equal timestamps are ordered by ID. */
@@ -49,14 +50,14 @@ interface OrderRepository {
 
   /**
    * Trip owner only; [expectedRevision] is the revision displayed to the owner. A stale revision
-   * returns AlreadyDecided with the latest snapshot before writing. Zero supports legacy unedited
-   * orders; callers viewing edited orders must supply their displayed revision. Identical final
-   * decisions are read-only; opposite decisions also return AlreadyDecided.
+   * returns AlreadyDecided with the latest snapshot before writing. Every caller must supply its
+   * displayed revision, including zero for legacy unedited orders. Identical final decisions are
+   * read-only; opposite decisions also return AlreadyDecided.
    */
   suspend fun decideOrder(
       orderId: String,
       decision: OrderDecision,
-      expectedRevision: Int = 0,
+      expectedRevision: Int,
   ): OrderResult<Order>
 
   /**

@@ -49,7 +49,7 @@ class EditOrderTest {
   fun editPreservesIdentityAndRepeatsWithoutAnotherOrder() = runTest {
     val repo = repository()
     val updated = original.copy(items = draft.items, commissionCents = 150, revision = 1)
-    repeat(2) { assertEquals(OrderResult.Success(updated), repo.editOrder("order", draft)) }
+    repeat(2) { assertEquals(OrderResult.Success(updated), repo.editOrder("order", draft, 0)) }
     assertEquals(750L, updated.totalCents)
     assertEquals(OrderResult.Success(listOf(updated)), repo.getMyOrders())
     uid = "owner"
@@ -61,10 +61,10 @@ class EditOrderTest {
     for (decision in OrderDecision.entries) {
       uid = "requester"
       val repo = repository()
-      val edited = (repo.editOrder("order", draft) as OrderResult.Success).data
+      val edited = (repo.editOrder("order", draft, 0) as OrderResult.Success).data
       assertEquals(
           OrderResult.Error(OrderError.AlreadyDecided(edited)),
-          repo.editOrder("order", draft.copy(commissionCents = 999)),
+          repo.editOrder("order", draft.copy(commissionCents = 999), 0),
       )
       uid = "owner"
       assertEquals(
@@ -85,7 +85,7 @@ class EditOrderTest {
           OrderResult.Error(
               if (user == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
           ),
-          repo.editOrder("order", draft),
+          repo.editOrder("order", draft, 0),
       )
     }
     uid = "requester"
@@ -96,10 +96,10 @@ class EditOrderTest {
             draft.copy(commissionCents = -1),
             draft.copy(items = draft.items + draft.items),
         )) {
-      assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("order", invalid))
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("order", invalid, 0))
     }
-    assertEquals(OrderResult.Error(OrderError.NotFound), repo.editOrder("missing", draft))
-    assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("a/b", draft))
+    assertEquals(OrderResult.Error(OrderError.NotFound), repo.editOrder("missing", draft, 0))
+    assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("a/b", draft, 0))
     assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
   }
 
@@ -109,7 +109,7 @@ class EditOrderTest {
       val stored = original.copy(status = status)
       assertEquals(
           OrderResult.Error(OrderError.AlreadyDecided(stored)),
-          repository(stored).editOrder("order", draft),
+          repository(stored).editOrder("order", draft, 0),
       )
     }
     for (closed in
@@ -121,7 +121,7 @@ class EditOrderTest {
         )) {
       assertEquals(
           OrderResult.Error(OrderError.InvalidData),
-          repository(associated = closed).editOrder("order", draft),
+          repository(associated = closed).editOrder("order", draft, 0),
       )
     }
   }
@@ -129,7 +129,7 @@ class EditOrderTest {
   @Test
   fun unavailableOrInconsistentTripLookupNeverChangesTheOrder() = runTest {
     val absent = FakeOrderRepository({ uid }, listOf(original), { now })
-    assertEquals(OrderResult.Error(OrderError.InvalidData), absent.editOrder("order", draft))
+    assertEquals(OrderResult.Error(OrderError.InvalidData), absent.editOrder("order", draft, 0))
     for (lookup in
         listOf<TripResult<Trip>>(
             TripResult.Error(TripError.NotFound),
@@ -142,7 +142,7 @@ class EditOrderTest {
             override suspend fun getTripById(tripId: String) = lookup
           }
       val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
-      assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("order", draft))
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder("order", draft, 0))
       assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
     }
   }
@@ -161,7 +161,7 @@ class EditOrderTest {
       val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
       assertEquals(
           OrderResult.Error(if (changeAccount) OrderError.NotAuthenticated else OrderError.Unknown),
-          repo.editOrder("order", draft),
+          repo.editOrder("order", draft, 0),
       )
       uid = "requester"
       assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
@@ -172,7 +172,7 @@ class EditOrderTest {
           override suspend fun getTripById(tripId: String): TripResult<Trip> = throw cancelled
         }
     val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
-    assertSame(cancelled, runCatching { repo.editOrder("order", draft) }.exceptionOrNull())
+    assertSame(cancelled, runCatching { repo.editOrder("order", draft, 0) }.exceptionOrNull())
     assertEquals(OrderResult.Success(original), repo.getOrderById("order"))
   }
 
@@ -187,7 +187,7 @@ class EditOrderTest {
           }
         }
     val repo = FakeOrderRepository({ uid }, listOf(original), { now }, tripRepository = trips)
-    val result = async { repo.editOrder("order", draft) }
+    val result = async { repo.editOrder("order", draft, 0) }
     runCurrent()
     uid = "other"
     gate.complete(Unit)

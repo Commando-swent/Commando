@@ -16,6 +16,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -37,6 +38,7 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
+import com.android.sample.model.StoreFilter
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthException
@@ -58,6 +60,7 @@ import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
 import com.android.sample.ui.trips.ScriptedTripRepository
+import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.assertTripCard
 import com.android.sample.ui.trips.discoveryTrip
 import com.android.sample.ui.trips.onTripCard
@@ -564,6 +567,76 @@ class CommandoAppTest {
         .assert(hasText(compose.activity.getString(R.string.trips_location_placeholder)))
     compose.assertTripCard(secondTrip)
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
+  }
+
+  @Test
+  fun storeFilterAppliesToListAndMapSurvivesNavigationAndClears() {
+    val migros =
+        discoveryTrip(
+            "migros-trip",
+            Location("Migros Ecublens", 46.52, 6.63),
+            Location("First handoff", 46.52, 6.57),
+            tripTime.plusSeconds(3600),
+            createdAt = tripTime,
+        )
+    val coop =
+        migros.copy(
+            id = "coop-trip",
+            store = Location("Coop Renens", 46.53, 6.64),
+            scheduledAt = tripTime.plusSeconds(7200),
+        )
+    // Expanded filters push later cards below the fold, so scroll the list before asserting.
+    val assertListedTripCard = { trip: Trip ->
+      compose
+          .onNode(hasScrollToNodeAction())
+          .performScrollToNode(hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id)))
+      compose.assertTripCard(trip)
+    }
+    show(
+        FakeAuthRepository(alice),
+        FakeTripRepository(alice.uid, now = { tripTime }, initialTrips = listOf(migros, coop)),
+    )
+    click(HomeTestTags.TRIP_ACTION)
+    assertListedTripCard(migros)
+    assertListedTripCard(coop)
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    click(TripSearchTestTags.TOGGLE)
+    click(TripSearchTestTags.store(StoreFilter.MIGROS))
+    val assertMigrosOnly = {
+      compose
+          .onNodeWithTag(TripSearchTestTags.TOGGLE)
+          .assert(
+              hasText(
+                  compose.activity.getString(
+                      R.string.trips_filters_active,
+                      compose.activity.getString(R.string.trips_store_migros),
+                  )
+              )
+          )
+      assertListedTripCard(migros)
+      compose.onTripCard(coop.id).assertDoesNotExist()
+    }
+    assertMigrosOnly()
+    // The expanded filter panel can scroll the list's first item (the map button) out of
+    // composition, so scroll the list itself back to it.
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(NavigationTestTags.OPEN_MAP))
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performClick()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
+    pressBack()
+    assertMigrosOnly()
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(TripSearchTestTags.CLEAR))
+    click(TripSearchTestTags.CLEAR)
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assert(hasText(compose.activity.getString(R.string.trips_filters)))
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    assertListedTripCard(migros)
+    assertListedTripCard(coop)
   }
 
   @Test

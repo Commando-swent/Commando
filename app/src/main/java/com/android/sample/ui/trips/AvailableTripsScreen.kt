@@ -31,8 +31,10 @@ import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
+import com.android.sample.model.TripSearchCriteria
 import com.android.sample.ui.navigation.NavigationTestTags
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -69,6 +71,9 @@ fun AvailableTripsScreen(
     points: List<Location> = emptyList(),
     onSelectPoint: (Location) -> Unit = {},
     onClearPoint: () -> Unit = {},
+    criteria: TripSearchCriteria? = null,
+    onCriteriaChange: (TripSearchCriteria) -> Unit = {},
+    onClearCriteria: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
   AvailableTripsScreen(
@@ -81,9 +86,16 @@ fun AvailableTripsScreen(
       points,
       onSelectPoint,
       onClearPoint,
+      criteria,
+      onCriteriaChange,
+      onClearCriteria,
   )
 }
 
+/**
+ * Stateless available-trips list. Search controls are shown only when [criteria] is non-null; the
+ * owner keeps the criteria (session-scoped) and applies [onCriteriaChange] / [onClearCriteria].
+ */
 @Composable
 fun AvailableTripsScreen(
     state: AvailableTripsUiState,
@@ -95,6 +107,10 @@ fun AvailableTripsScreen(
     points: List<Location> = emptyList(),
     onSelectPoint: (Location) -> Unit = {},
     onClearPoint: () -> Unit = {},
+    criteria: TripSearchCriteria? = null,
+    onCriteriaChange: (TripSearchCriteria) -> Unit = {},
+    onClearCriteria: () -> Unit = {},
+    today: LocalDate = LocalDate.now(),
 ) {
   // One scrolling container, so every state stays reachable on small screens with large fonts.
   LazyColumn(
@@ -151,6 +167,18 @@ fun AvailableTripsScreen(
             }
           }
         }
+      }
+    }
+    criteria?.let {
+      item {
+        TripSearchControls(
+            criteria = it,
+            onCriteriaChange = onCriteriaChange,
+            onClear = onClearCriteria,
+            distanceAvailable = selectedPoint != null,
+            today = today,
+            labelColor = runsMuted,
+        )
       }
     }
     when (state) {

@@ -31,7 +31,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
       repo.publish(trip, first)
       val ref = owner.firestore.collection("commandoPositions").document(uid)
       assertEquals(first.latitude, ref.get(Source.SERVER).await().getDouble("latitude"))
-      val replacement = first.copy(latitude = 46.53, capturedAt = Instant.now())
+      val replacement = first.copy(latitude = 46.53, capturedAt = fix().capturedAt)
       repo.publish(trip, replacement)
       assertEquals(replacement.latitude, ref.get(Source.SERVER).await().getDouble("latitude"))
       for (client in listOf(other, out)) {
@@ -143,7 +143,8 @@ class CommandoPositionSecurityRulesEmulatorTest {
           46.52,
           6.56,
           30.0,
-          Instant.now().let { it.minusNanos((it.nano % 1000).toLong()) },
+          // A received fix predates publication; do not assume identical clocks across JVMs.
+          Instant.now().minusSeconds(1).let { it.minusNanos((it.nano % 1000).toLong()) },
       )
 
   private fun data(tripId: String) =

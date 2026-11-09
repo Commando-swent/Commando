@@ -8,9 +8,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /** Inject one flow-scoped instance into Catalogue and Review. Clear after successful save only. */
-class OrderDraftState(tripId: String) {
+class OrderDraftState(
+    tripId: String,
+    initial: OrderDraft? = null,
+    /** Revision of the order snapshot used to seed this edit; null for a new-order basket. */
+    val expectedRevision: Int? = null,
+) {
   private val mutableDraft =
-      MutableStateFlow(OrderDraft(tripId.also { require(it.isNotBlank()) }, emptyList()))
+      MutableStateFlow(
+          initial?.also { require(it.tripId == tripId) }?.copy(items = initial.items.toList())
+              ?: OrderDraft(tripId.also { require(it.isNotBlank()) }, emptyList())
+      )
   val draft = mutableDraft.asStateFlow()
 
   /** Reopening the same trip preserves selection; switching trips starts an empty draft. */

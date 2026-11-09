@@ -4,10 +4,12 @@ package com.android.sample.ui.orders
 import androidx.lifecycle.ViewModel
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
+import com.android.sample.model.Order
+import com.android.sample.model.OrderDraft
 import com.android.sample.model.authentication.AuthRepository
 import kotlinx.coroutines.flow.map
 
-/** One order repository and draft per authenticated App entry, retained on rotation. */
+/** Session-scoped repository and carts, retained on rotation and cleared with the App entry. */
 class SessionOrderViewModel(
     private val userId: String,
     private val auth: AuthRepository,
@@ -25,6 +27,24 @@ class SessionOrderViewModel(
     get() = repository is FakeOrderRepository
 
   private var sharedDraft: OrderDraftState? = null
+  private val editDrafts = mutableMapOf<String, OrderDraftState>()
+
+  /** Separate drafts by persisted order ID so editing cannot replace a new-order basket. */
+  fun draftForEdit(order: Order): OrderDraftState {
+    check(currentUserId() == order.requesterId) { "Order session has ended" }
+    return editDrafts.getOrPut(order.id) {
+      OrderDraftState(
+          order.tripId,
+          OrderDraft(order.tripId, order.items, order.commissionCents),
+          order.revision,
+      )
+    }
+  }
+
+  /** Drops a completed or abandoned edit without affecting a new-order basket. */
+  fun finishEdit(orderId: String) {
+    editDrafts.remove(orderId)?.clear()
+  }
 
   /** Catalogue and Review must use this same instance, including when returning with Back. */
   fun draftFor(tripId: String): OrderDraftState {
@@ -37,5 +57,7 @@ class SessionOrderViewModel(
     active = false
     sharedDraft?.clear()
     sharedDraft = null
+    editDrafts.values.forEach { it.clear() }
+    editDrafts.clear()
   }
 }

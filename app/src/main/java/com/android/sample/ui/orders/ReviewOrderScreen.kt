@@ -84,6 +84,10 @@ fun ReviewOrderRoute(
             when {
               !state.tripMatches -> R.string.order_invalid_error
               state.error == OrderError.NotAuthenticated -> R.string.order_session_error
+              state.error is OrderError.AlreadyDecided -> R.string.order_edit_conflict
+              state.editing &&
+                  (state.error == OrderError.InvalidData ||
+                      state.error == OrderError.PermissionDenied) -> R.string.order_edit_unavailable
               else -> R.string.order_failure_help
             }
         Text(
@@ -114,7 +118,13 @@ fun ReviewOrderRoute(
               if (success) R.drawable.order_check else R.drawable.order_bag,
               if (success) 36 else 32,
           )
-          Label(if (success) R.string.order_sent else R.string.order_empty, 24, true)
+          Label(
+              if (success) {
+                if (state.editing) R.string.order_updated else R.string.order_sent
+              } else R.string.order_empty,
+              24,
+              true,
+          )
         }
       } else {
         Label(R.string.order_items, 11, color = c.onSurfaceVariant)
@@ -124,6 +134,10 @@ fun ReviewOrderRoute(
           }
         }
         CommissionField(state, viewModel::updateCommission)
+        if (state.editing)
+            TextButton(onClick = onAddProducts, enabled = state.editable) {
+              Text(stringResource(R.string.order_add))
+            }
       }
       if (!empty) {
         Panel(c.surfaceContainerLow) {
@@ -145,16 +159,24 @@ fun ReviewOrderRoute(
     ) {
       val title =
           when {
+            state.error is OrderError.AlreadyDecided -> R.string.order_view_saved
+            success && state.editing -> R.string.order_view_saved
             success -> R.string.order_view
             empty -> R.string.order_add
             state.saving -> R.string.order_saving
             state.error != null -> R.string.order_retry
+            state.editing -> R.string.order_save_changes
             else -> R.string.order_submit
           }
-      val enabled = success || (state.editable && (empty || state.canSubmit))
+      val enabled =
+          success ||
+              state.error is OrderError.AlreadyDecided ||
+              (state.editable && (empty || state.canSubmit))
       Button(
           onClick = {
             when {
+              state.error is OrderError.AlreadyDecided ->
+                  onViewOrders(state.error.persistedOrder.id)
               success -> onViewOrders(checkNotNull(state.order).id)
               empty -> onAddProducts()
               else -> viewModel.submit()

@@ -13,6 +13,7 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
+import com.android.sample.model.TripStatus
 import com.android.sample.ui.session.SessionGuard
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -78,6 +79,10 @@ sealed class OrderDetailsUiState {
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status == OrderStatus.PENDING
+
+    /** Editing is requester-only and additionally requires an open trip. */
+    val canEdit: Boolean
+      get() = canCancel && trip.status == TripStatus.PUBLISHED && viewerId != trip.ownerId
   }
 
   data object NotFound : OrderDetailsUiState()

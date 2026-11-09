@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="order_edit">Modifier la commande</string>
+    <string name="order_save_changes">Confirmer les modifications</string>
+    <string name="order_updated">Commande modifiée</string>
+    <string name="order_edit_conflict">Cette commande a changé pendant la modification. Vos changements ne sont pas enregistrés. Consultez la commande enregistrée.</string>
+    <string name="order_view_saved">Voir la commande enregistrée</string>
+    <string name="order_edit_unavailable">Cette commande ne peut plus être modifiée. Seules les commandes en attente sur un trajet ouvert peuvent changer.</string>
+</resources>

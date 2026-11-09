@@ -35,6 +35,35 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-rUS")
 class OrderDetailsScreenTest {
+  @Test
+  fun editingIsOnlyOfferedToTheRequesterOnAPendingOpenTrip() {
+    var edits = 0
+    val content =
+        mutableStateOf(
+            OrderDetailsUiState.Content(
+                order,
+                trip.copy(status = TripStatus.PUBLISHED),
+                "requester",
+            )
+        )
+    compose.setContent {
+      SampleAppTheme { OrderDetailsScreen(content.value, {}, {}, onEdit = { edits++ }) }
+    }
+    compose.onNodeWithTag(OrderDetailsTestTags.EDIT).performScrollTo().performClick()
+    assertEquals(1, edits)
+    compose.runOnIdle { content.value = content.value.copy(mutation = OrderMutationState.Saving) }
+    compose.onNodeWithTag(OrderDetailsTestTags.EDIT).assertIsNotEnabled()
+    for (next in
+        listOf(
+            content.value.copy(viewerId = "commando"),
+            content.value.copy(trip = trip),
+            content.value.copy(order = order.copy(status = OrderStatus.ACCEPTED)),
+        )) {
+      compose.runOnIdle { content.value = next }
+      compose.onNodeWithTag(OrderDetailsTestTags.EDIT).assertDoesNotExist()
+    }
+  }
+
   @get:Rule val compose = createComposeRule()
   private lateinit var originalTimeZone: TimeZone
   private val time = Instant.parse("2026-10-13T16:30:00Z")

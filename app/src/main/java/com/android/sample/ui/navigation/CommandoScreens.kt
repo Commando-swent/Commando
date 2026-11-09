@@ -39,10 +39,10 @@ enum class CommandoScreens(
     get() =
         when (this) {
           TripDetails,
-          Catalogue,
-          ReviewOrder,
           IncomingOrders,
           ShoppingChecklist -> "$name/{$TRIP_ID_ARGUMENT}"
+          Catalogue,
+          ReviewOrder -> "$name/{$TRIP_ID_ARGUMENT}?$EDIT_ORDER_ARGUMENT={$EDIT_ORDER_ARGUMENT}"
           OrderDetails -> "$name/{$ORDER_ID_ARGUMENT}"
           else -> name
         }
@@ -50,6 +50,7 @@ enum class CommandoScreens(
   companion object {
     const val TRIP_ID_ARGUMENT = "tripId"
     const val ORDER_ID_ARGUMENT = "orderId"
+    const val EDIT_ORDER_ARGUMENT = "editOrderId"
 
     /**
      * Encodes the opaque ID as one path segment without trimming or normalizing it. Navigation
@@ -58,10 +59,15 @@ enum class CommandoScreens(
     fun tripDetailsRoute(tripId: String): String = "${TripDetails.name}/${Uri.encode(tripId)}"
 
     /** Opens the catalogue of the selected trip, preserving its opaque ID. */
-    fun catalogueRoute(tripId: String): String = "${Catalogue.name}/${Uri.encode(tripId)}"
+    fun catalogueRoute(tripId: String, editOrderId: String? = null): String =
+        "${Catalogue.name}/${Uri.encode(tripId)}" + editQuery(editOrderId)
 
     /** Reviews the shared draft of the selected trip before it is submitted. */
-    fun reviewOrderRoute(tripId: String): String = "${ReviewOrder.name}/${Uri.encode(tripId)}"
+    fun reviewOrderRoute(tripId: String, editOrderId: String? = null): String =
+        "${ReviewOrder.name}/${Uri.encode(tripId)}" + editQuery(editOrderId)
+
+    private fun editQuery(orderId: String?) =
+        orderId?.let { "?editOrderId=${Uri.encode(it)}" }.orEmpty()
 
     /** Opens the incoming orders of the owner's trip, preserving its opaque ID. */
     fun incomingOrdersRoute(tripId: String): String = "${IncomingOrders.name}/${Uri.encode(tripId)}"

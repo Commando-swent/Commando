@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: Claude Code for the Long CHF formatter (#147).
+// AI assistance: OpenAI Codex (order editing); Claude Code (Long CHF formatter, #147).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
@@ -34,6 +34,7 @@ data class ReviewOrderState(
     val error: OrderError? = null,
     val order: Order? = null,
     val tripMatches: Boolean = true,
+    val editing: Boolean = false,
 ) {
   val commissionCents
     get() = commissionCents(commission)
@@ -53,7 +54,7 @@ data class ReviewOrderState(
     }
 
   val editable
-    get() = !saving && order == null && tripMatches
+    get() = !saving && order == null && tripMatches && error !is OrderError.AlreadyDecided
 
   val hasTooManyProducts: Boolean
     get() = draft.items.size > MAX_ORDER_PRODUCTS
@@ -71,12 +72,19 @@ data class ReviewOrderState(
 class ReviewOrderViewModel(
     private val repository: OrderRepository,
     private val shared: OrderDraftState,
+    private val editOrderId: String? = null,
 ) : ViewModel() {
+  private val expectedRevision =
+      if (editOrderId != null) requireNotNull(shared.expectedRevision) else null
   private val initial = shared.draft.value
   private val tripId = initial.tripId
   private val form =
       MutableStateFlow(
-          ReviewOrderState(initial, money(initial.commissionCents).removePrefix("CHF "))
+          ReviewOrderState(
+              initial,
+              money(initial.commissionCents).removePrefix("CHF "),
+              editing = editOrderId != null,
+          )
       )
   val uiState = form.asStateFlow()
 
@@ -115,7 +123,11 @@ class ReviewOrderViewModel(
     form.value = current.copy(saving = true, error = null)
     viewModelScope.launch {
       try {
-        when (val result = repository.createOrder(input)) {
+        when (
+            val result =
+                if (editOrderId == null) repository.createOrder(input)
+                else repository.editOrder(editOrderId, input, checkNotNull(expectedRevision))
+        ) {
           is OrderResult.Success -> {
             if (shared.draft.value == input) shared.clear()
             form.update { it.copy(order = result.data, draft = input) }

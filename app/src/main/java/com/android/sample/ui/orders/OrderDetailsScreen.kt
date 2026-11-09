@@ -43,6 +43,7 @@ object OrderDetailsTestTags {
   const val ACCEPT = "order_details_accept"
   const val REJECT = "order_details_reject"
   const val CANCEL = "order_details_cancel"
+  const val EDIT = "order_details_edit"
   const val CONFIRM_CANCEL = "order_details_confirm_cancel"
   const val KEEP_ORDER = "order_details_keep_order"
   const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
@@ -62,6 +63,7 @@ object OrderDetailsTestTags {
  * @param modifier Layout modifier applied to the screen root.
  * @param onDecision Requests an eligible owner's Accept/Reject decision.
  * @param onMarkReadyForHandoff Requests an eligible owner's handoff-readiness transition.
+ * @param onEdit Opens the requester editing flow when the persisted order and trip are eligible.
  * @param onCancel Requests cancellation only after the requester confirms the dialog.
  * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
  */
@@ -74,6 +76,7 @@ fun OrderDetailsScreen(
     onDecision: (OrderDecision) -> Unit = {},
     onMarkReadyForHandoff: () -> Unit = {},
     onCancel: () -> Unit = {},
+    onEdit: (() -> Unit)? = null,
     onConfirmReceipt: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
@@ -132,6 +135,15 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
+          if (state.canEdit && onEdit != null) {
+            OutlinedButton(
+                onClick = onEdit,
+                enabled = !state.isSaving,
+                modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.EDIT),
+            ) {
+              Text(stringResource(R.string.order_edit))
+            }
+          }
           OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel, onConfirmReceipt)
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()

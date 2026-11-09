@@ -105,8 +105,11 @@ class CommandoScreensTest {
       assertEquals(destination.name, destination.route)
     }
     assertEquals("TripDetails/{tripId}", CommandoScreens.TripDetails.route)
-    assertEquals("Catalogue/{tripId}", CommandoScreens.Catalogue.route)
-    assertEquals("ReviewOrder/{tripId}", CommandoScreens.ReviewOrder.route)
+    assertEquals("Catalogue/{tripId}?editOrderId={editOrderId}", CommandoScreens.Catalogue.route)
+    assertEquals(
+        "ReviewOrder/{tripId}?editOrderId={editOrderId}",
+        CommandoScreens.ReviewOrder.route,
+    )
   }
 
   @Test

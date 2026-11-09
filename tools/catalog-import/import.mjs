@@ -117,7 +117,7 @@ export function toProduct(row, store) {
   if (!isPrice(row.price)) return { error: 'invalid price' };
   const imageUrl = typeof row.image_url === 'string' ? row.image_url.trim() : row.image_url ?? null;
   if (imageUrl && !/^https?:\/\/\S+$/.test(imageUrl)) return { error: 'invalid image_url' };
-  for (const field of ['category', 'brand', 'variant', 'size_text', 'size']) {
+  for (const field of ['category', 'brand', 'variant', 'version_text', 'size_text', 'size']) {
     if (row[field] != null && typeof row[field] !== 'string') return { error: `invalid ${field}` };
   }
   const name = STORE_NAMES[store](row);
@@ -149,12 +149,33 @@ export function parseSizes(text) {
 }
 
 /**
+ * Listed Migros products that would show the same name and size and have no variant take swiss-cli's
+ * unclassified `version_text` in their name ("Essie Vernis à ongle 954 Off Beat Chic"), so shades and
+ * models can be told apart. `variant` stays null, and a unique name and size keeps its name.
+ */
+function distinguishCollisions(products, rows) {
+  const clean = (text) => cleanText(normalizeSearchText(text ?? ''));
+  const key = ({ data }) => `${clean(data.name)}|${clean(data.size_text)}`;
+  const counts = new Map();
+  for (const product of products) counts.set(key(product), (counts.get(key(product)) ?? 0) + 1);
+  for (const product of products) {
+    const row = rows.get(product.path);
+    const versionText = cleanText(row.version_text ?? '');
+    if (counts.get(key(product)) < 2 || product.data.variant || !versionText || clean(versionText) === clean(product.data.size_text)) continue;
+    const name = displayName(row.name, row.brand, versionText);
+    if (name !== product.data.name) product.data = { ...product.data, name, search_prefixes: searchPrefixes(name, row.category ?? '') };
+  }
+}
+
+/**
  * Valid products of one store's JSON Lines export, and one diagnostic per skipped line. A row
  * without a usable export size takes it from `sizes`, so sizes already fetched need no new crawl.
+ * Migros names that would collide are told apart with `version_text` (see distinguishCollisions).
  */
 export function parseExport(text, store, sizes = new Map()) {
   if (!STORES.includes(store)) throw new Error(`Unsupported store ${store}: use ${STORES.join(' or ')}`);
   const products = new Map();
+  const rows = new Map();
   const skipped = [];
   text.split(/\r?\n/).forEach((line, index) => {
     if (!line.trim()) return;
@@ -167,9 +188,11 @@ export function parseExport(text, store, sizes = new Map()) {
     const sized = row && exportSize(row) == null ? { ...row, size_text: sizes.get(row.id) } : row;
     const product = row ? toProduct(sized, store) : { error: 'not JSON' };
     if (!product.error && products.has(product.path)) product.error = `duplicate of ${row.id}`;
+    if (!product.error) rows.set(product.path, row);
     if (product.error) skipped.push(`line ${index + 1}: ${product.error}`);
     else products.set(product.path, product);
   });
+  if (store === 'migros') distinguishCollisions([...products.values()].filter((product) => product.data), rows);
   return { products: [...products.values()], skipped };
 }
 

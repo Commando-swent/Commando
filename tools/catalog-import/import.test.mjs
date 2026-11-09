@@ -181,6 +181,33 @@ test('a Migros size that only repeats the variant counts as missing, as swiss-cl
   assert.deepEqual(parsed(sizes).map(([, size]) => size), ['1 kg', null, '100g', '175']);
 });
 
+test('Migros products that would show the same name and size take their version_text, and unique names keep theirs', async () => {
+  const nail = { name: 'Vernis à ongle', brand: 'Essie', size: '1 pièce', category: 'Beauté > Ongles' };
+  const rows = [
+    row('1', { ...nail, version_text: '954 Off Beat Chic' }),
+    row('2', { ...nail, version_text: 'As Good as New', variant: 'As Good as New' }),
+    row('3', { ...nail, version_text: '  60 Really Red ' }),
+    row('4', { ...nail, version_text: null }),
+    row('5', { ...nail, size: '13.5ml', version_text: '100 Allure' }),
+    row('6', { name: 'Pastilles', size: '175', version_text: '175' }),
+    row('7', { name: 'Pastilles', size: '175', version_text: '175' }),
+    row('8', { ...nail, removed_at: REMOVED_AT }),
+  ];
+  const products = exportOf(...rows).filter(({ data }) => data).map(({ data }) => data);
+  assert.deepEqual(products.map(({ name }) => name), [
+    'Essie Vernis à ongle 954 Off Beat Chic', 'Essie Vernis à ongle As Good as New', 'Essie Vernis à ongle 60 Really Red',
+    'Essie Vernis à ongle', 'Essie Vernis à ongle', 'Pastilles', 'Pastilles',
+  ]);
+  assert.deepEqual(products.map(({ variant }) => variant), [null, 'As Good as New', null, null, null, null, null]);
+  assert.deepEqual([products[0].search_prefixes.beat, products[0].search_prefixes.ongles, products[0].category], [true, true, 'Beauté']);
+  assert.deepEqual(toProduct(row('9', { version_text: 7 }), 'migros'), { error: 'invalid version_text' });
+  const coop = exportOf(coopRow({ id: 'coop:1', version_text: 'A' }), coopRow({ id: 'coop:2', version_text: 'B' }));
+  assert.deepEqual(coop.map(({ data }) => data.name), [coopRow().name, coopRow().name]);
+  const client = fakeClient();
+  await importProducts(exportOf(...rows), { client, write: true, log: () => {} });
+  assert.equal((await importProducts(exportOf(...rows), { client, write: true, log: () => {} })).written, 0);
+});
+
 test('a brand, size or variant change is an update and a rerun of the corrected export writes nothing', async () => {
   const client = fakeClient();
   await importProducts(exportOf(row('1', { name: 'Lait' })), { client, write: true, log: () => {} });

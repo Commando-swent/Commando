@@ -11,6 +11,29 @@ interface OrderRepository {
   /** Derives requester identity from the session; does not clear the caller's draft. */
   suspend fun createOrder(draft: OrderDraft): OrderResult<Order>
 
+  /**
+   * Atomically edits the persisted requester's PENDING order on an open, upcoming trip. Items and
+   * commission change with an incremented revision; identity, trip, creation time and status remain
+   * immutable. A competing final transition returns AlreadyDecided with the stored order. Retrying
+   * the same edit is safe; after an uncertain failure callers may reload by ID to reconcile server
+   * state. An ended session returns NotAuthenticated even if the server already committed.
+   * Concurrent edits of the same revision cannot overwrite each other: the loser receives
+   * AlreadyDecided with the persisted winner. Identical retries are read-only.
+   *
+   * @param orderId Existing order document ID, never a document path.
+   * @param draft Valid replacement items and commission with the original trip ID.
+   * @param expectedRevision Required revision displayed when editing began; legacy orders have
+   *   revision zero.
+   * @return Updated order or a typed failure; totals are derived from the replacement items.
+   * @throws kotlinx.coroutines.CancellationException If the caller is cancelled; a committed server
+   *   write cannot be undone by cancelling the coroutine.
+   */
+  suspend fun editOrder(
+      orderId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
+  ): OrderResult<Order>
+
   /** Current requester's orders, newest first; equal timestamps are ordered by ID. */
   suspend fun getMyOrders(): OrderResult<List<Order>>
 
@@ -26,9 +49,16 @@ interface OrderRepository {
   suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>>
 
   /**
-   * Trip owner only; identical final decisions are read-only, opposite ones return AlreadyDecided.
+   * Trip owner only; [expectedRevision] is the revision displayed to the owner. A stale revision
+   * returns AlreadyDecided with the latest snapshot before writing. Every caller must supply its
+   * displayed revision, including zero for legacy unedited orders. Identical final decisions are
+   * read-only; opposite decisions also return AlreadyDecided.
    */
-  suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order>
+  suspend fun decideOrder(
+      orderId: String,
+      decision: OrderDecision,
+      expectedRevision: Int,
+  ): OrderResult<Order>
 
   /**
    * Trip owner only, excluding self-orders; atomically changes only ACCEPTED to READY_FOR_HANDOFF.

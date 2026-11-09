@@ -596,7 +596,7 @@ class FakeOrderRepositoryTest {
       val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
       val target = if (decision == ACCEPT) OrderStatus.ACCEPTED else OrderStatus.REJECTED
       val expected = stored.copy(status = if (status == OrderStatus.PENDING) target else status)
-      val result = orders.decideOrder(stored.id, decision)
+      val result = orders.decideOrder(stored.id, decision, stored.revision)
       if (selfOrder) {
         assertEquals(failure(OrderError.PermissionDenied), result)
         assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
@@ -620,13 +620,13 @@ class FakeOrderRepositoryTest {
       userId = caller
       val expected =
           if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
-      assertEquals(failure(expected), orders.decideOrder(order().id, ACCEPT))
+      assertEquals(failure(expected), orders.decideOrder(order().id, ACCEPT, 0))
     }
     userId = "commando"
     for (id in listOf("", " ", "a/b", ".", "..")) {
-      assertEquals(failure(OrderError.InvalidData), orders.decideOrder(id, ACCEPT))
+      assertEquals(failure(OrderError.InvalidData), orders.decideOrder(id, ACCEPT, 0))
     }
-    assertEquals(failure(OrderError.NotFound), orders.decideOrder("missing", ACCEPT))
+    assertEquals(failure(OrderError.NotFound), orders.decideOrder("missing", ACCEPT, 0))
     assertEquals(OrderResult.Success(order()), orders.getOrderById(order().id))
   }
 
@@ -646,7 +646,7 @@ class FakeOrderRepositoryTest {
           }
       userId = "commando"
       val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = delayed)
-      val pending = async { orders.decideOrder(order().id, ACCEPT) }
+      val pending = async { orders.decideOrder(order().id, ACCEPT, 0) }
       entered.await()
       if (cancel) {
         pending.cancel()
@@ -663,7 +663,7 @@ class FakeOrderRepositoryTest {
       userId = "commando"
       assertEquals(
           OrderResult.Success(order().copy(status = OrderStatus.REJECTED)),
-          orders.decideOrder(order().id, REJECT),
+          orders.decideOrder(order().id, REJECT, 0),
       )
     }
   }
@@ -681,7 +681,7 @@ class FakeOrderRepositoryTest {
       val results = decisions.map {
         async(Dispatchers.Default) {
           gate.await()
-          orders.decideOrder(order().id, it)
+          orders.decideOrder(order().id, it, 0)
         }
       }
       gate.complete(Unit)

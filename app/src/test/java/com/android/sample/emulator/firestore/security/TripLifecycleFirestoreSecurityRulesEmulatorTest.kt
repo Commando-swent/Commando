@@ -128,10 +128,10 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
       assertTrue(trips(requester).getUpcomingTrips().successData().none { it.id == trip })
       assertEquals(TripResult.Error(OrdersStillOpen), ownerTrips.transitionTrip(trip, COMPLETE))
 
-      orders(owner).decideOrder(a.id, ACCEPT)
+      orders(owner).decideOrder(a.id, ACCEPT, a.revision)
       orders(owner).markReadyForHandoff(a.id)
       orders(requester).confirmReceipt(a.id)
-      orders(owner).decideOrder(b.id, REJECT)
+      orders(owner).decideOrder(b.id, REJECT, b.revision)
 
       val completed = ownerTrips.transitionTrip(trip, COMPLETE).successData()
       assertEquals(TripStatus.COMPLETED, completed.status)

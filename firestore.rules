@@ -275,10 +275,10 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(["productId", "storeId"])
         && request.resource.data.keys().hasOnly(["productId", "storeId"])
         && request.resource.data.productId == productId
-        && ((request.resource.data.storeId == "migros"
-              && productId.matches('migros:[^/]+'))
-            || (request.resource.data.storeId == "coop"
-              && productId.matches('coop:[^/]+')));
+        && request.resource.data.storeId in ["migros", "coop"]
+        // As in ProductRepositoryFirestore: the part after the prefix is a product document ID.
+        && productId.matches(request.resource.data.storeId + ':[^\\s/]([^/]*[^\\s/])?')
+        && !(productId in [request.resource.data.storeId + ':.', request.resource.data.storeId + ':..']);
     }
 
     match /stores/{storeId}/products/{productId} {

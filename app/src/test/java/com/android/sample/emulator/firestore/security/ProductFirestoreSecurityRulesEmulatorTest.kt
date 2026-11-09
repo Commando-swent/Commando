@@ -104,6 +104,31 @@ class ProductFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun favouriteIds_matchTheRepositoryDocumentIdValidation() = runTest {
+    withClients("alice" to true) { (alice) ->
+      val favourites = "users/${alice.auth.currentUser!!.uid}/favourites"
+      val repository = ProductRepositoryFirestore(alice.firestore)
+      val valid = listOf("migros:100014192", "coop:4446520", "migros:a b", "migros:a:b", "coop:...")
+      val invalid =
+          listOf("migros:.", "migros:..", "coop:.", "coop:..", "migros:", "migros: 1", "coop:1 ") +
+              listOf("migros:\t1", " migros:1", "Migros:1", "lidl:1", "migros1")
+      for (id in valid + invalid) {
+        val storeId = id.trim().substringBefore(':').lowercase()
+        val write = alice.firestore.document("$favourites/$id")
+        val data = mapOf("productId" to id, "storeId" to storeId)
+        // The repository rejects exactly the IDs the rules reject, before any request.
+        assertEquals(
+            id,
+            id in valid,
+            repository.setFavourite(storeId, id, true) is ProductResult.Success,
+        )
+        if (id in valid) write.set(data).await()
+        else assertPermissionDenied("favourite '$id'") { write.set(data).await() }
+      }
+    }
+  }
+
+  @Test
   fun authenticatedReads_allowGetsAndListsOfAtMostFiftyProducts() = runTest {
     withClients("authenticated" to true) { (authenticated) ->
       val products = authenticated.firestore.collection(MIGROS_PRODUCTS)

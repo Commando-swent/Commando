@@ -128,10 +128,17 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
       assertTrue(trips(requester).getUpcomingTrips().successData().none { it.id == trip })
       assertEquals(TripResult.Error(OrdersStillOpen), ownerTrips.transitionTrip(trip, COMPLETE))
 
-      orders(owner).decideOrder(a.id, ACCEPT, a.revision)
-      orders(owner).markReadyForHandoff(a.id)
-      orders(requester).confirmReceipt(a.id)
-      orders(owner).decideOrder(b.id, REJECT, b.revision)
+      // Orders of a closed trip can still be settled; each step must succeed on its own.
+      assertTrue(
+          "accept",
+          orders(owner).decideOrder(a.id, ACCEPT, a.revision) is OrderResult.Success,
+      )
+      assertTrue("ready", orders(owner).markReadyForHandoff(a.id) is OrderResult.Success)
+      assertTrue("receipt", orders(requester).confirmReceipt(a.id) is OrderResult.Success)
+      assertTrue(
+          "reject",
+          orders(owner).decideOrder(b.id, REJECT, b.revision) is OrderResult.Success,
+      )
 
       val completed = ownerTrips.transitionTrip(trip, COMPLETE).successData()
       assertEquals(TripStatus.COMPLETED, completed.status)

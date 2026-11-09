@@ -33,13 +33,21 @@ non-local emulator host stops the run before any read.
 A JSON Lines file of one store's products, exported from swiss-cli, a tool maintained in a separate
 repository. Each line is one JSON object with `id` (`migros:<number>` or `coop:<number>`), `store`
 (`migros` or `coop`), `name`, `price` (CHF), `image_url` (optional), `category` (optional, for
-example `Lait > Lait UHT`), `brand`, `variant` and `size` or `size_text` (optional) and `removed_at`
+example `Lait > Lait UHT`), `brand`, `variant`, `version_text` and `size` or `size_text` (optional) and `removed_at`
 (`null` or absent for listed products); other fields are ignored. Only the shown `name` differs by
 store, and the store's parts are kept in `source_name`, `brand` and `variant`:
 
 - Migros splits its title, so `name` is brand, name and variant, each once (`Frey Tourist Lait`).
+  swiss-cli keeps the Migros line as `version_text` (and as `variant` only when sure): listed products
+  that would show the same name and size without a variant take it (`Essie Vernis à ongle 954 Off Beat
+  Chic`); `variant` stays `null`. Only `--write` full exports: a sample can undo these names.
 - Coop's title is already the name Coop shows, brand and size included (`1664 Blonde Bière 12x25cl`,
   brand `Kronenbourg`), so `name` is that title with its spaces cleaned and the brand is not added.
+
+The importer stores the cleaned full source taxonomy as `category_path` and its first segment as
+`category`, which the app filters on: one of 18 departments for Migros, but Coop exports a single
+leaf category (566 such as `Vins rouges`). Missing category data stays `null`; a later export that
+omits it preserves an already stored category, as the size fallback does.
 
 Keep exports in `tools/catalog-import/` (for example `tools/catalog-import/coop.jsonl`) and generated
 files in `tools/catalog-import/tmp/`; its `.gitignore` keeps both out of Git.
@@ -52,7 +60,7 @@ no longer lists:
 
 ```bash
 SWISS_GROCERY_COOP_LANG=fr swiss-grocery fetch coop
-swiss-grocery export coop.jsonl --store coop --include-removed --fields id,store,name,brand,variant,size,price,image_url,category,removed_at
+swiss-grocery export coop.jsonl --store coop --include-removed --fields id,store,name,brand,variant,version_text,size,price,image_url,category,removed_at
 ```
 
 Migros is the same with `migros` and `SWISS_GROCERY_MIGROS_LANG=fr` (in PowerShell, set

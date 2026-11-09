@@ -66,7 +66,20 @@ class AppJourneyTest {
               query: String,
               cursor: String?,
               limit: Int,
+              category: String?,
           ) = ProductResult.Success(ProductPage(listOf(oat).filter { it.storeId == storeId }, null))
+
+          override suspend fun getFavouriteProducts(storeId: String) =
+              ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
+
+          override suspend fun getCategories(storeId: String) =
+              ProductResult.Success(emptyList<String>())
+
+          override suspend fun setFavourite(
+              storeId: String,
+              productId: String,
+              favourite: Boolean,
+          ) = ProductResult.Success(Unit)
         }
     val google =
         object : GoogleCredentialClient {

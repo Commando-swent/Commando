@@ -83,8 +83,9 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
               "105" to "Crème entière",
           )
           .forEach { (id, name) ->
-            migros.document(id).set(storedProduct("migros:$id", name, 2.5)).await()
+            migros.document(id).set(storedProduct("migros:$id", name, 2, null, "Food")).await()
           }
+      migros.document("106").set(storedProduct("migros:106", "Cristal", 1, null, "Drinks")).await()
       migros.document("100").set(storedProduct("migros:100", "Crème gone", 1.0, REMOVED_AT)).await()
       stores
           .document("coop")
@@ -93,8 +94,12 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           .set(storedProduct("coop:1", "Crème coop", 1.0))
           .await()
       val repository = ProductRepositoryFirestore(firestore)
-      suspend fun ids(query: String, cursor: String? = null, limit: Int = 50) =
-          repository.searchProducts("migros", query, cursor, limit).successData()
+      suspend fun ids(
+          query: String,
+          cursor: String? = null,
+          limit: Int = 50,
+          category: String? = null,
+      ) = repository.searchProducts("migros", query, cursor, limit, category).successData()
 
       assertEquals(
           listOf("migros:101", "migros:104", "migros:105"),
@@ -102,12 +107,12 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
       )
       assertEquals(listOf("migros:105"), ids("entière crème").products.map(Product::id))
       assertEquals(listOf("migros:102"), ids("lait ecreme").products.map(Product::id))
-      val first = ids("cr", limit = 2)
+      val first = ids("cr", limit = 2, category = "Food")
       assertEquals(listOf("migros:101", "migros:104"), first.products.map(Product::id))
       assertEquals("104", first.nextCursor)
       // A cursor is a position, so it still works once its product is deleted.
       migros.document("104").delete().await()
-      val second = ids("cr", first.nextCursor, limit = 2)
+      val second = ids("cr", first.nextCursor, limit = 2, category = "Food")
       assertEquals(listOf("migros:105"), second.products.map(Product::id))
       assertEquals(null, second.nextCursor)
     }
@@ -168,7 +173,13 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
     )
   }
 
-  private fun storedProduct(id: String, name: String, price: Number, removedAt: Timestamp? = null) =
+  private fun storedProduct(
+      id: String,
+      name: String,
+      price: Number,
+      removedAt: Timestamp? = null,
+      category: String? = null,
+  ) =
       mapOf(
           "id" to id,
           "name" to name,
@@ -176,6 +187,7 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           "image_url" to "https://example.com/product.jpg",
           "removed_at" to removedAt,
           "search_prefixes" to productSearchPrefixes(name),
+          "category" to category,
       )
 
   private companion object {

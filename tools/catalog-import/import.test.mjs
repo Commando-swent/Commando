@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   displayName, emulatorHost, FIREBASE_TOOLS_VERSION, firebaseTools, firestoreClient, firestoreTarget, importProducts, parseArgs,
-  parseExport, parseSizes, planWrites, searchPrefixes, skippedReport, toProduct,
+  parseExport, parseSizes, planWrites, searchPrefixes, skippedReport, toProduct, writeCategories,
 } from './import.mjs';
 
 const row = (number, overrides = {}) =>
@@ -44,7 +44,7 @@ function fakeClient(documents = new Map()) {
   };
 }
 const decodeValue = (value) =>
-  'mapValue' in value ? Object.fromEntries(Object.entries(value.mapValue.fields).map(([k, v]) => [k, decodeValue(v)])) : Object.values(value)[0];
+  'arrayValue' in value ? value.arrayValue.values.map(decodeValue) : 'mapValue' in value ? Object.fromEntries(Object.entries(value.mapValue.fields).map(([k, v]) => [k, decodeValue(v)])) : Object.values(value)[0];
 
 test('searchPrefixes folds accents and the æ, œ and ß ligatures and indexes only the last category', () => {
   const prefixes = Object.keys(searchPrefixes('Bœuf haché', 'Viande > Æbleskiver Straße'));
@@ -91,6 +91,8 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
       source_name: 'Crème',
       brand: null,
       variant: null,
+      category: null,
+      category_path: null,
     },
   });
   assert.equal(toProduct(row('1', { price: 3, image_url: '' }), 'migros').data.price, 3);
@@ -99,6 +101,43 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
   // Boundaries of the app's Int cents: CHF 0.01 and Int.MAX_VALUE cents.
   assert.equal(toProduct(row('1', { price: 0.01 }), 'migros').data.price, 0.01);
   assert.equal(toProduct(row('1', { price: 21_474_836.47 }), 'migros').data.price, 21_474_836.47);
+});
+
+test('categories keep a broad label and the cleaned full source path for both stores', () => {
+  const migros = toProduct(row('1', { category: ' Food  >  Dairy > Milk ' }), 'migros').data;
+  const coop = toProduct(coopRow({ category: ' Avocados ' }), 'coop').data;
+  const missing = toProduct(row('2', { category: ' > ' }), 'migros').data;
+  assert.deepEqual([migros.category, migros.category_path], ['Food', 'Food > Dairy > Milk']);
+  assert.deepEqual([coop.category, coop.category_path], ['Avocados', 'Avocados']);
+  assert.deepEqual([missing.category, missing.category_path], [null, null]);
+});
+
+test('a later export without category keeps the stored taxonomy and its search prefixes', async () => {
+  const client = fakeClient();
+  const categorized = exportOf(row('1', { name: 'Nature', category: 'Food > Yogourts nature' }));
+  await importProducts(categorized, { client, write: true, log: () => {} });
+  const withoutCategory = exportOf(row('1', { name: 'Nature', category: null }));
+  const rerun = await importProducts(withoutCategory, { client, write: true, log: () => {} });
+  const data = client.documents.get(path('1')).data;
+  assert.deepEqual([rerun.counts.unchanged, rerun.written], [1, 0]);
+  assert.deepEqual([data.category, data.category_path, data.search_prefixes.yogourts], [
+    'Food', 'Food > Yogourts nature', true,
+  ]);
+});
+
+test('the store categories are the sorted distinct categories of listed products, stored ones included', async () => {
+  const stored = new Map([[path('3'), { data: { category: 'Boissons', category_path: 'Boissons' }, updateTime: 't0' }]]);
+  const products = exportOf(row('1', { category: 'Épicerie > Pâtes' }), row('2', { category: 'Lait > UHT' }), row('3', { category: null }),
+    row('4', { category: 'Épicerie' }), row('5', { price: null, removed_at: REMOVED_AT, category: 'Retiré' }));
+  assert.deepEqual(planWrites(products, stored).categories, ['Boissons', 'Épicerie', 'Lait']);
+  const client = fakeClient();
+  const { categories, complete } = await importProducts(products, { client, write: true, maxWrites: 1, log: () => {} });
+  assert.equal(complete, false, '--max-writes leaves the import incomplete, so main writes no categories');
+  assert.equal((await importProducts(products, { client, write: true, log: () => {} })).complete, true);
+  assert.equal(await writeCategories(client, 'migros', categories, () => {}), true);
+  assert.equal(await writeCategories(client, 'migros', categories, () => {}), false, 'an unchanged list is not rewritten');
+  assert.equal(await writeCategories(client, 'migros', ['Lait'], () => {}), true);
+  assert.deepEqual(client.documents.get('stores/migros').data, { categories: ['Lait'] });
 });
 
 test('displayName writes brand, name and variant once each and never drops a different word', () => {
@@ -155,6 +194,33 @@ test('a Migros size that only repeats the variant counts as missing, as swiss-cl
   assert.deepEqual(parsed(new Map()), [['Emmental doux', null], ['Emmental Doux', null], ['Frey Tourist Lait', '100g'], ['Pastilles', '175']]);
   const sizes = new Map([['migros:1', '1 kg'], ['migros:3', '200 g']]);
   assert.deepEqual(parsed(sizes).map(([, size]) => size), ['1 kg', null, '100g', '175']);
+});
+
+test('Migros products that would show the same name and size take their version_text, and unique names keep theirs', async () => {
+  const nail = { name: 'Vernis à ongle', brand: 'Essie', size: '1 pièce', category: 'Beauté > Ongles' };
+  const rows = [
+    row('1', { ...nail, version_text: '954 Off Beat Chic' }),
+    row('2', { ...nail, version_text: 'As Good as New', variant: 'As Good as New' }),
+    row('3', { ...nail, version_text: '  60 Really Red ' }),
+    row('4', { ...nail, version_text: null }),
+    row('5', { ...nail, size: '13.5ml', version_text: '100 Allure' }),
+    row('6', { name: 'Pastilles', size: '175', version_text: '175' }),
+    row('7', { name: 'Pastilles', size: '175', version_text: '175' }),
+    row('8', { ...nail, removed_at: REMOVED_AT }),
+  ];
+  const products = exportOf(...rows).filter(({ data }) => data).map(({ data }) => data);
+  assert.deepEqual(products.map(({ name }) => name), [
+    'Essie Vernis à ongle 954 Off Beat Chic', 'Essie Vernis à ongle As Good as New', 'Essie Vernis à ongle 60 Really Red',
+    'Essie Vernis à ongle', 'Essie Vernis à ongle', 'Pastilles', 'Pastilles',
+  ]);
+  assert.deepEqual(products.map(({ variant }) => variant), [null, 'As Good as New', null, null, null, null, null]);
+  assert.deepEqual([products[0].search_prefixes.beat, products[0].search_prefixes.ongles, products[0].category], [true, true, 'Beauté']);
+  assert.deepEqual(toProduct(row('9', { version_text: 7 }), 'migros'), { error: 'invalid version_text' });
+  const coop = exportOf(coopRow({ id: 'coop:1', version_text: 'A' }), coopRow({ id: 'coop:2', version_text: 'B' }));
+  assert.deepEqual(coop.map(({ data }) => data.name), [coopRow().name, coopRow().name]);
+  const client = fakeClient();
+  await importProducts(exportOf(...rows), { client, write: true, log: () => {} });
+  assert.equal((await importProducts(exportOf(...rows), { client, write: true, log: () => {} })).written, 0);
 });
 
 test('a brand, size or variant change is an update and a rerun of the corrected export writes nothing', async () => {
@@ -425,6 +491,7 @@ test('the Firestore target is chosen explicitly: never production by default, ne
 test('firebase-tools must be the pinned release CI uses, whose login modules the tool reads', () => {
   const root = mkdtempSync(join(tmpdir(), 'firebase-tools-'));
   try {
+    assert.throws(() => firebaseTools(root), /npm install --prefix tools\/catalog-import\/tmp\/firebase-tools firebase-tools@15\.32\.1.*FIREBASE_TOOLS_ROOT/);
     mkdirSync(join(root, 'firebase-tools'));
     const install = (version) => writeFileSync(join(root, 'firebase-tools', 'package.json'), JSON.stringify({ name: 'firebase-tools', version }));
     install('15.30.2');
@@ -497,4 +564,10 @@ test('imports into the Firestore emulator, marks a delisted product removed and 
   assert.deepEqual(coopDocument.data, coop[0].data);
   assert.equal((await client.get([path(number)]))[0][1].updateTime, removed.updateTime);
   assert.equal((await importProducts(coop, { client, write: true, log: () => {} })).written, 0);
+
+  // The store metadata keeps its other fields, and its list reads back as written.
+  await writeCategories(client, 'coop', ['Bières en multipacks', `Test ${number}`], () => {});
+  const [[, store]] = await client.get(['stores/coop']);
+  assert.deepEqual(store.data.categories, ['Bières en multipacks', `Test ${number}`]);
+  assert.equal(await writeCategories(client, 'coop', store.data.categories, () => {}), false);
 });

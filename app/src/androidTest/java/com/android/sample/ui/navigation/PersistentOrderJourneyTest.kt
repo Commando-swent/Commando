@@ -72,6 +72,7 @@ class PersistentOrderJourneyTest {
                 query: String,
                 cursor: String?,
                 limit: Int,
+                category: String?,
             ) = ProductResult.Success(ProductPage(listOf(milk), null))
           }
       val google =

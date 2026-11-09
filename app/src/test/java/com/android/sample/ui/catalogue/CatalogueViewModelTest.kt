@@ -41,7 +41,13 @@ import org.junit.Test
 internal class StubProductRepository(
     var result: ProductResult<List<Product>> = ProductResult.Success(emptyList())
 ) : ProductRepository {
-  data class Request(val storeId: String, val query: String, val cursor: String?, val limit: Int)
+  data class Request(
+      val storeId: String,
+      val query: String,
+      val cursor: String?,
+      val limit: Int,
+      val category: String? = null,
+  )
 
   val requests = mutableListOf<Request>()
   var gate: CompletableDeferred<Unit>? = null
@@ -55,8 +61,9 @@ internal class StubProductRepository(
       query: String,
       cursor: String?,
       limit: Int,
+      category: String?,
   ): ProductResult<ProductPage> {
-    requests += Request(storeId, query, cursor, limit)
+    requests += Request(storeId, query, cursor, limit, category)
     thrown?.let { throw it }
     gate?.let { held -> suspendCoroutine { done -> held.invokeOnCompletion { done.resume(Unit) } } }
     val all =
@@ -69,7 +76,10 @@ internal class StubProductRepository(
           return ProductResult.Error(it)
         }
     val words = query.lowercase().split(' ').filter { it.isNotBlank() }
-    val matches = all.filter { product -> words.all { product.name.lowercase().contains(it) } }
+    val matches = all.filter { product ->
+      (category == null || product.category == category) &&
+          words.all { product.name.lowercase().contains(it) }
+    }
     val start = cursor?.let { id -> matches.indexOfFirst { it.id == id } + 1 } ?: 0
     val page = matches.drop(start).take(limit)
     return ProductResult.Success(ProductPage(page, page.takeIf { it.size == limit }?.last()?.id))

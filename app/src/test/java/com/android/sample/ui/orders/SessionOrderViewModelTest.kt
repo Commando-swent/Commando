@@ -44,6 +44,7 @@ class SessionOrderViewModelTest {
             query: String,
             cursor: String?,
             limit: Int,
+            category: String?,
         ) = ProductResult.Success(ProductPage(listOf(Product("milk", "migros", "Milk", 220)), null))
       }
 

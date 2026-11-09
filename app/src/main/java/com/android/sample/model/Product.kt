@@ -9,6 +9,10 @@ data class Product(
     val imageUrl: String? = null,
     /** Pack size as the store writes it ("100g", "6 x 1,5 l"); null when unknown. */
     val sizeText: String? = null,
+    /** First taxonomy segment (Migros department, Coop leaf category); null when unknown. */
+    val category: String? = null,
+    /** Full source taxonomy path (for example "Food > Dairy > Milk"); null when unknown. */
+    val categoryPath: String? = null,
 )
 
 /**

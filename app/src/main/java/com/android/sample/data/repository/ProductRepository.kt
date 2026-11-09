@@ -22,7 +22,7 @@ interface ProductRepository {
    * every active product. A [query] longer than 100 characters, or one that is not blank but has no
    * word of at least two characters (such as "a" or "?!"), fails with [ProductError.InvalidQuery]
    * rather than listing everything. Pages are ordered by document ID: pass the returned
-   * [ProductPage.nextCursor], with the same [storeId] and [query], to get the next one; it stays
+   * [ProductPage.nextCursor], with the same [storeId], [query] and [category], for more; it stays
    * valid if that product is removed meanwhile. As with [getProducts], malformed documents are
    * dropped, so a page may hold fewer than [limit] products even when a next page exists.
    */
@@ -31,5 +31,6 @@ interface ProductRepository {
       query: String,
       cursor: String? = null,
       limit: Int = 50,
+      category: String? = null,
   ): ProductResult<ProductPage>
 }

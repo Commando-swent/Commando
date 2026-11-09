@@ -77,6 +77,23 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun getProducts_mapsOptionalCategoryMetadataWithoutDroppingMalformedMetadata() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    val food = productDocument("migros:1", category = "Food > Dairy > Milk")
+    val malformed = mapOf("category" to 7, "category_path" to true)
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            food.copy(data = food.data + ("category_path" to " Food > Dairy > Milk ")),
+            productDocument("migros:2").let { it.copy(data = it.data + malformed) },
+        )
+
+    val products = ProductRepositoryFirestore(dataSource).getProducts("migros").successData()
+
+    assertEquals(listOf("Food", null), products.map(Product::category))
+    assertEquals(listOf("Food > Dairy > Milk", null), products.map(Product::categoryPath))
+  }
+
+  @Test
   fun getProducts_requiresAGlobalIdBelongingToTheRequestedStore() = runTest {
     val valid = productDocument("coop:4446520")
     val invalidIds =
@@ -140,7 +157,7 @@ class ProductRepositoryFirestoreTest {
             productDocument("denner:valid"),
         )
     // Unlike the Firestore query, this source returns removed documents for the mapper to skip.
-    val repository = ProductRepositoryFirestore { _, _, _, limit -> documents.take(limit) }
+    val repository = ProductRepositoryFirestore { _, _, _, _, limit -> documents.take(limit) }
 
     assertTrue(repository.getProducts("denner", 1).successData().isEmpty())
     assertEquals(
@@ -316,6 +333,29 @@ class ProductRepositoryFirestoreTest {
   }
 
   @Test
+  fun searchProducts_combinesCategorySearchPaginationAndStoreIsolation() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            productDocument("migros:1", "Lait entier", category = "Food > Dairy"),
+            productDocument("migros:2", "Lait demi-écrémé", category = "Food > Dairy"),
+            productDocument("migros:3", "Lait d'amande", category = "Drinks > Plant milk"),
+        )
+    dataSource.documentsByStore["coop"] =
+        listOf(productDocument("coop:1", "Lait entier", category = "Food > Dairy"))
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    suspend fun ids(category: String, cursor: String? = null, limit: Int = 50) =
+        repository.searchProducts("migros", "lait", cursor, limit, category).successData()
+    val first = ids("Food", limit = 1)
+
+    assertEquals(listOf("migros:1"), first.products.map(Product::id))
+    assertEquals(listOf("migros:2"), ids("Food", first.nextCursor, 1).products.map(Product::id))
+    assertEquals("Food", dataSource.lastCategory)
+    assertEquals(listOf("migros:3"), ids("Drinks").products.map(Product::id))
+  }
+
+  @Test
   fun searchProducts_pagesWithCursorsAndKeepsStoresIsolated() = runTest {
     val dataSource = InMemoryProductFirestoreDataSource()
     dataSource.documentsByStore["migros"] =
@@ -439,6 +479,13 @@ class ProductRepositoryFirestoreTest {
     listOf("a", "?!", "é", "x".repeat(101)).forEach { query ->
       assertProductError(ProductError.InvalidQuery, repository.searchProducts("coop", query), query)
     }
+    listOf("", "   ", "x".repeat(201)).forEach { category ->
+      assertProductError(
+          ProductError.InvalidCategory,
+          repository.searchProducts("coop", "milk", category = category),
+          category,
+      )
+    }
     listOf("", " ", " 2", "a/b", ".", "..", "x".repeat(1_501)).forEach { cursor ->
       assertProductError(
           ProductError.InvalidCursor,
@@ -497,6 +544,8 @@ class ProductRepositoryFirestoreTest {
                   "removed_at" to removedAt,
                   "search_prefixes" to productSearchPrefixes(name, category),
                   "size_text" to sizeText,
+                  "category" to category.substringBefore('>').trim().takeIf(String::isNotEmpty),
+                  "category_path" to category.trim().takeIf(String::isNotEmpty),
               ),
       )
 
@@ -511,6 +560,7 @@ class ProductRepositoryFirestoreTest {
     var lastStoreId: String? = null
     var lastLimit: Int? = null
     var lastTerms: List<String>? = null
+    var lastCategory: String? = null
     var lastCursor: String? = null
 
     /**
@@ -521,6 +571,7 @@ class ProductRepositoryFirestoreTest {
     override suspend fun queryProducts(
         storeId: String,
         terms: List<String>,
+        category: String?,
         afterDocumentId: String?,
         limit: Int,
     ): List<ProductFirestoreDocument> {
@@ -528,6 +579,7 @@ class ProductRepositoryFirestoreTest {
       lastStoreId = storeId
       lastLimit = limit
       lastTerms = terms
+      lastCategory = category
       lastCursor = afterDocumentId
       failure?.let { throw it }
       return documentsByStore[storeId]
@@ -535,6 +587,7 @@ class ProductRepositoryFirestoreTest {
           .sortedBy { it.id }
           .filter { afterDocumentId == null || it.id > afterDocumentId }
           .filter { "removed_at" in it.data && it.data["removed_at"] == null }
+          .filter { category == null || it.data["category"] == category }
           .filter { document ->
             val prefixes = document.data["search_prefixes"] as? Map<*, *>
             terms.all { prefixes?.get(it) == true }

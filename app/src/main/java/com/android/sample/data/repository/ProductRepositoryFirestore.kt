@@ -30,6 +30,7 @@ internal constructor(private val dataSource: ProductFirestoreDataSource) : Produ
       query: String,
       cursor: String?,
       limit: Int,
+      category: String?,
   ): ProductResult<ProductPage> {
     val normalizedStoreId = storeId.trim().lowercase(Locale.ROOT)
     if (normalizedStoreId !in SUPPORTED_STORE_IDS) {
@@ -39,12 +40,17 @@ internal constructor(private val dataSource: ProductFirestoreDataSource) : Produ
       return ProductResult.Error(ProductError.InvalidLimit)
     }
     val terms = productSearchTerms(query) ?: return ProductResult.Error(ProductError.InvalidQuery)
+    val normalizedCategory = category?.trim()
+    if (normalizedCategory?.let { it.isEmpty() || it.length > MAX_CATEGORY_LENGTH } == true) {
+      return ProductResult.Error(ProductError.InvalidCategory)
+    }
     if (cursor != null && !cursor.isValidDocumentId()) {
       return ProductResult.Error(ProductError.InvalidCursor)
     }
 
     return runProductRepositoryOperation {
-      val documents = dataSource.queryProducts(normalizedStoreId, terms, cursor, limit)
+      val documents =
+          dataSource.queryProducts(normalizedStoreId, terms, normalizedCategory, cursor, limit)
       ProductResult.Success(
           ProductPage(
               products = documents.mapNotNull { it.toProduct(normalizedStoreId) },
@@ -91,10 +97,11 @@ internal typealias ProductFirestoreDocument = FirestoreDocument
  * Product-query boundary; raw pages include malformed records so cursor advancement stays stable.
  */
 internal fun interface ProductFirestoreDataSource {
-  /** Active products of [storeId] whose search text holds every term, after [afterDocumentId]. */
+  /** Active products of [storeId] matching every term and [category], after [afterDocumentId]. */
   suspend fun queryProducts(
       storeId: String,
       terms: List<String>,
+      category: String?,
       afterDocumentId: String?,
       limit: Int,
   ): List<ProductFirestoreDocument>
@@ -108,6 +115,7 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
   override suspend fun queryProducts(
       storeId: String,
       terms: List<String>,
+      category: String?,
       afterDocumentId: String?,
       limit: Int,
   ): List<ProductFirestoreDocument> {
@@ -124,7 +132,8 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
         ) { query, term ->
           query.whereEqualTo(FieldPath.of(FIELD_SEARCH_PREFIXES, term), true)
         }
-    val ordered = filtered.orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
+    val categorized = category?.let { filtered.whereEqualTo(FIELD_CATEGORY, it) } ?: filtered
+    val ordered = categorized.orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
     // Offline, a cached page can be short and would read as the end of the catalogue: fail instead.
     return (afterDocumentId?.let { ordered.startAfter(it) } ?: ordered)
         .limit(limit.toLong())
@@ -156,6 +165,8 @@ private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
       imageUrl = imageUrl,
       // Display only: a missing or malformed size hides the size, never the product.
       sizeText = (data[FIELD_SIZE_TEXT] as? String)?.trim()?.takeIf(String::isNotEmpty),
+      category = (data[FIELD_CATEGORY] as? String)?.trim()?.takeIf(String::isNotEmpty),
+      categoryPath = (data[FIELD_CATEGORY_PATH] as? String)?.trim()?.takeIf(String::isNotEmpty),
   )
 }
 
@@ -200,6 +211,7 @@ private fun FirestoreFailure.toProductError(): ProductError =
 
 internal const val MAX_PRODUCT_QUERY_LIMIT = 50
 internal const val MAX_SEARCH_QUERY_LENGTH = 100
+private const val MAX_CATEGORY_LENGTH = 200
 private const val MAX_SEARCH_TERMS = 5
 internal const val MIN_SEARCH_TERM_LENGTH = 2
 private const val MAX_SEARCH_TERM_LENGTH = 15
@@ -215,3 +227,5 @@ private const val FIELD_IMAGE_URL = "image_url"
 private const val FIELD_REMOVED_AT = "removed_at"
 private const val FIELD_SEARCH_PREFIXES = "search_prefixes"
 private const val FIELD_SIZE_TEXT = "size_text"
+private const val FIELD_CATEGORY = "category"
+private const val FIELD_CATEGORY_PATH = "category_path"

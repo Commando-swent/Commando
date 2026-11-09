@@ -91,20 +91,20 @@ class FakeOrderRepository(
         return@withSession OrderResult.Error(OrderError.AlreadyDecided(stored.snapshot()))
     val tripError = editingTripError(stored.tripId, uid)
     if (tripError != null) return@withSession OrderResult.Error(tripError)
-    if (stored.items == input.items && stored.commissionCents == input.commissionCents)
-        return@withSession OrderResult.Success(stored.snapshot())
-    if (stored.revision != expectedRevision)
-        return@withSession OrderResult.Error(OrderError.AlreadyDecided(stored.snapshot()))
-    if (stored.revision == Int.MAX_VALUE)
-        return@withSession OrderResult.Error(OrderError.InvalidData)
+    stored.applyEdit(input, expectedRevision)
+  }
+
+  /** Applies an authorized edit under the repository mutex; identical retries remain read-only. */
+  private fun Order.applyEdit(input: OrderDraft, expectedRevision: Int): OrderResult<Order> {
+    if (items == input.items && commissionCents == input.commissionCents)
+        return OrderResult.Success(snapshot())
+    if (revision != expectedRevision)
+        return OrderResult.Error(OrderError.AlreadyDecided(snapshot()))
+    if (revision == Int.MAX_VALUE) return OrderResult.Error(OrderError.InvalidData)
     val updated =
-        stored.copy(
-            items = input.items,
-            commissionCents = input.commissionCents,
-            revision = stored.revision + 1,
-        )
-    orders[orderId] = updated
-    OrderResult.Success(updated.snapshot())
+        copy(items = input.items, commissionCents = input.commissionCents, revision = revision + 1)
+    orders[id] = updated
+    return OrderResult.Success(updated.snapshot())
   }
 
   /** Fails closed when the associated trip cannot be verified in the same session. */
@@ -190,14 +190,8 @@ class FakeOrderRepository(
     if (error != null || order.requesterId == userId) {
       return@withSession OrderResult.Error(error ?: OrderError.PermissionDenied)
     }
-    if (expectedRevision != null && expectedRevision < 0)
-        return@withSession OrderResult.Error(OrderError.InvalidData)
-    if (
-        order.status == transition.source &&
-            expectedRevision != null &&
-            order.revision != expectedRevision
-    )
-        return@withSession OrderResult.Error(OrderError.AlreadyDecided(order.snapshot()))
+    val revisionError = order.decisionRevisionError(transition.source, expectedRevision)
+    if (revisionError != null) return@withSession OrderResult.Error(revisionError)
     val persisted =
         if (order.status == transition.source) {
           order.copy(status = transition.target).also { orders[orderId] = it }
@@ -206,6 +200,15 @@ class FakeOrderRepository(
     if (snapshot.status == transition.target) OrderResult.Success(snapshot)
     else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
   }
+
+  /** Checks displayed content only before a new decision, preserving authorized final retries. */
+  private fun Order.decisionRevisionError(from: OrderStatus, expected: Int?): OrderError? =
+      when {
+        expected == null -> null
+        expected < 0 -> OrderError.InvalidData
+        status == from && revision != expected -> OrderError.AlreadyDecided(snapshot())
+        else -> null
+      }
 
   override suspend fun cancelOrder(orderId: String): OrderResult<Order> = withSession { userId ->
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)

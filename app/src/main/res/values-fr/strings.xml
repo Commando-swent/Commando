@@ -203,7 +203,7 @@
     <string name="order_mark_ready_for_handoff">Marquer comme prête à être remise</string>
     <string name="order_status_saving">Enregistrement du statut de la commande…</string>
     <string name="order_status_error">Impossible de mettre à jour le statut de la commande. Vérifiez votre connexion et réessayez.</string>
-    <string name="order_status_conflict">Cette action n\'est plus disponible. Le statut actuel de la commande est affiché.</string>
+    <string name="order_status_conflict">Cette commande a changé. Vérifiez ses dernières informations avant de réessayer.</string>
     <string name="order_details_cancelled">ANNULÉE</string>
     <string name="order_cancel_action">Annuler la commande</string>
     <string name="order_cancel_dialog_title">Annuler cette commande ?</string>

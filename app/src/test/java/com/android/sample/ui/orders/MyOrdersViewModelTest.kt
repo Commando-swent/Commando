@@ -355,8 +355,11 @@ class MyOrdersViewModelTest {
    */
   private class GatedOrderRepository(private val swallowCancellation: Boolean = false) :
       OrderRepository {
-    override suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order> =
-        error("Not used")
+    override suspend fun editOrder(
+        orderId: String,
+        draft: OrderDraft,
+        expectedRevision: Int,
+    ): OrderResult<Order> = error("Not used")
 
     override suspend fun confirmReceipt(orderId: String): OrderResult<Order> = error("Not used")
 
@@ -384,8 +387,11 @@ class MyOrdersViewModelTest {
     override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
         error("Not used")
 
-    override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> =
-        error("Not used")
+    override suspend fun decideOrder(
+        orderId: String,
+        decision: OrderDecision,
+        expectedRevision: Int,
+    ): OrderResult<Order> = error("Not used")
 
     override suspend fun cancelOrder(orderId: String): OrderResult<Order> = error("Not used")
 

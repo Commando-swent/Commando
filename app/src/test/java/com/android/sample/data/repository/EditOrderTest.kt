@@ -48,12 +48,32 @@ class EditOrderTest {
   @Test
   fun editPreservesIdentityAndRepeatsWithoutAnotherOrder() = runTest {
     val repo = repository()
-    val updated = original.copy(items = draft.items, commissionCents = 150)
+    val updated = original.copy(items = draft.items, commissionCents = 150, revision = 1)
     repeat(2) { assertEquals(OrderResult.Success(updated), repo.editOrder("order", draft)) }
     assertEquals(750L, updated.totalCents)
     assertEquals(OrderResult.Success(listOf(updated)), repo.getMyOrders())
     uid = "owner"
     assertEquals(OrderResult.Success(listOf(updated)), repo.getOrdersForTrip("trip"))
+  }
+
+  @Test
+  fun ownerMustReviewTheEditedRevisionBeforeEitherDecision() = runTest {
+    for (decision in OrderDecision.entries) {
+      uid = "requester"
+      val repo = repository()
+      val edited = (repo.editOrder("order", draft) as OrderResult.Success).data
+      assertEquals(
+          OrderResult.Error(OrderError.AlreadyDecided(edited)),
+          repo.editOrder("order", draft.copy(commissionCents = 999)),
+      )
+      uid = "owner"
+      assertEquals(
+          OrderResult.Error(OrderError.AlreadyDecided(edited)),
+          repo.decideOrder("order", decision, 0),
+      )
+      assertEquals(OrderResult.Success(edited), repo.getOrderById("order"))
+      assertTrue(repo.decideOrder("order", decision, edited.revision) is OrderResult.Success)
+    }
   }
 
   @Test
@@ -113,6 +133,7 @@ class EditOrderTest {
     for (lookup in
         listOf<TripResult<Trip>>(
             TripResult.Error(TripError.NotFound),
+            TripResult.Error(TripError.PermissionDenied),
             TripResult.Success(trip.copy(id = "other")),
             TripResult.Success(trip.copy(ownerId = "requester")),
         )) {

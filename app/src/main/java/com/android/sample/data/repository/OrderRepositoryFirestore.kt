@@ -66,15 +66,7 @@ internal constructor(
                 mapOf(
                     "tripId" to input.tripId,
                     "requesterId" to uid,
-                    "items" to
-                        input.items.map {
-                          mapOf(
-                              "productId" to it.productId,
-                              "name" to it.name,
-                              "unitPriceCents" to it.unitPriceCents,
-                              "quantity" to it.quantity,
-                          )
-                        },
+                    "items" to input.items.firestoreItems(),
                     "commissionCents" to input.commissionCents,
                     "status" to OrderStatus.PENDING.name,
                     "createdAt" to FieldValue.serverTimestamp(),
@@ -92,21 +84,32 @@ internal constructor(
     OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
-  override suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order> =
-      session { uid ->
-        val input = draft.copy(items = draft.items.toList())
-        if (!orderId.isDocumentId() || !input.tripId.isDocumentId() || !input.isValid())
-            return@session failure(OrderError.InvalidData)
-        val order =
-            source.edit(orderId, uid, input).toOrder()
-                ?: return@session failure(OrderError.InvalidData)
-        if (order.id != orderId || order.requesterId != uid || order.tripId != input.tripId)
-            return@session failure(OrderError.InvalidData)
-        if (order.status != OrderStatus.PENDING) failure(OrderError.AlreadyDecided(order))
-        else if (order.items != input.items || order.commissionCents != input.commissionCents)
-            failure(OrderError.InvalidData)
-        else OrderResult.Success(order)
-      }
+  override suspend fun editOrder(
+      orderId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
+  ): OrderResult<Order> = session { uid ->
+    val input = draft.copy(items = draft.items.toList())
+    if (
+        !orderId.isDocumentId() ||
+            !input.tripId.isDocumentId() ||
+            !input.isValid() ||
+            expectedRevision < 0
+    )
+        return@session failure(OrderError.InvalidData)
+    val order =
+        source.edit(orderId, uid, input, expectedRevision).toOrder()
+            ?: return@session failure(OrderError.InvalidData)
+    if (order.id != orderId || order.requesterId != uid || order.tripId != input.tripId)
+        return@session failure(OrderError.InvalidData)
+    if (order.status != OrderStatus.PENDING) failure(OrderError.AlreadyDecided(order))
+    else if (order.items != input.items || order.commissionCents != input.commissionCents)
+        failure(
+            if (order.revision != expectedRevision) OrderError.AlreadyDecided(order)
+            else OrderError.InvalidData
+        )
+    else OrderResult.Success(order)
+  }
 
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = session { uid ->
     if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
@@ -136,9 +139,10 @@ internal constructor(
   override suspend fun decideOrder(
       orderId: String,
       decision: OrderDecision,
+      expectedRevision: Int,
   ): OrderResult<Order> =
-      transitionOrder(orderId, decision.ownerTransition()) { uid ->
-        source.decide(orderId, uid, decision)
+      transitionOrder(orderId, decision.ownerTransition(), expectedRevision) { uid ->
+        source.decide(orderId, uid, decision, expectedRevision)
       }
 
   override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
@@ -155,18 +159,26 @@ internal constructor(
   private suspend fun transitionOrder(
       orderId: String,
       transition: OwnerOrderTransition,
+      expectedRevision: Int? = null,
       update: suspend (String) -> OrderFirestoreDocument,
-  ): OrderResult<Order> = transitionOrder(orderId, transition.source, transition.target, update)
+  ): OrderResult<Order> =
+      transitionOrder(orderId, transition.source, transition.target, expectedRevision, update)
 
   private suspend fun transitionOrder(
       orderId: String,
       from: OrderStatus,
       target: OrderStatus,
+      expectedRevision: Int? = null,
       update: suspend (String) -> OrderFirestoreDocument,
   ): OrderResult<Order> = session { uid ->
-    if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
+    if (!orderId.isDocumentId() || (expectedRevision != null && expectedRevision < 0))
+        return@session failure(OrderError.InvalidData)
     val order = update(uid).toOrder() ?: return@session failure(OrderError.InvalidData)
-    if (order.id != orderId || order.status == from) {
+    if (
+        order.id != orderId ||
+            (order.status == from &&
+                (expectedRevision == null || order.revision == expectedRevision))
+    ) {
       return@session failure(OrderError.InvalidData)
     }
     if (order.status == target) OrderResult.Success(order)
@@ -214,7 +226,12 @@ internal interface OrderFirestoreDataSource {
   /**
    * Authorizes the stored requester, reads the trip and edits eligible orders in one transaction.
    */
-  suspend fun edit(id: String, requesterId: String, draft: OrderDraft): OrderFirestoreDocument
+  suspend fun edit(
+      id: String,
+      requesterId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
+  ): OrderFirestoreDocument
 
   /** Writes the order and placement event atomically, then confirms the server snapshot. */
   suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument
@@ -232,7 +249,12 @@ internal interface OrderFirestoreDataSource {
   suspend fun getTrip(id: String): Map<String, Any?>?
 
   /** Atomically authorizes the owner and publishes a decision event only for a new decision. */
-  suspend fun decide(id: String, ownerId: String, decision: OrderDecision): OrderFirestoreDocument
+  suspend fun decide(
+      id: String,
+      ownerId: String,
+      decision: OrderDecision,
+      expectedRevision: Int,
+  ): OrderFirestoreDocument
 
   /** Owner-only ACCEPTED → READY_FOR_HANDOFF; repeats return a stored snapshot without writing. */
   suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument
@@ -308,7 +330,9 @@ internal class FirebaseOrderFirestoreDataSource(
       id: String,
       ownerId: String,
       decision: OrderDecision,
-  ): OrderFirestoreDocument = transitionOrder(id, ownerId, decision.ownerTransition())
+      expectedRevision: Int,
+  ): OrderFirestoreDocument =
+      transitionOrder(id, ownerId, decision.ownerTransition(), expectedRevision)
 
   /**
    * Reads both mutable eligibility documents before writing; Firestore retries conflicting reads.
@@ -317,6 +341,7 @@ internal class FirebaseOrderFirestoreDataSource(
       id: String,
       requesterId: String,
       draft: OrderDraft,
+      expectedRevision: Int,
   ): OrderFirestoreDocument {
     val context = currentCoroutineContext()
     val database = firestore
@@ -333,19 +358,8 @@ internal class FirebaseOrderFirestoreDataSource(
           throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
       if (!write || stored.data["status"] != OrderStatus.PENDING.name) return@runTransaction stored
       transaction.requireEditableTrip(database, draft.tripId, requesterId)
-      val fields =
-          mapOf(
-              "items" to
-                  draft.items.map {
-                    mapOf(
-                        "productId" to it.productId,
-                        "name" to it.name,
-                        "unitPriceCents" to it.unitPriceCents,
-                        "quantity" to it.quantity,
-                    )
-                  },
-              "commissionCents" to draft.commissionCents,
-          )
+      val fields = stored.editFields(draft) ?: return@runTransaction stored
+      if (stored.staleRevision(expectedRevision)) return@runTransaction stored
       ensureSession()
       transaction.update(ref, fields)
       stored.copy(data = stored.data + fields)
@@ -356,9 +370,30 @@ internal class FirebaseOrderFirestoreDataSource(
       if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
       attempt(false).await().also {
         ensureSession()
-        if (it.data["status"] == OrderStatus.PENDING.name) throw denied
+        it.requireEditConflict(expectedRevision, denied)
       }
     }
+  }
+
+  /** A denied write is recoverable only when a competing revision or status is now persisted. */
+  private fun OrderFirestoreDocument.requireEditConflict(
+      expected: Int,
+      denied: FirebaseFirestoreException,
+  ) {
+    if (data["status"] == OrderStatus.PENDING.name && !staleRevision(expected)) throw denied
+  }
+
+  /** Identical retries are read-only; changing content advances the persisted revision once. */
+  private fun OrderFirestoreDocument.editFields(draft: OrderDraft): Map<String, Any>? {
+    val order = checkNotNull(toOrder())
+    if (order.items == draft.items && order.commissionCents == draft.commissionCents) return null
+    if (order.revision == Int.MAX_VALUE)
+        throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+    return mapOf(
+        "items" to draft.items.firestoreItems(),
+        "commissionCents" to draft.commissionCents,
+        "revision" to order.revision + 1,
+    )
   }
 
   /** Reads trip eligibility inside the transaction so a concurrent closure forces a retry. */
@@ -367,7 +402,13 @@ internal class FirebaseOrderFirestoreDataSource(
       tripId: String,
       uid: String,
   ) {
-    val trip = get(database.collection("trips").document(tripId))
+    val trip =
+        try {
+          get(database.collection("trips").document(tripId))
+        } catch (denied: FirebaseFirestoreException) {
+          if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+          throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+        }
     if (
         !trip.exists() ||
             trip.getString("ownerId") == uid ||
@@ -387,6 +428,7 @@ internal class FirebaseOrderFirestoreDataSource(
       id: String,
       ownerId: String,
       transition: OwnerOrderTransition,
+      expectedRevision: Int? = null,
   ): OrderFirestoreDocument =
       transitionOrder(
           id,
@@ -394,6 +436,7 @@ internal class FirebaseOrderFirestoreDataSource(
           transition.source,
           transition.target,
           ownerTransition = transition,
+          expectedRevision = expectedRevision,
       )
 
   private suspend fun transitionOrder(
@@ -403,6 +446,7 @@ internal class FirebaseOrderFirestoreDataSource(
       target: OrderStatus,
       requester: Boolean = false,
       ownerTransition: OwnerOrderTransition? = null,
+      expectedRevision: Int? = null,
   ): OrderFirestoreDocument {
     val context = currentCoroutineContext()
     val database = firestore
@@ -418,7 +462,9 @@ internal class FirebaseOrderFirestoreDataSource(
       val document = transaction.readOrder(ref, uid, requester)
       // Retried callbacks authorize current persisted data before writing.
       ensureSession()
-      if (write && document.data["status"] == from.name) {
+      if (
+          write && document.data["status"] == from.name && !document.staleRevision(expectedRevision)
+      ) {
         val status = target.name
         transaction.update(ref, "status", status)
         ownerTransition?.let { transaction.setDecisionEvent(ref, document, it) }
@@ -534,6 +580,24 @@ internal fun FirestoreFailure.toOrderError(): OrderError =
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)
 
+/** Missing revision means legacy zero; malformed or overflowing revisions fail decoding. */
+private fun OrderFirestoreDocument.revisionOrNull(): Int? =
+    if ("revision" in data) data["revision"].cents() else 0
+
+/** Null is reserved for transitions that do not depend on editable order content. */
+private fun OrderFirestoreDocument.staleRevision(expected: Int?): Boolean =
+    expected != null && revisionOrNull() != expected
+
+/** Reuses the stored product-snapshot schema for creation and edits. */
+private fun List<OrderItem>.firestoreItems(): List<Map<String, Any>> = map {
+  mapOf(
+      "productId" to it.productId,
+      "name" to it.name,
+      "unitPriceCents" to it.unitPriceCents,
+      "quantity" to it.quantity,
+  )
+}
+
 private fun Any?.cents(): Int? =
     when (this) {
       is Long -> takeIf { it in 0..Int.MAX_VALUE.toLong() }?.toInt()
@@ -546,6 +610,7 @@ internal fun OrderFirestoreDocument.toOrder(): Order? {
   val trip = fields["tripId"] as? String ?: return null
   val requester = fields["requesterId"] as? String ?: return null
   val fee = fields["commissionCents"].cents() ?: return null
+  val revision = revisionOrNull() ?: return null
   val status = OrderStatus.entries.find { it.name == fields["status"] } ?: return null
   val created = fields["createdAt"] as? Timestamp ?: return null
   val items =
@@ -565,5 +630,5 @@ internal fun OrderFirestoreDocument.toOrder(): Order? {
           !OrderDraft(trip, items, fee).isValid()
   )
       return null
-  return Order(id, trip, requester, items.toList(), fee, status, created.toInstant())
+  return Order(id, trip, requester, items.toList(), fee, status, created.toInstant(), revision)
 }

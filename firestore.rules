@@ -117,7 +117,9 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow create: if isAuthenticated()
         && request.resource.data.keys().hasAll(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
-        && request.resource.data.keys().hasOnly(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
+        && request.resource.data.keys().hasOnly(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt", "revision"])
+        && request.resource.data.get("revision", 0) is int
+        && request.resource.data.get("revision", 0) == 0
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.tripId is string
         && request.resource.data.tripId.matches('[^/]+')
@@ -158,7 +160,10 @@ service cloud.firestore {
       allow update: if isAuthenticated()
         && resource.data.requesterId == request.auth.uid
         && resource.data.status == "PENDING"
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["items", "commissionCents"])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["items", "commissionCents", "revision"])
+        && request.resource.data.revision is int
+        && request.resource.data.revision == resource.data.get("revision", 0) + 1
+        && request.resource.data.revision <= 2147483647
         && request.resource.data.commissionCents is int
         && request.resource.data.commissionCents >= 0
         && request.resource.data.commissionCents <= 2147483647

@@ -550,6 +550,21 @@ class OrderDetailsViewModelTest {
   }
 
   @Test
+  fun staleDecisionShowsChangedContentAndTheNextAttemptUsesItsRevision() = runTest {
+    val edited = order.copy(commissionCents = 8000, revision = 1)
+    orders.decision = { OrderResult.Error(OrderError.AlreadyDecided(edited)) }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { trip.ownerId })
+    advanceUntilIdle()
+    vm.decide(OrderDecision.ACCEPT)
+    advanceUntilIdle()
+    assertEquals(edited, (vm.uiState.value as OrderDetailsUiState.Content).order)
+    orders.decision = { OrderResult.Success(edited.copy(status = OrderStatus.ACCEPTED)) }
+    vm.decide(OrderDecision.ACCEPT)
+    advanceUntilIdle()
+    assertEquals(listOf(0, 1), orders.revisions)
+  }
+
+  @Test
   fun bothDecisionsUsePersistedResultAndBlockRepeatedTapsAndRetryWhileSaving() = runTest {
     for ((decision, status) in
         listOf(
@@ -932,8 +947,11 @@ class OrderDetailsViewModelTest {
   }
 
   private inner class RecordingOrders : OrderRepository {
-    override suspend fun editOrder(orderId: String, draft: OrderDraft): OrderResult<Order> =
-        error("Not used")
+    override suspend fun editOrder(
+        orderId: String,
+        draft: OrderDraft,
+        expectedRevision: Int,
+    ): OrderResult<Order> = error("Not used")
 
     var cancellations = 0
 
@@ -945,6 +963,7 @@ class OrderDetailsViewModelTest {
     val ids = mutableListOf<String>()
     val receiptIds = mutableListOf<String>()
     val decisions = mutableListOf<Pair<String, OrderDecision>>()
+    val revisions = mutableListOf<Int>()
     val readyIds = mutableListOf<String>()
     var decision: suspend () -> OrderResult<Order> = { error("Not configured") }
     var lookup: suspend () -> OrderResult<Order> = { OrderResult.Success(order) }
@@ -961,8 +980,13 @@ class OrderDetailsViewModelTest {
       return decision()
     }
 
-    override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> {
+    override suspend fun decideOrder(
+        orderId: String,
+        decision: OrderDecision,
+        expectedRevision: Int,
+    ): OrderResult<Order> {
       decisions += orderId to decision
+      revisions += expectedRevision
       return this.decision()
     }
 

@@ -563,6 +563,29 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  fun staleDecisionReturnsTheLatestPendingOrderAndInvalidRevisionsAreRejected() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val document = source.documents.getValue(saved.id)
+    source.decisionResult = document.copy(data = document.data + ("revision" to 1L))
+    assertEquals(
+        error(OrderError.AlreadyDecided(saved.copy(revision = 1))),
+        repository.editOrder(saved.id, draft.copy(commissionCents = 999)),
+    )
+    uid = "owner"
+    assertEquals(
+        error(OrderError.AlreadyDecided(saved.copy(revision = 1))),
+        repository.decideOrder(saved.id, OrderDecision.ACCEPT, 0),
+    )
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.decideOrder(saved.id, OrderDecision.ACCEPT, -1),
+    )
+    for (revision in listOf(-1L, null, "1", 2147483648L)) {
+      assertNull(document.copy(data = document.data + ("revision" to revision)).toOrder())
+    }
+  }
+
+  @Test
   fun editDiscardsACommittedResultWhenTheSessionChanges() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     source.decisionResult = source.documents.getValue(saved.id)
@@ -575,6 +598,7 @@ class OrderRepositoryFirestoreTest {
         id: String,
         requesterId: String,
         draft: OrderDraft,
+        expectedRevision: Int,
     ): OrderFirestoreDocument {
       beforeRead()
       return checkNotNull(decisionResult)
@@ -618,6 +642,7 @@ class OrderRepositoryFirestoreTest {
         id: String,
         ownerId: String,
         decision: OrderDecision,
+        expectedRevision: Int,
     ): OrderFirestoreDocument = transition(id, ownerId, "PENDING", decision.targetStatus().name)
 
     override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =

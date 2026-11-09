@@ -37,7 +37,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         client.firestore
             .collection("orders")
             .document(saved.id)
-            .update("commissionCents", 200)
+            .update(mapOf("commissionCents" to 200, "revision" to 1))
             .await()
       }
       val ref = requester.firestore.collection("orders").document(saved.id)
@@ -52,11 +52,11 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               "commissionCents" to -1,
               "commissionCents" to 2147483648L,
           )) {
-        assertPermissionDenied { ref.update(field, value).await() }
+        assertPermissionDenied { ref.update(mapOf(field to value, "revision" to 1)).await() }
       }
       val edited =
           draft.copy(items = listOf(OrderItem("bread", "Bread", 300, 2)), commissionCents = 150)
-      val expected = saved.copy(items = edited.items, commissionCents = 150)
+      val expected = saved.copy(items = edited.items, commissionCents = 150, revision = 1)
       assertEquals(OrderResult.Success(expected), repo.editOrder(saved.id, edited))
       assertEquals(OrderResult.Success(expected), repo.editOrder(saved.id, edited))
       assertEquals(OrderResult.Success(listOf(expected)), repo.getMyOrders())
@@ -65,8 +65,10 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       assertEquals(OrderResult.Success(expected), repo.getOrderById(saved.id))
       // Closing the trip independently blocks raw requester edits, not just the Kotlin guard.
       owner.firestore.collection("trips").document(tripId).update("status", "CANCELLED").await()
-      assertPermissionDenied { ref.update("commissionCents", 200).await() }
-      assertEquals(OrderResult.Error(OrderError.PermissionDenied), repo.editOrder(saved.id, draft))
+      assertPermissionDenied {
+        ref.update(mapOf("commissionCents" to 200, "revision" to 2)).await()
+      }
+      assertEquals(OrderResult.Error(OrderError.InvalidData), repo.editOrder(saved.id, draft))
     }
   }
 
@@ -105,6 +107,39 @@ class OrderFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun revisionsProtectOwnerDecisionsAndSerializeCompetingEdits() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val tripId = publish(owner)
+      val repo = orders(requester)
+      val ownerRepo = orders(owner)
+      val draft = OrderDraft(tripId, listOf(OrderItem("milk", "Milk", 220, 1)), 100)
+      for (decision in OrderDecision.entries) {
+        val saved = (repo.createOrder(draft) as OrderResult.Success).data
+        val first =
+            async(Dispatchers.IO) { repo.editOrder(saved.id, draft.copy(commissionCents = 300)) }
+        val second =
+            async(Dispatchers.IO) { repo.editOrder(saved.id, draft.copy(commissionCents = 8000)) }
+        val results = listOf(first.await(), second.await())
+        assertEquals(1, results.count { it is OrderResult.Success })
+        val edited = (repo.getOrderById(saved.id) as OrderResult.Success).data
+        assertEquals(1, edited.revision)
+        assertTrue(results.contains(OrderResult.Error(OrderError.AlreadyDecided(edited))))
+        assertEquals(
+            OrderResult.Error(OrderError.AlreadyDecided(edited)),
+            ownerRepo.decideOrder(saved.id, decision, saved.revision),
+        )
+        val ref = requester.firestore.collection("orders").document(saved.id)
+        for (revision in listOf(1, 3, -1)) assertPermissionDenied {
+          ref.update(mapOf("commissionCents" to 500, "revision" to revision)).await()
+        }
+        assertTrue(
+            ownerRepo.decideOrder(saved.id, decision, edited.revision) is OrderResult.Success
+        )
+      }
+    }
+  }
+
+  @Test
   fun editRacesWithAcceptRejectAndCancelPreserveTheCommittedWinner() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val tripId = publish(owner)
@@ -124,9 +159,13 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               }
             }
         val edit = result.await()
-        assertTrue(transition.await() is OrderResult.Success)
+        val decision = transition.await()
         val stored = (repo.getOrderById(saved.id) as OrderResult.Success).data
-        assertEquals(target, stored.status)
+        if (decision is OrderResult.Success) assertEquals(target, stored.status)
+        else {
+          assertEquals(OrderResult.Error(OrderError.AlreadyDecided(stored)), decision)
+          assertEquals(OrderStatus.PENDING, stored.status)
+        }
         assertEquals(saved.tripId, stored.tripId)
         assertEquals(saved.createdAt, stored.createdAt)
         assertTrue(
@@ -135,10 +174,11 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         )
         if (edit is OrderResult.Success) assertEquals(250, stored.commissionCents)
         else assertEquals(100, stored.commissionCents)
-        assertEquals(
-            OrderResult.Error(OrderError.AlreadyDecided(stored)),
-            repo.editOrder(saved.id, edited),
-        )
+        if (stored.status != OrderStatus.PENDING)
+            assertEquals(
+                OrderResult.Error(OrderError.AlreadyDecided(stored)),
+                repo.editOrder(saved.id, edited),
+            )
       }
     }
   }

@@ -48,6 +48,8 @@ data class Order(
     val commissionCents: Int,
     val status: OrderStatus,
     val createdAt: Instant,
+    /** Monotonic edit revision; legacy documents without this field start at zero. */
+    val revision: Int = 0,
 )
 
 /** Total quantity across products, e.g. two apples and one milk count as three items. */

@@ -11,7 +11,10 @@ sealed class OrderError {
 
   data object InvalidData : OrderError()
 
-  /** An authorized operation conflicts with persisted status; the order need not be terminal. */
+  /**
+   * An authorized operation conflicts with persisted status or revision; the order need not be
+   * terminal.
+   */
   data class AlreadyDecided(val persistedOrder: Order) : OrderError()
 
   data object Unknown : OrderError()

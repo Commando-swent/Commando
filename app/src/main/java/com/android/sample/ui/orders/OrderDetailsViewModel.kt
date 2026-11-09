@@ -152,7 +152,9 @@ class OrderDetailsViewModel(
 
   /** Saves an eligible owner's decision; concurrent taps are ignored until it finishes. */
   fun decide(decision: OrderDecision) =
-      saveOrder(isAllowed = { it.canDecide }) { orderRepository.decideOrder(orderId, decision) }
+      saveOrder(isAllowed = { it.canDecide }) {
+        orderRepository.decideOrder(orderId, decision, it.order.revision)
+      }
 
   /** Marks an accepted order ready, displaying only repository-confirmed status and feedback. */
   fun markReadyForHandoff() =
@@ -176,7 +178,7 @@ class OrderDetailsViewModel(
 
   private fun saveOrder(
       isAllowed: (OrderDetailsUiState.Content) -> Boolean,
-      save: suspend () -> OrderResult<Order>,
+      save: suspend (OrderDetailsUiState.Content) -> OrderResult<Order>,
   ) {
     if (endSessionIfChanged()) return
     val content = mutableState.value as? OrderDetailsUiState.Content ?: return
@@ -185,7 +187,7 @@ class OrderDetailsViewModel(
     viewModelScope.launch {
       val result =
           try {
-            save()
+            save(content)
           } catch (_: Exception) {
             currentCoroutineContext().ensureActive()
             OrderResult.Error(OrderError.Unknown)

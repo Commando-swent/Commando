@@ -1,11 +1,13 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex (requester cancellation).
+// AI assistance: OpenAI Codex (requester cancellation and pending-order editing).
 // AI assistance: Claude Code for the trip-owner query (#147).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderStatus
+import com.android.sample.model.Trip
+import com.android.sample.model.TripStatus
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -73,6 +75,59 @@ class FakeOrderRepository(
     )
   }
 
+  /** Editing requires a trip lookup, unlike standalone creation fixtures. */
+  override suspend fun editOrder(
+      orderId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
+  ): OrderResult<Order> = withSession { uid ->
+    val input = draft.copy(items = draft.items.toList())
+    if (!orderId.isDocumentId() || !input.isValid() || expectedRevision < 0)
+        return@withSession OrderResult.Error(OrderError.InvalidData)
+    val stored = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
+    if (stored.requesterId != uid) return@withSession OrderResult.Error(OrderError.PermissionDenied)
+    if (stored.tripId != input.tripId) return@withSession OrderResult.Error(OrderError.InvalidData)
+    if (stored.status != OrderStatus.PENDING)
+        return@withSession OrderResult.Error(OrderError.AlreadyDecided(stored.snapshot()))
+    val tripError = editingTripError(stored.tripId, uid)
+    if (tripError != null) return@withSession OrderResult.Error(tripError)
+    stored.applyEdit(input, expectedRevision)
+  }
+
+  /** Applies an authorized edit under the repository mutex; identical retries remain read-only. */
+  private fun Order.applyEdit(input: OrderDraft, expectedRevision: Int): OrderResult<Order> {
+    if (items == input.items && commissionCents == input.commissionCents)
+        return OrderResult.Success(snapshot())
+    if (revision != expectedRevision)
+        return OrderResult.Error(OrderError.AlreadyDecided(snapshot()))
+    if (revision == Int.MAX_VALUE) return OrderResult.Error(OrderError.InvalidData)
+    val updated =
+        copy(items = input.items, commissionCents = input.commissionCents, revision = revision + 1)
+    orders[id] = updated
+    return OrderResult.Success(updated.snapshot())
+  }
+
+  /** Fails closed when the associated trip cannot be verified in the same session. */
+  private suspend fun editingTripError(tripId: String, uid: String): OrderError? {
+    val result = lookupTrip(tripId, uid)
+    if (result is OrderResult.Error)
+        return when (result.error) {
+          OrderError.NotAuthenticated,
+          OrderError.Unknown -> result.error
+          else -> OrderError.InvalidData
+        }
+    val trip = (result as? OrderResult.Success)?.data
+    return if (
+        trip == null ||
+            trip.id != tripId ||
+            trip.ownerId == uid ||
+            trip.status != TripStatus.PUBLISHED ||
+            trip.scheduledAt <= now()
+    )
+        OrderError.InvalidData
+    else null
+  }
+
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = withSession { userId ->
     if (orderId.isBlank()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
@@ -100,7 +155,8 @@ class FakeOrderRepository(
   override suspend fun decideOrder(
       orderId: String,
       decision: OrderDecision,
-  ): OrderResult<Order> = transitionOrder(orderId, decision.ownerTransition())
+      expectedRevision: Int,
+  ): OrderResult<Order> = transitionOrder(orderId, decision.ownerTransition(), expectedRevision)
 
   override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
       transitionOrder(orderId, OwnerOrderTransition.MARK_READY)
@@ -123,6 +179,7 @@ class FakeOrderRepository(
   private suspend fun transitionOrder(
       orderId: String,
       transition: OwnerOrderTransition,
+      expectedRevision: Int? = null,
   ): OrderResult<Order> = withSession { userId ->
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
@@ -133,6 +190,8 @@ class FakeOrderRepository(
     if (error != null || order.requesterId == userId) {
       return@withSession OrderResult.Error(error ?: OrderError.PermissionDenied)
     }
+    val revisionError = order.decisionRevisionError(transition.source, expectedRevision)
+    if (revisionError != null) return@withSession OrderResult.Error(revisionError)
     val persisted =
         if (order.status == transition.source) {
           order.copy(status = transition.target).also { orders[orderId] = it }
@@ -141,6 +200,15 @@ class FakeOrderRepository(
     if (snapshot.status == transition.target) OrderResult.Success(snapshot)
     else OrderResult.Error(OrderError.AlreadyDecided(snapshot))
   }
+
+  /** Checks displayed content only before a new decision, preserving authorized final retries. */
+  private fun Order.decisionRevisionError(from: OrderStatus, expected: Int?): OrderError? =
+      when {
+        expected == null -> null
+        expected < 0 -> OrderError.InvalidData
+        status == from && revision != expected -> OrderError.AlreadyDecided(snapshot())
+        else -> null
+      }
 
   override suspend fun cancelOrder(orderId: String): OrderResult<Order> = withSession { userId ->
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
@@ -160,6 +228,17 @@ class FakeOrderRepository(
   }
 
   private suspend fun creationTripError(tripId: String, userId: String): OrderError? {
+    return when (val result = lookupTrip(tripId, userId)) {
+      null -> null
+      is OrderResult.Error -> result.error
+      is OrderResult.Success ->
+          if (result.data.id != tripId || result.data.ownerId == userId) OrderError.InvalidData
+          else null
+    }
+  }
+
+  /** Shared lookup checks the session after suspension and preserves cancellation. */
+  private suspend fun lookupTrip(tripId: String, uid: String): OrderResult<Trip>? {
     val source = tripRepository ?: return null
     val result =
         try {
@@ -168,20 +247,22 @@ class FakeOrderRepository(
           throw cancelled
         } catch (_: Exception) {
           currentCoroutineContext().ensureActive()
-          return if (currentUserId() != userId) OrderError.NotAuthenticated else OrderError.Unknown
+          return OrderResult.Error(
+              if (currentUserId() != uid) OrderError.NotAuthenticated else OrderError.Unknown
+          )
         }
     currentCoroutineContext().ensureActive()
-    if (currentUserId() != userId) return OrderError.NotAuthenticated
+    if (currentUserId() != uid) return OrderResult.Error(OrderError.NotAuthenticated)
     return when (result) {
-      is TripResult.Success ->
-          if (result.data.id != tripId || result.data.ownerId == userId) OrderError.InvalidData
-          else null
+      is TripResult.Success -> OrderResult.Success(result.data)
       is TripResult.Error ->
-          when (result.error) {
-            TripError.NotFound -> OrderError.NotFound
-            TripError.PermissionDenied -> OrderError.PermissionDenied
-            else -> OrderError.Unknown
-          }
+          OrderResult.Error(
+              when (result.error) {
+                TripError.NotFound -> OrderError.NotFound
+                TripError.PermissionDenied -> OrderError.PermissionDenied
+                else -> OrderError.Unknown
+              }
+          )
     }
   }
 

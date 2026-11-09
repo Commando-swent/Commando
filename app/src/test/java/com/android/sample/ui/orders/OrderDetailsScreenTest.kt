@@ -297,7 +297,7 @@ class OrderDetailsScreenTest {
           )
     }
     compose
-        .onNodeWithText("This action is no longer available. The latest order status is shown.")
+        .onNodeWithText("This order changed. Review its latest details before trying again.")
         .performScrollTo()
         .assertIsDisplayed()
     compose.onNodeWithText("REJECTED").assertExists()

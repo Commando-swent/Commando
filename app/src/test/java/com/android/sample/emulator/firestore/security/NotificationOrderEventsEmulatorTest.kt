@@ -31,14 +31,16 @@ class NotificationOrderEventsEmulatorTest {
         assertEquals(order.createdAt, placed.event.occurredAt)
         assertTrue(inbox(requester).none { it.event.orderId == order.id })
         repeat(2) {
-          assertTrue(orders(owner).decideOrder(order.id, decision) is OrderResult.Success)
+          assertTrue(
+              orders(owner).decideOrder(order.id, decision, order.revision) is OrderResult.Success
+          )
         }
         val notification = inbox(requester).single { it.event.orderId == order.id }
         assertEquals("ORDER_${decision.targetStatus().name}", notification.event.type.name)
         assertEquals(requester.auth.currentUser!!.uid, notification.event.recipientId)
         assertTrue(inbox(other).isEmpty())
         // A fresh repository retries read-only; it neither recreates nor overwrites the event.
-        val again = orders(owner).decideOrder(order.id, decision)
+        val again = orders(owner).decideOrder(order.id, decision, order.revision)
         assertTrue(again is OrderResult.Success)
         assertEquals(notification, inbox(requester).single { it.event.orderId == order.id })
       }
@@ -49,7 +51,10 @@ class NotificationOrderEventsEmulatorTest {
   fun handoffAndReceiptPreserveExistingEventsWithoutPublishingAnotherNotification() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = place(owner, requester)
-      assertTrue(orders(owner).decideOrder(order.id, OrderDecision.ACCEPT) is OrderResult.Success)
+      assertTrue(
+          orders(owner).decideOrder(order.id, OrderDecision.ACCEPT, order.revision)
+              is OrderResult.Success
+      )
       val before = inbox(requester).single()
       assertEquals(NotificationEventType.ORDER_ACCEPTED, before.event.type)
       repeat(2) {
@@ -98,7 +103,9 @@ class NotificationOrderEventsEmulatorTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = place(owner, requester)
       OrderDecision.entries
-          .map { decision -> async { orders(owner).decideOrder(order.id, decision) } }
+          .map { decision ->
+            async { orders(owner).decideOrder(order.id, decision, order.revision) }
+          }
           .awaitAll()
       val stored = (orders(requester).getOrderById(order.id) as OrderResult.Success).data
       val notifications = inbox(requester)

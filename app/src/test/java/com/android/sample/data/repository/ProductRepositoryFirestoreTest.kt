@@ -82,16 +82,18 @@ class ProductRepositoryFirestoreTest {
     val dataSource = InMemoryProductFirestoreDataSource()
     val food = productDocument("migros:1", category = "Food > Dairy > Milk")
     val malformed = mapOf("category" to 7, "category_path" to true)
+    val blank = mapOf("category" to "  ", "category_path" to " ")
     dataSource.documentsByStore["migros"] =
         listOf(
             food.copy(data = food.data + ("category_path" to " Food > Dairy > Milk ")),
             productDocument("migros:2").let { it.copy(data = it.data + malformed) },
+            productDocument("migros:3").let { it.copy(data = it.data + blank) },
         )
 
     val products = ProductRepositoryFirestore(dataSource).getProducts("migros").successData()
 
-    assertEquals(listOf("Food", null), products.map(Product::category))
-    assertEquals(listOf("Food > Dairy > Milk", null), products.map(Product::categoryPath))
+    assertEquals(listOf("Food", null, null), products.map(Product::category))
+    assertEquals(listOf("Food > Dairy > Milk", null, null), products.map(Product::categoryPath))
   }
 
   @Test
@@ -383,8 +385,17 @@ class ProductRepositoryFirestoreTest {
       assertEquals(ProductResult.Success(Unit), repository.setFavourite("migros", it, true))
     }
     repository.setFavourite("coop", "coop:1", true)
-    val malformed = mapOf("productId" to "migros: 3", "storeId" to "migros")
-    dataSource.favouritesByUser.getValue("alice")["migros: 3"] = FirestoreDocument("x", malformed)
+    // Skipped references: another document ID, a non-string ID, an extra field, an invalid number.
+    val reference = { id: String, data: Map<String, Any> ->
+      id to FirestoreDocument(id, data + ("storeId" to "migros"))
+    }
+    dataSource.favouritesByUser.getValue("alice") +=
+        listOf(
+            reference("x", mapOf("productId" to "migros: 3")),
+            reference("migros:4", mapOf("productId" to 4)),
+            reference("migros:5", mapOf("productId" to "migros:5", "note" to "extra")),
+            reference("migros:.", mapOf("productId" to "migros:.")),
+        )
 
     val unavailable = listOf("migros:2", "migros:missing")
     assertEquals(
@@ -405,10 +416,8 @@ class ProductRepositoryFirestoreTest {
     val repository = ProductRepositoryFirestore(dataSource) { userId }
 
     assertProductError(ProductError.InvalidStore, repository.getFavouriteProducts("aldi"))
-    assertProductError(
-        ProductError.InvalidData,
-        repository.setFavourite("migros", "coop:1", true),
-    )
+    assertProductError(ProductError.InvalidStore, repository.setFavourite("aldi", "aldi:1", true))
+    assertProductError(ProductError.InvalidData, repository.setFavourite("migros", "coop:1", true))
     assertProductError(
         ProductError.PermissionDenied,
         repository.setFavourite("migros", "migros:1", true),
@@ -660,10 +669,7 @@ class ProductRepositoryFirestoreTest {
           .take(limit)
     }
 
-    override suspend fun queryFavourites(
-        userId: String,
-        storeId: String,
-    ): List<FirestoreDocument> =
+    override suspend fun queryFavourites(userId: String, storeId: String): List<FirestoreDocument> =
         favouritesByUser[userId]
             .orEmpty()
             .values
@@ -671,10 +677,8 @@ class ProductRepositoryFirestoreTest {
             .sortedBy { it.id }
             .also { afterFavouriteRead() }
 
-    override suspend fun getProductsByDocumentIds(
-        storeId: String,
-        documentIds: List<String>,
-    ) = documentsByStore[storeId].orEmpty().filter { it.id in documentIds }
+    override suspend fun getProductsByDocumentIds(storeId: String, documentIds: List<String>) =
+        documentsByStore[storeId].orEmpty().filter { it.id in documentIds }
 
     override suspend fun setFavourite(
         userId: String,

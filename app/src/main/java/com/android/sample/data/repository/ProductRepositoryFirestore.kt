@@ -81,11 +81,9 @@ internal constructor(
               .queryFavourites(userId, normalizedStoreId)
               .mapNotNull { it.toFavouriteProductId(normalizedStoreId) }
               .distinct()
+      // toFavouriteProductId accepted only IDs whose store number is a valid document ID.
       val documents =
-          dataSource.getProductsByDocumentIds(
-              normalizedStoreId,
-              ids.map { checkNotNull(it.productDocumentIdOf(normalizedStoreId)) },
-          )
+          dataSource.getProductsByDocumentIds(normalizedStoreId, ids.map { it.substringAfter(':') })
       val products =
           documents.mapNotNull { it.toProduct(normalizedStoreId) }.associateBy(Product::id)
       ProductResult.Success(
@@ -218,10 +216,7 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
         .map { it.toFirestoreDocument() }
   }
 
-  override suspend fun queryFavourites(
-      userId: String,
-      storeId: String,
-  ): List<FirestoreDocument> =
+  override suspend fun queryFavourites(userId: String, storeId: String): List<FirestoreDocument> =
       firestore
           .collection(USERS_COLLECTION)
           .document(userId)

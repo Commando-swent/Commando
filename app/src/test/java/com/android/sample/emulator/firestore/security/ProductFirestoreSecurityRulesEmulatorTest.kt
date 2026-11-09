@@ -27,6 +27,7 @@ class ProductFirestoreSecurityRulesEmulatorTest {
       val number = "favourite-${System.nanoTime()}"
       val activeId = "migros:$number-active"
       val removedId = "migros:$number-removed"
+      val missingId = "migros:$number-missing"
       val coopId = "coop:$number-active"
       createDocumentAsOwner(
           MIGROS_PRODUCTS,
@@ -38,18 +39,13 @@ class ProductFirestoreSecurityRulesEmulatorTest {
           "$number-removed",
           storedProduct(removedId, "Removed milk", REMOVED_AT),
       )
-      createDocumentAsOwner(
-          COOP_PRODUCTS,
-          "$number-active",
-          storedProduct(coopId, "Coop milk"),
-      )
+      createDocumentAsOwner(COOP_PRODUCTS, "$number-active", storedProduct(coopId, "Coop milk"))
       try {
         val aliceRepository = ProductRepositoryFirestore(alice.firestore)
-        for ((store, product) in
-            listOf("migros" to activeId, "migros" to removedId, "coop" to coopId)) {
+        for (product in listOf(activeId, removedId, missingId, coopId)) {
           assertEquals(
               ProductResult.Success(Unit),
-              aliceRepository.setFavourite(store, product, true),
+              aliceRepository.setFavourite(product.substringBefore(':'), product, true),
           )
         }
         // Repeating an add updates the same reference, never a second favourite.
@@ -59,10 +55,16 @@ class ProductFirestoreSecurityRulesEmulatorTest {
         )
         val migrosFavourites = aliceRepository.getFavouriteProducts("migros").successData()
         assertEquals(listOf(activeId), migrosFavourites.products.map(Product::id))
-        assertEquals(listOf(removedId), migrosFavourites.unavailableProductIds)
+        // A delisted product and a deleted document are both reported, never hidden.
+        assertEquals(listOf(missingId, removedId), migrosFavourites.unavailableProductIds)
         assertEquals(
             listOf(coopId),
             aliceRepository.getFavouriteProducts("coop").successData().products.map(Product::id),
+        )
+        // Signed out, the production repository never queries anyone's favourites.
+        assertEquals(
+            ProductResult.Error(ProductError.PermissionDenied),
+            ProductRepositoryFirestore(anonymous.firestore).getFavouriteProducts("migros"),
         )
 
         val aliceId = alice.auth.currentUser!!.uid
@@ -88,9 +90,10 @@ class ProductFirestoreSecurityRulesEmulatorTest {
         assertPermissionDenied("deleting another user's favourite") {
           bob.firestore.document(own).delete().await()
         }
+        // A favourite stays removable once its product is unavailable.
         assertEquals(
             ProductResult.Success(Unit),
-            aliceRepository.setFavourite("migros", activeId, false),
+            aliceRepository.setFavourite("migros", removedId, false),
         )
       } finally {
         deleteDocumentAsOwner("$MIGROS_PRODUCTS/$number-active")

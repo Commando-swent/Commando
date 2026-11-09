@@ -104,7 +104,11 @@ class CommandoPositionSecurityRulesEmulatorTest {
               "status" to "PENDING",
           ),
       )
-      owner.firestore.collection("trips").document(trip).update("status", "IN_PROGRESS").await()
+      owner.firestore
+          .collection("trips")
+          .document(trip)
+          .update(mapOf("status" to "IN_PROGRESS", "updatedAt" to FieldValue.serverTimestamp()))
+          .await()
       assertPermissionDenied { position.get(Source.SERVER).await() }
       assertPermissionDenied { repo(outsider).observe(uid, orderId).first() }
       val received = repo(requester).observe(uid, orderId).filterNotNull().first()
@@ -160,7 +164,11 @@ class CommandoPositionSecurityRulesEmulatorTest {
                 "status" to "PENDING",
             ),
         )
-        owner.firestore.collection("trips").document(trip).update("status", "IN_PROGRESS").await()
+        owner.firestore
+            .collection("trips")
+            .document(trip)
+            .update(mapOf("status" to "IN_PROGRESS", "updatedAt" to FieldValue.serverTimestamp()))
+            .await()
         val ready = CompletableDeferred<Unit>()
         val revoked = CompletableDeferred<FirebaseFirestoreException>()
         val observation = launch {
@@ -212,10 +220,8 @@ class CommandoPositionSecurityRulesEmulatorTest {
       )
 
   private fun replaceOrder(id: String, requester: EmulatorClient, trip: String, status: String) {
-    deleteDocumentAsOwner("orders/$id")
-    createDocumentAsOwner(
-        "orders",
-        id,
+    updateDocumentAsOwner(
+        "orders/$id",
         mapOf(
             "requesterId" to requester.auth.currentUser!!.uid,
             "tripId" to trip,

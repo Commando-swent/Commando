@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.data.repository.TripFirestoreDataSource
 import com.android.sample.data.repository.TripFirestoreDocument
 import com.android.sample.data.repository.TripRepositoryFirestore
+import com.android.sample.data.repository.TripTransitionWrite
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -174,6 +175,6 @@ class HomeFirestoreIntegrationTest {
         tripId: String,
         from: String,
         to: String,
-    ): TripFirestoreDocument? = error("Not used by Home")
+    ): TripTransitionWrite? = error("Not used by Home")
   }
 }

@@ -126,8 +126,9 @@ internal constructor(
       val stored =
           dataSource.transitionTrip(tripId, transition.source.name, transition.target.name)
               ?: return@runRepositoryOperation notFound()
-      val updated = stored.toTrip() ?: return@runRepositoryOperation invalidData()
-      if (updated.status == transition.target) TripResult.Success(updated)
+      val updated = stored.document.toTrip() ?: return@runRepositoryOperation invalidData()
+      // A change this call wrote is a success even if another device changed the trip right after.
+      if (stored.written || updated.status == transition.target) TripResult.Success(updated)
       else TripResult.Error(TripError.InvalidTransition)
     }
   }
@@ -145,6 +146,12 @@ internal constructor(
 
 /** Raw trip transport; [FirestoreDocument] is decoded with Trip-specific validation below. */
 internal typealias TripFirestoreDocument = FirestoreDocument
+
+/**
+ * Outcome of [TripFirestoreDataSource.transitionTrip]: [document] is the trip read after the
+ * transaction, and [written] is true when that transaction wrote the requested status itself.
+ */
+internal data class TripTransitionWrite(val document: TripFirestoreDocument, val written: Boolean)
 
 /**
  * SDK-independent trip persistence; typed validation and missing-trip policy stay in the
@@ -178,10 +185,10 @@ internal interface TripFirestoreDataSource {
 
   /**
    * In one transaction, reads trip [tripId] and, only if its stored status is [from], writes status
-   * [to] and a server `updatedAt`. Then returns the stored trip read from the server, or null if it
-   * does not exist.
+   * [to] and a server `updatedAt`. Then returns the stored trip read from the server and whether
+   * the transaction wrote, or null if the trip does not exist.
    */
-  suspend fun transitionTrip(tripId: String, from: String, to: String): TripFirestoreDocument?
+  suspend fun transitionTrip(tripId: String, from: String, to: String): TripTransitionWrite?
 }
 
 /** Trip SDK adapter; intentionally preserves default-source reads and existing query filters. */
@@ -232,20 +239,24 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
       tripId: String,
       from: String,
       to: String,
-  ): TripFirestoreDocument? {
+  ): TripTransitionWrite? {
     val reference = trips.document(tripId)
-    firestore
-        .runTransaction { transaction ->
-          val snapshot = transaction.get(reference)
-          if (snapshot.exists() && snapshot.getString(FIELD_STATUS) == from) {
-            transaction.update(
-                reference,
-                mapOf(FIELD_STATUS to to, FIELD_UPDATED_AT to FieldValue.serverTimestamp()),
-            )
-          }
-        }
-        .await()
-    return reference.get(Source.SERVER).await().takeIf { it.exists() }?.toFirestoreDocument()
+    val written =
+        firestore
+            .runTransaction { transaction ->
+              val snapshot = transaction.get(reference)
+              val matches = snapshot.exists() && snapshot.getString(FIELD_STATUS) == from
+              if (matches) {
+                transaction.update(
+                    reference,
+                    mapOf(FIELD_STATUS to to, FIELD_UPDATED_AT to FieldValue.serverTimestamp()),
+                )
+              }
+              matches
+            }
+            .await()
+    val stored = reference.get(Source.SERVER).await().takeIf { it.exists() } ?: return null
+    return TripTransitionWrite(stored.toFirestoreDocument(), written)
   }
 }
 

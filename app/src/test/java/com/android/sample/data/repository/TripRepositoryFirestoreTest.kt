@@ -554,6 +554,19 @@ class TripRepositoryFirestoreTest {
     }
   }
 
+  @Test
+  fun transitionTrip_reportsItsOwnWriteAsSuccessWhenTheTripChangesRightAfter() = runTest {
+    val dataSource = dataSourceWithTrip(PUBLISHED)
+    dataSource.afterTransition = {
+      dataSource.documents[TRIP_ID] = validStoredTrip(status = COMPLETED)
+    }
+
+    val result = createRepository(dataSource).transitionTrip(TRIP_ID, CLOSE)
+
+    assertEquals(COMPLETED, result.successData().status)
+    assertEquals(1, dataSource.transitionCalls)
+  }
+
   private fun dataSourceWithTrip(status: TripStatus) =
       InMemoryTripFirestoreDataSource().apply {
         documents[TRIP_ID] = validStoredTrip(status = status)
@@ -627,6 +640,8 @@ class TripRepositoryFirestoreTest {
     var orderStatusCalls = 0
     var transitionCalls = 0
     var beforeTransition: (() -> Unit)? = null
+    /** Runs after the write and before the trip is read back, e.g. another device's change. */
+    var afterTransition: (() -> Unit)? = null
 
     override suspend fun createTrip(data: Map<String, Any?>): String {
       createCalls += 1
@@ -671,15 +686,17 @@ class TripRepositoryFirestoreTest {
         tripId: String,
         from: String,
         to: String,
-    ): TripFirestoreDocument? {
+    ): TripTransitionWrite? {
       transitionCalls += 1
       beforeTransition?.invoke()
       throwFailureIfPresent()
       val stored = documents[tripId] ?: return null
-      if (stored["status"] == from) {
+      val written = stored["status"] == from
+      if (written) {
         documents[tripId] = stored + mapOf("status" to to, "updatedAt" to SERVER_TIMESTAMP)
       }
-      return TripFirestoreDocument(id = tripId, data = documents.getValue(tripId))
+      afterTransition?.invoke()
+      return TripTransitionWrite(TripFirestoreDocument(tripId, documents.getValue(tripId)), written)
     }
 
     private fun throwFailureIfPresent() {

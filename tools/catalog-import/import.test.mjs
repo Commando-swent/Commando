@@ -425,6 +425,7 @@ test('the Firestore target is chosen explicitly: never production by default, ne
 test('firebase-tools must be the pinned release CI uses, whose login modules the tool reads', () => {
   const root = mkdtempSync(join(tmpdir(), 'firebase-tools-'));
   try {
+    assert.throws(() => firebaseTools(root), /npm install --prefix tools\/catalog-import\/tmp\/firebase-tools firebase-tools@15\.32\.1.*FIREBASE_TOOLS_ROOT/);
     mkdirSync(join(root, 'firebase-tools'));
     const install = (version) => writeFileSync(join(root, 'firebase-tools', 'package.json'), JSON.stringify({ name: 'firebase-tools', version }));
     install('15.30.2');

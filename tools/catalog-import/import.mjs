@@ -2,10 +2,12 @@
 // Catalogue import for Command'o: a swiss-cli JSON Lines export of one store -> stores/{store}/products/{number}.
 // AI assistance: Claude Code. See README.md. Dry-run unless --write is passed.
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+const cleanText = (text) => text.replace(/\s+/g, ' ').trim();
 
 /**
  * The name shown in the app, the one mapping step that differs between the chains' exports. Migros
@@ -15,7 +17,7 @@ import { pathToFileURL } from 'node:url';
  */
 const STORE_NAMES = {
   migros: (row) => displayName(row.name, row.brand, row.variant),
-  coop: (row) => row.name.replace(/\s+/g, ' ').trim(),
+  coop: (row) => cleanText(row.name),
 };
 /** The chains with a full online catalogue; other chains' items are entered by hand in the app. */
 export const STORES = Object.keys(STORE_NAMES);
@@ -51,7 +53,7 @@ export function displayName(name, brand, variant) {
   const contains = (text, part) => part.length > 0 && text.some((_, i) => part.every((word, j) => text[i + j] === word));
   const brandWords = words(brand);
   // Migros titles can keep a double space or a dangling "·" separator ("Ice Tea ·").
-  let full = name.replace(/^[\s·]+|[\s·]+$/g, '').replace(/\s+/g, ' ');
+  let full = cleanText(name.replace(/^[\s·]+|[\s·]+$/g, ''));
   if (brandWords.length > 0 && !contains(words(full), brandWords)) {
     const parts = full.split(/\s+/);
     const shared = parts.findLastIndex((_, i) => {
@@ -85,7 +87,7 @@ const isTimestamp = (value) => {
  * fields contain a size, the older `size_text` field keeps precedence.
  */
 const exportSize = (row) => {
-  const clean = (text) => (typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().toLowerCase() : text);
+  const clean = (text) => (typeof text === 'string' ? cleanText(text).toLowerCase() : text);
   const variant = clean(row.variant);
   return [row.size_text, row.size].find((size) => {
     const value = clean(size);
@@ -120,7 +122,7 @@ export function toProduct(row, store) {
     image_url: imageUrl || null,
     removed_at: null,
     search_prefixes: searchPrefixes(name, row.category ?? ''),
-    size_text: exportSize(row)?.replace(/\s+/g, ' ').trim() || null,
+    size_text: cleanText(exportSize(row) ?? '') || null,
     // The parts of the name, as the store gives them.
     source_name: row.name.trim(),
     brand: row.brand?.trim() || null,
@@ -141,7 +143,7 @@ export function parseSizes(text) {
 
 /**
  * Valid products of one store's JSON Lines export, and one diagnostic per skipped line. A row
- * without `size_text` takes its size from `sizes`, so sizes already fetched need no new crawl.
+ * without a usable export size takes it from `sizes`, so sizes already fetched need no new crawl.
  */
 export function parseExport(text, store, sizes = new Map()) {
   if (!STORES.includes(store)) throw new Error(`Unsupported store ${store}: use ${STORES.join(' or ')}`);
@@ -259,6 +261,9 @@ export const FIREBASE_TOOLS_VERSION = '15.32.1';
 /** `require` inside the firebase-tools of the `node_modules` folder `root`, if it is the pinned release. */
 export function firebaseTools(root) {
   const manifest = resolve(root, 'firebase-tools', 'package.json');
+  if (!existsSync(manifest)) {
+    throw new Error(`firebase-tools ${FIREBASE_TOOLS_VERSION} is not installed in ${root}: run "npm install --prefix tools/catalog-import/tmp/firebase-tools firebase-tools@${FIREBASE_TOOLS_VERSION}" and set FIREBASE_TOOLS_ROOT=tools/catalog-import/tmp/firebase-tools/node_modules, or see "Prerequisites" in README.md`);
+  }
   const { version } = JSON.parse(readFileSync(manifest, 'utf8'));
   if (version !== FIREBASE_TOOLS_VERSION) {
     throw new Error(`firebase-tools ${version} in ${root}, but this tool needs ${FIREBASE_TOOLS_VERSION}: see "Prerequisites" in README.md`);

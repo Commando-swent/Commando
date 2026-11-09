@@ -252,11 +252,7 @@ private fun AuthenticatedApp(
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
   val editingOrderId = backStackEntry?.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
-  var previousEditId by remember { mutableStateOf<String?>(null) }
-  LaunchedEffect(editingOrderId) {
-    if (previousEditId != editingOrderId) previousEditId?.let(orders::finishEdit)
-    previousEditId = editingOrderId
-  }
+  DiscardAbandonedEdit(orders, editingOrderId)
   val currentScreen =
       CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
@@ -730,6 +726,16 @@ private class SessionTripRepositoryViewModel(val repository: TripRepository) : V
 private fun NavHostController.openScreen(screen: CommandoScreens) {
   if (!popBackStack(screen.name, inclusive = false)) {
     navigate(screen.name) { launchSingleTop = true }
+  }
+}
+
+/** Clears the previous edit cart when navigation leaves its flow; rotation retains the cart. */
+@Composable
+private fun DiscardAbandonedEdit(orders: SessionOrderViewModel, editingOrderId: String?) {
+  var previousEditId by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(editingOrderId) {
+    if (previousEditId != editingOrderId) previousEditId?.let(orders::finishEdit)
+    previousEditId = editingOrderId
   }
 }
 

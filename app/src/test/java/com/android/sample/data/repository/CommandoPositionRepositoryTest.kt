@@ -33,6 +33,7 @@ class CommandoPositionRepositoryTest {
             fix.copy(latitude = 91.0),
             fix.copy(longitude = -181.0),
             fix.copy(accuracyMeters = -1.0),
+            fix.copy(accuracyMeters = CommandoPosition.MAX_ACCURACY_METERS + 1),
             fix.copy(accuracyMeters = Double.POSITIVE_INFINITY),
         )) assertFalse(bad.isFresh(start))
   }
@@ -119,5 +120,67 @@ class CommandoPositionRepositoryTest {
     } catch (_: SecurityException) {
       /* expected */
     }
+  }
+
+  @Test
+  fun invalidReferencesNeverPublishOrStartObservation() = runTest {
+    val repo = FakeCommandoPositionRepository({ "owner" }, Clock.fixed(start, ZoneOffset.UTC))
+    for (id in listOf("", "a/b", ".", "..")) {
+      try {
+        repo.publish(id, fix)
+        fail()
+      } catch (_: IllegalArgumentException) {
+        /* expected */
+      }
+      try {
+        repo.observe(id).first()
+        fail()
+      } catch (_: IllegalArgumentException) {
+        /* expected */
+      }
+      try {
+        repo.observe("owner", id).first()
+        fail()
+      } catch (_: IllegalArgumentException) {
+        /* expected */
+      }
+    }
+    assertNull(repo.observe("owner", "order").first())
+  }
+
+  @Test
+  fun staleOrInvalidStoredPositionsAreNeverExposedAsLive() = runTest {
+    for (position in
+        listOf(
+            fix.copy(capturedAt = start.minusSeconds(120)),
+            fix.copy(capturedAt = start.plusSeconds(1)),
+            fix.copy(latitude = Double.NaN),
+        )) {
+      val repo =
+          FakeCommandoPositionRepository(
+              { "owner" },
+              Clock.fixed(start, ZoneOffset.UTC),
+              MutableStateFlow(mapOf("owner" to position)),
+          )
+      assertNull(repo.observe("owner").first())
+    }
+  }
+
+  @Test
+  fun accountChangeRejectsOldSessionEvents() = runTest {
+    var uid = "owner"
+    val storage = MutableStateFlow<Map<String, CommandoPosition>>(emptyMap())
+    val repo = FakeCommandoPositionRepository({ uid }, Clock.fixed(start, ZoneOffset.UTC), storage)
+    val rejected = kotlinx.coroutines.CompletableDeferred<Throwable>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      try {
+        repo.observe("owner").collect()
+      } catch (error: IllegalStateException) {
+        rejected.complete(error)
+      }
+    }
+    uid = "another"
+    storage.value = mapOf("owner" to fix)
+    assertEquals("Position session ended", rejected.await().message)
   }
 }

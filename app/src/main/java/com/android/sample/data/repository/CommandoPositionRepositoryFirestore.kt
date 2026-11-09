@@ -79,7 +79,7 @@ class CommandoPositionRepositoryFirestore(
             error != null -> close(error)
             doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
                 trySend(null)
-            else -> trySend(doc.toPosition())
+            else -> trySend(doc.toCommandoPosition())
           }
         }
     val sessionListener = FirebaseAuth.AuthStateListener {
@@ -105,8 +105,9 @@ class CommandoPositionRepositoryFirestore(
   }
 }
 
-private fun DocumentSnapshot.toPosition(): CommandoPosition? {
-  val data = data ?: return null
+/** Decodes untrusted snapshots; missing or wrongly typed fields must not become live markers. */
+internal fun DocumentSnapshot.toCommandoPosition(): CommandoPosition? {
+  val data = data?.toMap() ?: return null
   return CommandoPosition(
       (data["latitude"] as? Number)?.toDouble() ?: return null,
       (data["longitude"] as? Number)?.toDouble() ?: return null,

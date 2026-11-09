@@ -88,8 +88,9 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time
         && isAllowedTripTransition(resource.data.status, request.resource.data.status);
 
-      allow delete: if isAuthenticated()
-        && resource.data.ownerId == request.auth.uid;
+      // The app never deletes trips; deleting and recreating one would bypass the transitions and
+      // strand its orders.
+      allow delete: if false;
     }
 
     // Order access is anchored to the persisted associated trip.

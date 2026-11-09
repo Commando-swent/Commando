@@ -200,7 +200,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun delete_requiresOwner() = runTest {
+  fun delete_isDeniedEvenToTheOwner() = runTest {
     withClients("owner" to true, "other" to true) { (owner, other) ->
       val ownerId = checkNotNull(owner.auth.currentUser).uid
       val published =
@@ -210,7 +210,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
       val otherPublished = other.firestore.collection(TRIPS_COLLECTION).document(published.id)
 
       assertPermissionDenied { otherPublished.delete().await() }
-      published.delete().await()
+      assertPermissionDenied { published.delete().await() }
     }
   }
 

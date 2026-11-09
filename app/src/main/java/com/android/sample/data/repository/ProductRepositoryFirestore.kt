@@ -85,6 +85,11 @@ internal constructor(
     }
   }
 
+  /**
+   * One server read per favourite, all started in parallel: O(N) reads and memory for N favourites
+   * of the store. Fine for a hand-picked list; past roughly a page (50) of favourites, cap the list
+   * or hydrate it page by page like [searchProducts].
+   */
   override suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts> {
     val normalizedStoreId = storeId.trim().lowercase(Locale.ROOT)
     if (normalizedStoreId !in FAVOURITE_STORE_IDS) {

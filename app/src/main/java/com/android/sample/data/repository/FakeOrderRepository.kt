@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (requester cancellation and pending-order editing).
 // AI assistance: Claude Code for the trip-owner query (#147).
+// AI assistance: Claude Code for refusing orders on non-published trips (#233).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
@@ -232,7 +233,12 @@ class FakeOrderRepository(
       null -> null
       is OrderResult.Error -> result.error
       is OrderResult.Success ->
-          if (result.data.id != tripId || result.data.ownerId == userId) OrderError.InvalidData
+          if (
+              result.data.id != tripId ||
+                  result.data.ownerId == userId ||
+                  result.data.status != TripStatus.PUBLISHED
+          )
+              OrderError.InvalidData
           else null
     }
   }

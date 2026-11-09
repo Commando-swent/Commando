@@ -1,6 +1,6 @@
 package com.android.sample.emulator.firestore.security
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), trip seeding (#233): Claude Code.
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import com.android.sample.model.OrderDecision.ACCEPT
@@ -64,7 +64,8 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       assertEquals(OrderResult.Success(listOf(expected)), ownerRepo.getOrdersForTrip(tripId))
       assertEquals(OrderResult.Success(expected), repo.getOrderById(saved.id))
       // Closing the trip independently blocks raw requester edits, not just the Kotlin guard.
-      owner.firestore.collection("trips").document(tripId).update("status", "CANCELLED").await()
+      // Owners can no longer set arbitrary trip statuses (#233), so seed it as the emulator admin.
+      updateDocumentAsOwner("trips/$tripId", mapOf("status" to "CANCELLED"))
       assertPermissionDenied {
         ref.update(mapOf("commissionCents" to 200, "revision" to 2)).await()
       }
@@ -394,10 +395,18 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         writeOrder(requester, invalid, owner.auth.currentUser!!.uid)
       }
       assertPermissionDenied { writeOrder(signedOut, data, owner.auth.currentUser!!.uid) }
-      val ref = owner.firestore.collection("trips").document(trip)
-      ref.update("status", "CANCELLED").await()
-      assertPermissionDenied { writeOrder(requester, data, owner.auth.currentUser!!.uid) }
-      ref.update(mapOf("status" to "PUBLISHED", "scheduledAt" to Timestamp(0, 0))).await()
+      // Owners can no longer set arbitrary trip statuses (#233), so seed them as the emulator
+      // admin.
+      for (status in listOf("IN_PROGRESS", "COMPLETED", "CANCELLED")) {
+        updateDocumentAsOwner("trips/$trip", mapOf("status" to status))
+        assertPermissionDenied("order on $status trip") {
+          writeOrder(requester, data, owner.auth.currentUser!!.uid)
+        }
+      }
+      updateDocumentAsOwner(
+          "trips/$trip",
+          mapOf("status" to "PUBLISHED", "scheduledAt" to Timestamp(0, 0)),
+      )
       assertPermissionDenied { writeOrder(requester, data, owner.auth.currentUser!!.uid) }
     }
   }
@@ -460,8 +469,10 @@ class OrderFirestoreSecurityRulesEmulatorTest {
             OrderResult.Error(OrderError.AlreadyDecided(saved)),
             orders(owner).markReadyForHandoff(saved.id),
         )
-        val tripRef = owner.firestore.collection("trips").document(trip)
-        tripRef.update(mapOf("status" to "COMPLETED", "scheduledAt" to Timestamp(0, 0))).await()
+        updateDocumentAsOwner(
+            "trips/$trip",
+            mapOf("status" to "COMPLETED", "scheduledAt" to Timestamp(0, 0)),
+        )
         val target = expectedDecisionStatus(decision)
         val expected = saved.copy(status = target)
         // Repeated decision writes are denied; the second call must be read-only.

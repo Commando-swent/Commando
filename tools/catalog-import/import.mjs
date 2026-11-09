@@ -43,6 +43,12 @@ export function searchPrefixes(name, categoryPath = '') {
   return Object.fromEntries([...prefixes].sort().map((prefix) => [prefix, true]));
 }
 
+/** Clean source taxonomy plus its broad first segment, or nulls when the export has none. */
+function categories(category) {
+  const path = category?.split('>').map(cleanText).filter(Boolean).join(' > ') || null;
+  return { category: path?.split(' > ')[0] ?? null, category_path: path };
+}
+
 /**
  * The display name, after GS1's product description: brand, the store's name, then the variant.
  * A part already in the name is not repeated, and the words a brand ends with and the name starts
@@ -127,6 +133,7 @@ export function toProduct(row, store) {
     source_name: row.name.trim(),
     brand: row.brand?.trim() || null,
     variant: row.variant?.trim() || null,
+    ...categories(row.category),
   };
   return { path, data, removedAt: null };
 }
@@ -181,7 +188,16 @@ export function planWrites(products, existingByPath) {
   for (const { path, data: row, removedAt } of products) {
     const existing = existingByPath.get(path);
     // A row without a size keeps the stored one, so a rerun without --sizes never erases sizes.
-    const data = row && { ...row, size_text: row.size_text ?? existing?.data.size_text ?? null };
+    const data = row && {
+      ...row,
+      size_text: row.size_text ?? existing?.data.size_text ?? null,
+      category: row.category ?? existing?.data.category ?? null,
+      category_path: row.category_path ?? existing?.data.category_path ?? null,
+      search_prefixes:
+        row.category_path == null && existing?.data.category_path
+          ? searchPrefixes(row.name, existing.data.category_path)
+          : row.search_prefixes,
+    };
     const currentDocument = existing ? { updateTime: existing.updateTime } : { exists: false };
     let action;
     if (removedAt) action = !existing ? 'removedNotInFirestore' : existing.data.removed_at != null ? 'unchanged' : 'remove';

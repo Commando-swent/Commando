@@ -91,6 +91,8 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
       source_name: 'Crème',
       brand: null,
       variant: null,
+      category: null,
+      category_path: null,
     },
   });
   assert.equal(toProduct(row('1', { price: 3, image_url: '' }), 'migros').data.price, 3);
@@ -99,6 +101,28 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
   // Boundaries of the app's Int cents: CHF 0.01 and Int.MAX_VALUE cents.
   assert.equal(toProduct(row('1', { price: 0.01 }), 'migros').data.price, 0.01);
   assert.equal(toProduct(row('1', { price: 21_474_836.47 }), 'migros').data.price, 21_474_836.47);
+});
+
+test('categories keep a broad label and the cleaned full source path for both stores', () => {
+  const migros = toProduct(row('1', { category: ' Food  >  Dairy > Milk ' }), 'migros').data;
+  const coop = toProduct(coopRow({ category: ' Avocados ' }), 'coop').data;
+  const missing = toProduct(row('2', { category: ' > ' }), 'migros').data;
+  assert.deepEqual([migros.category, migros.category_path], ['Food', 'Food > Dairy > Milk']);
+  assert.deepEqual([coop.category, coop.category_path], ['Avocados', 'Avocados']);
+  assert.deepEqual([missing.category, missing.category_path], [null, null]);
+});
+
+test('a later export without category keeps the stored taxonomy and its search prefixes', async () => {
+  const client = fakeClient();
+  const categorized = exportOf(row('1', { name: 'Nature', category: 'Food > Yogourts nature' }));
+  await importProducts(categorized, { client, write: true, log: () => {} });
+  const withoutCategory = exportOf(row('1', { name: 'Nature', category: null }));
+  const rerun = await importProducts(withoutCategory, { client, write: true, log: () => {} });
+  const data = client.documents.get(path('1')).data;
+  assert.deepEqual([rerun.counts.unchanged, rerun.written], [1, 0]);
+  assert.deepEqual([data.category, data.category_path, data.search_prefixes.yogourts], [
+    'Food', 'Food > Yogourts nature', true,
+  ]);
 });
 
 test('displayName writes brand, name and variant once each and never drops a different word', () => {

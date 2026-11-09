@@ -41,6 +41,11 @@ store, and the store's parts are kept in `source_name`, `brand` and `variant`:
 - Coop's title is already the name Coop shows, brand and size included (`1664 Blonde Bière 12x25cl`,
   brand `Kronenbourg`), so `name` is that title with its spaces cleaned and the brand is not added.
 
+The importer stores the cleaned full source taxonomy as `category_path` and its first segment as
+`category`, which the app filters on: one of 18 departments for Migros, but Coop exports a single
+leaf category (566 such as `Vins rouges`). Missing category data stays `null`; a later export that
+omits it preserves an already stored category, as the size fallback does.
+
 Keep exports in `tools/catalog-import/` (for example `tools/catalog-import/coop.jsonl`) and generated
 files in `tools/catalog-import/tmp/`; its `.gitignore` keeps both out of Git.
 

@@ -65,6 +65,7 @@ object OrderDetailsTestTags {
  * @param onMarkReadyForHandoff Requests an eligible owner's handoff-readiness transition.
  * @param onEdit Opens the requester editing flow when the persisted order and trip are eligible.
  * @param onCancel Requests cancellation only after the requester confirms the dialog.
+ * @param notice Optional contextual feedback rendered below the safe header in the scroll area.
  * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
  */
 @Composable
@@ -77,6 +78,7 @@ fun OrderDetailsScreen(
     onMarkReadyForHandoff: () -> Unit = {},
     onCancel: () -> Unit = {},
     onEdit: (() -> Unit)? = null,
+    notice: String? = null,
     onConfirmReceipt: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
@@ -132,6 +134,7 @@ fun OrderDetailsScreen(
             .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+      notice?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)

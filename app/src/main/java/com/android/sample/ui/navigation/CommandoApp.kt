@@ -516,12 +516,7 @@ private fun AuthenticatedApp(
               }
           val openOrders = {
             editId?.let(orders::finishEdit)
-            navController.navigate(
-                editId?.let(CommandoScreens::orderDetailsRoute) ?: CommandoScreens.MyOrders.name
-            ) {
-              popUpTo(CommandoScreens.Home.name)
-              launchSingleTop = true
-            }
+            navController.openSavedOrder(editId)
           }
           val locale = LocalConfiguration.current.locales[0]
           when (val state = tripState) {
@@ -726,6 +721,15 @@ private class SessionTripRepositoryViewModel(val repository: TripRepository) : V
 private fun NavHostController.openScreen(screen: CommandoScreens) {
   if (!popBackStack(screen.name, inclusive = false)) {
     navigate(screen.name) { launchSingleTop = true }
+  }
+}
+
+/** Replaces a saved edit's details entry while preserving its caller, including My Orders. */
+private fun NavHostController.openSavedOrder(editId: String?) {
+  val target = editId?.let(CommandoScreens::orderDetailsRoute) ?: CommandoScreens.MyOrders.name
+  navigate(target) {
+    if (editId != null) popUpTo(target) { inclusive = true } else popUpTo(CommandoScreens.Home.name)
+    launchSingleTop = true
   }
 }
 

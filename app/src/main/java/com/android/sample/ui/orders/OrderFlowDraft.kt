@@ -1,8 +1,6 @@
 package com.android.sample.ui.orders
 
 // AI assistance: OpenAI Codex (#232).
-import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,6 +25,7 @@ internal fun OrderFlowDraft(
     content(orders.draftFor(tripId))
     return
   }
+  // Reuse the session-aware order/trip loader so edit entry follows the same access checks.
   val source: OrderDetailsViewModel =
       viewModel(key = "edit-source-$editOrderId") {
         OrderDetailsViewModel(
@@ -42,9 +41,11 @@ internal fun OrderFlowDraft(
   if (loaded != null && loaded.canEdit && loaded.order.tripId == tripId) {
     content(orders.draftForEdit(loaded.order))
   } else {
-    Column {
-      if (loaded != null) Text(stringResource(R.string.order_edit_unavailable))
-      OrderDetailsScreen(state, onBack, source::retry)
-    }
+    OrderDetailsScreen(
+        state,
+        onBack,
+        source::retry,
+        notice = if (loaded != null) stringResource(R.string.order_edit_unavailable) else null,
+    )
   }
 }

@@ -116,7 +116,6 @@ class EditOrderNavigationTest {
     )
     assertEquals(1, runBlocking { (repo.getMyOrders() as OrderResult.Success).data.size })
     compose.onNodeWithContentDescription("Back").performClick()
-    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).performClick()
     compose.onNodeWithText("Total: CHF 8.60").assertIsDisplayed()
   }
 

@@ -42,16 +42,20 @@ class CommandoPositionRepositoryTest {
   fun observersReceiveReplacementAndRemovalAcrossClients() = runTest {
     val storage = MutableStateFlow<Map<String, CommandoPosition>>(emptyMap())
     val clock = Clock.fixed(start, ZoneOffset.UTC)
-    val owner = FakeCommandoPositionRepository({ "owner" }, clock, storage)
-    val viewer = FakeCommandoPositionRepository({ "viewer" }, clock, storage)
+    val owner = FakeCommandoPositionRepository(MutableStateFlow<String?>("owner"), clock, storage)
+    val viewer = FakeCommandoPositionRepository(MutableStateFlow<String?>("viewer"), clock, storage)
     val seen = mutableListOf<CommandoPosition?>()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
       viewer.observe("owner").collect { seen += it }
     }
+    runCurrent()
     owner.publish("trip", fix)
+    runCurrent()
     owner.publish("trip", fix.copy(latitude = 46.53))
+    runCurrent()
     assertEquals(1, storage.value.size)
     owner.stopSharing()
+    runCurrent()
     assertEquals(listOf(null, fix, fix.copy(latitude = 46.53), null), seen)
   }
 
@@ -65,7 +69,7 @@ class CommandoPositionRepositoryTest {
 
           override fun instant(): Instant = start.plusMillis(testScheduler.currentTime)
         }
-    val repository = FakeCommandoPositionRepository({ "owner" }, clock)
+    val repository = FakeCommandoPositionRepository(MutableStateFlow<String?>("owner"), clock)
     val seen = mutableListOf<CommandoPosition?>()
     val collection =
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -75,6 +79,7 @@ class CommandoPositionRepositoryTest {
     advanceTimeBy(60_000)
     val replacement = fix.copy(capturedAt = clock.instant())
     repository.publish("trip", replacement)
+    runCurrent()
     advanceTimeBy(60_000)
     runCurrent()
     assertEquals(replacement, seen.last())
@@ -90,7 +95,11 @@ class CommandoPositionRepositoryTest {
   fun invalidPublishDoesNotReplaceExistingPosition() = runTest {
     val storage = MutableStateFlow(mapOf("owner" to fix))
     val repo =
-        FakeCommandoPositionRepository({ "owner" }, Clock.fixed(start, ZoneOffset.UTC), storage)
+        FakeCommandoPositionRepository(
+            MutableStateFlow<String?>("owner"),
+            Clock.fixed(start, ZoneOffset.UTC),
+            storage,
+        )
     try {
       repo.publish("trip", fix.copy(accuracyMeters = Double.NaN))
       fail()
@@ -101,7 +110,7 @@ class CommandoPositionRepositoryTest {
 
   @Test
   fun signedOutOperationsAreRejected() = runTest {
-    val repo = FakeCommandoPositionRepository({ null })
+    val repo = FakeCommandoPositionRepository(MutableStateFlow<String?>(null))
     try {
       repo.stopSharing()
       fail()
@@ -124,7 +133,11 @@ class CommandoPositionRepositoryTest {
 
   @Test
   fun invalidReferencesNeverPublishOrStartObservation() = runTest {
-    val repo = FakeCommandoPositionRepository({ "owner" }, Clock.fixed(start, ZoneOffset.UTC))
+    val repo =
+        FakeCommandoPositionRepository(
+            MutableStateFlow<String?>("owner"),
+            Clock.fixed(start, ZoneOffset.UTC),
+        )
     for (id in listOf("", "a/b", ".", "..")) {
       try {
         repo.publish(id, fix)
@@ -158,7 +171,7 @@ class CommandoPositionRepositoryTest {
         )) {
       val repo =
           FakeCommandoPositionRepository(
-              { "owner" },
+              MutableStateFlow<String?>("owner"),
               Clock.fixed(start, ZoneOffset.UTC),
               MutableStateFlow(mapOf("owner" to position)),
           )
@@ -167,20 +180,48 @@ class CommandoPositionRepositoryTest {
   }
 
   @Test
-  fun accountChangeRejectsOldSessionEvents() = runTest {
-    var uid = "owner"
-    val storage = MutableStateFlow<Map<String, CommandoPosition>>(emptyMap())
-    val repo = FakeCommandoPositionRepository({ uid }, Clock.fixed(start, ZoneOffset.UTC), storage)
-    val rejected = kotlinx.coroutines.CompletableDeferred<Throwable>()
-    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-      try {
-        repo.observe("owner").collect()
-      } catch (error: IllegalStateException) {
-        rejected.complete(error)
+  fun sessionEndCancelsQuietObservationWithoutAnotherPositionWrite() = runTest {
+    for (nextSession in listOf(null, "another")) {
+      val identity = MutableStateFlow<String?>("owner")
+      val storage = MutableStateFlow(mapOf("owner" to fix))
+      val repo =
+          FakeCommandoPositionRepository(identity, Clock.fixed(start, ZoneOffset.UTC), storage)
+      val rejected = kotlinx.coroutines.CompletableDeferred<Throwable>()
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+        try {
+          repo.observe("owner").collect()
+        } catch (error: IllegalStateException) {
+          rejected.complete(error)
+        }
       }
+      runCurrent()
+      assertEquals(1, storage.subscriptionCount.value)
+      identity.value = nextSession
+      runCurrent()
+      assertTrue("Session change must close a quiet observation", rejected.isCompleted)
+      assertEquals("Position session ended", rejected.await().message)
+      assertEquals(mapOf("owner" to fix), storage.value)
+      assertEquals(0, storage.subscriptionCount.value)
+      assertEquals(0, identity.subscriptionCount.value)
     }
-    uid = "another"
-    storage.value = mapOf("owner" to fix)
-    assertEquals("Position session ended", rejected.await().message)
+  }
+
+  @Test
+  fun regressingFixIsRejectedAtomicallyWithoutReplacingStoredPosition() = runTest {
+    val storage = MutableStateFlow(mapOf("owner" to fix))
+    val repo =
+        FakeCommandoPositionRepository(
+            MutableStateFlow<String?>("owner"),
+            Clock.fixed(start, ZoneOffset.UTC),
+            storage,
+        )
+    try {
+      repo.publish("trip", fix.copy(capturedAt = start.minusSeconds(1)))
+      fail("Expected regression rejection")
+    } catch (_: IllegalArgumentException) {
+      assertEquals(fix, storage.value["owner"])
+    }
+    repo.publish("trip", fix.copy(latitude = 46.53))
+    assertEquals(46.53, storage.value.getValue("owner").latitude, 0.0)
   }
 }

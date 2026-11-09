@@ -5,14 +5,15 @@ import com.android.sample.model.CommandoPosition
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 
 /** Shared in-memory transport for previews/tests; access rules are tested against Firestore. */
 class FakeCommandoPositionRepository(
-    private val currentUserId: () -> String?,
+    private val currentUserId: StateFlow<String?>,
     private val clock: Clock = Clock.systemUTC(),
     private val positions: MutableStateFlow<Map<String, CommandoPosition>> =
         MutableStateFlow(emptyMap()),
@@ -20,7 +21,13 @@ class FakeCommandoPositionRepository(
   override suspend fun publish(tripId: String, position: CommandoPosition) {
     val uid = user()
     require(tripId.isDocumentId() && position.isFresh(clock.instant()))
-    positions.update { it + (uid to position) }
+    positions.update {
+      val previous = it[uid]
+      require(previous == null || !position.capturedAt.isBefore(previous.capturedAt)) {
+        "Position capture time cannot regress"
+      }
+      it + (uid to position)
+    }
   }
 
   override suspend fun stopSharing() {
@@ -33,15 +40,15 @@ class FakeCommandoPositionRepository(
     require(ownerId.isDocumentId() && (orderId == null || orderId.isDocumentId()))
     emitAll(
         positions
-            .map {
-              check(currentUserId() == uid) { "Position session ended" }
-              it[ownerId]
+            .combine(currentUserId) { stored, session ->
+              check(session == uid) { "Position session ended" }
+              stored[ownerId]
             }
             .freshPositions(clock)
     )
   }
 
   private fun user() =
-      currentUserId()?.takeIf { it.isDocumentId() }
+      currentUserId.value?.takeIf { it.isDocumentId() }
           ?: throw SecurityException("Position requires an authenticated session")
 }

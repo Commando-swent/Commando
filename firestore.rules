@@ -57,6 +57,60 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    // Live positions (#259). Eligibility witnesses are revalidated, never trusted client ACLs.
+    function positionOrderAccess(ownerId, orderId) {
+      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+      return order.requesterId == request.auth.uid
+        && order.status in ["PENDING", "ACCEPTED", "READY_FOR_HANDOFF"]
+        && get(/databases/$(database)/documents/trips/$(order.tripId)).data.ownerId == ownerId;
+    }
+
+    function positionDiscovery(ownerId, tripId) {
+      let trip = get(/databases/$(database)/documents/trips/$(tripId)).data;
+      return trip.ownerId == ownerId && trip.status == "PUBLISHED"
+        && trip.scheduledAt > request.time;
+    }
+
+    match /commandoPositions/{ownerId} {
+      allow create, update: if isAuthenticated() && request.auth.uid == ownerId
+        && request.resource.data.keys().hasAll([
+          "tripId", "latitude", "longitude", "accuracyMeters", "capturedAt", "updatedAt"])
+        && request.resource.data.keys().hasOnly([
+          "tripId", "latitude", "longitude", "accuracyMeters", "capturedAt", "updatedAt"])
+        && request.resource.data.tripId is string
+        && request.resource.data.tripId.matches('[^/]+')
+        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.ownerId == ownerId
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180 && request.resource.data.longitude <= 180
+        && request.resource.data.accuracyMeters is number
+        && request.resource.data.accuracyMeters >= 0
+        && request.resource.data.accuracyMeters <= 100000
+        && request.resource.data.capturedAt is timestamp
+        && request.resource.data.capturedAt <= request.time
+        && request.resource.data.capturedAt > request.time - duration.value(120, 's')
+        && (resource == null || request.resource.data.capturedAt >= resource.data.capturedAt)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAuthenticated() && request.auth.uid == ownerId;
+      allow get: if isAuthenticated() && (resource == null || request.auth.uid == ownerId
+        || positionDiscovery(ownerId, resource.data.tripId)
+        || positionOrderAccess(ownerId,
+          get(/databases/$(database)/documents/commandoPositions/$(ownerId)/viewers/$(request.auth.uid)).data.orderId));
+      allow list: if false;
+
+      // Each requester privately identifies one current order; no coordinates are duplicated.
+      match /viewers/{viewerId} {
+        allow get, delete: if isAuthenticated() && request.auth.uid == viewerId;
+        allow create, update: if isAuthenticated() && request.auth.uid == viewerId
+          && request.resource.data.keys().hasAll(["orderId"])
+          && request.resource.data.keys().hasOnly(["orderId"])
+          && request.resource.data.orderId is string
+          && request.resource.data.orderId.matches('[^/]+')
+          && positionOrderAccess(ownerId, request.resource.data.orderId);
+      }
+    }
+
     match /trips/{tripId} {
       allow create: if isAuthenticated()
         && isValidTrip(request.resource.data)

@@ -23,6 +23,9 @@ For a closed trip, the requester supplies one active order ID. Their private doc
 This is a lookup witness, not a durable access grant: EVERY position read checks the actual
 order requester, active status (PENDING/ACCEPTED/READY_FOR_HANDOFF) and persisted trip owner.
 A forged witness cannot grant access and a terminal order immediately fails authorization.
+Tracking also observes the witness order itself: terminal/deleted/foreign-order snapshots close
+the position flow even when no position changes. Cancellation or logout removes the position,
+order (when tracking) and Auth listeners together. Server rules still independently restrict reads.
 Pointers hold no positions and are readable/deletable only by their requester. The integration
 must replace the pointer if another active order should take over; retaining a pointer does
 not retain authorization. Discovery positions are readable by any authenticated user while
@@ -39,6 +42,9 @@ cannot guarantee immediate remote erasure, so readers also expire snapshots. Can
 at lifecycle/session exit; Firebase auth changes additionally terminate active SDK listeners.
 Publish cadence, GPS wiring, opt-in controls, active-order subscriptions and map integration
 belong to the follow-up. Fake storage models transport/freshness, not backend authorization.
+The fake takes an observable StateFlow identity: logout/account change closes a quiet stream
+and releases its session/position subscriptions. Regressing timestamps are rejected inside the
+atomic storage update, matching Firestore's write rule; equal capture times remain permitted.
 
 ## Validation
 

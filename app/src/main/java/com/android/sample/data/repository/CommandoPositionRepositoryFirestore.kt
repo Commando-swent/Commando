@@ -66,30 +66,65 @@ class CommandoPositionRepositoryFirestore(
           .await()
       checkSession(uid)
     }
-    emitAll(snapshots(ownerId, uid).freshPositions(clock))
+    emitAll(snapshots(ownerId, uid, orderId).freshPositions(clock))
   }
 
-  private fun snapshots(ownerId: String, uid: String): Flow<CommandoPosition?> = callbackFlow {
-    val listener =
-        positions.document(ownerId).addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE) {
-            doc,
-            error ->
-          when {
-            !sameSession(uid) -> close(SecurityException("Position session ended"))
-            error != null -> close(error)
-            doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
-                trySend(null)
-            else -> trySend(doc.toCommandoPosition())
-          }
+  private fun snapshots(ownerId: String, uid: String, orderId: String?): Flow<CommandoPosition?> =
+      callbackFlow {
+        val listener =
+            positions.document(ownerId).addSnapshotListener(
+                { it.run() },
+                MetadataChanges.INCLUDE,
+            ) { doc, error ->
+              when {
+                !sameSession(uid) -> close(SecurityException("Position session ended"))
+                error != null -> close(error)
+                doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
+                    trySend(null)
+                else -> trySend(doc.toCommandoPosition())
+              }
+            }
+        val sessionListener = FirebaseAuth.AuthStateListener {
+          if (!sameSession(uid)) close(SecurityException("Position session ended"))
         }
-    val sessionListener = FirebaseAuth.AuthStateListener {
-      if (!sameSession(uid)) close(SecurityException("Position session ended"))
-    }
-    auth.addAuthStateListener(sessionListener)
-    awaitClose {
-      listener.remove()
-      auth.removeAuthStateListener(sessionListener)
-    }
+        auth.addAuthStateListener(sessionListener)
+        val orderListener = orderId?.let { watchOrder(it, uid, { trySend(null) }, { close(it) }) }
+        awaitClose {
+          listener.remove()
+          orderListener?.remove()
+          auth.removeAuthStateListener(sessionListener)
+        }
+      }
+
+  // Observe the authorization dependency as well as the position: revocation must end a quiet
+  // stream.
+  private fun watchOrder(
+      orderId: String,
+      uid: String,
+      unavailable: () -> Unit,
+      revoked: (Throwable) -> Unit,
+  ): ListenerRegistration =
+      firestore.collection("orders").document(orderId).addSnapshotListener(
+          { it.run() },
+          MetadataChanges.INCLUDE,
+      ) { doc, error ->
+        when {
+          !sameSession(uid) -> revoked(SecurityException("Position session ended"))
+          error != null -> revoked(error)
+          doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
+              unavailable()
+          doc.get("requesterId") != uid || doc.get("status") !in ACTIVE_ORDER_STATUSES ->
+              revoked(
+                  FirebaseFirestoreException(
+                      "Position order is no longer active",
+                      FirebaseFirestoreException.Code.PERMISSION_DENIED,
+                  )
+              )
+        }
+      }
+
+  private companion object {
+    val ACTIVE_ORDER_STATUSES = setOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
   }
 
   private suspend fun user(): String {

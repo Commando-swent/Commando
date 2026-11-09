@@ -5,14 +5,22 @@ import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
 import com.android.sample.model.CommandoPosition
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -132,6 +140,52 @@ class CommandoPositionSecurityRulesEmulatorTest {
       val position = fix()
       repo(owner).publish(trip, position)
       assertEquals(position, next.await())
+    }
+  }
+
+  @Test
+  fun terminalOrderRevokesAnAlreadyOpenObservationWithoutAnotherPositionWrite() = runTest {
+    withContext(Dispatchers.Default) {
+      withClients("owner" to true, "requester" to true) { (owner, requester) ->
+        val trip = trip(owner)
+        val uid = owner.auth.currentUser!!.uid
+        repo(owner).publish(trip, fix())
+        val orderId = UUID.randomUUID().toString()
+        createDocumentAsOwner(
+            "orders",
+            orderId,
+            mapOf(
+                "requesterId" to requester.auth.currentUser!!.uid,
+                "tripId" to trip,
+                "status" to "PENDING",
+            ),
+        )
+        owner.firestore.collection("trips").document(trip).update("status", "IN_PROGRESS").await()
+        val ready = CompletableDeferred<Unit>()
+        val revoked = CompletableDeferred<FirebaseFirestoreException>()
+        val observation = launch {
+          try {
+            repo(requester).observe(uid, orderId).collect { if (it != null) ready.complete(Unit) }
+          } catch (error: FirebaseFirestoreException) {
+            revoked.complete(error)
+          }
+        }
+        try {
+          withTimeout(10_000) { ready.await() }
+          assertTrue(observation.isActive)
+          requester.firestore
+              .collection("orders")
+              .document(orderId)
+              .update("status", "CANCELLED")
+              .await()
+          val error = withTimeout(10_000) { revoked.await() }
+          observation.join()
+          assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, error.code)
+          assertTrue(observation.isCompleted)
+        } finally {
+          observation.cancelAndJoin()
+        }
+      }
     }
   }
 

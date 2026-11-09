@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), closed-trip creation (#233): Claude
+// Code.
 import com.android.sample.model.Location
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
@@ -345,6 +346,17 @@ class FakeOrderRepositoryTest {
   }
 
   @Test
+  fun creationOnTripThatIsNotPublishedIsInvalidAndStoresNothing() = runTest {
+    for (status in TripStatus.entries - TripStatus.PUBLISHED) {
+      val repository = FakeOrderRepository({ userId }, tripRepository = trips(status = status))
+      assertEquals(status.name, failure(OrderError.InvalidData), repository.createOrder(input))
+      assertTrue(repository.getMyOrders().data().isEmpty())
+    }
+    val published = FakeOrderRepository({ userId }, tripRepository = trips())
+    assertTrue(published.createOrder(input) is OrderResult.Success)
+  }
+
+  @Test
   fun creationLookupExceptionsAndCancellationLeaveStorageAndMutexUsable() = runTest {
     for (scenario in listOf("exception", "account-change", "cancellation")) {
       userId = "requester-demo"
@@ -382,7 +394,7 @@ class FakeOrderRepositoryTest {
     }
   }
 
-  private fun trips(ownerId: String = "commando") =
+  private fun trips(ownerId: String = "commando", status: TripStatus = TripStatus.PUBLISHED) =
       FakeTripRepository(
           ownerId,
           initialTrips =
@@ -393,7 +405,7 @@ class FakeOrderRepositoryTest {
                       Location("Store", 46.5, 6.6),
                       time,
                       Location("Campus", 46.5, 6.6),
-                      TripStatus.PUBLISHED,
+                      status,
                       time,
                       time,
                   )

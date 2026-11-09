@@ -2,10 +2,12 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude Code for the trip-owner query (#147).
+// AI assistance: Claude Code for refusing orders on non-published trips (#233).
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderStatus
+import com.android.sample.model.TripStatus
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -174,7 +176,12 @@ class FakeOrderRepository(
     if (currentUserId() != userId) return OrderError.NotAuthenticated
     return when (result) {
       is TripResult.Success ->
-          if (result.data.id != tripId || result.data.ownerId == userId) OrderError.InvalidData
+          if (
+              result.data.id != tripId ||
+                  result.data.ownerId == userId ||
+                  result.data.status != TripStatus.PUBLISHED
+          )
+              OrderError.InvalidData
           else null
       is TripResult.Error ->
           when (result.error) {

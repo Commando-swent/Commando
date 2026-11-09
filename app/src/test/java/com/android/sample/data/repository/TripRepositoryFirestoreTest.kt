@@ -1,9 +1,15 @@
 package com.android.sample.data.repository
 
+// AI assistance: Claude Code for trip transition tests (#233).
+
+import com.android.sample.data.repository.TripError.*
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripStatus.*
+import com.android.sample.model.TripTransition
+import com.android.sample.model.TripTransition.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.google.firebase.Timestamp
@@ -479,6 +485,80 @@ class TripRepositoryFirestoreTest {
     }
   }
 
+  private class Row(
+      val transition: TripTransition,
+      val status: TripStatus,
+      val orders: List<String?> = emptyList(),
+      val error: TripError? = null,
+      val id: String = TRIP_ID,
+      val user: String? = "authenticated-user",
+      /** Runs just before the write to simulate a race or a storage failure. */
+      val hook: ((InMemoryTripFirestoreDataSource) -> Unit)? = null,
+  )
+
+  @Test
+  fun transitionTrip_writesOnlyValidChangesAndChecksOrdersOnlyToComplete() = runTest {
+    val open = listOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
+    val settled = listOf("DELIVERED", "REJECTED", "CANCELLED")
+    val raceTo = { status: TripStatus ->
+      { d: InMemoryTripFirestoreDataSource ->
+        d.documents[TRIP_ID] = validStoredTrip(status = status)
+      }
+    }
+    val failWith = { code: Code ->
+      { d: InMemoryTripFirestoreDataSource -> d.failure = firebaseException(code) }
+    }
+    val rows =
+        listOf(
+            Row(CLOSE, PUBLISHED, open),
+            Row(COMPLETE, IN_PROGRESS),
+            Row(COMPLETE, IN_PROGRESS, settled),
+            Row(CLOSE, IN_PROGRESS, open), // repeat
+            Row(COMPLETE, COMPLETED, open), // repeat
+            Row(COMPLETE, PUBLISHED, error = InvalidTransition),
+            Row(CLOSE, COMPLETED, error = InvalidTransition),
+            Row(CLOSE, CANCELLED, error = InvalidTransition),
+            Row(COMPLETE, CANCELLED, error = InvalidTransition),
+            Row(COMPLETE, IN_PROGRESS, listOf("DELIVERED", null), InvalidData),
+            Row(COMPLETE, IN_PROGRESS, listOf("NOT_A_STATUS"), InvalidData),
+            Row(CLOSE, PUBLISHED, error = NotFound, id = "missing"),
+            Row(CLOSE, PUBLISHED, error = PermissionDenied, user = "requester"),
+            Row(CLOSE, PUBLISHED, error = PermissionDenied, user = null),
+            Row(CLOSE, PUBLISHED, error = InvalidTransition, hook = raceTo(CANCELLED)),
+            Row(CLOSE, PUBLISHED, hook = raceTo(IN_PROGRESS)),
+            Row(
+                CLOSE,
+                PUBLISHED,
+                error = PermissionDenied,
+                hook = failWith(Code.PERMISSION_DENIED),
+            ),
+            Row(CLOSE, PUBLISHED, error = NetworkError, hook = failWith(Code.UNAVAILABLE)),
+        ) +
+            open.map { Row(COMPLETE, IN_PROGRESS, settled + it, OrdersStillOpen) } +
+            listOf("", "a/b", ".", "..").map { Row(CLOSE, PUBLISHED, error = InvalidData, id = it) }
+    for (row in rows) {
+      val dataSource = dataSourceWithTrip(row.status).apply { orderStatuses = row.orders }
+      dataSource.beforeTransition = row.hook?.let { hook -> { hook(dataSource) } }
+      val writes = row.hook != null || (row.error == null && row.status != row.transition.target)
+      val queriesOrders = row.transition == COMPLETE && row.status == IN_PROGRESS
+
+      val result =
+          createRepository(dataSource, userId = row.user).transitionTrip(row.id, row.transition)
+
+      val message = "${row.transition} on ${row.status} with ${row.orders} as ${row.user}/${row.id}"
+      if (row.error != null) assertTripError(row.error, result, message)
+      else assertEquals(message, row.transition.target, result.successData().status)
+      assertEquals(message, if (writes) 1 else 0, dataSource.transitionCalls)
+      assertEquals(message, if (queriesOrders) 1 else 0, dataSource.orderStatusCalls)
+      if (writes && row.hook == null) assertEquals(SERVER_TIME, result.successData().updatedAt)
+    }
+  }
+
+  private fun dataSourceWithTrip(status: TripStatus) =
+      InMemoryTripFirestoreDataSource().apply {
+        documents[TRIP_ID] = validStoredTrip(status = status)
+      }
+
   private fun createRepository(
       dataSource: InMemoryTripFirestoreDataSource,
       userId: String? = "authenticated-user",
@@ -543,6 +623,10 @@ class TripRepositoryFirestoreTest {
     var lastUpcomingStatus: String? = null
     var lastScheduledAfter: Instant? = null
     var lastOwnerId: String? = null
+    var orderStatuses: List<String?> = emptyList()
+    var orderStatusCalls = 0
+    var transitionCalls = 0
+    var beforeTransition: (() -> Unit)? = null
 
     override suspend fun createTrip(data: Map<String, Any?>): String {
       createCalls += 1
@@ -577,8 +661,33 @@ class TripRepositoryFirestoreTest {
       return ownerDocuments
     }
 
+    override suspend fun getOrderStatuses(tripId: String): List<String?> {
+      orderStatusCalls += 1
+      throwFailureIfPresent()
+      return orderStatuses
+    }
+
+    override suspend fun transitionTrip(
+        tripId: String,
+        from: String,
+        to: String,
+    ): TripFirestoreDocument? {
+      transitionCalls += 1
+      beforeTransition?.invoke()
+      throwFailureIfPresent()
+      val stored = documents[tripId] ?: return null
+      if (stored["status"] == from) {
+        documents[tripId] = stored + mapOf("status" to to, "updatedAt" to SERVER_TIMESTAMP)
+      }
+      return TripFirestoreDocument(id = tripId, data = documents.getValue(tripId))
+    }
+
     private fun throwFailureIfPresent() {
       failure?.let { throw it }
     }
   }
 }
+
+private const val TRIP_ID = "trip-1"
+private val SERVER_TIME: Instant = Instant.parse("2026-10-04T12:30:00Z")
+private val SERVER_TIMESTAMP = Timestamp(SERVER_TIME.epochSecond, SERVER_TIME.nano)

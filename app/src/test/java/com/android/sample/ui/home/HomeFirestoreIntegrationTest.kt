@@ -167,5 +167,13 @@ class HomeFirestoreIntegrationTest {
         status: String,
         scheduledAfter: Instant,
     ): List<TripFirestoreDocument> = error("Not used by Home")
+
+    override suspend fun getOrderStatuses(tripId: String): List<String?> = error("Not used by Home")
+
+    override suspend fun transitionTrip(
+        tripId: String,
+        from: String,
+        to: String,
+    ): TripFirestoreDocument? = error("Not used by Home")
   }
 }

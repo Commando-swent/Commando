@@ -18,6 +18,7 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -988,5 +989,10 @@ class OrderDetailsViewModelTest {
     override suspend fun getUpcomingTrips(): TripResult<List<Trip>> = error("Not used")
 
     override suspend fun getMyTrips(): TripResult<List<Trip>> = error("Not used")
+
+    override suspend fun transitionTrip(
+        tripId: String,
+        transition: TripTransition,
+    ): TripResult<Trip> = error("Not used")
   }
 }

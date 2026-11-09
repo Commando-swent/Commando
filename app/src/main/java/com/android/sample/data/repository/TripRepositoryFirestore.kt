@@ -1,14 +1,20 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+// AI assistance: Claude Code for the trip transition (#233).
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
+import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
 import com.android.sample.model.authentication.AuthRepository
+import com.android.sample.model.blocksTripCompletion
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import java.time.Instant
 import kotlinx.coroutines.tasks.await
 
@@ -92,6 +98,47 @@ internal constructor(
     return runRepositoryOperation { dataSource.getTripsByOwner(ownerId).toTripsResult() }
   }
 
+  override suspend fun transitionTrip(
+      tripId: String,
+      transition: TripTransition,
+  ): TripResult<Trip> {
+    val uid =
+        authRepository.currentUser?.uid?.takeIf(String::isNotBlank)
+            ?: return TripResult.Error(TripError.PermissionDenied)
+    if (!tripId.isDocumentId()) return TripResult.Error(TripError.InvalidData)
+
+    return runRepositoryOperation(notFoundError = TripError.NotFound) {
+      val document = dataSource.getTrip(tripId) ?: return@runRepositoryOperation notFound()
+      val trip = document.toTrip() ?: return@runRepositoryOperation invalidData()
+      trip.transitionPrecheck(uid, transition)?.let {
+        return@runRepositoryOperation it
+      }
+      // The trip is seen IN_PROGRESS before its orders are read: from then on no order can be
+      // created (the rules require PUBLISHED) and order statuses only move to terminal ones, so
+      // this server read cannot go stale. The transaction re-checks the status anyway.
+      if (transition == TripTransition.COMPLETE) {
+        val statuses = dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() }
+        if (null in statuses) return@runRepositoryOperation invalidData()
+        if (statuses.any { it?.blocksTripCompletion() == true }) {
+          return@runRepositoryOperation TripResult.Error(TripError.OrdersStillOpen)
+        }
+      }
+      val stored =
+          dataSource.transitionTrip(tripId, transition.source.name, transition.target.name)
+              ?: return@runRepositoryOperation notFound()
+      val updated = stored.toTrip() ?: return@runRepositoryOperation invalidData()
+      if (updated.status == transition.target) TripResult.Success(updated)
+      else TripResult.Error(TripError.InvalidTransition)
+    }
+  }
+
+  private fun notFound() = TripResult.Error(TripError.NotFound)
+
+  private fun invalidData() = TripResult.Error(TripError.InvalidData)
+
+  private fun String?.toOrderStatus(): OrderStatus? =
+      OrderStatus.entries.firstOrNull { it.name == this }
+
   private fun NewTrip.isValid(currentTime: Instant): Boolean =
       store.isValid() && handoffLocation.isValid() && scheduledAt > currentTime
 }
@@ -122,10 +169,23 @@ internal interface TripFirestoreDataSource {
    * Queries persisted owner identity; callers and rules retain responsibility for access control.
    */
   suspend fun getTripsByOwner(ownerId: String): List<TripFirestoreDocument>
+
+  /**
+   * Raw `status` of every order whose `tripId` is [tripId], read from the server; null when the
+   * field is missing or not a string. The rules allow this query to the trip owner only.
+   */
+  suspend fun getOrderStatuses(tripId: String): List<String?>
+
+  /**
+   * In one transaction, reads trip [tripId] and, only if its stored status is [from], writes status
+   * [to] and a server `updatedAt`. Then returns the stored trip read from the server, or null if it
+   * does not exist.
+   */
+  suspend fun transitionTrip(tripId: String, from: String, to: String): TripFirestoreDocument?
 }
 
 /** Trip SDK adapter; intentionally preserves default-source reads and existing query filters. */
-internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
+internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFirestore) :
     TripFirestoreDataSource {
 
   private val trips = firestore.collection(TRIPS_COLLECTION)
@@ -158,6 +218,35 @@ internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
       trips.whereEqualTo(FIELD_OWNER_ID, ownerId).get().await().documents.map {
         it.toFirestoreDocument()
       }
+
+  override suspend fun getOrderStatuses(tripId: String): List<String?> =
+      firestore
+          .collection(ORDERS_COLLECTION)
+          .whereEqualTo(FIELD_ORDER_TRIP_ID, tripId)
+          .get(Source.SERVER)
+          .await()
+          .documents
+          .map { it.get(FIELD_STATUS) as? String }
+
+  override suspend fun transitionTrip(
+      tripId: String,
+      from: String,
+      to: String,
+  ): TripFirestoreDocument? {
+    val reference = trips.document(tripId)
+    firestore
+        .runTransaction { transaction ->
+          val snapshot = transaction.get(reference)
+          if (snapshot.exists() && snapshot.getString(FIELD_STATUS) == from) {
+            transaction.update(
+                reference,
+                mapOf(FIELD_STATUS to to, FIELD_UPDATED_AT to FieldValue.serverTimestamp()),
+            )
+          }
+        }
+        .await()
+    return reference.get(Source.SERVER).await().takeIf { it.exists() }?.toFirestoreDocument()
+  }
 }
 
 private fun NewTrip.toFirestoreData(ownerId: String, creationTime: Instant): Map<String, Any?> =
@@ -254,6 +343,8 @@ private fun FirestoreFailure.toTripError(notFoundError: TripError): TripError =
     }
 
 private const val TRIPS_COLLECTION = "trips"
+private const val ORDERS_COLLECTION = "orders"
+private const val FIELD_ORDER_TRIP_ID = "tripId"
 private const val FIELD_OWNER_ID = "ownerId"
 private const val FIELD_STORE = "store"
 private const val FIELD_SCHEDULED_AT = "scheduledAt"

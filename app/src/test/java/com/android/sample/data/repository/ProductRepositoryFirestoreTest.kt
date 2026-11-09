@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
 import com.google.firebase.Timestamp
@@ -157,7 +158,18 @@ class ProductRepositoryFirestoreTest {
             productDocument("denner:valid"),
         )
     // Unlike the Firestore query, this source returns removed documents for the mapper to skip.
-    val repository = ProductRepositoryFirestore { _, _, _, _, limit -> documents.take(limit) }
+    val repository =
+        ProductRepositoryFirestore(
+            object : ProductFirestoreDataSource by InMemoryProductFirestoreDataSource() {
+              override suspend fun queryProducts(
+                  storeId: String,
+                  terms: List<String>,
+                  category: String?,
+                  afterDocumentId: String?,
+                  limit: Int,
+              ) = documents.take(limit)
+            }
+        )
 
     assertTrue(repository.getProducts("denner", 1).successData().isEmpty())
     assertEquals(
@@ -353,6 +365,57 @@ class ProductRepositoryFirestoreTest {
     assertEquals(listOf("migros:2"), ids("Food", first.nextCursor, 1).products.map(Product::id))
     assertEquals("Food", dataSource.lastCategory)
     assertEquals(listOf("migros:3"), ids("Drinks").products.map(Product::id))
+  }
+
+  @Test
+  fun favourites_arePerUserPerStoreAndReportUnavailableProducts() = runTest {
+    var userId: String? = "alice"
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            productDocument("migros:1", "Milk"),
+            productDocument("migros:2", "Gone", removedAt = REMOVED_AT),
+        )
+    dataSource.documentsByStore["coop"] = listOf(productDocument("coop:1", "Coop milk"))
+    val repository = ProductRepositoryFirestore(dataSource) { userId }
+
+    listOf("migros:1", "migros:2", "migros:missing").forEach {
+      assertEquals(ProductResult.Success(Unit), repository.setFavourite("migros", it, true))
+    }
+    repository.setFavourite("coop", "coop:1", true)
+    val malformed = mapOf("productId" to "migros: 3", "storeId" to "migros")
+    dataSource.favouritesByUser.getValue("alice")["migros: 3"] = FirestoreDocument("x", malformed)
+
+    val unavailable = listOf("migros:2", "migros:missing")
+    assertEquals(
+        ProductResult.Success(FavouriteProducts(listOf(productOf("migros:1")), unavailable)),
+        repository.getFavouriteProducts("migros"),
+    )
+    userId = "bob"
+    assertEquals(
+        ProductResult.Success(FavouriteProducts(emptyList(), emptyList())),
+        repository.getFavouriteProducts("migros"),
+    )
+  }
+
+  @Test
+  fun favourites_validateInputsAuthenticationAndSessionChanges() = runTest {
+    var userId: String? = null
+    val dataSource = InMemoryProductFirestoreDataSource()
+    val repository = ProductRepositoryFirestore(dataSource) { userId }
+
+    assertProductError(ProductError.InvalidStore, repository.getFavouriteProducts("aldi"))
+    assertProductError(
+        ProductError.InvalidData,
+        repository.setFavourite("migros", "coop:1", true),
+    )
+    assertProductError(
+        ProductError.PermissionDenied,
+        repository.setFavourite("migros", "migros:1", true),
+    )
+    userId = "alice"
+    dataSource.afterFavouriteRead = { userId = "bob" }
+    assertProductError(ProductError.PermissionDenied, repository.getFavouriteProducts("migros"))
   }
 
   @Test
@@ -555,7 +618,9 @@ class ProductRepositoryFirestoreTest {
 
   private class InMemoryProductFirestoreDataSource : ProductFirestoreDataSource {
     val documentsByStore = mutableMapOf<String, List<ProductFirestoreDocument>>()
+    val favouritesByUser = mutableMapOf<String, MutableMap<String, FirestoreDocument>>()
     var failure: Exception? = null
+    var afterFavouriteRead: () -> Unit = {}
     var queryCalls = 0
     var lastStoreId: String? = null
     var lastLimit: Int? = null
@@ -593,6 +658,37 @@ class ProductRepositoryFirestoreTest {
             terms.all { prefixes?.get(it) == true }
           }
           .take(limit)
+    }
+
+    override suspend fun queryFavourites(
+        userId: String,
+        storeId: String,
+    ): List<FirestoreDocument> =
+        favouritesByUser[userId]
+            .orEmpty()
+            .values
+            .filter { it.data["storeId"] == storeId }
+            .sortedBy { it.id }
+            .also { afterFavouriteRead() }
+
+    override suspend fun getProductsByDocumentIds(
+        storeId: String,
+        documentIds: List<String>,
+    ) = documentsByStore[storeId].orEmpty().filter { it.id in documentIds }
+
+    override suspend fun setFavourite(
+        userId: String,
+        storeId: String,
+        productId: String,
+        favourite: Boolean,
+    ) {
+      val documents = favouritesByUser.getOrPut(userId, ::linkedMapOf)
+      if (favourite) {
+        documents[productId] =
+            FirestoreDocument(productId, mapOf("productId" to productId, "storeId" to storeId))
+      } else {
+        documents.remove(productId)
+      }
     }
   }
 }

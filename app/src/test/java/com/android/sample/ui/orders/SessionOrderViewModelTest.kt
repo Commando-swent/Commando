@@ -46,6 +46,12 @@ class SessionOrderViewModelTest {
             limit: Int,
             category: String?,
         ) = ProductResult.Success(ProductPage(listOf(Product("milk", "migros", "Milk", 220)), null))
+
+        override suspend fun getFavouriteProducts(storeId: String) =
+            ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
+
+        override suspend fun setFavourite(storeId: String, productId: String, favourite: Boolean) =
+            ProductResult.Success(Unit)
       }
 
   @Before

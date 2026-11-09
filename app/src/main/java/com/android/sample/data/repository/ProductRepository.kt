@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
 
@@ -33,4 +34,14 @@ interface ProductRepository {
       limit: Int = 50,
       category: String? = null,
   ): ProductResult<ProductPage>
+
+  /** Returns current products favourited by the authenticated user for one store. */
+  suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts>
+
+  /** Idempotently adds or removes one store-scoped favourite for the authenticated user. */
+  suspend fun setFavourite(
+      storeId: String,
+      productId: String,
+      favourite: Boolean,
+  ): ProductResult<Unit>
 }

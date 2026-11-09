@@ -1,23 +1,31 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
 import com.android.sample.model.SUPPORTED_STORE_IDS
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.text.Normalizer
 import java.util.Locale
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
 class ProductRepositoryFirestore
-internal constructor(private val dataSource: ProductFirestoreDataSource) : ProductRepository {
+internal constructor(
+    private val dataSource: ProductFirestoreDataSource,
+    private val currentUserId: () -> String? = { null },
+) : ProductRepository {
 
   constructor(
-      firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
-  ) : this(FirebaseProductFirestoreDataSource(firestore))
+      firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+      currentUserId: () -> String? = { FirebaseAuth.getInstance(firestore.app).currentUser?.uid },
+  ) : this(FirebaseProductFirestoreDataSource(firestore), currentUserId)
 
   override suspend fun getProducts(storeId: String, limit: Int): ProductResult<List<Product>> =
       when (val result = searchProducts(storeId, query = "", limit = limit)) {
@@ -60,6 +68,64 @@ internal constructor(private val dataSource: ProductFirestoreDataSource) : Produ
       )
     }
   }
+
+  override suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts> {
+    val normalizedStoreId = storeId.trim().lowercase(Locale.ROOT)
+    if (normalizedStoreId !in FAVOURITE_STORE_IDS) {
+      return ProductResult.Error(ProductError.InvalidStore)
+    }
+    return runFavouriteOperation { userId ->
+      // Like malformed products, a malformed reference is skipped rather than failing the list.
+      val ids =
+          dataSource
+              .queryFavourites(userId, normalizedStoreId)
+              .mapNotNull { it.toFavouriteProductId(normalizedStoreId) }
+              .distinct()
+      val documents =
+          dataSource.getProductsByDocumentIds(
+              normalizedStoreId,
+              ids.map { checkNotNull(it.productDocumentIdOf(normalizedStoreId)) },
+          )
+      val products =
+          documents.mapNotNull { it.toProduct(normalizedStoreId) }.associateBy(Product::id)
+      ProductResult.Success(
+          FavouriteProducts(
+              products = ids.mapNotNull(products::get),
+              unavailableProductIds = ids.filterNot(products::containsKey),
+          )
+      )
+    }
+  }
+
+  override suspend fun setFavourite(
+      storeId: String,
+      productId: String,
+      favourite: Boolean,
+  ): ProductResult<Unit> {
+    val normalizedStoreId = storeId.trim().lowercase(Locale.ROOT)
+    if (normalizedStoreId !in FAVOURITE_STORE_IDS) {
+      return ProductResult.Error(ProductError.InvalidStore)
+    }
+    if (productId.productDocumentIdOf(normalizedStoreId) == null) {
+      return ProductResult.Error(ProductError.InvalidData)
+    }
+    return runFavouriteOperation { userId ->
+      dataSource.setFavourite(userId, normalizedStoreId, productId, favourite)
+      ProductResult.Success(Unit)
+    }
+  }
+
+  private suspend fun <T> runFavouriteOperation(
+      operation: suspend (String) -> ProductResult<T>
+  ): ProductResult<T> {
+    currentCoroutineContext().ensureActive()
+    val userId =
+        currentUserId()?.takeIf(String::isValidDocumentId)
+            ?: return ProductResult.Error(ProductError.PermissionDenied)
+    val result = runProductRepositoryOperation { operation(userId) }
+    return if (currentUserId() == userId) result
+    else ProductResult.Error(ProductError.PermissionDenied)
+  }
 }
 
 /**
@@ -96,7 +162,7 @@ internal typealias ProductFirestoreDocument = FirestoreDocument
 /**
  * Product-query boundary; raw pages include malformed records so cursor advancement stays stable.
  */
-internal fun interface ProductFirestoreDataSource {
+internal interface ProductFirestoreDataSource {
   /** Active products of [storeId] matching every term and [category], after [afterDocumentId]. */
   suspend fun queryProducts(
       storeId: String,
@@ -105,6 +171,15 @@ internal fun interface ProductFirestoreDataSource {
       afterDocumentId: String?,
       limit: Int,
   ): List<ProductFirestoreDocument>
+
+  suspend fun queryFavourites(userId: String, storeId: String): List<FirestoreDocument>
+
+  suspend fun getProductsByDocumentIds(
+      storeId: String,
+      documentIds: List<String>,
+  ): List<ProductFirestoreDocument>
+
+  suspend fun setFavourite(userId: String, storeId: String, productId: String, favourite: Boolean)
 }
 
 /**
@@ -142,6 +217,52 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
         .documents
         .map { it.toFirestoreDocument() }
   }
+
+  override suspend fun queryFavourites(
+      userId: String,
+      storeId: String,
+  ): List<FirestoreDocument> =
+      firestore
+          .collection(USERS_COLLECTION)
+          .document(userId)
+          .collection(FAVOURITES_COLLECTION)
+          .whereEqualTo(FIELD_STORE_ID, storeId)
+          .get(Source.SERVER)
+          .await()
+          .documents
+          .sortedBy { it.id }
+          .map { it.toFirestoreDocument() }
+
+  override suspend fun getProductsByDocumentIds(
+      storeId: String,
+      documentIds: List<String>,
+  ): List<ProductFirestoreDocument> {
+    val products =
+        firestore.collection(STORES_COLLECTION).document(storeId).collection(PRODUCTS_COLLECTION)
+    // Every read starts before the first is awaited, so they run in parallel.
+    return documentIds
+        .map { id -> products.document(id).get(Source.SERVER) }
+        .mapNotNull { read -> read.await().takeIf { it.exists() }?.toFirestoreDocument() }
+  }
+
+  override suspend fun setFavourite(
+      userId: String,
+      storeId: String,
+      productId: String,
+      favourite: Boolean,
+  ) {
+    val reference =
+        firestore
+            .collection(USERS_COLLECTION)
+            .document(userId)
+            .collection(FAVOURITES_COLLECTION)
+            .document(productId)
+    if (favourite) {
+      reference.set(mapOf(FIELD_PRODUCT_ID to productId, FIELD_STORE_ID to storeId)).await()
+    } else {
+      reference.delete().await()
+    }
+  }
 }
 
 private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
@@ -170,9 +291,25 @@ private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
   )
 }
 
+private fun FirestoreDocument.toFavouriteProductId(storeId: String): String? {
+  val productId = data[FIELD_PRODUCT_ID] as? String ?: return null
+  return productId.takeIf {
+    id == productId &&
+        data.keys == setOf(FIELD_PRODUCT_ID, FIELD_STORE_ID) &&
+        data[FIELD_STORE_ID] == storeId &&
+        productId.productDocumentIdOf(storeId) != null
+  }
+}
+
 /** swiss-cli product IDs are globally unique: `<store>:<store product number>`. */
 private fun String.isGlobalProductIdOf(storeId: String): Boolean =
     this == trim() && startsWith("$storeId:") && substringAfter(':').isNotBlank()
+
+private fun String.productDocumentIdOf(storeId: String): String? = takeIf {
+  it.isGlobalProductIdOf(storeId)
+}
+    ?.substringAfter(':')
+    ?.takeIf(String::isValidDocumentId)
 
 private fun String.isValidDocumentId(): Boolean =
     isNotBlank() &&
@@ -216,10 +353,13 @@ private const val MAX_SEARCH_TERMS = 5
 internal const val MIN_SEARCH_TERM_LENGTH = 2
 private const val MAX_SEARCH_TERM_LENGTH = 15
 private const val MAX_CURSOR_LENGTH = 1_500
+private val FAVOURITE_STORE_IDS = setOf("migros", "coop")
 private val NON_SEARCHABLE_CHARACTERS = Regex("[^a-z0-9]+")
 private val COMBINING_MARKS = Regex("\\p{M}+")
 private const val STORES_COLLECTION = "stores"
 private const val PRODUCTS_COLLECTION = "products"
+private const val USERS_COLLECTION = "users"
+private const val FAVOURITES_COLLECTION = "favourites"
 private const val FIELD_ID = "id"
 private const val FIELD_NAME = "name"
 private const val FIELD_PRICE = "price"
@@ -229,3 +369,5 @@ private const val FIELD_SEARCH_PREFIXES = "search_prefixes"
 private const val FIELD_SIZE_TEXT = "size_text"
 private const val FIELD_CATEGORY = "category"
 private const val FIELD_CATEGORY_PATH = "category_path"
+private const val FIELD_PRODUCT_ID = "productId"
+private const val FIELD_STORE_ID = "storeId"

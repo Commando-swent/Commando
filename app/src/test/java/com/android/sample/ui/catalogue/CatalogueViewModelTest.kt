@@ -7,6 +7,7 @@ import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Location
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
@@ -84,6 +85,12 @@ internal class StubProductRepository(
     val page = matches.drop(start).take(limit)
     return ProductResult.Success(ProductPage(page, page.takeIf { it.size == limit }?.last()?.id))
   }
+
+  override suspend fun getFavouriteProducts(storeId: String) =
+      ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
+
+  override suspend fun setFavourite(storeId: String, productId: String, favourite: Boolean) =
+      ProductResult.Success(Unit)
 }
 
 internal fun migrosProducts(range: IntRange) = range.map {

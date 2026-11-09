@@ -15,6 +15,12 @@ data class Product(
     val categoryPath: String? = null,
 )
 
+/** Current favourite products plus saved references that are no longer available in the store. */
+data class FavouriteProducts(
+    val products: List<Product>,
+    val unavailableProductIds: List<String>,
+)
+
 /**
  * One bounded page of products. [nextCursor] is null once a page comes back short, so the results
  * are exhausted; after a full page it is set even if the next page turns out to be empty.

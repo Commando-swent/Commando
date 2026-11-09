@@ -22,6 +22,85 @@ import org.robolectric.RobolectricTestRunner
 class ProductFirestoreSecurityRulesEmulatorTest {
 
   @Test
+  fun favourites_arePrivateStoreScopedReferencesWithUnavailableProducts() = runTest {
+    withClients("alice" to true, "bob" to true, "anonymous" to false) { (alice, bob, anonymous) ->
+      val number = "favourite-${System.nanoTime()}"
+      val activeId = "migros:$number-active"
+      val removedId = "migros:$number-removed"
+      val coopId = "coop:$number-active"
+      createDocumentAsOwner(
+          MIGROS_PRODUCTS,
+          "$number-active",
+          storedProduct(activeId, "Migros milk"),
+      )
+      createDocumentAsOwner(
+          MIGROS_PRODUCTS,
+          "$number-removed",
+          storedProduct(removedId, "Removed milk", REMOVED_AT),
+      )
+      createDocumentAsOwner(
+          COOP_PRODUCTS,
+          "$number-active",
+          storedProduct(coopId, "Coop milk"),
+      )
+      try {
+        val aliceRepository = ProductRepositoryFirestore(alice.firestore)
+        for ((store, product) in
+            listOf("migros" to activeId, "migros" to removedId, "coop" to coopId)) {
+          assertEquals(
+              ProductResult.Success(Unit),
+              aliceRepository.setFavourite(store, product, true),
+          )
+        }
+        // Repeating an add updates the same reference, never a second favourite.
+        assertEquals(
+            ProductResult.Success(Unit),
+            aliceRepository.setFavourite("migros", activeId, true),
+        )
+        val migrosFavourites = aliceRepository.getFavouriteProducts("migros").successData()
+        assertEquals(listOf(activeId), migrosFavourites.products.map(Product::id))
+        assertEquals(listOf(removedId), migrosFavourites.unavailableProductIds)
+        assertEquals(
+            listOf(coopId),
+            aliceRepository.getFavouriteProducts("coop").successData().products.map(Product::id),
+        )
+
+        val aliceId = alice.auth.currentUser!!.uid
+        val aliceFavourites =
+            bob.firestore.collection("users").document(aliceId).collection("favourites")
+        assertPermissionDenied("another user's favourites") {
+          aliceFavourites.limit(10).get().await()
+        }
+        val own = "users/$aliceId/favourites/$activeId"
+        val valid = mapOf("productId" to activeId, "storeId" to "migros")
+        for ((client, path, data) in
+            listOf(
+                Triple(anonymous, own, valid),
+                Triple(bob, own, valid),
+                Triple(alice, "users/$aliceId/favourites/migros:other", valid),
+                Triple(alice, own, valid + ("storeId" to "coop")),
+                Triple(alice, own, valid + ("note" to "extra")),
+            )) {
+          assertPermissionDenied("favourite $data at $path") {
+            client.firestore.document(path).set(data).await()
+          }
+        }
+        assertPermissionDenied("deleting another user's favourite") {
+          bob.firestore.document(own).delete().await()
+        }
+        assertEquals(
+            ProductResult.Success(Unit),
+            aliceRepository.setFavourite("migros", activeId, false),
+        )
+      } finally {
+        deleteDocumentAsOwner("$MIGROS_PRODUCTS/$number-active")
+        deleteDocumentAsOwner("$MIGROS_PRODUCTS/$number-removed")
+        deleteDocumentAsOwner("$COOP_PRODUCTS/$number-active")
+      }
+    }
+  }
+
+  @Test
   fun authenticatedReads_allowGetsAndListsOfAtMostFiftyProducts() = runTest {
     withClients("authenticated" to true) { (authenticated) ->
       val products = authenticated.firestore.collection(MIGROS_PRODUCTS)
@@ -141,5 +220,17 @@ class ProductFirestoreSecurityRulesEmulatorTest {
 
   private companion object {
     const val MIGROS_PRODUCTS = "stores/migros/products"
+    const val COOP_PRODUCTS = "stores/coop/products"
+    val REMOVED_AT = com.google.firebase.Timestamp(1_760_000_000, 0)
+
+    fun storedProduct(id: String, name: String, removedAt: com.google.firebase.Timestamp? = null) =
+        mapOf(
+            "id" to id,
+            "name" to name,
+            "price" to 2.5,
+            "image_url" to null,
+            "removed_at" to removedAt,
+            "search_prefixes" to productSearchPrefixes(name),
+        )
   }
 }

@@ -69,6 +69,36 @@ class SessionOrderViewModelTest {
       )
 
   @Test
+  fun editingKeepsItsOriginalRevisionWithoutReplacingANewOrderCart() = runTest {
+    val session = session()
+    val item = OrderItem("milk", "Milk", 220, 1)
+    val cart = session.draftFor(trip.id)
+    cart.addItem(item)
+    val saved = Order("saved", trip.id, "alice", listOf(item), 100, OrderStatus.PENDING, time, 3)
+    val edit = session.draftForEdit(saved)
+    edit.updateQuantity(item.productId, 3)
+    assertNotSame(cart, edit)
+    assertSame(edit, session.draftForEdit(saved.copy(revision = 4)))
+    assertEquals(3, edit.expectedRevision)
+    session.finishEdit(saved.id)
+    assertEquals(listOf(item), cart.draft.value.items)
+    auth.signOut()
+    assertThrows(IllegalStateException::class.java) { session.draftForEdit(saved) }
+  }
+
+  @Test
+  fun editDraftRequiresItsLoadedRevisionAndMatchingTrip() {
+    val session = session()
+    assertThrows(IllegalArgumentException::class.java) { OrderDraftState("") }
+    assertThrows(IllegalArgumentException::class.java) {
+      ReviewOrderViewModel(session.repository, session.draftFor(trip.id), "saved")
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      OrderDraftState(trip.id, OrderDraft("different-trip", emptyList()))
+    }
+  }
+
+  @Test
   fun catalogueReviewListAndDetailsUseOneDraftAndOneSavedOrder() = runTest {
     val session = session()
     val draft = session.draftFor(trip.id)

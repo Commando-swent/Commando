@@ -3,6 +3,7 @@ package com.android.sample.ui.orders
 // AI assistance: OpenAI Codex (cancellation regression tests).
 // AI assistance: Claude Code.
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.data.repository.OrderError
@@ -10,6 +11,7 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import java.time.Instant
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -55,6 +57,30 @@ class IncomingOrdersScreenTest {
     card(accepted).assert(hasText("ACCEPTED")).assert(hasText("1 item · CHF 1.80"))
     card(accepted).performClick()
     compose.runOnIdle { assertEquals(listOf(accepted.id), opened) }
+  }
+
+  @Test
+  fun refreshedEditedOrderShowsNewCountAndTotalAndKeepsItsDetailsId() {
+    val updates =
+        MutableStateFlow<IncomingOrdersUiState>(
+            IncomingOrdersUiState.Content(listOf(IncomingOrderRow(pending)))
+        )
+    val opened = mutableListOf<String>()
+    compose.setContent {
+      val state = updates.collectAsState()
+      MaterialTheme { IncomingOrdersScreen(state.value, {}, opened::add) }
+    }
+    card(pending).assert(hasText("3 items · CHF 7.70"))
+    val edited =
+        pending.copy(items = listOf(milk.copy(quantity = 4)), commissionCents = 200, revision = 1)
+    compose.runOnIdle {
+      updates.value = IncomingOrdersUiState.Content(listOf(IncomingOrderRow(edited)))
+    }
+    compose.waitUntil {
+      compose.onAllNodesWithText("4 items · CHF 10.80").fetchSemanticsNodes().isNotEmpty()
+    }
+    card(edited).assert(hasText("4 items · CHF 10.80")).performClick()
+    compose.runOnIdle { assertEquals(listOf(pending.id), opened) }
   }
 
   @Test

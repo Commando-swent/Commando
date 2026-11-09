@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="order_edit">Edit order</string>
+    <string name="order_save_changes">Confirm changes</string>
+    <string name="order_updated">Order updated</string>
+    <string name="order_edit_conflict">This order changed while you were editing. Your changes were not saved. View the saved order.</string>
+    <string name="order_view_saved">View saved order</string>
+    <string name="order_edit_unavailable">This order can no longer be edited. Only pending orders on open trips can be changed.</string>
+</resources>

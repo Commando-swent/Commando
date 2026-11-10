@@ -36,6 +36,7 @@ internal fun HomeCurrentTrip(
     onManageTrip: ((String) -> Unit)?,
     onPublishTrip: (() -> Unit)?,
     modifier: Modifier,
+    sharingControl: @Composable () -> Unit = {},
 ) {
   if (state is HomeTripUiState.Loading || state is HomeTripUiState.Error) {
     Box(
@@ -64,6 +65,7 @@ internal fun HomeCurrentTrip(
             Text(stringResource(R.string.trips_retry))
           }
         }
+        sharingControl()
       }
     }
     return
@@ -89,6 +91,7 @@ internal fun HomeCurrentTrip(
               style = MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp),
           )
           HomeTripCard(trip)
+          sharingControl()
           Spacer(Modifier.weight(1f))
           Button(
               onClick = { onManageTrip?.invoke(trip.id) },

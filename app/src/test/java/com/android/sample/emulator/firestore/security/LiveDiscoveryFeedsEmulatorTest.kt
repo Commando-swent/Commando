@@ -99,6 +99,22 @@ class LiveDiscoveryFeedsEmulatorTest {
     }
   }
 
+  @Test
+  fun ownedTripFeedRetainsClosedTripsForForegroundSharing() = runTest {
+    withContext(Dispatchers.Default) {
+      withClients("owner" to true) { (owner) ->
+        val created = publish(owner)
+        val repo = trips(owner)
+        assertTrue(repo.transitionTrip(created.id, TripTransition.CLOSE) is TripResult.Success)
+        val mine =
+            withTimeout(10_000) {
+              repo.observeMyTrips().filterIsInstance<TripResult.Success<List<Trip>>>().first()
+            }
+        assertEquals(TripStatus.IN_PROGRESS, mine.data.single { it.id == created.id }.status)
+      }
+    }
+  }
+
   private fun trips(client: EmulatorClient) =
       TripRepositoryFirestore(
           FakeAuthRepository(AuthUser(client.auth.currentUser!!.uid)),

@@ -62,3 +62,11 @@ Unconfirmed orders never imply discovery. `OrderStatus.isActiveForTracking()` ce
 active states; LiveMapViewModel groups by owner, retains all order links and expires fixes
 without network polling. Collection cancellation and auth changes release query listeners.
 Sharing controls and screen wiring are delivered separately in #271 and #272.
+
+## Foreground sharing controls (#271)
+
+Explicit opt-in and coarse permission precede location acquisition. Publish every 10 seconds
+while foregrounded, preserving capture age. Backgrounding, lost eligibility and session exit
+stop the publisher. Normal sign-out must await confirmed deletion; failed cleanup stays
+visible and retryable. Rotation preserves foreground consent, background return does not.
+These tested controls are connected to authenticated navigation in #272.

@@ -23,6 +23,8 @@ class FakeTripRepository(
 
   private val changes = MutableStateFlow(0L)
 
+  override fun observeMyTrips() = changes.map { getMyTrips() }
+
   override fun observeUpcomingTrips() = changes.map { getUpcomingTrips() }
 
   private val trips = initialTrips.associateByTo(linkedMapOf(), Trip::id)

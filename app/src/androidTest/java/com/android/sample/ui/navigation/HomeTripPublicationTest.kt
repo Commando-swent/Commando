@@ -40,7 +40,7 @@ class HomeTripPublicationTest {
         }
     compose.setContent { SampleAppTheme { CommandoApp(auth, trips, google) } }
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
-    compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performClick()
+    compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performScrollTo().performClick()
     field(CreateTripScreenTestTags.STORE_FIELD).performClick()
     compose
         .onNodeWithTag(CreateTripScreenTestTags.locationOption(TripLocations.stores[0].name))
@@ -71,7 +71,7 @@ class HomeTripPublicationTest {
       assertEquals(1, stored.size)
       assertEquals("alice", stored.single().ownerId)
     }
-    compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performClick()
+    compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performScrollTo().performClick()
     compose.onNodeWithTag(CreateTripScreenTestTags.STORE_FIELD).assertTextContains("Select a store")
     compose.onNodeWithTag(CreateTripScreenTestTags.PUBLISH_BUTTON).assertIsNotEnabled()
     compose.onNodeWithTag(CreateTripScreenTestTags.BACK_BUTTON).performClick()

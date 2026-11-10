@@ -92,41 +92,22 @@ internal constructor(
     }
   }
 
-  override fun observeMyTrips(): Flow<TripResult<List<Trip>>> = flow {
-    val uid = authRepository.currentUser?.uid
-    if (uid.isNullOrBlank()) {
-      emit(TripResult.Error(TripError.PermissionDenied))
-      return@flow
-    }
-    emitAll(
-        dataSource
-            .observeOwnedTrips(uid)
-            .map { documents ->
-              if (authRepository.currentUser?.uid != uid)
-                  TripResult.Error(TripError.PermissionDenied)
-              else documents?.toTripsResult() ?: TripResult.Error(TripError.NetworkError)
-            }
-            .catch { error ->
-              if (error is CancellationException) throw error
-              emit(
-                  TripResult.Error(
-                      (error as? Exception)?.toFirestoreFailure()?.toTripError(TripError.Unknown)
-                          ?: TripError.Unknown
-                  )
-              )
-            }
-    )
+  override fun observeMyTrips() = observeTrips(dataSource::observeOwnedTrips)
+
+  override fun observeUpcomingTrips() = observeTrips { uid ->
+    dataSource.observeUpcomingTrips(TripStatus.PUBLISHED.name, now(), uid)
   }
 
-  override fun observeUpcomingTrips(): Flow<TripResult<List<Trip>>> = flow {
+  private fun observeTrips(
+      query: (String) -> Flow<List<TripFirestoreDocument>?>
+  ): Flow<TripResult<List<Trip>>> = flow {
     val uid = authRepository.currentUser?.uid
     if (uid.isNullOrBlank()) {
       emit(TripResult.Error(TripError.PermissionDenied))
       return@flow
     }
     emitAll(
-        dataSource
-            .observeUpcomingTrips(TripStatus.PUBLISHED.name, now(), uid)
+        query(uid)
             .map { documents ->
               if (authRepository.currentUser?.uid != uid)
                   TripResult.Error(TripError.PermissionDenied)

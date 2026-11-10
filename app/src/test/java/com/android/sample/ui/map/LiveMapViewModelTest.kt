@@ -6,6 +6,7 @@ import com.android.sample.MainDispatcherRule
 import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
+import com.android.sample.ui.trips.discoveryTrip
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -26,7 +27,7 @@ class LiveMapViewModelTest {
   private val a = trip("a", "alice")
   private val b = trip("b", "bob")
   private val map = MutableStateFlow<TripMapUiState>(TripMapUiState.Content(listOf(a, b)))
-  private val point = MutableStateFlow<Location?>(null)
+  private val point = MutableStateFlow<Location?>(Location("", Double.NaN, Double.NaN))
   private val orders = MutableStateFlow<OrderResult<List<Order>>>(OrderResult.Success(emptyList()))
   private val fixes =
       MutableStateFlow(mapOf("alice" to fix(), "bob" to fix().copy(latitude = 46.54)))
@@ -36,12 +37,17 @@ class LiveMapViewModelTest {
         override fun observeMyOrders() = orders
       }
 
-  private fun model(clock: Clock = Clock.fixed(now, ZoneOffset.UTC)): LiveMapViewModel =
+  private fun model(
+      clock: Clock = Clock.fixed(now, ZoneOffset.UTC),
+      repository: TripRepository = trips,
+      positions: CommandoPositionRepository =
+          FakeCommandoPositionRepository(identity, Clock.fixed(now, ZoneOffset.UTC), fixes),
+  ): LiveMapViewModel =
       LiveMapViewModel(
               map,
               orderRepo,
-              trips,
-              FakeCommandoPositionRepository(identity, Clock.fixed(now, ZoneOffset.UTC), fixes),
+              repository,
+              positions,
               point,
               { identity.value },
               identity,
@@ -63,12 +69,12 @@ class LiveMapViewModelTest {
   }
 
   @Test
-  fun discoveryShowsOnlyFreshNearbySharingCommandos() = modelTest {
+  fun discoveryExcludesDistantAndOwnTrips() = modelTest {
     val model = model()
     runCurrent()
     assertEquals(LiveMapMode.DISCOVERY, content(model).mode)
     assertEquals(listOf("alice"), content(model).commandos.map { it.ownerId })
-    fixes.value = fixes.value - "alice"
+    map.value = TripMapUiState.Content(listOf(a.copy(ownerId = "viewer"), b))
     runCurrent()
     assertTrue(content(model).commandos.isEmpty())
   }
@@ -84,6 +90,7 @@ class LiveMapViewModelTest {
     point.value = Location("Elsewhere", 0.0, 0.0)
     runCurrent()
     assertEquals(2, content(model).commandos.size)
+    point.value = null
     orders.value = OrderResult.Success(listOf(order("b1", b)))
     runCurrent()
     assertEquals(listOf("bob"), content(model).commandos.map { it.ownerId })
@@ -118,24 +125,9 @@ class LiveMapViewModelTest {
     assertEquals(0, fixes.subscriptionCount.value)
     assertEquals(0, orders.subscriptionCount.value)
     assertEquals(0, map.subscriptionCount.value)
-  }
-
-  @Test
-  fun devicePositionChangesDiscoveryWithoutChangingTheDeliveryFilter() = modelTest {
-    point.value = CAMPUS_DISCOVERY_CENTER
-    val model = model()
+    model.start()
     runCurrent()
-    model.updateLocation(
-        MapLocationUiState.Resolved(
-            DeviceLocationResult.Available(DeviceLocation(46.54, 6.566, 100f, 0))
-        )
-    )
-    runCurrent()
-    assertEquals(listOf("bob"), content(model).commandos.map { it.ownerId })
-    assertEquals(CAMPUS_DISCOVERY_CENTER, point.value)
-    model.stop()
-    runCurrent()
-    assertEquals(0, fixes.subscriptionCount.value)
+    assertEquals(0, orders.subscriptionCount.value)
   }
 
   @Test
@@ -161,27 +153,14 @@ class LiveMapViewModelTest {
     val repo = FakeTripRepository("viewer", initialTrips = listOf(closed), now = { now })
     orders.value = OrderResult.Success(listOf(order("a1", a)))
     map.value = TripMapUiState.Empty
-    val model =
-        LiveMapViewModel(
-            map,
-            orderRepo,
-            repo,
-            FakeCommandoPositionRepository(identity, Clock.fixed(now, ZoneOffset.UTC), fixes),
-            point,
-            { identity.value },
-            identity,
-            Clock.fixed(now, ZoneOffset.UTC),
-            { 0L },
-        )
-    store.put("live", model)
-    model.start()
+    val model = model(repository = repo)
     runCurrent()
     assertEquals(LiveMapMode.TRACKING, content(model).mode)
     assertEquals(TripStatus.IN_PROGRESS, content(model).commandos.single().trips.single().status)
   }
 
   @Test
-  fun quietExpiryRemovesMarkersAndRetryKeepsTheDeviceOrigin() = modelTest {
+  fun quietExpiryRemovesMarkersWithoutBackendEvents() = modelTest {
     var time = now
     val clock =
         object : Clock() {
@@ -198,15 +177,6 @@ class LiveMapViewModelTest {
     advanceTimeBy(LiveMapViewModel.LOCAL_REFRESH_MILLIS)
     runCurrent()
     assertTrue(content(model).commandos.isEmpty())
-    time = now
-    model.updateLocation(
-        MapLocationUiState.Resolved(
-            DeviceLocationResult.Available(DeviceLocation(46.54, 6.566, 100f, 0))
-        )
-    )
-    model.start()
-    runCurrent()
-    assertEquals(listOf("bob"), content(model).commandos.map { it.ownerId })
   }
 
   @Test
@@ -238,19 +208,64 @@ class LiveMapViewModelTest {
     assertEquals(LiveMapState.Unavailable, model.uiState.value)
   }
 
+  @Test
+  fun failedPositionObservationKeepsTrackingAndForeignOrdersAreRejected() = modelTest {
+    val failing =
+        object : CommandoPositionRepository by FakeCommandoPositionRepository(identity) {
+          override fun observe(ownerId: String, orderId: String?): Flow<CommandoPosition?> = flow {
+            throw IllegalStateException()
+          }
+        }
+    orders.value = OrderResult.Success(listOf(order("a1", a)))
+    val model = model(positions = failing)
+    runCurrent()
+    assertNull(content(model).commandos.single().position)
+    orders.value = OrderResult.Success(listOf(order("a1", a).copy(requesterId = "other")))
+    runCurrent()
+    assertEquals(LiveMapState.Unavailable, model.uiState.value)
+  }
+
+  @Test
+  fun signedOutEntryNeverSubscribes() = modelTest {
+    identity.value = null
+    val model = model()
+    runCurrent()
+    assertEquals(LiveMapState.Loading, model.uiState.value)
+    assertEquals(0, orders.subscriptionCount.value)
+  }
+
+  @Test
+  fun devicePositionChangesDiscoveryWithoutChangingTheDeliveryFilter() = modelTest {
+    point.value = CAMPUS_DISCOVERY_CENTER
+    val model = model()
+    runCurrent()
+    model.updateLocation(
+        MapLocationUiState.Resolved(
+            DeviceLocationResult.Available(DeviceLocation(46.54, 6.566, 100f, 0))
+        )
+    )
+    runCurrent()
+    assertEquals(listOf("bob"), content(model).commandos.map { it.ownerId })
+    assertEquals(CAMPUS_DISCOVERY_CENTER, point.value)
+    model.start()
+    runCurrent()
+    assertEquals(listOf("bob"), content(model).commandos.map { it.ownerId })
+    model.stop()
+    runCurrent()
+    assertEquals(0, fixes.subscriptionCount.value)
+  }
+
   private fun content(model: LiveMapViewModel) = model.uiState.value as LiveMapState.Content
 
   private fun fix() = CommandoPosition(46.521, 6.566, 100.0, now)
 
   private fun trip(id: String, uid: String) =
-      Trip(
+      discoveryTrip(
           id,
-          uid,
           TripLocations.stores.first(),
-          now.plusSeconds(3600),
           TripLocations.handoffPoints.first(),
-          TripStatus.PUBLISHED,
-          now,
+          now.plusSeconds(3600),
+          uid,
           now,
       )
 

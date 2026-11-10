@@ -48,27 +48,18 @@ class LiveDiscoveryFeedsEmulatorTest {
             OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
         withUpdates(repo.observeMyOrders()) { updates ->
           updates.await { it is OrderResult.Success }
-          val placed =
-              (repo.createOrder(OrderDraft(trip.id, listOf(OrderItem("milk", "Milk", 220, 1))))
-                      as OrderResult.Success)
-                  .data
-          updates.await {
-            it is OrderResult.Success &&
-                it.data.any { order ->
-                  order.id == placed.id && order.status == OrderStatus.PENDING
-                }
-          }
+          val draft = OrderDraft(trip.id, listOf(OrderItem("milk", "Milk", 220, 1)))
+          val placed = (repo.createOrder(draft) as OrderResult.Success).data
+          updates.await { it.hasOrder(placed.id, OrderStatus.PENDING) }
           assertTrue(repo.cancelOrder(placed.id) is OrderResult.Success)
-          updates.await {
-            it is OrderResult.Success &&
-                it.data.any { order ->
-                  order.id == placed.id && order.status == OrderStatus.CANCELLED
-                }
-          }
+          updates.await { it.hasOrder(placed.id, OrderStatus.CANCELLED) }
         }
       }
     }
   }
+
+  private fun OrderResult<List<Order>>.hasOrder(id: String, status: OrderStatus) =
+      this is OrderResult.Success && data.any { it.id == id && it.status == status }
 
   private suspend fun <T> withUpdates(flow: Flow<T>, block: suspend (ReceiveChannel<T>) -> Unit) =
       coroutineScope {
@@ -89,14 +80,13 @@ class LiveDiscoveryFeedsEmulatorTest {
           client.firestore,
       )
 
-  private suspend fun publish(owner: EmulatorClient) =
-      (trips(owner)
-              .publishTrip(
-                  NewTrip(
-                      TripLocations.stores.first(),
-                      Instant.now().plusSeconds(3600),
-                      TripLocations.handoffPoints.first(),
-                  )
-              ) as TripResult.Success)
-          .data
+  private suspend fun publish(owner: EmulatorClient): Trip {
+    val draft =
+        NewTrip(
+            TripLocations.stores.first(),
+            Instant.now().plusSeconds(3600),
+            TripLocations.handoffPoints.first(),
+        )
+    return (trips(owner).publishTrip(draft) as TripResult.Success).data
+  }
 }

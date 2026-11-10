@@ -574,13 +574,17 @@ class TripRepositoryFirestoreTest {
   @Test
   fun liveUpcomingFeedRejectsMissingSessionsAndMapsSourceFailures() = runTest {
     val source = InMemoryTripFirestoreDataSource()
+    val repository = createRepository(source)
     assertTripError(
         PermissionDenied,
         createRepository(source, userId = null).observeUpcomingTrips().first(),
     )
-    assertTrue(createRepository(source).observeUpcomingTrips().first() is TripResult.Success)
+    assertTrue(repository.observeUpcomingTrips().first() is TripResult.Success)
     source.failure = IOException("offline")
-    assertTripError(NetworkError, createRepository(source).observeUpcomingTrips().first())
+    assertTripError(NetworkError, repository.observeUpcomingTrips().first())
+    source.failure = CancellationException("cancelled")
+    val failure = runCatching { repository.observeUpcomingTrips().first() }.exceptionOrNull()
+    assertTrue(failure is CancellationException)
   }
 
   @Test

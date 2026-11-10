@@ -82,6 +82,11 @@ class AppJourneyTest {
             google,
             productRepository = products,
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+            positionRepositoryFactory = {
+              FakeCommandoPositionRepository(
+                  kotlinx.coroutines.flow.MutableStateFlow<String?>(it())
+              )
+            },
         )
       }
     }

@@ -25,4 +25,26 @@
     <string name="nav_trip_list">Back to trip list</string>
     <string name="mock_map_details_unavailable">Sample trip · details unavailable</string>
     <string name="nav_orders_demo">Demo orders · stored only for this session</string>
+    <string name="position_sharing_title">Share my live position</string>
+    <string name="position_sharing_off">Position sharing is off</string>
+    <string name="position_sharing_starting">Connecting to position sharing…</string>
+    <string name="position_sharing_live">Sharing while the app is in the foreground</string>
+    <string name="position_sharing_stopping">Stopping and removing your position…</string>
+    <string name="position_sharing_permission">Location permission is required. Enable sharing to retry.</string>
+    <string name="position_sharing_location">Position unavailable. Enable sharing to retry.</string>
+    <string name="position_sharing_publish">Sharing failed. Enable sharing to retry.</string>
+    <string name="position_sharing_stop">Your position could not be removed. Turn sharing off to retry.</string>
+    <string name="position_sharing_no_trip">No available or ongoing trip to share</string>
+    <string name="live_map_tracking_title">Your active deliveries</string>
+    <string name="live_map_loading">Loading your orders…</string>
+    <string name="live_map_unavailable">Live positions unavailable · Retry</string>
+    <string name="live_map_none">No commandos sharing nearby</string>
+    <string name="live_map_position_unavailable">Position unavailable</string>
+    <string name="live_map_outside">Position outside the map area</string>
+    <string name="live_map_position_live">Live approximate position</string>
+    <string name="live_map_view_order">Order %1$d · %2$s</string>
+    <string name="live_map_view_trip">%1$s · %2$s · %3$s</string>
+    <string name="live_map_marker">Live commando · %1$s</string>
+    <plurals name="live_tracking_count"><item quantity="one">Tracking %d commando</item><item quantity="other">Tracking %d commandos</item></plurals>
+    <plurals name="live_discovery_count"><item quantity="one">%d nearby commando</item><item quantity="other">%d nearby commandos</item></plurals>
 </resources>

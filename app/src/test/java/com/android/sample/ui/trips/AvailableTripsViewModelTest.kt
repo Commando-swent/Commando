@@ -294,6 +294,8 @@ class AvailableTripsViewModelTest {
     var cancel = false
     var failure: Exception? = null
 
+    override fun observeUpcomingTrips() = kotlinx.coroutines.flow.flow { emit(getUpcomingTrips()) }
+
     override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
       calls++
       gate?.await()

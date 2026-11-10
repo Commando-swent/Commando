@@ -68,6 +68,9 @@ class AvailableTripsViewModel(
   /** Reloads or retries using the same cancellation policy as the map. */
   fun retry() = feed.refresh()
 
+  /** Releases the live feed when the destination is no longer foregrounded. */
+  fun stop() = feed.clear()
+
   private fun show(feed: TripFeed) {
     mutableState.value =
         when (feed) {

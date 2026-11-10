@@ -61,6 +61,9 @@ internal val CAMPUS_MAP_PROJECTION = CampusMapProjection(46.516, 46.526, 6.559, 
 
 private val DEVICE_POSITION_DIAMETER = 24.dp
 private val DEVICE_POSITION_INSET = 5.dp
+private val COMMANDO_MARKER_DIAMETER = 48.dp
+private val COMMANDO_MARKER_BORDER = 2.dp
+private val COMMANDO_MARKER_PADDING = 10.dp
 private const val DEVICE_POSITION_HALO_ALPHA = 0.25f
 
 /** Full-viewport map with the Figma header, list/map switch and floating trip/state cards. */
@@ -78,7 +81,14 @@ fun TripMapScreen(
     locationState: MapLocationUiState = MapLocationUiState.Idle,
     onLocate: (() -> Unit)? = null,
     mapSurface: @Composable (Modifier) -> Unit = { CampusMapBackground(it) },
+    liveState: LiveMapState? = null,
+    onLiveOrder: (String) -> Unit = {},
 ) {
+  var selectedOwner by rememberSaveable { mutableStateOf<String?>(null) }
+  val selectTrip = { id: String ->
+    selectedOwner = null
+    onSelectTrip(id)
+  }
   val content = state as? TripMapUiState.Content
   val groups = remember(content?.trips) { content?.markerGroups.orEmpty() }
   val snackbar = remember { SnackbarHostState() }
@@ -105,6 +115,7 @@ fun TripMapScreen(
   val uri = LocalUriHandler.current
   val density = LocalDensity.current
   var viewportBounds by remember { mutableStateOf(Rect.Zero) }
+  var headerHeight by remember { mutableStateOf(0.dp) }
   var controlsBounds by remember { mutableStateOf(Rect.Zero) }
   var selectorBounds by
       remember(groups, viewportBounds, controlsBounds, camera) { mutableStateOf(Rect.Zero) }
@@ -128,11 +139,16 @@ fun TripMapScreen(
         groups,
         content?.selectedTripId,
         selectedPoint,
-        onSelectTrip,
+        selectTrip,
         mapSurface,
         fix,
         camera,
         { dx, dy, zoom -> camera = camera.moved(dx, dy, zoom) },
+        commandos = (liveState as? LiveMapState.Content)?.commandos.orEmpty(),
+        onSelectCommando = {
+          selectedOwner = it
+          onClearSelection()
+        },
         onViewportBounds = { viewportBounds = it },
     ) { id, bounds ->
       markerBounds[id] = bounds
@@ -149,29 +165,61 @@ fun TripMapScreen(
                 )
             )
     )
-    val subtitle = mapSubtitle(state, fix, nearby.size)
+    val tracking = (liveState as? LiveMapState.Content)?.takeIf { it.mode == LiveMapMode.TRACKING }
+    val subtitle =
+        if (tracking != null)
+            pluralStringResource(
+                R.plurals.live_tracking_count,
+                tracking.commandos.size,
+                tracking.commandos.size,
+            )
+        else mapSubtitle(state, fix, nearby.size)
+    val availablePanelHeight = (maxHeight - headerHeight - 32.dp).coerceAtLeast(48.dp)
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
           controlsBounds = it.boundsInRoot()
         }
     ) {
-      MapDiscoveryHeader(
-          subtitle,
-          onBack,
-          onRefresh,
-          state != TripMapUiState.Loading && state != TripMapUiState.SessionEnded,
-          Modifier.fillMaxWidth(),
-      )
-      fix?.let {
-        Text(
-            stringResource(R.string.map_location_position, it.accuracyMeters.roundToInt()),
-            style = MaterialTheme.typography.labelSmall,
+      Column(
+          Modifier.onGloballyPositioned { headerHeight = with(density) { it.size.height.toDp() } }
+      ) {
+        MapDiscoveryHeader(
+            subtitle,
+            onBack,
+            onRefresh,
+            state != TripMapUiState.Loading && state != TripMapUiState.SessionEnded,
+            Modifier.fillMaxWidth(),
+            title =
+                stringResource(
+                    if (tracking != null) R.string.live_map_tracking_title
+                    else R.string.mock_map_title
+                ),
         )
-      }
-      selectedPoint?.let {
-        TextButton(onClearPoint, Modifier.testTag(TripMapTestTags.CLEAR_FILTER)) {
-          Text(stringResource(R.string.trip_map_clear_filter, it.name), fontSize = 12.sp)
+        fix?.let {
+          Text(
+              stringResource(R.string.map_location_position, it.accuracyMeters.roundToInt()),
+              style = MaterialTheme.typography.labelSmall,
+          )
         }
+        selectedPoint?.let {
+          TextButton(onClearPoint, Modifier.testTag(TripMapTestTags.CLEAR_FILTER)) {
+            Text(stringResource(R.string.trip_map_clear_filter, it.name), fontSize = 12.sp)
+          }
+        }
+      }
+      liveState?.let { live ->
+        LiveMapPanel(
+            live,
+            selectedOwner,
+            {
+              selectedOwner = it
+              onClearSelection()
+            },
+            onTripDetails,
+            onLiveOrder,
+            onRefresh,
+            Modifier.heightIn(max = availablePanelHeight),
+        )
       }
     }
     if (
@@ -219,7 +267,7 @@ fun TripMapScreen(
               offMap.forEach { group ->
                 val trip = group.first()
                 TextButton(
-                    { onSelectTrip(trip.id) },
+                    { selectTrip(trip.id) },
                     Modifier.testTag(TripMapTestTags.OFF_MAP_PREFIX + trip.id),
                 ) {
                   Text(
@@ -250,7 +298,7 @@ fun TripMapScreen(
                 state.selectedGroup.map {
                   it.mapSummary(selectedPoint = selectedPoint, devicePosition = fix)
                 },
-                onSelectTrip,
+                selectTrip,
                 onClearSelection,
                 { onTripDetails(trip.id) },
                 Modifier.fillMaxWidth().weight(1f, fill = false),
@@ -347,7 +395,7 @@ private fun Trip.markerTime(): String {
 
 /** Presentation only; distance calculation reuses the model's shared geodesic helper. */
 @Composable
-private fun Trip.mapSummary(
+internal fun Trip.mapSummary(
     position: MapPosition = MapPosition(0.0, 0.0),
     selectedPoint: Location? = null,
     devicePosition: DeviceLocation? = null,
@@ -404,6 +452,8 @@ private fun MapTripCanvas(
     devicePosition: DeviceLocation?,
     camera: MapCamera,
     onCameraChange: (Double, Double, Float) -> Unit,
+    commandos: List<LiveCommando>,
+    onSelectCommando: (String) -> Unit,
     onViewportBounds: (Rect) -> Unit,
     modifier: Modifier = Modifier,
     onMarkerBounds: (String, Rect) -> Unit,
@@ -485,6 +535,42 @@ private fun MapTripCanvas(
                 },
             labelShift = x.coerceIn(half, maxWidth - half) - x,
         )
+      }
+    }
+    commandos.forEach { person ->
+      person.position?.let { fix ->
+        CAMPUS_MAP_PROJECTION.project(Location("", fix.latitude, fix.longitude))?.let { point ->
+          val projected = camera.project(point)
+          if (projected.inViewport) {
+            Surface(
+                onClick = { onSelectCommando(person.ownerId) },
+                modifier =
+                    Modifier.offset(
+                            maxWidth * projected.x.toFloat() - COMMANDO_MARKER_DIAMETER / 2,
+                            maxHeight * projected.y.toFloat() - COMMANDO_MARKER_DIAMETER / 2,
+                        )
+                        .size(COMMANDO_MARKER_DIAMETER)
+                        .testTag(LiveMapTestTags.MARKER_PREFIX + person.ownerId),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.primary,
+                border =
+                    androidx.compose.foundation.BorderStroke(
+                        COMMANDO_MARKER_BORDER,
+                        MaterialTheme.colorScheme.surface,
+                    ),
+            ) {
+              Icon(
+                  painterResource(R.drawable.ic_live_commando),
+                  stringResource(
+                      R.string.live_map_marker,
+                      person.trips.map { it.store.name }.distinct().joinToString(" · "),
+                  ),
+                  Modifier.padding(COMMANDO_MARKER_PADDING),
+                  tint = MaterialTheme.colorScheme.onPrimary,
+              )
+            }
+          }
+        }
       }
     }
   }

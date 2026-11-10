@@ -83,7 +83,17 @@ class OrderNavigationTest {
   private fun show(tripRepository: TripRepository = trips) {
     content = {
       SampleAppTheme {
-        CommandoApp(auth, tripRepository, credentials, orderRepositoryFactory = factory)
+        CommandoApp(
+            auth,
+            tripRepository,
+            credentials,
+            orderRepositoryFactory = factory,
+            positionRepositoryFactory = {
+              FakeCommandoPositionRepository(
+                  kotlinx.coroutines.flow.MutableStateFlow(auth.currentUser?.uid)
+              )
+            },
+        )
       }
     }
     compose.setContent(content)
@@ -173,6 +183,8 @@ class OrderNavigationTest {
 
   @Test
   fun emptyMapHasNoSyntheticMarkersOrTripLookupsAndReturnsToList() {
+    factoryCalls =
+        1 // Discovery with no active orders; tracking intentionally resolves order trips.
     val lookups = mutableListOf<String>()
     show(
         object : TripRepository by trips {

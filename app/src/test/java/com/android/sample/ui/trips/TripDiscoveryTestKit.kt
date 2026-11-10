@@ -27,6 +27,8 @@ class ScriptedTripRepository(
   /** Live, read-only view of every ID passed to [getTripById], in call order. */
   val requestedIds: List<String> = requested
 
+  override fun observeUpcomingTrips() = kotlinx.coroutines.flow.flow { emit(getUpcomingTrips()) }
+
   override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
     upcomingLoads++
     return upcoming()

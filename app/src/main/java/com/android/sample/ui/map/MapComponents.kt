@@ -133,6 +133,7 @@ internal fun MapDiscoveryHeader(
     onRefresh: () -> Unit,
     refreshEnabled: Boolean,
     modifier: Modifier = Modifier,
+    title: String = stringResource(R.string.mock_map_title),
 ) {
   MapFloatingSurface(
       modifier.testTag(TripMapTestTags.HEADER),
@@ -145,7 +146,7 @@ internal fun MapDiscoveryHeader(
     ) {
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            stringResource(R.string.mock_map_title),
+            title,
             style = MaterialTheme.typography.titleMedium,
             fontSize = 21.sp,
             lineHeight = 28.sp,

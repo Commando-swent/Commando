@@ -330,6 +330,8 @@ class TripMapViewModelTest {
     var calls = 0
     var read: suspend () -> TripResult<List<Trip>> = { fake.getUpcomingTrips() }
 
+    override fun observeUpcomingTrips() = kotlinx.coroutines.flow.flow { emit(getUpcomingTrips()) }
+
     override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
       calls++
       return read()

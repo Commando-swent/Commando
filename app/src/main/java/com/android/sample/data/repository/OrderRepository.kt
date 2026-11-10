@@ -8,6 +8,10 @@ import com.android.sample.model.OrderStatus
 
 /** Inject the SAME session-scoped repository into Review, My Orders and Order Details. */
 interface OrderRepository {
+  /** Observe current requester orders, retaining an unconfirmed state until server data arrives. */
+  fun observeMyOrders(): kotlinx.coroutines.flow.Flow<OrderResult<List<Order>>> =
+      kotlinx.coroutines.flow.flow { emit(getMyOrders()) }
+
   /** Derives requester identity from the session; does not clear the caller's draft. */
   suspend fun createOrder(draft: OrderDraft): OrderResult<Order>
 

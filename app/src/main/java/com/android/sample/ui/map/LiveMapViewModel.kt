@@ -75,104 +75,7 @@ class LiveMapViewModel(
                 .map { if (it is TripMapUiState.Content) it.copy(selectedTripId = null) else it }
                 .distinctUntilChanged()
         combine(tripChanges, orders.observeMyOrders(), ::Pair).collectLatest { (map, result) ->
-          val mine = (result as? OrderResult.Success)?.data
-          if (mine == null || mine.any { it.requesterId != session.initialUserId }) {
-            mutableState.value = LiveMapState.Unavailable
-            return@collectLatest
-          }
-          val active = mine.filter { it.status.isActiveForTracking() }
-          val tracking = active.isNotEmpty()
-          if (
-              !tracking &&
-                  (map == TripMapUiState.Loading ||
-                      map is TripMapUiState.Error ||
-                      map == TripMapUiState.SessionEnded)
-          ) {
-            mutableState.value =
-                if (map == TripMapUiState.Loading) LiveMapState.Loading
-                else LiveMapState.Unavailable
-            return@collectLatest
-          }
-          val eligible = (map as? TripMapUiState.Content)?.trips.orEmpty()
-          val associated =
-              if (tracking)
-                  active
-                      .map { it.tripId }
-                      .distinct()
-                      .map { id ->
-                        val trip =
-                            (trips.getTripById(id) as? TripResult.Success)?.data
-                                ?: throw IllegalStateException("Order trip unavailable")
-                        check(trip.id == id && trip.ownerId.isNotBlank())
-                        trip
-                      }
-              else eligible.filter { it.ownerId != session.initialUserId }
-          currentCoroutineContext().ensureActive()
-          if (session.hasEnded()) return@collectLatest
-          val people =
-              associated
-                  .groupBy { it.ownerId }
-                  .map { (uid, ownedTrips) ->
-                    LiveCommando(
-                        uid,
-                        ownedTrips.sortedBy { it.id },
-                        active
-                            .filter { order -> ownedTrips.any { it.id == order.tripId } }
-                            .sortedBy { it.id },
-                    )
-                  }
-                  .sortedBy { it.ownerId }
-          val updates = people.map { person ->
-            positions
-                .observe(person.ownerId, person.orders.firstOrNull()?.id)
-                .catch { cause ->
-                  if (cause is CancellationException) throw cause
-                  emit(null)
-                }
-                .map { person.copy(position = it) }
-          }
-          val live =
-              if (updates.isEmpty()) flowOf(emptyList()) else combine(updates) { it.toList() }
-          combine(live, selectedPoint, device, timeWhileVisible()) { commandos, point, fix, now ->
-                val origin =
-                    fix?.takeIf { it.isUsable(elapsedMillis()) && it.canIdentifyNearbyTrips() }
-                        ?.let { Location("", it.latitude, it.longitude) }
-                        ?: point?.takeIf { it.hasValidCoordinates() }
-                        ?: CAMPUS_DISCOVERY_CENTER
-                val currentTrips = eligible.filter {
-                  it.status == TripStatus.PUBLISHED && it.scheduledAt > now
-                }
-                val currentIds = currentTrips.mapTo(hashSetOf()) { it.id }
-                val currentPeople =
-                    commandos
-                        .map { person ->
-                          person.copy(
-                              trips =
-                                  if (tracking) person.trips
-                                  else person.trips.filter { it.id in currentIds },
-                              position = person.position?.takeIf { fix -> fix.isFresh(now) },
-                          )
-                        }
-                        .filter { person ->
-                          tracking ||
-                              person.position?.let { position ->
-                                person.trips.isNotEmpty() &&
-                                    distanceMeters(
-                                        origin,
-                                        Location("", position.latitude, position.longitude),
-                                    ) <= HANDOFF_RADIUS_METERS
-                              } == true
-                        }
-                LiveMapState.Content(
-                    if (tracking) LiveMapMode.TRACKING else LiveMapMode.DISCOVERY,
-                    currentPeople,
-                    if (tracking) emptyList() else currentTrips,
-                )
-              }
-              .collect {
-                currentCoroutineContext().ensureActive()
-                if (!session.hasEnded()) mutableState.value = it
-              }
+          observeMap(map, result)
         }
       } catch (cancelled: CancellationException) {
         throw cancelled
@@ -180,6 +83,109 @@ class LiveMapViewModel(
         mutableState.value = LiveMapState.Unavailable
       }
     }
+  }
+
+  private suspend fun observeMap(map: TripMapUiState, result: OrderResult<List<Order>>) {
+    val mine = (result as? OrderResult.Success)?.data
+    if (mine == null || mine.any { it.requesterId != session.initialUserId }) {
+      mutableState.value = LiveMapState.Unavailable
+      return
+    }
+    val active = mine.filter { it.status.isActiveForTracking() }
+    val tracking = active.isNotEmpty()
+    if (
+        !tracking &&
+            (map == TripMapUiState.Loading ||
+                map is TripMapUiState.Error ||
+                map == TripMapUiState.SessionEnded)
+    ) {
+      mutableState.value =
+          if (map == TripMapUiState.Loading) LiveMapState.Loading else LiveMapState.Unavailable
+      return
+    }
+    val eligible = (map as? TripMapUiState.Content)?.trips.orEmpty()
+    val associated = associatedTrips(active, eligible)
+    currentCoroutineContext().ensureActive()
+    if (session.hasEnded()) return
+    val people =
+        associated
+            .groupBy { it.ownerId }
+            .map { (uid, owned) ->
+              val ids = owned.mapTo(hashSetOf()) { it.id }
+              val associatedOrders = active.filter { it.tripId in ids }.sortedBy { it.id }
+              LiveCommando(uid, owned.sortedBy { it.id }, associatedOrders)
+            }
+            .sortedBy { it.ownerId }
+    val updates = people.map(::observePerson)
+    val live = if (updates.isEmpty()) flowOf(emptyList()) else combine(updates) { it.toList() }
+    combine(live, selectedPoint, device, timeWhileVisible()) { commandos, point, fix, now ->
+          val origin =
+              fix?.takeIf { it.isUsable(elapsedMillis()) && it.canIdentifyNearbyTrips() }
+                  ?.let { Location("", it.latitude, it.longitude) } ?: point
+          render(commandos, eligible, tracking, origin, now)
+        }
+        .collect {
+          currentCoroutineContext().ensureActive()
+          if (!session.hasEnded()) mutableState.value = it
+        }
+  }
+
+  private suspend fun associatedTrips(active: List<Order>, eligible: List<Trip>): List<Trip> {
+    if (active.isEmpty()) return eligible.filter { it.ownerId != session.initialUserId }
+    return active
+        .map { it.tripId }
+        .distinct()
+        .map { id ->
+          val trip =
+              (trips.getTripById(id) as? TripResult.Success)?.data
+                  ?: throw IllegalStateException("Order trip unavailable")
+          check(trip.id == id && trip.ownerId.isNotBlank())
+          trip
+        }
+  }
+
+  private fun observePerson(person: LiveCommando) =
+      positions
+          .observe(person.ownerId, person.orders.firstOrNull()?.id)
+          .catch { cause ->
+            if (cause is CancellationException) throw cause
+            emit(null)
+          }
+          .map { person.copy(position = it) }
+
+  private fun render(
+      commandos: List<LiveCommando>,
+      eligible: List<Trip>,
+      tracking: Boolean,
+      point: Location?,
+      now: Instant,
+  ): LiveMapState.Content {
+    val origin = point?.takeIf { it.hasValidCoordinates() } ?: CAMPUS_DISCOVERY_CENTER
+    val currentTrips = eligible.filter { it.status == TripStatus.PUBLISHED && it.scheduledAt > now }
+    val ids = currentTrips.mapTo(hashSetOf()) { it.id }
+    val people =
+        commandos
+            .map { person ->
+              person.copy(
+                  trips = if (tracking) person.trips else person.trips.filter { it.id in ids },
+                  position = person.position?.takeIf { it.isFresh(now) },
+              )
+            }
+            .filter { person ->
+              tracking ||
+                  person.position?.let { position ->
+                    person.trips.isNotEmpty() &&
+                        distanceMeters(
+                            origin,
+                            Location("", position.latitude, position.longitude),
+                        ) <= HANDOFF_RADIUS_METERS
+                  } == true
+            }
+    return LiveMapState.Content(
+        if (tracking) LiveMapMode.TRACKING else LiveMapMode.DISCOVERY,
+        people,
+        if (tracking) emptyList() else currentTrips,
+    )
   }
 
   /** Location never mutates the shared delivery-location selection. */
@@ -210,5 +216,5 @@ class LiveMapViewModel(
   }
 }
 
-/** Used only without a usable device fix or selected delivery point; never replaces that filter. */
+/** Fallback when no valid discovery origin is available; never replaces the delivery filter. */
 internal val CAMPUS_DISCOVERY_CENTER = Location("EPFL", 46.521, 6.566)

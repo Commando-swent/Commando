@@ -294,12 +294,12 @@ private fun AuthenticatedApp(
   val stopError = stringResource(R.string.position_sharing_stop)
   val signOutAfterCleanup = {
     sharingScope.launch {
-      if (sharing.stop()) onSignOut() else photoSnackbarHost.showSnackbar(stopError)
+      if (sharing.stop().await()) onSignOut() else photoSnackbarHost.showSnackbar(stopError)
     }
     Unit
   }
   LaunchedEffect(appUiState.mode) {
-    if (appUiState.mode == AppMode.Requester && !sharing.stop())
+    if (appUiState.mode == AppMode.Requester && !sharing.stop().await())
         photoSnackbarHost.showSnackbar(stopError)
   }
   val (sharingState, toggleSharing) = rememberPositionSharingControl(sharing)

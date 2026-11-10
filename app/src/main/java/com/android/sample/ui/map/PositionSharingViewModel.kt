@@ -57,7 +57,7 @@ class PositionSharingViewModel(
   private var dirty = false
 
   init {
-    viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) stop() } }
+    viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) stop().await() } }
   }
 
   /** Only the permission host's explicit successful opt-in invokes this method. */
@@ -78,14 +78,16 @@ class PositionSharingViewModel(
     }
   }
 
-  /** Await a confirmed deletion before normal sign-out; report failure instead of hiding it. */
-  suspend fun stop(): Boolean = transitions.withLock {
-    worker?.cancelAndJoin()
-    worker = null
-    if (dirty) cleanup()
-    else {
-      mutableState.value = PositionSharingState.Off
-      true
+  /** Returns a ViewModel-owned stop operation; await confirmation before normal sign-out. */
+  fun stop(): Deferred<Boolean> = viewModelScope.async {
+    transitions.withLock {
+      worker?.cancelAndJoin()
+      worker = null
+      if (dirty) cleanup()
+      else {
+        mutableState.value = PositionSharingState.Off
+        true
+      }
     }
   }
 
@@ -110,37 +112,7 @@ class PositionSharingViewModel(
                 .minByOrNull { it.scheduledAt }
                 ?: mine.firstOrNull { it.status == TripStatus.IN_PROGRESS }
                 ?: throw SharingFailure(SharingFailureReason.NO_TRIP)
-        while (currentCoroutineContext().isActive) {
-          val result =
-              withTimeoutOrNull(MapLocationViewModel.REQUEST_TIMEOUT_MILLIS) {
-                provider.currentLocation()
-              }
-          if (result == DeviceLocationResult.PermissionDenied)
-              throw SharingFailure(SharingFailureReason.PERMISSION)
-          val fix =
-              (result as? DeviceLocationResult.Available)?.location
-                  ?: throw SharingFailure(SharingFailureReason.LOCATION)
-          val now = elapsedMillis()
-          if (
-              !fix.isUsable(now) || now - fix.elapsedRealtimeMillis >= DeviceLocation.MAX_AGE_MILLIS
-          )
-              throw SharingFailure(SharingFailureReason.LOCATION)
-          currentCoroutineContext().ensureActive()
-          if (session.hasEnded()) throw CancellationException("Sharing session ended")
-          // A monotonic fix time belongs only to this boot; persist its original UTC capture age.
-          val position =
-              CommandoPosition(
-                  fix.latitude,
-                  fix.longitude,
-                  fix.accuracyMeters.toDouble(),
-                  clock.instant().minusMillis(now - fix.elapsedRealtimeMillis),
-              )
-          dirty = true
-          repository.publish(trip.id, position)
-          currentCoroutineContext().ensureActive()
-          mutableState.value = PositionSharingState.Live
-          delay(PUBLICATION_INTERVAL_MILLIS)
-        }
+        publishPositions(trip)
       }
     } catch (cancelled: CancellationException) {
       throw cancelled
@@ -153,6 +125,38 @@ class PositionSharingViewModel(
         val deleted = cleanup()
         if (deleted) failure?.let { mutableState.value = PositionSharingState.Failed(it) }
       }
+    }
+  }
+
+  private suspend fun publishPositions(trip: Trip) {
+    while (currentCoroutineContext().isActive) {
+      val result =
+          withTimeoutOrNull(MapLocationViewModel.REQUEST_TIMEOUT_MILLIS) {
+            provider.currentLocation()
+          }
+      if (result == DeviceLocationResult.PermissionDenied)
+          throw SharingFailure(SharingFailureReason.PERMISSION)
+      val fix =
+          (result as? DeviceLocationResult.Available)?.location
+              ?: throw SharingFailure(SharingFailureReason.LOCATION)
+      val now = elapsedMillis()
+      if (!fix.isUsable(now) || now - fix.elapsedRealtimeMillis >= DeviceLocation.MAX_AGE_MILLIS)
+          throw SharingFailure(SharingFailureReason.LOCATION)
+      currentCoroutineContext().ensureActive()
+      if (session.hasEnded()) throw CancellationException("Sharing session ended")
+      // A monotonic fix time belongs only to this boot; persist its original UTC capture age.
+      val position =
+          CommandoPosition(
+              fix.latitude,
+              fix.longitude,
+              fix.accuracyMeters.toDouble(),
+              clock.instant().minusMillis(now - fix.elapsedRealtimeMillis),
+          )
+      dirty = true
+      repository.publish(trip.id, position)
+      currentCoroutineContext().ensureActive()
+      mutableState.value = PositionSharingState.Live
+      delay(PUBLICATION_INTERVAL_MILLIS)
     }
   }
 

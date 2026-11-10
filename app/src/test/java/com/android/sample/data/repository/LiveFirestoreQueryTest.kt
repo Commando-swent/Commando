@@ -44,6 +44,9 @@ class LiveFirestoreQueryTest {
       query.observeServerDocuments(db, "viewer").collect { values += it }
     }
     runCurrent()
+    sessions.captured.onAuthStateChanged(auth)
+    snapshots.captured.onEvent(null, null)
+    runCurrent()
     for ((cache, pending) in listOf(true to false, false to true, false to false)) {
       val metadata =
           mockk<SnapshotMetadata> {
@@ -58,7 +61,7 @@ class LiveFirestoreQueryTest {
       snapshots.captured.onEvent(snapshot, null)
       runCurrent()
     }
-    assertEquals(listOf(null, null, emptyList<FirestoreDocument>()), values)
+    assertEquals(listOf(null, null, null, emptyList<FirestoreDocument>()), values)
     job.cancel()
     runCurrent()
     verify(exactly = 1) {

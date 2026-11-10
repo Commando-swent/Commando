@@ -181,6 +181,10 @@ class PositionSharingViewModelTest {
     runCurrent()
     assertEquals(PositionSharingState.Live, model.uiState.value)
     assertEquals(2, positions.writes.size)
+    owned.value = TripResult.Error(TripError.Unknown)
+    runCurrent()
+    assertNull(positions.current)
+    assertEquals(PositionSharingState.Failed(SharingFailureReason.PUBLISH), model.uiState.value)
   }
 
   @Test

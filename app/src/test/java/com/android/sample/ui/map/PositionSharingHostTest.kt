@@ -20,6 +20,7 @@ import org.junit.*
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.util.ReflectionHelpers
 
 /** Permission results must belong to an explicit opt-in in the current foreground lifecycle. */
 @RunWith(RobolectricTestRunner::class)
@@ -80,6 +81,20 @@ class PositionSharingHostTest {
     compose.runOnIdle { registry.dispatchResult(request, true) }
     compose.waitForIdle()
     verify(exactly = 1) { model.start(true) }
+  }
+
+  @Test
+  fun configurationStopPreservesForegroundConsent() {
+    shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        .grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
+    compose.onNodeWithTag(PositionSharingTestTags.SHARING_TOGGLE).performClick()
+    compose.runOnIdle {
+      ReflectionHelpers.setField(compose.activity, "mChangingConfigurations", true)
+      lifecycle.registry.currentState = Lifecycle.State.CREATED
+    }
+    compose.waitForIdle()
+    verify(exactly = 1) { model.start(true) }
+    coVerify(exactly = 0) { model.stop() }
   }
 
   @Test

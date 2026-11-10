@@ -75,6 +75,9 @@ class TripMapViewModel(
     }
   }
 
+  /** Releases the live feed when the destination is no longer foregrounded. */
+  fun stop() = feed.clear()
+
   private fun show(result: TripFeed) {
     if (endSessionIfChanged()) return
     val trips = (result as? TripFeed.Matches)?.trips.orEmpty()

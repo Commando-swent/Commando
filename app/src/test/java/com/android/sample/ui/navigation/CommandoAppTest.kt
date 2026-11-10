@@ -31,6 +31,7 @@ import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
 import com.android.sample.R
+import com.android.sample.data.repository.FakeCommandoPositionRepository
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
@@ -197,6 +198,11 @@ class CommandoAppTest {
             picker,
             productRepository = products,
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+            positionRepositoryFactory = {
+              FakeCommandoPositionRepository(
+                  kotlinx.coroutines.flow.MutableStateFlow<String?>(it())
+              )
+            },
         )
       }
     }
@@ -239,7 +245,7 @@ class CommandoAppTest {
     compose.onNodeWithTag(ProfileTestTags.INITIALS).assertTextEquals(initials)
   }
 
-  private val tripTime = Instant.parse("2026-10-07T12:00:00Z")
+  private val tripTime = Instant.now()
   private val firstTrip =
       discoveryTrip(
           "trip-a",

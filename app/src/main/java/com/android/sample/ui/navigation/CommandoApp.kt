@@ -39,6 +39,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
+import com.android.sample.data.location.AndroidDeviceLocationProvider
+import com.android.sample.data.location.DeviceLocationProvider
+import com.android.sample.data.repository.CommandoPositionRepository
+import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
@@ -46,6 +50,7 @@ import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.ShoppingChecklistRepository
 import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
+import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.model.TripLocations
@@ -64,10 +69,16 @@ import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.map.LiveMapMode
+import com.android.sample.ui.map.LiveMapState
+import com.android.sample.ui.map.LiveMapViewModel
 import com.android.sample.ui.map.MapLocationHost
+import com.android.sample.ui.map.PositionSharingCard
+import com.android.sample.ui.map.PositionSharingViewModel
 import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
+import com.android.sample.ui.map.rememberPositionSharingControl
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
@@ -115,6 +126,8 @@ fun CommandoApp(
     orderRepositoryFactory: ((() -> String?) -> OrderRepository)? = null,
     checklistRepositoryFactory: ((() -> String?) -> ShoppingChecklistRepository)? = null,
     onLanguageSelected: (AppLanguage) -> Unit = {},
+    positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)? = null,
+    locationProvider: DeviceLocationProvider? = null,
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -220,6 +233,8 @@ fun CommandoApp(
               },
               signOutError = sessionUiState.signOutError,
               onLanguageSelected = onLanguageSelected,
+              positionRepositoryFactory = positionRepositoryFactory,
+              locationProvider = locationProvider,
           )
         }
       }
@@ -240,6 +255,8 @@ private fun AuthenticatedApp(
     onSignOut: () -> Unit,
     signOutError: AuthException?,
     onLanguageSelected: (AppLanguage) -> Unit,
+    positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)?,
+    locationProvider: DeviceLocationProvider?,
 ) {
   val appViewModel: AppViewModel = viewModel()
   // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
@@ -257,6 +274,35 @@ private fun AuthenticatedApp(
       CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
 
+  val context = LocalContext.current
+  val source =
+      locationProvider
+          ?: remember(context) { AndroidDeviceLocationProvider(context.applicationContext) }
+  val sharing: PositionSharingViewModel = viewModel {
+    PositionSharingViewModel(
+        {
+          positionRepositoryFactory?.invoke(orders::currentUserId)
+              ?: CommandoPositionRepositoryFirestore(orders::currentUserId)
+        },
+        tripRepository,
+        source,
+        orders::currentUserId,
+        orders.sessionChanges,
+    )
+  }
+  val sharingScope = rememberCoroutineScope()
+  val stopError = stringResource(R.string.position_sharing_stop)
+  val signOutAfterCleanup = {
+    sharingScope.launch {
+      if (sharing.stop()) onSignOut() else photoSnackbarHost.showSnackbar(stopError)
+    }
+    Unit
+  }
+  LaunchedEffect(appUiState.mode) {
+    if (appUiState.mode == AppMode.Requester && !sharing.stop())
+        photoSnackbarHost.showSnackbar(stopError)
+  }
+  val (sharingState, toggleSharing) = rememberPositionSharingControl(sharing)
   AppScaffold(
       currentScreen = currentScreen,
       mode = appUiState.mode,
@@ -315,6 +361,7 @@ private fun AuthenticatedApp(
             mode = appUiState.mode,
             tripState = tripState,
             onRetry = onRetry,
+            sharingControl = { PositionSharingCard(sharingState, toggleSharing) },
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
             onManageTrip = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId)) {
@@ -349,7 +396,11 @@ private fun AuthenticatedApp(
                   criteria = locationFilter.criteria,
               )
             }
-        RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
+        RefreshOnResume(
+            availableTripsViewModel,
+            availableTripsViewModel::retry,
+            availableTripsViewModel::stop,
+        )
         val selectedPoint by locationFilter.selected.collectAsState()
         AvailableTripsScreen(
             viewModel = availableTripsViewModel,
@@ -467,8 +518,13 @@ private fun AuthenticatedApp(
               "Catalogue requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
             }
         val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
-        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
-            draft ->
+        OrderFlowDraft(
+            orders,
+            tripRepository,
+            tripId,
+            editId,
+            { navController.popBackStack() },
+        ) { draft ->
           // This entry stays on the back stack behind Review, so returning keeps the selection.
           val catalogueViewModel: CatalogueViewModel =
               viewModel(viewModelStoreOwner = entry) {
@@ -507,8 +563,13 @@ private fun AuthenticatedApp(
             viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
         val tripState by tripViewModel.uiState.collectAsState()
         val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
-        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
-            draft ->
+        OrderFlowDraft(
+            orders,
+            tripRepository,
+            tripId,
+            editId,
+            { navController.popBackStack() },
+        ) { draft ->
           // The same draft holder as the Catalogue entry; there is no second editable cart.
           val reviewOrderViewModel: ReviewOrderViewModel =
               viewModel(viewModelStoreOwner = entry) {
@@ -557,13 +618,48 @@ private fun AuthenticatedApp(
                   criteria = locationFilter.criteria,
               )
             }
-        RefreshOnResume(map, map::refresh)
+        val live: LiveMapViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              LiveMapViewModel(
+                  map.uiState,
+                  orders.repository,
+                  tripRepository,
+                  sharing.repository,
+                  locationFilter.selected,
+                  orders::currentUserId,
+                  orders.sessionChanges,
+              )
+            }
+        val refresh = {
+          map.refresh()
+          live.start()
+        }
+        RefreshOnResume(
+            map,
+            refresh,
+            {
+              live.stop()
+              map.stop()
+            },
+        )
         val state by map.uiState.collectAsState()
+        val liveState by live.uiState.collectAsState()
         val selectedPoint by locationFilter.selected.collectAsState()
-        MapLocationHost(state == TripMapUiState.SessionEnded) { locationState, locate ->
+        val canvasState =
+            when (val current = liveState) {
+              LiveMapState.Loading -> TripMapUiState.Loading
+              LiveMapState.Unavailable -> TripMapUiState.Error(TripError.Unknown)
+              is LiveMapState.Content ->
+                  if (current.mode == LiveMapMode.TRACKING) TripMapUiState.Content(emptyList())
+                  else if (state is TripMapUiState.Content)
+                      (state as TripMapUiState.Content).copy(trips = current.discoveryTrips)
+                  else state
+            }
+        MapLocationHost(state == TripMapUiState.SessionEnded, source) { locationState, locate ->
+          LaunchedEffect(locationState) { live.updateLocation(locationState) }
           TripMapScreen(
-              state,
-              map::refresh,
+              canvasState,
+              refresh,
               map::selectTrip,
               map::clearSelection,
               onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
@@ -572,13 +668,24 @@ private fun AuthenticatedApp(
               onClearPoint = locationFilter::clear,
               locationState = locationState,
               onLocate = locate,
+              liveState = liveState,
+              onLiveOrder = {
+                navController.navigate(CommandoScreens.orderDetailsRoute(it)) {
+                  launchSingleTop = true
+                }
+              },
           )
         }
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->
         val model: MyOrdersViewModel =
             viewModel(viewModelStoreOwner = entry) {
-              MyOrdersViewModel(orders.repository, tripRepository, userId, loadImmediately = false)
+              MyOrdersViewModel(
+                  orders.repository,
+                  tripRepository,
+                  userId,
+                  loadImmediately = false,
+              )
             }
         RefreshOnResume(model, model::retry)
         MyOrdersScreen(
@@ -640,7 +747,7 @@ private fun AuthenticatedApp(
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
-            onSignOut = onSignOut,
+            onSignOut = signOutAfterCleanup,
             signOutError = signOutError,
             photo = photo,
             onPhotoClick = onPhotoClick,
@@ -703,14 +810,18 @@ private fun AuthenticatedApp(
  * when the user comes back to it. [key] restarts the observer when the destination's state changes.
  */
 @Composable
-private fun RefreshOnResume(key: Any, onResume: () -> Unit) {
+private fun RefreshOnResume(key: Any, onResume: () -> Unit, onStop: () -> Unit = {}) {
   val lifecycleOwner = LocalLifecycleOwner.current
   DisposableEffect(lifecycleOwner, key) {
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_RESUME) onResume()
+      if (event == Lifecycle.Event.ON_STOP) onStop()
     }
     lifecycleOwner.lifecycle.addObserver(observer)
-    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    onDispose {
+      lifecycleOwner.lifecycle.removeObserver(observer)
+      onStop()
+    }
   }
 }
 

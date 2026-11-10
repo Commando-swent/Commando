@@ -50,6 +50,8 @@ class TripMapScreenTest {
   private var refreshes = 0
   private var clears = 0
   private var locationState by mutableStateOf<MapLocationUiState>(MapLocationUiState.Idle)
+  private var live: LiveMapState? by mutableStateOf(null)
+  private var liveOrder: String? = null
   private var locate: (() -> Unit)? = null
 
   private fun show(
@@ -73,11 +75,45 @@ class TripMapScreenTest {
               onLocate = locate,
               onClearPoint = { clears++ },
               mapSurface = { if (realBackground) CampusMapBackground(it) else Box(it) },
+              liveState = live,
+              onLiveOrder = { liveOrder = it },
           )
         }
       }
     }
     if (restoration != null) restoration.setContent(screen) else compose.setContent(screen)
+  }
+
+  @Test
+  fun selectingALiveMarkerOpensItsActualOrderAndLostPositionsRemoveTheMarker() {
+    val order =
+        Order(
+            "actual order / % 雪",
+            trip.id,
+            "viewer",
+            listOf(OrderItem("milk", "Milk", 200, 1)),
+            0,
+            OrderStatus.ACCEPTED,
+            now,
+        )
+    val person =
+        LiveCommando(
+            "owner",
+            listOf(trip),
+            listOf(order),
+            CommandoPosition(46.521, 6.566, 100.0, now),
+        )
+    state = TripMapUiState.Content(emptyList())
+    live = LiveMapState.Content(LiveMapMode.TRACKING, listOf(person))
+    show()
+    compose.onNodeWithTag(LiveMapTestTags.MARKER_PREFIX + "owner").performClick()
+    compose.onNodeWithTag(LiveMapTestTags.ORDER_PREFIX + order.id).performScrollTo().performClick()
+    compose.runOnIdle {
+      assertEquals(order.id, liveOrder)
+      live = LiveMapState.Content(LiveMapMode.TRACKING, listOf(person.copy(position = null)))
+    }
+    compose.onNodeWithTag(LiveMapTestTags.MARKER_PREFIX + "owner").assertDoesNotExist()
+    compose.onNodeWithTag(LiveMapTestTags.PERSON_PREFIX + "owner").assertExists()
   }
 
   @Test

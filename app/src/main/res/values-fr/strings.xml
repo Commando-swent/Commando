@@ -394,4 +394,16 @@
     <string name="position_sharing_publish">Le partage a échoué. Réactivez-le pour réessayer.</string>
     <string name="position_sharing_stop">Votre position n’a pas pu être supprimée. Désactivez le partage pour réessayer.</string>
     <string name="position_sharing_no_trip">Aucun trajet disponible ou en cours à partager</string>
+    <string name="live_map_tracking_title">Vos livraisons en cours</string>
+    <string name="live_map_loading">Chargement de vos commandes…</string>
+    <string name="live_map_unavailable">Positions en direct indisponibles · Réessayer</string>
+    <string name="live_map_none">Aucun commando ne partage sa position à proximité</string>
+    <string name="live_map_position_unavailable">Position indisponible</string>
+    <string name="live_map_outside">Position hors de la zone affichée</string>
+    <string name="live_map_position_live">Position approximative en direct</string>
+    <string name="live_map_view_order">Commande %1$d · %2$s</string>
+    <string name="live_map_view_trip">%1$s · %2$s · %3$s</string>
+    <string name="live_map_marker">Commando en direct · %1$s</string>
+    <plurals name="live_tracking_count"><item quantity="one">Suivi de %d commando</item><item quantity="other">Suivi de %d commandos</item></plurals>
+    <plurals name="live_discovery_count"><item quantity="one">%d commando à proximité</item><item quantity="other">%d commandos à proximité</item></plurals>
 </resources>

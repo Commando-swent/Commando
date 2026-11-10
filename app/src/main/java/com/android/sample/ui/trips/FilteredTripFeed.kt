@@ -16,6 +16,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -48,22 +49,25 @@ internal class FilteredTripFeed(
     loadedTrips = null
     loading()
     loadJob = scope.launch {
-      val result =
-          try {
-            repository.getUpcomingTrips()
-          } catch (cancelled: CancellationException) {
-            throw cancelled
-          } catch (_: Exception) {
-            TripResult.Error(TripError.Unknown)
+      repository
+          .observeUpcomingTrips()
+          .catch { cause ->
+            if (cause is CancellationException) throw cause
+            emit(TripResult.Error(TripError.Unknown))
           }
-      currentCoroutineContext().ensureActive()
-      when (result) {
-        is TripResult.Success -> {
-          loadedTrips = result.data
-          show(result.data)
-        }
-        is TripResult.Error -> error(result.error)
-      }
+          .collect { result ->
+            currentCoroutineContext().ensureActive()
+            when (result) {
+              is TripResult.Success -> {
+                loadedTrips = result.data
+                show(result.data)
+              }
+              is TripResult.Error -> {
+                loadedTrips = null
+                error(result.error)
+              }
+            }
+          }
     }
   }
 

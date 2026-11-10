@@ -83,7 +83,17 @@ class OrderNavigationTest {
   private fun show(tripRepository: TripRepository = trips) {
     content = {
       SampleAppTheme {
-        CommandoApp(auth, tripRepository, credentials, orderRepositoryFactory = factory)
+        CommandoApp(
+            auth,
+            tripRepository,
+            credentials,
+            orderRepositoryFactory = factory,
+            positionRepositoryFactory = {
+              FakeCommandoPositionRepository(
+                  kotlinx.coroutines.flow.MutableStateFlow(auth.currentUser?.uid)
+              )
+            },
+        )
       }
     }
     compose.setContent(content)
@@ -96,6 +106,24 @@ class OrderNavigationTest {
   }
 
   private fun card() = compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id)
+
+  @Test
+  fun liveMapSummaryOpensTheActualOrderDetailsAndBackReturnsToTracking() {
+    show()
+    click(AppTestTags.TRIPS_BUTTON)
+    click(NavigationTestTags.OPEN_MAP)
+    compose
+        .onNodeWithTag(com.android.sample.ui.map.LiveMapTestTags.PERSON_PREFIX + trip.ownerId)
+        .performScrollTo()
+        .performClick()
+    compose
+        .onNodeWithTag(com.android.sample.ui.map.LiveMapTestTags.ORDER_PREFIX + order.id)
+        .performScrollTo()
+        .performClick()
+    compose.onNodeWithText("Milk", substring = true).assertExists()
+    back()
+    compose.onNodeWithTag(com.android.sample.ui.map.LiveMapTestTags.TRACKING).assertExists()
+  }
 
   @Test
   fun ordersOpenExactOpaqueIdAndBothBackActionsReturnToTheListWithoutDuplicates() {
@@ -173,6 +201,8 @@ class OrderNavigationTest {
 
   @Test
   fun emptyMapHasNoSyntheticMarkersOrTripLookupsAndReturnsToList() {
+    factoryCalls =
+        1 // Discovery with no active orders; tracking intentionally resolves order trips.
     val lookups = mutableListOf<String>()
     show(
         object : TripRepository by trips {

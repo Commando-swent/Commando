@@ -70,3 +70,14 @@ while foregrounded, preserving capture age. Backgrounding, lost eligibility and 
 stop the publisher. Normal sign-out must await confirmed deletion; failed cleanup stays
 visible and retryable. Rotation preserves foreground consent, background return does not.
 These tested controls are connected to authenticated navigation in #272.
+
+## Application integration (#272)
+
+Authenticated navigation connects Home opt-in, role changes and sign-out cleanup. The map
+uses the existing campus projection/camera for distinct person markers, opens actual trip
+and order IDs, and retains order summaries without a fresh/on-map position. Shared filters
+and the 500 m radius apply only in discovery. Origin is a usable device fix, otherwise the
+selected delivery point, otherwise campus center (46.521, 6.566); the filter is not changed.
+Map exit cancels feeds; a local one-second tick expires fixes/trips without network polling.
+Foreground-only scope and the fixed campus image remain unchanged. Physical multi-client
+demonstration, deployed rules, Figma alignment and human review remain release checks.

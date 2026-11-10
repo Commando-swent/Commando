@@ -76,6 +76,11 @@ class NearbyTripNavigationTest {
             trips,
             productRepository = StubProductRepository(),
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+            positionRepositoryFactory = {
+              FakeCommandoPositionRepository(
+                  kotlinx.coroutines.flow.MutableStateFlow<String?>(it())
+              )
+            },
         )
       }
     }

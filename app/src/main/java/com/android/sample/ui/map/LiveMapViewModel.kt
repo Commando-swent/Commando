@@ -1,7 +1,6 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
-import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
@@ -49,12 +48,10 @@ class LiveMapViewModel(
     currentUserId: () -> String?,
     sessionChanges: Flow<String?>,
     private val clock: Clock = Clock.systemUTC(),
-    private val elapsedMillis: () -> Long = SystemClock::elapsedRealtime,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<LiveMapState>(LiveMapState.Loading)
   val uiState = mutableState.asStateFlow()
   private val session = SessionGuard(currentUserId)
-  private val device = MutableStateFlow<DeviceLocation?>(null)
   private var observer: Job? = null
 
   init {
@@ -133,12 +130,8 @@ class LiveMapViewModel(
           }
           val live =
               if (updates.isEmpty()) flowOf(emptyList()) else combine(updates) { it.toList() }
-          combine(live, selectedPoint, device, timeWhileVisible()) { commandos, point, fix, now ->
-                val origin =
-                    fix?.takeIf { it.isUsable(elapsedMillis()) && it.canIdentifyNearbyTrips() }
-                        ?.let { Location("", it.latitude, it.longitude) }
-                        ?: point?.takeIf { it.hasValidCoordinates() }
-                        ?: CAMPUS_DISCOVERY_CENTER
+          combine(live, selectedPoint, timeWhileVisible()) { commandos, point, now ->
+                val origin = point?.takeIf { it.hasValidCoordinates() } ?: CAMPUS_DISCOVERY_CENTER
                 val currentTrips = eligible.filter {
                   it.status == TripStatus.PUBLISHED && it.scheduledAt > now
                 }
@@ -182,19 +175,10 @@ class LiveMapViewModel(
     }
   }
 
-  /** Location never mutates the shared delivery-location selection. */
-  fun updateLocation(state: MapLocationUiState) {
-    device.value =
-        ((state as? MapLocationUiState.Resolved)?.result
-                as? com.android.sample.data.location.DeviceLocationResult.Available)
-            ?.location
-  }
-
   /** Cancels repository listeners and drops coordinates immediately on screen/session exit. */
   fun stop() {
     observer?.cancel()
     observer = null
-    device.value = null
     mutableState.value = LiveMapState.Loading
   }
 
@@ -210,5 +194,5 @@ class LiveMapViewModel(
   }
 }
 
-/** Used only without a usable device fix or selected delivery point; never replaces that filter. */
+/** Fallback when no valid delivery point is selected; never replaces that filter. */
 internal val CAMPUS_DISCOVERY_CENTER = Location("EPFL", 46.521, 6.566)

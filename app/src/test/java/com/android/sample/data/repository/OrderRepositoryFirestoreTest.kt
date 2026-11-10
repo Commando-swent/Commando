@@ -458,6 +458,17 @@ class OrderRepositoryFirestoreTest {
     assertEquals(error(OrderError.PermissionDenied), repository.observeMyOrders().first())
     source.documents["b"] = saved.copy(data = saved.data - "items")
     assertEquals(error(OrderError.InvalidData), repository.observeMyOrders().first())
+    source.documents["b"] = saved
+    source.beforeRead = { uid = "other" }
+    assertEquals(error(OrderError.NotAuthenticated), repository.observeMyOrders().first())
+    uid = "alice"
+    source.beforeRead = { throw java.io.IOException() }
+    assertEquals(error(OrderError.Unknown), repository.observeMyOrders().first())
+    source.beforeRead = { throw CancellationException() }
+    assertTrue(
+        runCatching { repository.observeMyOrders().first() }.exceptionOrNull()
+            is CancellationException
+    )
     uid = null
     assertEquals(error(OrderError.NotAuthenticated), repository.observeMyOrders().first())
   }

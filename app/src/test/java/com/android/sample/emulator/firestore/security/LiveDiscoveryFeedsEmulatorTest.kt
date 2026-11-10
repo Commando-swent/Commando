@@ -7,7 +7,7 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import java.time.Instant
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -15,43 +15,25 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** Real cross-client query events use the canonical repositories and production security rules. */
+/** Real cross-client events use production repositories/rules and an already-open observation. */
 @RunWith(RobolectricTestRunner::class)
 class LiveDiscoveryFeedsEmulatorTest {
   @Test
   fun aPublishedThenClosedTripUpdatesAnAlreadyOpenDiscoveryFeed() = runTest {
     withContext(Dispatchers.Default) {
       withClients("owner" to true, "viewer" to true) { (owner, viewer) ->
-        val source = trips(viewer)
-        val ready = CompletableDeferred<Unit>()
-        val updates = Channel<TripResult<List<Trip>>>(Channel.UNLIMITED)
-        val observation = launch {
-          source.observeUpcomingTrips().collect {
-            updates.send(it)
-            if (it is TripResult.Success) ready.complete(Unit)
-          }
-        }
-        try {
-          withTimeout(10_000) { ready.await() }
+        withUpdates(trips(viewer).observeUpcomingTrips()) { updates ->
+          updates.await { it is TripResult.Success }
           val created = publish(owner)
-          withTimeout(10_000) {
-            updates.receiveAsFlow().filterIsInstance<TripResult.Success<List<Trip>>>().first {
-                result ->
-              result.data.any { it.id == created.id }
-            }
+          updates.await {
+            it is TripResult.Success && it.data.any { trip -> trip.id == created.id }
           }
           assertTrue(
               trips(owner).transitionTrip(created.id, TripTransition.CLOSE) is TripResult.Success
           )
-          withTimeout(10_000) {
-            updates.receiveAsFlow().filterIsInstance<TripResult.Success<List<Trip>>>().first {
-                result ->
-              result.data.none { it.id == created.id }
-            }
+          updates.await {
+            it is TripResult.Success && it.data.none { trip -> trip.id == created.id }
           }
-        } finally {
-          observation.cancelAndJoin()
-          updates.close()
         }
       }
     }
@@ -64,40 +46,42 @@ class LiveDiscoveryFeedsEmulatorTest {
         val trip = publish(owner)
         val repo =
             OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
-        val ready = CompletableDeferred<Unit>()
-        val updates = Channel<OrderResult<List<Order>>>(Channel.UNLIMITED)
-        val observation = launch {
-          repo.observeMyOrders().collect {
-            updates.send(it)
-            if (it is OrderResult.Success) ready.complete(Unit)
-          }
-        }
-        try {
-          withTimeout(10_000) { ready.await() }
+        withUpdates(repo.observeMyOrders()) { updates ->
+          updates.await { it is OrderResult.Success }
           val placed =
               (repo.createOrder(OrderDraft(trip.id, listOf(OrderItem("milk", "Milk", 220, 1))))
                       as OrderResult.Success)
                   .data
-          withTimeout(10_000) {
-            updates.receiveAsFlow().filterIsInstance<OrderResult.Success<List<Order>>>().first {
-                result ->
-              result.data.any { it.id == placed.id && it.status == OrderStatus.PENDING }
-            }
+          updates.await {
+            it is OrderResult.Success &&
+                it.data.any { order ->
+                  order.id == placed.id && order.status == OrderStatus.PENDING
+                }
           }
           assertTrue(repo.cancelOrder(placed.id) is OrderResult.Success)
-          withTimeout(10_000) {
-            updates.receiveAsFlow().filterIsInstance<OrderResult.Success<List<Order>>>().first {
-                result ->
-              result.data.any { it.id == placed.id && it.status == OrderStatus.CANCELLED }
-            }
+          updates.await {
+            it is OrderResult.Success &&
+                it.data.any { order ->
+                  order.id == placed.id && order.status == OrderStatus.CANCELLED
+                }
           }
-        } finally {
-          observation.cancelAndJoin()
-          updates.close()
         }
       }
     }
   }
+
+  private suspend fun <T> withUpdates(flow: Flow<T>, block: suspend (ReceiveChannel<T>) -> Unit) =
+      coroutineScope {
+        val updates = flow.produceIn(this)
+        try {
+          block(updates)
+        } finally {
+          updates.cancel()
+        }
+      }
+
+  private suspend fun <T> ReceiveChannel<T>.await(predicate: (T) -> Boolean) =
+      withTimeout(10_000) { receiveAsFlow().first(predicate) }
 
   private fun trips(client: EmulatorClient) =
       TripRepositoryFirestore(

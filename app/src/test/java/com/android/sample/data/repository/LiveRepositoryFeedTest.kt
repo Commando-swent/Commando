@@ -2,9 +2,11 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.*
+import com.android.sample.ui.trips.discoveryTrip
 import java.time.Instant
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
@@ -14,6 +16,20 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveRepositoryFeedTest {
   private val now = Instant.parse("2026-11-10T10:00:00Z")
+
+  @Test
+  fun legacyAdaptersKeepOneShotObservationCompatibility() = runTest {
+    val trips =
+        object : TripRepository by FakeTripRepository("owner") {
+          override fun observeUpcomingTrips() = super<TripRepository>.observeUpcomingTrips()
+        }
+    val orders =
+        object : OrderRepository by FakeOrderRepository({ "owner" }) {
+          override fun observeMyOrders() = super<OrderRepository>.observeMyOrders()
+        }
+    assertEquals(trips.getUpcomingTrips(), trips.observeUpcomingTrips().first())
+    assertEquals(orders.getMyOrders(), orders.observeMyOrders().first())
+  }
 
   @Test
   fun publishingAndClosingUpdateTheSameUpcomingFeed() = runTest {
@@ -41,14 +57,12 @@ class LiveRepositoryFeedTest {
   @Test
   fun placementEditAndCancellationUpdateTheRequesterOrderFeed() = runTest {
     val trip =
-        Trip(
+        discoveryTrip(
             "trip",
-            "commando",
             TripLocations.stores.first(),
-            now.plusSeconds(3600),
             TripLocations.handoffPoints.first(),
-            TripStatus.PUBLISHED,
-            now,
+            now.plusSeconds(3600),
+            "commando",
             now,
         )
     val trips = FakeTripRepository("requester", now = { now }, initialTrips = listOf(trip))

@@ -54,3 +54,11 @@ atomic storage update, matching Firestore's write rule; equal capture times rema
 Run `./gradlew ktfmtCheck check assembleDebug` and
 `bash scripts/ci/run-firebase-emulator-tests.sh`. Rules changes are local until deployed;
 no production rule deployment or real-device location-sharing demonstration is claimed here.
+
+## Reactive map state (#270)
+
+Upcoming-trip and requester-order feeds expose server-confirmed query snapshots.
+Unconfirmed orders never imply discovery. `OrderStatus.isActiveForTracking()` centralizes
+active states; LiveMapViewModel groups by owner, retains all order links and expires fixes
+without network polling. Collection cancellation and auth changes release query listeners.
+Sharing controls and screen wiring are delivered separately in #271 and #272.

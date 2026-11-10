@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: Claude Code for trip transition tests (#233).
+// AI assistance: Claude Code for trip transitions; OpenAI Codex for live-feed tests.
 
 import com.android.sample.data.repository.TripError.*
 import com.android.sample.model.Location
@@ -21,6 +21,7 @@ import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -565,6 +566,18 @@ class TripRepositoryFirestoreTest {
 
     assertEquals(COMPLETED, result.successData().status)
     assertEquals(1, dataSource.transitionCalls)
+  }
+
+  @Test
+  fun liveUpcomingFeedRejectsMissingSessionsAndMapsSourceFailures() = runTest {
+    val source = InMemoryTripFirestoreDataSource()
+    assertTripError(
+        PermissionDenied,
+        createRepository(source, userId = null).observeUpcomingTrips().first(),
+    )
+    assertTrue(createRepository(source).observeUpcomingTrips().first() is TripResult.Success)
+    source.failure = IOException("offline")
+    assertTripError(NetworkError, createRepository(source).observeUpcomingTrips().first())
   }
 
   private fun dataSourceWithTrip(status: TripStatus) =

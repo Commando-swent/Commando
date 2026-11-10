@@ -2,6 +2,8 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.CommandoPosition
+import com.android.sample.model.OrderStatus
+import com.android.sample.model.isActiveForTracking
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
@@ -136,7 +138,8 @@ class CommandoPositionRepositoryFirestore(
       }
 
   private companion object {
-    val ACTIVE_ORDER_STATUSES = setOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
+    val ACTIVE_ORDER_STATUSES =
+        OrderStatus.entries.filter { it.isActiveForTracking() }.map { it.name }.toSet()
   }
 
   private suspend fun user(): String {

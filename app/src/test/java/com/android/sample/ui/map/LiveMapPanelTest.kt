@@ -4,6 +4,8 @@ package com.android.sample.ui.map
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.test.platform.app.InstrumentationRegistry
+import com.android.sample.R
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
@@ -91,9 +93,18 @@ class LiveMapPanelTest {
     compose.runOnIdle {
       assertEquals(1, retries)
       state = LiveMapState.Content(LiveMapMode.DISCOVERY, listOf(person))
-      selected = "alice"
     }
+    val countLabel =
+        InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .resources
+            .getQuantityString(R.plurals.live_discovery_count, 1, 1)
+    compose.onNodeWithTag(LiveMapTestTags.PERSON_PREFIX + "alice").assertDoesNotExist()
+    compose.onNodeWithText(countLabel).performClick()
+    compose.onNodeWithTag(LiveMapTestTags.PERSON_PREFIX + "alice").performScrollTo().performClick()
     compose.onNodeWithTag(LiveMapTestTags.TRIP_PREFIX + trip.id).performScrollTo().performClick()
     compose.runOnIdle { assertEquals(trip.id, opened) }
+    compose.onNodeWithText(countLabel).performScrollTo().performClick()
+    compose.onNodeWithTag(LiveMapTestTags.PERSON_PREFIX + "alice").assertDoesNotExist()
   }
 }

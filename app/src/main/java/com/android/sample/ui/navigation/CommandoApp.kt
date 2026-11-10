@@ -290,18 +290,8 @@ private fun AuthenticatedApp(
         orders.sessionChanges,
     )
   }
-  val sharingScope = rememberCoroutineScope()
-  val stopError = stringResource(R.string.position_sharing_stop)
-  val signOutAfterCleanup = {
-    sharingScope.launch {
-      if (sharing.stop().await()) onSignOut() else photoSnackbarHost.showSnackbar(stopError)
-    }
-    Unit
-  }
-  LaunchedEffect(appUiState.mode) {
-    if (appUiState.mode == AppMode.Requester && !sharing.stop().await())
-        photoSnackbarHost.showSnackbar(stopError)
-  }
+  val signOutAfterCleanup =
+      rememberSharingSignOut(sharing, appUiState.mode, onSignOut, photoSnackbarHost)
   val (sharingState, toggleSharing) = rememberPositionSharingControl(sharing)
   AppScaffold(
       currentScreen = currentScreen,
@@ -645,16 +635,7 @@ private fun AuthenticatedApp(
         val state by map.uiState.collectAsState()
         val liveState by live.uiState.collectAsState()
         val selectedPoint by locationFilter.selected.collectAsState()
-        val canvasState =
-            when (val current = liveState) {
-              LiveMapState.Loading -> TripMapUiState.Loading
-              LiveMapState.Unavailable -> TripMapUiState.Error(TripError.Unknown)
-              is LiveMapState.Content ->
-                  if (current.mode == LiveMapMode.TRACKING) TripMapUiState.Content(emptyList())
-                  else if (state is TripMapUiState.Content)
-                      (state as TripMapUiState.Content).copy(trips = current.discoveryTrips)
-                  else state
-            }
+        val canvasState = liveCanvasState(state, liveState)
         MapLocationHost(state == TripMapUiState.SessionEnded, source) { locationState, locate ->
           LaunchedEffect(locationState) { live.updateLocation(locationState) }
           TripMapScreen(
@@ -864,3 +845,36 @@ private fun orderFlowArguments() =
           defaultValue = null
         },
     )
+
+/** Maps confirmed live modes onto the existing handoff-map presentation. */
+private fun liveCanvasState(state: TripMapUiState, live: LiveMapState): TripMapUiState =
+    when (live) {
+      LiveMapState.Loading -> TripMapUiState.Loading
+      LiveMapState.Unavailable -> TripMapUiState.Error(TripError.Unknown)
+      is LiveMapState.Content ->
+          if (live.mode == LiveMapMode.TRACKING) TripMapUiState.Content(emptyList())
+          else if (state is TripMapUiState.Content) state.copy(trips = live.discoveryTrips)
+          else state
+    }
+
+/** Stops sharing on role exit and returns a sign-out action that awaits confirmed cleanup. */
+@Composable
+private fun rememberSharingSignOut(
+    sharing: PositionSharingViewModel,
+    mode: AppMode,
+    onSignOut: () -> Unit,
+    snackbar: SnackbarHostState,
+): () -> Unit {
+  val sharingScope = rememberCoroutineScope()
+  val stopError = stringResource(R.string.position_sharing_stop)
+  val signOutAfterCleanup = {
+    sharingScope.launch {
+      if (sharing.stop().await()) onSignOut() else snackbar.showSnackbar(stopError)
+    }
+    Unit
+  }
+  LaunchedEffect(mode) {
+    if (mode == AppMode.Requester && !sharing.stop().await()) snackbar.showSnackbar(stopError)
+  }
+  return signOutAfterCleanup
+}

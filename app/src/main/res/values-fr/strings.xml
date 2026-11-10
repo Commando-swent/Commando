@@ -404,6 +404,14 @@
     <string name="live_map_view_order">Commande %1$d · %2$s</string>
     <string name="live_map_view_trip">%1$s · %2$s · %3$s</string>
     <string name="live_map_marker">Commando en direct · %1$s</string>
-    <plurals name="live_tracking_count"><item quantity="one">Suivi de %d commando</item><item quantity="other">Suivi de %d commandos</item></plurals>
-    <plurals name="live_discovery_count"><item quantity="one">%d commando à proximité</item><item quantity="other">%d commandos à proximité</item></plurals>
+    <plurals name="live_tracking_count">
+        <item quantity="one">Suivi de %d commando</item>
+        <item quantity="many">Suivi de %d commandos</item>
+        <item quantity="other">Suivi de %d commandos</item>
+    </plurals>
+    <plurals name="live_discovery_count">
+        <item quantity="one">%d commando à proximité</item>
+        <item quantity="many">%d commandos à proximité</item>
+        <item quantity="other">%d commandos à proximité</item>
+    </plurals>
 </resources>

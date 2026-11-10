@@ -166,14 +166,7 @@ fun TripMapScreen(
             )
     )
     val tracking = (liveState as? LiveMapState.Content)?.takeIf { it.mode == LiveMapMode.TRACKING }
-    val subtitle =
-        if (tracking != null)
-            pluralStringResource(
-                R.plurals.live_tracking_count,
-                tracking.commandos.size,
-                tracking.commandos.size,
-            )
-        else mapSubtitle(state, fix, nearby.size)
+    val subtitle = mapSubtitle(state, fix, nearby.size, tracking)
     val availablePanelHeight = (maxHeight - headerHeight - 32.dp).coerceAtLeast(48.dp)
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
@@ -349,25 +342,33 @@ private fun mapSubtitle(
     state: TripMapUiState,
     fix: DeviceLocation?,
     nearbyCount: Int,
+    tracking: LiveMapState.Content?,
 ): String =
-    when (state) {
-      TripMapUiState.Loading -> stringResource(R.string.trip_map_loading_subtitle)
-      is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
-      else -> {
-        val content = state as? TripMapUiState.Content
-        if (fix?.canIdentifyNearbyTrips() == true && content != null)
-            pluralStringResource(
-                R.plurals.map_location_nearby_count,
-                nearbyCount,
-                nearbyCount,
-                HANDOFF_RADIUS_METERS.toInt(),
-            )
-        else {
-          val tripCount = content?.trips?.size ?: 0
-          pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
+    if (tracking != null)
+        pluralStringResource(
+            R.plurals.live_tracking_count,
+            tracking.commandos.size,
+            tracking.commandos.size,
+        )
+    else
+        when (state) {
+          TripMapUiState.Loading -> stringResource(R.string.trip_map_loading_subtitle)
+          is TripMapUiState.Error -> stringResource(R.string.trip_map_error_subtitle)
+          else -> {
+            val content = state as? TripMapUiState.Content
+            if (fix?.canIdentifyNearbyTrips() == true && content != null)
+                pluralStringResource(
+                    R.plurals.map_location_nearby_count,
+                    nearbyCount,
+                    nearbyCount,
+                    HANDOFF_RADIUS_METERS.toInt(),
+                )
+            else {
+              val tripCount = content?.trips?.size ?: 0
+              pluralStringResource(R.plurals.trip_map_count, tripCount, tripCount)
+            }
+          }
         }
-      }
-    }
 
 /** Geographical drawing and pins fill exactly the same viewport without independent cropping. */
 @Composable

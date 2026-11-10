@@ -69,67 +69,75 @@ internal fun LiveMapPanel(
                     },
                     Modifier.fillMaxWidth().testTag(LiveMapTestTags.PERSON_PREFIX + person.ownerId),
                 ) {
-                  Column(Modifier.fillMaxWidth()) {
-                    Text(person.trips.map { it.store.name }.distinct().joinToString(" · "))
-                    val position = person.position
-                    Text(
-                        stringResource(
-                            when {
-                              position == null -> R.string.live_map_position_unavailable
-                              CAMPUS_MAP_PROJECTION.project(
-                                  Location("", position.latitude, position.longitude)
-                              ) == null -> R.string.live_map_outside
-                              else -> R.string.live_map_position_live
-                            }
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                  }
+                  Column(Modifier.fillMaxWidth()) { LiveCommandoSummary(person) }
                 }
-                if (selectedOwner == person.ownerId) {
-                  if (tracking)
-                      person.orders.forEachIndexed { index, order ->
-                        TextButton(
-                            { onOrder(order.id) },
-                            Modifier.fillMaxWidth()
-                                .testTag(LiveMapTestTags.ORDER_PREFIX + order.id),
-                        ) {
-                          Text(
-                              stringResource(
-                                  R.string.live_map_view_order,
-                                  index + 1,
-                                  person.trips
-                                      .firstOrNull { it.id == order.tripId }
-                                      ?.store
-                                      ?.name
-                                      .orEmpty(),
-                              )
-                          )
-                        }
-                      }
-                  else
-                      person.trips.forEach { trip ->
-                        val summary = trip.mapSummary()
-                        TextButton(
-                            { onTrip(trip.id) },
-                            Modifier.fillMaxWidth().testTag(LiveMapTestTags.TRIP_PREFIX + trip.id),
-                        ) {
-                          Text(
-                              stringResource(
-                                  R.string.live_map_view_trip,
-                                  summary.store,
-                                  summary.time,
-                                  summary.handoff,
-                              )
-                          )
-                        }
-                      }
-                }
+                if (selectedOwner == person.ownerId)
+                    LiveCommandoLinks(person, tracking, onTrip, onOrder)
               }
         }
       }
     }
   }
+}
+
+/** Actual order/trip actions of the selected person. */
+@Composable
+private fun LiveCommandoLinks(
+    person: LiveCommando,
+    tracking: Boolean,
+    onTrip: (String) -> Unit,
+    onOrder: (String) -> Unit,
+) {
+  if (tracking)
+      person.orders.forEachIndexed { index, order ->
+        TextButton(
+            { onOrder(order.id) },
+            Modifier.fillMaxWidth().testTag(LiveMapTestTags.ORDER_PREFIX + order.id),
+        ) {
+          Text(
+              stringResource(
+                  R.string.live_map_view_order,
+                  index + 1,
+                  person.trips.firstOrNull { it.id == order.tripId }?.store?.name.orEmpty(),
+              )
+          )
+        }
+      }
+  else
+      person.trips.forEach { trip ->
+        val summary = trip.mapSummary()
+        TextButton(
+            { onTrip(trip.id) },
+            Modifier.fillMaxWidth().testTag(LiveMapTestTags.TRIP_PREFIX + trip.id),
+        ) {
+          Text(
+              stringResource(
+                  R.string.live_map_view_trip,
+                  summary.store,
+                  summary.time,
+                  summary.handoff,
+              )
+          )
+        }
+      }
+}
+
+/** Store labels and position availability for one selectable person. */
+@Composable
+private fun LiveCommandoSummary(person: LiveCommando) {
+  Text(person.trips.map { it.store.name }.distinct().joinToString(" · "))
+  val position = person.position
+  Text(
+      stringResource(
+          when {
+            position == null -> R.string.live_map_position_unavailable
+            CAMPUS_MAP_PROJECTION.project(Location("", position.latitude, position.longitude)) ==
+                null -> R.string.live_map_outside
+            else -> R.string.live_map_position_live
+          }
+      ),
+      style = MaterialTheme.typography.labelSmall,
+  )
 }
 
 /** Shared semantics for Compose, navigation and device tests. */

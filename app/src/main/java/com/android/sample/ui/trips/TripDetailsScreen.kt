@@ -216,8 +216,8 @@ private fun TripDetailsCard(content: @Composable ColumnScope.() -> Unit) {
 internal fun TripDetailsButton(
     text: String,
     onClick: () -> Unit,
-    enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   Button(
       onClick = onClick,

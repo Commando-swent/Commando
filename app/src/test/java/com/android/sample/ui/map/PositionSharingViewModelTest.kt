@@ -96,7 +96,7 @@ class PositionSharingViewModelTest {
     assertEquals(PositionSharingState.Live, model.uiState.value)
     assertEquals(now.minusMillis(500), positions.writes.single().capturedAt)
     assertEquals("trip", positions.tripId)
-    assertTrue(model.stop())
+    assertTrue(model.stop().await())
     assertNull(positions.current)
     assertEquals(0, owned.subscriptionCount.value)
     advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS * 2)
@@ -124,11 +124,11 @@ class PositionSharingViewModelTest {
     model.start(true)
     runCurrent()
     positions.failDelete = true
-    assertFalse(model.stop())
+    assertFalse(model.stop().await())
     assertNotNull(positions.current)
     assertEquals(PositionSharingState.Failed(SharingFailureReason.STOP), model.uiState.value)
     positions.failDelete = false
-    assertTrue(model.stop())
+    assertTrue(model.stop().await())
     assertNull(positions.current)
   }
 
@@ -138,7 +138,7 @@ class PositionSharingViewModelTest {
     val model = model(DeviceLocationProvider { withContext(NonCancellable) { reply.await() } })
     model.start(true)
     runCurrent()
-    val stopping = async { model.stop() }
+    val stopping = async { model.stop().await() }
     runCurrent()
     reply.complete(result)
     runCurrent()

@@ -139,16 +139,12 @@ fun CatalogueScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
       item(key = "header") { CatalogueHeader(state, onQueryChange, onSelectCategory) }
-      catalogueBody(
-          state,
-          onClearSearch,
-          onAdd,
-          onIncrease,
-          onDecrease,
-          onRetry,
-          onLoadMore,
-          onSelectCategory,
-      )
+      val content = state.content
+      if (content is CatalogueContent.Loaded && content.products.isNotEmpty()) {
+        catalogueProducts(state, content, onAdd, onIncrease, onDecrease, onLoadMore)
+      } else {
+        catalogueStatus(content, onClearSearch, onRetry) { onSelectCategory(null) }
+      }
     }
     CatalogueBottomBar(state, onContinue)
   }
@@ -238,57 +234,34 @@ private val ListItemPadding = Modifier.padding(horizontal = 20.dp)
 /** The next page is requested once one of the last [AUTO_LOAD_DISTANCE] list items is visible. */
 private const val AUTO_LOAD_DISTANCE = 3
 
-private fun LazyListScope.catalogueBody(
-    state: CatalogueUiState,
+/** Loading skeleton, or the message for every state without products to list. */
+private fun LazyListScope.catalogueStatus(
+    content: CatalogueContent,
     onClearSearch: () -> Unit,
-    onAdd: (String) -> Unit,
-    onIncrease: (String) -> Unit,
-    onDecrease: (String) -> Unit,
     onRetry: () -> Unit,
-    onLoadMore: () -> Unit,
-    onSelectCategory: (String?) -> Unit,
+    onClearCategory: () -> Unit,
 ) {
-  val content = state.content
   if (content is CatalogueContent.Loading) {
     item(key = "loading") { SectionLabel(stringResource(R.string.catalogue_loading)) }
     items(6) { SkeletonProductRow(ListItemPadding) }
-    return
-  }
-  if (content !is CatalogueContent.Loaded || content.products.isEmpty()) {
+  } else {
     item(key = "message") {
-      CatalogueStateMessage(content, onClearSearch, onRetry) { onSelectCategory(null) }
+      CatalogueStateMessage(content, onClearSearch, onRetry, onClearCategory)
     }
-    return
   }
+}
+
+/** A non-empty page of products, with the next page's loading row or retry button. */
+private fun LazyListScope.catalogueProducts(
+    state: CatalogueUiState,
+    content: CatalogueContent.Loaded,
+    onAdd: (String) -> Unit,
+    onIncrease: (String) -> Unit,
+    onDecrease: (String) -> Unit,
+    onLoadMore: () -> Unit,
+) {
   val loaded = content.products
-  // Only loaded pages are counted; "+" marks that the store has more matching products.
-  val more = content.nextCursor != null
-  item(key = "label") {
-    SectionLabel(
-        when {
-          content.query.isNotEmpty() ->
-              pluralStringResource(
-                  if (more) R.plurals.catalogue_results_more else R.plurals.catalogue_results,
-                  loaded.size,
-                  loaded.size,
-                  content.query.uppercase(),
-              )
-          content.category != null ->
-              stringResource(
-                  if (more) R.string.catalogue_category_products_more
-                  else R.string.catalogue_category_products,
-                  categoryLabel(content.category).uppercase(),
-                  loaded.size,
-              )
-          else ->
-              stringResource(
-                  if (more) R.string.catalogue_all_products_more
-                  else R.string.catalogue_all_products,
-                  loaded.size,
-              )
-        }
-    )
-  }
+  item(key = "label") { ResultsLabel(content) }
   if (content.category == OTHER_CATEGORY) {
     item(key = "other_hint") {
       Text(
@@ -344,6 +317,36 @@ private fun LazyListScope.catalogueBody(
           )
         }
       }
+}
+
+/** Only loaded pages are counted; "+" marks that the store has more matching products. */
+@Composable
+private fun ResultsLabel(content: CatalogueContent.Loaded) {
+  val count = content.products.size
+  val more = content.nextCursor != null
+  SectionLabel(
+      when {
+        content.query.isNotEmpty() ->
+            pluralStringResource(
+                if (more) R.plurals.catalogue_results_more else R.plurals.catalogue_results,
+                count,
+                count,
+                content.query.uppercase(),
+            )
+        content.category != null ->
+            stringResource(
+                if (more) R.string.catalogue_category_products_more
+                else R.string.catalogue_category_products,
+                categoryLabel(content.category).uppercase(),
+                count,
+            )
+        else ->
+            stringResource(
+                if (more) R.string.catalogue_all_products_more else R.string.catalogue_all_products,
+                count,
+            )
+      }
+  )
 }
 
 /** Empty catalogue, empty search, unsupported store and failures; never a silent empty list. */

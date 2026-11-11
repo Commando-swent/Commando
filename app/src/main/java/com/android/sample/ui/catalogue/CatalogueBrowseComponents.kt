@@ -26,7 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -103,7 +103,7 @@ internal fun CategoryChips(
     modifier: Modifier = Modifier,
 ) {
   val locale = LocalConfiguration.current.locales[0]
-  val resources = LocalContext.current.resources
+  val resources = LocalResources.current
   // Sorting builds a Collator, so it runs only when the categories or the locale change.
   val ordered =
       remember(categories, locale, resources) {

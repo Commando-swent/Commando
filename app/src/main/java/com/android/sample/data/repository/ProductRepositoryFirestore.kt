@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex and Claude Code.
 import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
@@ -12,6 +12,8 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
@@ -21,6 +23,8 @@ internal constructor(
     private val dataSource: ProductFirestoreDataSource,
     private val currentUserId: () -> String? = { null },
 ) : ProductRepository {
+  /** Stores known to be ranked; an unranked one is read again, so a migration applies at once. */
+  private val rankedStores = ConcurrentHashMap.newKeySet<String>()
 
   constructor(
       firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
@@ -52,11 +56,27 @@ internal constructor(
     if (normalizedCategory?.let { it.isEmpty() || it.length > MAX_CATEGORY_LENGTH } == true) {
       return ProductResult.Error(ProductError.InvalidCategory)
     }
-    if (cursor != null && !cursor.isValidDocumentId()) {
+    // A ranked search's cursor is "<tier>/<document ID>"; any other is a plain document ID.
+    val rankedCursor = cursor?.takeIf { '/' in it }?.let(::parseRankedCursor)
+    val rankedCursorInvalid =
+        cursor != null && '/' in cursor && (rankedCursor == null || terms.isEmpty())
+    if (rankedCursorInvalid || cursor != null && '/' !in cursor && !cursor.isValidDocumentId()) {
       return ProductResult.Error(ProductError.InvalidCursor)
     }
 
     return runProductRepositoryOperation {
+      if (
+          terms.isNotEmpty() &&
+              (rankedCursor != null || cursor == null && isRanked(normalizedStoreId))
+      ) {
+        return@runProductRepositoryOperation queryRanked(
+            normalizedStoreId,
+            terms,
+            normalizedCategory,
+            rankedCursor,
+            limit,
+        )
+      }
       val documents =
           dataSource.queryProducts(normalizedStoreId, terms, normalizedCategory, cursor, limit)
       ProductResult.Success(
@@ -67,6 +87,48 @@ internal constructor(
           )
       )
     }
+  }
+
+  private suspend fun isRanked(storeId: String): Boolean {
+    if (storeId in rankedStores) return true
+    val version =
+        try {
+          dataSource.getStore(storeId)?.data?.get(FIELD_SEARCH_RANK_VERSION)
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: Exception) {
+          currentCoroutineContext().ensureActive()
+          return false
+        }
+    val ranked = (version as? Number)?.toDouble() == SEARCH_RANK_VERSION.toDouble()
+    if (ranked) rankedStores += storeId
+    return ranked
+  }
+
+  /** The first term's tiers 1 to 7 in order, each by document ID; a page continues across tiers. */
+  private suspend fun queryRanked(
+      storeId: String,
+      terms: List<String>,
+      category: String?,
+      start: RankedCursor?,
+      limit: Int,
+  ): ProductResult<ProductPage> {
+    val documents = mutableListOf<ProductFirestoreDocument>()
+    var tier = start?.tier ?: 1
+    var afterDocumentId = start?.documentId
+    var nextCursor: String? = null
+    while (tier <= LAST_SEARCH_TIER && nextCursor == null) {
+      val wanted = limit - documents.size
+      val rank = SearchRank(terms.first(), tier)
+      val page = dataSource.queryProducts(storeId, terms, category, afterDocumentId, wanted, rank)
+      documents += page
+      if (page.size == wanted) nextCursor = "$tier/${page.last().id}"
+      tier++
+      afterDocumentId = null
+    }
+    return ProductResult.Success(
+        ProductPage(documents.mapNotNull { it.toProduct(storeId) }, nextCursor)
+    )
   }
 
   override suspend fun getCategories(storeId: String): ProductResult<List<String>> {
@@ -173,6 +235,18 @@ internal fun normalizeProductSearchText(text: String): String =
         )
         .replace(COMBINING_MARKS, "")
 
+/** The relevance rank a ranked query keeps for [term], from the importer's `search_rank` map. */
+internal data class SearchRank(val term: String, val tier: Int)
+
+private data class RankedCursor(val tier: Int, val documentId: String)
+
+private fun parseRankedCursor(cursor: String): RankedCursor? {
+  val tier = cursor.substringBefore('/').toIntOrNull() ?: return null
+  val documentId = cursor.substringAfter('/')
+  val valid = tier in 1..LAST_SEARCH_TIER && documentId.isValidDocumentId()
+  return RankedCursor(tier, documentId).takeIf { valid }
+}
+
 /**
  * Raw product transport; [FirestoreDocument.id] is the pagination cursor, distinct from the stored
  * global product ID in its fields. Product decoding remains local to this repository.
@@ -183,13 +257,14 @@ internal typealias ProductFirestoreDocument = FirestoreDocument
  * Product-query boundary; raw pages include malformed records so cursor advancement stays stable.
  */
 internal interface ProductFirestoreDataSource {
-  /** Active products of [storeId] matching every term and [category], after [afterDocumentId]. */
+  /** Active products of [storeId] matching every term, [category] and [rank], after a document. */
   suspend fun queryProducts(
       storeId: String,
       terms: List<String>,
       category: String?,
       afterDocumentId: String?,
       limit: Int,
+      rank: SearchRank? = null,
   ): List<ProductFirestoreDocument>
 
   /** The `stores/{storeId}` metadata document, or null before the store's first import. */
@@ -216,6 +291,7 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
       category: String?,
       afterDocumentId: String?,
       limit: Int,
+      rank: SearchRank?,
   ): List<ProductFirestoreDocument> {
     // swiss-cli writes removed_at = null for listed products, so removed ones never use up the
     // limit. Firestore merges the single-field indexes of these equality filters, ordered by
@@ -230,7 +306,11 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
         ) { query, term ->
           query.whereEqualTo(FieldPath.of(FIELD_SEARCH_PREFIXES, term), true)
         }
-    val categorized = category?.let { filtered.whereEqualTo(FIELD_CATEGORY, it) } ?: filtered
+    val ranked =
+        rank?.let {
+          filtered.whereEqualTo(FieldPath.of(FIELD_SEARCH_RANK, it.term), it.tier.toLong())
+        } ?: filtered
+    val categorized = category?.let { ranked.whereEqualTo(FIELD_CATEGORY, it) } ?: ranked
     val ordered = categorized.orderBy(FieldPath.documentId(), Query.Direction.ASCENDING)
     // Offline, a cached page can be short and would read as the end of the catalogue: fail instead.
     return (afterDocumentId?.let { ordered.startAfter(it) } ?: ordered)
@@ -382,6 +462,9 @@ private const val MAX_SEARCH_TERMS = 5
 internal const val MIN_SEARCH_TERM_LENGTH = 2
 private const val MAX_SEARCH_TERM_LENGTH = 15
 private const val MAX_CURSOR_LENGTH = 1_500
+/** The `search_rank` maps this app reads; stores/{store}.search_rank_version names them. */
+private const val SEARCH_RANK_VERSION = 1L
+private const val LAST_SEARCH_TIER = 7
 private val FAVOURITE_STORE_IDS = setOf("migros", "coop")
 private val NON_SEARCHABLE_CHARACTERS = Regex("[^a-z0-9]+")
 private val COMBINING_MARKS = Regex("\\p{M}+")
@@ -395,6 +478,8 @@ private const val FIELD_PRICE = "price"
 private const val FIELD_IMAGE_URL = "image_url"
 private const val FIELD_REMOVED_AT = "removed_at"
 private const val FIELD_SEARCH_PREFIXES = "search_prefixes"
+private const val FIELD_SEARCH_RANK = "search_rank"
+private const val FIELD_SEARCH_RANK_VERSION = "search_rank_version"
 private const val FIELD_SIZE_TEXT = "size_text"
 private const val FIELD_CATEGORY = "category"
 private const val FIELD_CATEGORY_PATH = "category_path"

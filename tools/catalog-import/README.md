@@ -6,7 +6,8 @@ schema `ProductRepositoryFirestore` reads: `id` (`migros:<number>` or `coop:<num
 `price` (CHF), `image_url` (or `null`), `removed_at` (`null` when listed), `size_text`, `source_name`,
 `brand` and `variant` (each or `null`) and
 `search_prefixes`, the 2- to 15-character prefixes of the words of the name and of the last category segment, normalized
-like `normalizeProductSearchText`. Only Migros and Coop publish a full catalogue; items of other
+like `normalizeProductSearchText`, and `search_rank`, their [relevance tiers](#search-ranking). Only
+Migros and Coop publish a full catalogue; items of other
 chains are entered by hand in the app.
 
 **Prerequisites:** Node.js 20+. For `command-o`: the Firebase CLI signed in (`firebase login`) with
@@ -21,8 +22,8 @@ export FIREBASE_TOOLS_ROOT=tools/catalog-import/tmp/firebase-tools/node_modules
 ```
 
 A global install of that exact release also works without `FIREBASE_TOOLS_ROOT`. Firestore rules and
-indexes are not deployed by the tool; deploy the `search_prefixes` field override of
-`firestore.indexes.json` before a full import.
+indexes are not deployed by the tool; deploy the `search_prefixes` and `search_rank` field overrides
+of `firestore.indexes.json` before a full import.
 
 **Target:** every run names its target. With `FIRESTORE_EMULATOR_HOST` (a local `host:port`) it
 uses that emulator; otherwise it needs `--project command-o`, dry runs included. Neither, both, or a
@@ -44,10 +45,13 @@ store, and the store's parts are kept in `source_name`, `brand` and `variant`:
 - Coop's title is already the name Coop shows, brand and size included (`1664 Blonde Bière 12x25cl`,
   brand `Kronenbourg`), so `name` is that title with its spaces cleaned and the brand is not added.
 
-The importer stores the cleaned full source taxonomy as `category_path` and its first segment as
-`category`, which the app filters on: one of 18 departments for Migros, but Coop exports a single
-leaf category (566 such as `Vins rouges`). Missing category data stays `null`; a later export that
-omits it preserves an already stored category, as the size fallback does.
+The importer stores the cleaned source taxonomy as `category_path` and a broad `category`, which the
+app filters on and both chains share: Migros's 18 departments (the first segment of its path). Coop
+exports one flat category (565 such as `Vins rouges` or `Schokoladen-Snacks`), which
+`coop-categories.json` files under one of those departments. A missing category, or a Coop one not in
+that file, gives `Autres`; a dry run lists such Coop categories so the file can be completed. A later
+export that omits the category keeps the stored `category_path`, and `category` is always derived from
+it, so editing `coop-categories.json` regroups stored products on the next import.
 
 Keep exports in `tools/catalog-import/` (for example `tools/catalog-import/coop.jsonl`) and generated
 files in `tools/catalog-import/tmp/`; its `.gitignore` keeps both out of Git.
@@ -117,12 +121,76 @@ an export on the emulator first and run the production commands once.
 - Verify: in the app's catalogue, search for a few imported products, and for one marked removed,
   which must not appear. Do not rerun a full dry run to check the import.
 
+## Migration to categories and search ranks
+
+Products imported before categories and ranking have no `category`, `category_path` or `search_rank`.
+One import of each store's latest full export adds them; its dry run must list only those fields (and,
+for Migros, the `name` and `search_prefixes` of `version_text` renames) under "Updated products per
+field". `stores/{store}.categories` and `search_rank_version`, which turn on the app's category chips
+and ranked search, are written only once a run has committed every product write. Within the daily
+allowance (about 16,300 reads per Coop run, 29,900 per Migros run):
+
+1. Coop: dry run, then `--write` (about 32,600 reads and 16,300 writes).
+2. Migros: dry run on another day.
+3. Migros: `--write --max-writes 14000` on two days; the second run writes the rest and the metadata.
+
+A stopped run is resumed by rerunning it: products already updated are unchanged and not rewritten.
+
+## Search ranking
+
+`search_rank` gives each key of `search_prefixes` a tier; the app queries the first search word's tiers
+1 to 7 in order, each by document ID, continuing into the next when one ends mid-page (an empty tier
+costs one read). A word's home department is where the catalogue's categories name it: fresh produce
+if it does, else the one with the most category levels naming it, skipping `Animaux`, `Bébé et enfant`
+and `Beauté & santé` while a general one also does. Words also match their plural (`s`, `x`). Homes
+come from the whole import, so only write full exports; a later import can move products between tiers.
+
+| Tier | The prefix is… | Example |
+|---|---|---|
+| 1 | the product's own first word (brand skipped), for fresh produce (not ready-made) | `banane`: Bananes |
+| 2 | its own first word, in the word's home department | `lait`: Lait entier |
+| 3 | a word of its category path, in the home department | `fromage`: Mini-Babybel |
+| 4 | its own first word or a category word, in another department | `lait`: milk chocolate |
+| 5 | only the start of its first word or of a category part | `lait`: Laitue iceberg |
+| 6 | any of these, in an audience department that is not the home | `poulet`: cat food |
+| 7 | in any other word | `pomme`: Vinaigre de pomme |
+
+### Relevance evaluation
+
+`relevance-evaluation.mjs` preserves the query lists, relevance predicates and scoring method used
+for this change. It reads local exports only, parses and ranks them with the current importer, and
+does not connect to Firestore:
+
+```bash
+node tools/catalog-import/relevance-evaluation.mjs <migros.jsonl> <coop.jsonl>
+node tools/catalog-import/relevance-evaluation.mjs <migros.jsonl> <coop.jsonl> --holdout
+```
+
+The development set contains 38 queries and the untouched holdout set contains 18. For every store
+and query, the script compares document-ID order with `search_rank` tier then document-ID order.
+It reports the macro-average top-five precision over store/query pairs having at least one relevant
+catalogue product; pairs with no relevant product are displayed but cannot be scored.
+
+The November 2026 evaluation used these ignored full exports:
+
+| Store | File | Size | SHA-256 |
+|---|---|---:|---|
+| Migros | `migros-2026-11-08.jsonl` | 13,561,442 bytes | `B91B977C510E17C13F6D156073FFF6F8C6F14322175169FD0FC9D8C8A9B3B3D0` |
+| Coop | `coop.jsonl` | 4,712,087 bytes | `47BE105D055571C9D3A421B928607186EF87F9ADD56A6F2A920E019F47335F1C` |
+
+The development run scores 74 store/query pairs at 32% before and 94% after, with a relevant first
+result moving from 17/74 to 70/74. The holdout run scores 36 pairs at 32% before and 93% after, with
+a relevant first result moving from 11/36 to 35/36. The exports stay out of Git because they are
+large swiss-cli catalogue snapshots; reproduce them with the full-export commands above and compare
+their hashes when the original snapshots are available.
+
 ## Reruns and removals
 
 Documents are keyed by the store's product number, so a rerun updates them in place, and unchanged
 products are not rewritten: rerunning resumes a stopped import. A changed brand, name or variant changes
-`name` and replaces the whole `search_prefixes` map, so prefixes of the old name stop matching. Each write replaces only the fields
-above, keeps any other field, and fails if the document changed since it was read (rerun then).
+`name` and replaces the whole `search_prefixes` and `search_rank` maps, so prefixes of the old name stop
+matching. An update writes only its changed fields (a dry run counts them per field), keeps any other
+field, and fails if the document changed since it was read (rerun then).
 The tool only reads and writes the documents named in the export, all under `stores/{store}`: one
 store's import never touches another store, and products missing from a partial export are never
 deleted. A product exported with `removed_at` gets that `removed_at` if it exists and is active, and
@@ -133,6 +201,11 @@ product listed again is reactivated.
 
 - Search covers the name and the last category only, as in the app: a Coop brand missing from the
   title (`Kronenbourg` for `1664 Blonde Bière`) does not match.
+- Only the first search word sets the tier, and a tier keeps document ID order: `pomme` ranks fresh
+  potatoes (`Pommes de terre`) with apples. Incomplete prefixes such as `lai` or `pom` put most
+  matches in tier 5, so those intermediate results often retain document-ID order. A product missing
+  from the export gets no `search_rank` and no ranked result; swiss-cli's full export with
+  `--include-removed` lists every product.
 - Prices are those of the day of the fetch, promotions included, until the next import.
 - Coop titles include the size, so it shows in the name; `size_text` is stored but not shown yet.
 - swiss-cli's own `sync --to firebase` writes another schema to the same paths: never point it at

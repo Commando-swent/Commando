@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.core.app.ApplicationProvider
@@ -84,6 +85,9 @@ class TripSearchControlsTest {
       if (parts.isEmpty()) string(R.string.trips_filters)
       else string(R.string.trips_filters_active, parts.joinToString(" · "))
 
+  private fun toggleState(id: Int) =
+      SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, string(id))
+
   private fun range(start: LocalDate, end: LocalDate) =
       string(R.string.trips_period_custom_range, medium(start), medium(end))
 
@@ -110,12 +114,15 @@ class TripSearchControlsTest {
   @Test
   fun expandingShowsEveryChipAndCollapsingHidesThem() {
     show()
+    tag(TripSearchTestTags.TOGGLE).assert(toggleState(R.string.trips_filters_collapsed))
     expand()
+    tag(TripSearchTestTags.TOGGLE).assert(toggleState(R.string.trips_filters_expanded))
     allChipTags.forEach { tag(it).assertExists() }
     tag(TripSearchTestTags.store(StoreFilter.ALL)).assertIsSelected()
     tag(TripSearchTestTags.PERIOD_ANY).assertIsSelected()
     tag(TripSearchTestTags.sort(TripSort.EARLIEST_DEPARTURE)).assertIsSelected()
     expand()
+    tag(TripSearchTestTags.TOGGLE).assert(toggleState(R.string.trips_filters_collapsed))
     allChipTags.forEach { tag(it).assertDoesNotExist() }
   }
 

@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.model.DeparturePeriod
@@ -80,11 +82,20 @@ fun TripSearchControls(
           },
       )
 
+  // Screen readers announce whether the panel is open, not only the toggle label.
+  val toggleState =
+      stringResource(
+          if (expanded) R.string.trips_filters_expanded else R.string.trips_filters_collapsed
+      )
+
   Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically) {
       TextButton(
           onClick = { expanded = !expanded },
-          modifier = Modifier.weight(1f).testTag(TripSearchTestTags.TOGGLE),
+          modifier =
+              Modifier.weight(1f).testTag(TripSearchTestTags.TOGGLE).semantics {
+                stateDescription = toggleState
+              },
       ) {
         Text(
             if (active.isEmpty()) stringResource(R.string.trips_filters)

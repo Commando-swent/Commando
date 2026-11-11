@@ -364,6 +364,8 @@
     <string name="trips_filters_clear">Effacer les filtres</string>
     <string name="trips_filters">Filtres</string>
     <string name="trips_filters_active">Filtres : %1$s</string>
+    <string name="trips_filters_expanded">Développé</string>
+    <string name="trips_filters_collapsed">Réduit</string>
     <string name="profile_faq_expanded">Développé</string>
     <string name="profile_faq_collapsed">Réduit</string>
     <string name="order_product_limit">Nombre maximal de produits différents par commande : %1$d. Retirez un produit pour continuer.</string>

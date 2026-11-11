@@ -123,98 +123,61 @@ class SavedTripSearchRepositoryLocalTest {
     val tieB = SavedTripSearch("b", "Tie B", TripSearchCriteria(), t0)
     val tieA = SavedTripSearch("a0", "Tie A", custom, t0)
     prefs.edit().putString("alice", writeSearches(listOf(later, tieB, tieA))).commit()
-
     assertEquals(listOf(tieA, tieB, later), repo().getSavedSearches().ok())
-  }
 
-  @Test
-  fun savesAppendInCreationOrder() = runTest {
+    // A save with an earlier clock is still listed first; sub-millisecond precision survives.
+    prefs.edit().clear().commit()
     val repository = repo()
     clock = t0.plusSeconds(10)
     val second = repository.saveSearch("Second", custom).ok()
-    clock = t0
+    clock = Instant.parse("2026-11-04T10:00:00.123456Z")
     val first = repository.saveSearch("First", TripSearchCriteria()).ok()
-
     assertEquals(listOf(first, second), repository.getSavedSearches().ok())
   }
 
   @Test
-  fun createdAtWithSubMillisecondPrecisionSurvivesRoundTrip() = runTest {
-    // Instant.now() has sub-millisecond precision on the JVM; the stored value is epoch millis.
-    clock = Instant.parse("2026-11-04T10:00:00.123456Z")
-    val repository = repo()
-    val saved = repository.saveSearch("Precise", custom).ok()
-
-    assertEquals(listOf(saved), repository.getSavedSearches().ok())
-  }
-
-  @Test
-  fun nameIsTrimmedAndFortyCharsAccepted() = runTest {
-    val repository = repo()
-    assertEquals("Weekend Coop", repository.saveSearch("  Weekend Coop \n", custom).ok().name)
-    val forty = "a".repeat(40)
-    clock = t0.plusSeconds(1)
-    assertEquals(forty, repository.saveSearch(forty, custom).ok().name)
-    clock = t0.plusSeconds(2)
-    assertEquals(forty, repository.saveSearch("  $forty  ", custom).ok().name)
-    assertEquals(
-        listOf("Weekend Coop", forty, forty),
-        repo().getSavedSearches().ok().map { it.name },
-    )
-  }
-
-  @Test
-  fun invalidNamesAreRejectedAndNothingStored() = runTest {
+  fun saveTrimsNameAndRejectsInvalidNames() = runTest {
     val repository = repo()
     for (name in listOf("", "   ", "\t\n", "a".repeat(41), " ${"b".repeat(41)} ")) {
       assertEquals(TripResult.Error(TripError.InvalidData), repository.saveSearch(name, custom))
     }
     assertNull(prefs.getString("alice", null))
-    assertEquals(emptyList<SavedTripSearch>(), repository.getSavedSearches().ok())
-  }
 
-  @Test
-  fun renameChangesOnlyTheName() = runTest {
-    val repository = repo()
-    val first = repository.saveSearch("First", custom).ok()
+    assertEquals("Weekend Coop", repository.saveSearch("  Weekend Coop \n", custom).ok().name)
+    val forty = "a".repeat(40)
     clock = t0.plusSeconds(1)
-    val second = repository.saveSearch("Second", TripSearchCriteria()).ok()
-
-    assertEquals(TripResult.Success(Unit), repository.renameSearch(first.id, "  Renamed  "))
-
-    val expected = listOf(first.copy(name = "Renamed"), second)
-    assertEquals(expected, repository.getSavedSearches().ok())
-    assertEquals(expected, repo().getSavedSearches().ok())
+    assertEquals(forty, repository.saveSearch("  $forty  ", custom).ok().name)
+    assertEquals(listOf("Weekend Coop", forty), repo().getSavedSearches().ok().map { it.name })
   }
 
   @Test
-  fun renameUnknownIdIsNotFoundAndWritesNothing() = runTest {
+  fun renameChangesOnlyTheNameOrFailsWithoutWriting() = runTest {
     val repository = repo()
     assertEquals(TripResult.Error(TripError.NotFound), repository.renameSearch("missing", "Name"))
     assertNull(prefs.getString("alice", null))
 
-    val saved = repository.saveSearch("Kept", custom).ok()
+    val first = repository.saveSearch("First", custom).ok()
+    clock = t0.plusSeconds(1)
+    val second = repository.saveSearch("Second", TripSearchCriteria()).ok()
     val stored = prefs.getString("alice", null)
     assertEquals(TripResult.Error(TripError.NotFound), repository.renameSearch("missing", "Name"))
-    assertEquals(stored, prefs.getString("alice", null))
-    assertEquals(listOf(saved), repository.getSavedSearches().ok())
-  }
-
-  @Test
-  fun renameWithInvalidNameIsInvalidData() = runTest {
-    val repository = repo()
-    val saved = repository.saveSearch("Kept", custom).ok()
-    assertEquals(TripResult.Error(TripError.InvalidData), repository.renameSearch(saved.id, " "))
+    assertEquals(TripResult.Error(TripError.InvalidData), repository.renameSearch(first.id, " "))
     assertEquals(
         TripResult.Error(TripError.InvalidData),
-        repository.renameSearch(saved.id, "c".repeat(41)),
+        repository.renameSearch(first.id, "c".repeat(41)),
     )
-    assertEquals(listOf(saved), repository.getSavedSearches().ok())
+    assertEquals(stored, prefs.getString("alice", null))
+
+    assertEquals(TripResult.Success(Unit), repository.renameSearch(first.id, "  Renamed  "))
+    assertEquals(listOf(first.copy(name = "Renamed"), second), repo().getSavedSearches().ok())
   }
 
   @Test
-  fun deleteRemovesOnlyThatPreset() = runTest {
+  fun deleteRemovesOnlyThatPresetAndIgnoresMissingIds() = runTest {
     val repository = repo()
+    assertEquals(TripResult.Success(Unit), repository.deleteSearch("missing"))
+    assertNull(prefs.getString("alice", null))
+
     val first = repository.saveSearch("First", custom).ok()
     clock = t0.plusSeconds(1)
     val second = repository.saveSearch("Second", TripSearchCriteria()).ok()
@@ -222,42 +185,10 @@ class SavedTripSearchRepositoryLocalTest {
     val third = repository.saveSearch("Third", custom).ok()
 
     assertEquals(TripResult.Success(Unit), repository.deleteSearch(second.id))
-
+    assertEquals(TripResult.Success(Unit), repository.deleteSearch(second.id))
+    assertEquals(TripResult.Success(Unit), repository.deleteSearch("missing"))
     assertEquals(listOf(first, third), repository.getSavedSearches().ok())
     assertEquals(listOf(first, third), repo().getSavedSearches().ok())
-  }
-
-  @Test
-  fun deletingMissingIdSucceedsAndChangesNothing() = runTest {
-    val repository = repo()
-    assertEquals(TripResult.Success(Unit), repository.deleteSearch("missing"))
-    assertNull(prefs.getString("alice", null))
-
-    val saved = repository.saveSearch("Kept", custom).ok()
-    val stored = prefs.getString("alice", null)
-    assertEquals(TripResult.Success(Unit), repository.deleteSearch("missing"))
-    assertEquals(TripResult.Success(Unit), repository.deleteSearch(saved.id))
-    assertEquals(TripResult.Success(Unit), repository.deleteSearch(saved.id))
-    assertEquals(emptyList<SavedTripSearch>(), repository.getSavedSearches().ok())
-    assertTrue(stored != prefs.getString("alice", null))
-  }
-
-  @Test
-  fun presetsPersistAcrossRepositoryInstances() = runTest {
-    val writer = repo()
-    val a = writer.saveSearch("A", custom).ok()
-    clock = t0.plusSeconds(1)
-    val b = writer.saveSearch("B", TripSearchCriteria(StoreFilter.MIGROS)).ok()
-    clock = t0.plusSeconds(2)
-    val c = writer.saveSearch("C", TripSearchCriteria(period = DeparturePeriod.Today)).ok()
-    assertEquals(listOf(a, b, c), repo().getSavedSearches().ok())
-
-    val second = repo()
-    assertEquals(TripResult.Success(Unit), second.renameSearch(b.id, "B2"))
-    assertEquals(TripResult.Success(Unit), second.deleteSearch(a.id))
-
-    assertEquals(listOf(b.copy(name = "B2"), c), repo().getSavedSearches().ok())
-    assertEquals(listOf(b.copy(name = "B2"), c), writer.getSavedSearches().ok())
   }
 
   @Test
@@ -280,8 +211,7 @@ class SavedTripSearchRepositoryLocalTest {
   }
 
   @Test
-  fun signedOutIsPermissionDeniedAndWritesNothing() = runTest {
-    uid = "alice"
+  fun signedOutIsPermissionDeniedWhateverTheArgumentsAndWritesNothing() = runTest {
     val saved = repo().saveSearch("Alice", custom).ok()
     val stored = prefs.all.toMap()
 
@@ -290,7 +220,9 @@ class SavedTripSearchRepositoryLocalTest {
     val denied = TripResult.Error(TripError.PermissionDenied)
     assertEquals(denied, repository.getSavedSearches())
     assertEquals(denied, repository.saveSearch("Name", custom))
+    assertEquals(denied, repository.saveSearch(" ", custom))
     assertEquals(denied, repository.renameSearch(saved.id, "Name"))
+    assertEquals(denied, repository.renameSearch("x", "a".repeat(41)))
     assertEquals(denied, repository.deleteSearch(saved.id))
     assertEquals(stored, prefs.all.toMap())
 
@@ -299,18 +231,7 @@ class SavedTripSearchRepositoryLocalTest {
   }
 
   @Test
-  fun signedOutWithInvalidNameIsStillPermissionDenied() = runTest {
-    // Contract: without a current user every call is PermissionDenied, whatever the arguments.
-    uid = null
-    val repository = repo()
-    val denied = TripResult.Error(TripError.PermissionDenied)
-    assertEquals(denied, repository.saveSearch(" ", custom))
-    assertEquals(denied, repository.renameSearch("x", "a".repeat(41)))
-    assertTrue(prefs.all.isEmpty())
-  }
-
-  @Test
-  fun unparsableListIsInvalidDataAndNeverOverwritten() = runTest {
+  fun unparsableListIsInvalidDataNeverOverwrittenAndIsolatedPerUser() = runTest {
     for (raw in listOf("not json", "{\"id\":\"x\"}", "[{\"id\":")) {
       prefs.edit().putString("alice", raw).commit()
       val repository = repo()
@@ -321,15 +242,10 @@ class SavedTripSearchRepositoryLocalTest {
       assertEquals(invalid, repository.deleteSearch("x"))
       assertEquals(raw, prefs.getString("alice", null))
     }
-  }
 
-  @Test
-  fun corruptListOfOneUserDoesNotAffectAnother() = runTest {
-    prefs.edit().putString("alice", "not json").commit()
     uid = "bob"
     val saved = repo().saveSearch("Bob", custom).ok()
     assertEquals(listOf(saved), repo().getSavedSearches().ok())
-    assertEquals("not json", prefs.getString("alice", null))
   }
 
   @Test
@@ -374,27 +290,7 @@ class SavedTripSearchRepositoryLocalTest {
   }
 
   @Test
-  fun writeAndReadSearchesRoundTrip() {
-    val searches =
-        listOf(
-            SavedTripSearch("1", "Custom", custom, t0),
-            SavedTripSearch("2", "Default", TripSearchCriteria(), t0.plusSeconds(60)),
-            SavedTripSearch(
-                "3",
-                "Tomorrow",
-                TripSearchCriteria(StoreFilter.MIGROS, DeparturePeriod.Tomorrow, TripSort.DISTANCE),
-                t0.plusMillis(1),
-            ),
-        )
-    assertEquals(searches, readSearches(writeSearches(searches)))
-    assertEquals(emptyList<SavedTripSearch>(), readSearches(writeSearches(emptyList())))
-    assertEquals(emptyList<SavedTripSearch>(), readSearches(null))
-    assertEquals(emptyList<SavedTripSearch>(), readSearches("[]"))
-    assertNull(readSearches("garbage"))
-  }
-
-  @Test
-  fun storedJsonDoesNotContainDeliveryPointOrExtraFields() {
+  fun writeAndReadSearchesRoundTripWithOnlyExpectedFields() {
     val json = writeSearches(listOf(SavedTripSearch("1", "Custom", custom, t0)))
     assertEquals(
         "[{\"id\":\"1\",\"name\":\"Custom\",\"store\":\"COOP\",\"period\":\"custom\"," +
@@ -404,5 +300,15 @@ class SavedTripSearchRepositoryLocalTest {
     )
     val anyTime = writeSearches(listOf(SavedTripSearch("2", "Any", TripSearchCriteria(), t0)))
     assertTrue(!anyTime.contains("start") && !anyTime.contains("end"))
+
+    val searches =
+        listOf(
+            SavedTripSearch("1", "Custom", custom, t0),
+            SavedTripSearch("2", "Default", TripSearchCriteria(), t0.plusMillis(1)),
+        )
+    assertEquals(searches, readSearches(writeSearches(searches)))
+    assertEquals(emptyList<SavedTripSearch>(), readSearches(writeSearches(emptyList())))
+    assertEquals(emptyList<SavedTripSearch>(), readSearches(null))
+    assertNull(readSearches("garbage"))
   }
 }

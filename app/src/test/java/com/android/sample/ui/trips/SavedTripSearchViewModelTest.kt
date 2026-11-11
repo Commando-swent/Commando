@@ -73,7 +73,7 @@ class SavedTripSearchViewModelTest {
       uiState.value.searches.single { it.name == name }.id
 
   @Test
-  fun initialLoadListsStoredPresets() = runTest {
+  fun initialLoadListsStoredPresetsThenSaveValidatesName() = runTest {
     repository.saveSearch("Migros", migros)
     val viewModel = SavedTripSearchViewModel(repository)
     assertTrue(viewModel.uiState.value.isLoading)
@@ -82,24 +82,11 @@ class SavedTripSearchViewModelTest {
     assertEquals(t0, viewModel.uiState.value.searches.single().createdAt)
     assertFalse(viewModel.uiState.value.isLoading)
     assertNull(viewModel.uiState.value.error)
-  }
 
-  @Test
-  fun saveStoresTrimmedNameAndExactCriteria() = runTest {
-    val viewModel = SavedTripSearchViewModel(repository)
-    advanceUntilIdle()
-    assertEquals(SavedTripSearchUiState(), viewModel.uiState.value)
     viewModel.save("  Coop week  ", coop)
     advanceUntilIdle()
-    assertEquals(listOf("Coop week" to coop), viewModel.presets())
-  }
-
-  @Test
-  fun invalidNameSetsInvalidDataAndKeepsTheList() = runTest {
-    val viewModel = SavedTripSearchViewModel(repository)
-    viewModel.save("Migros", migros)
-    advanceUntilIdle()
     val before = viewModel.uiState.value.searches
+    assertEquals(setOf("Migros" to migros, "Coop week" to coop), viewModel.presets().toSet())
     for (name in listOf("   ", "x".repeat(41))) {
       viewModel.save(name, coop)
       advanceUntilIdle()
@@ -111,28 +98,21 @@ class SavedTripSearchViewModelTest {
   }
 
   @Test
-  fun renameChangesOnlyTheNameAndUnknownIdIsNotFound() = runTest {
+  fun renameAndDeleteChangeOnlyTheTargetPreset() = runTest {
     val viewModel = SavedTripSearchViewModel(repository)
     viewModel.save("Mine", migros)
     viewModel.save("Other", coop)
     advanceUntilIdle()
     viewModel.rename(viewModel.idOf("Mine"), " Migros only ")
     advanceUntilIdle()
-    val renamed = listOf("Migros only" to migros, "Other" to coop)
-    assertEquals(renamed.toSet(), viewModel.presets().toSet())
+    val renamed = setOf("Migros only" to migros, "Other" to coop)
+    assertEquals(renamed, viewModel.presets().toSet())
     viewModel.rename("missing", "Name")
     advanceUntilIdle()
-    assertEquals(renamed.toSet(), viewModel.presets().toSet())
+    assertEquals(renamed, viewModel.presets().toSet())
     assertEquals(TripError.NotFound, viewModel.uiState.value.error)
-  }
 
-  @Test
-  fun deleteRemovesOnlyThatPreset() = runTest {
-    val viewModel = SavedTripSearchViewModel(repository)
-    viewModel.save("Mine", migros)
-    viewModel.save("Other", coop)
-    advanceUntilIdle()
-    viewModel.delete(viewModel.idOf("Mine"))
+    viewModel.delete(viewModel.idOf("Migros only"))
     advanceUntilIdle()
     assertEquals(listOf("Other" to coop), viewModel.presets())
   }

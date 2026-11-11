@@ -33,61 +33,72 @@ class SavedTripSearchRepositoryLocal(
   private val preferences =
       context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
-  override suspend fun getSavedSearches(): TripResult<List<SavedTripSearch>> = edit { it }
+  override suspend fun getSavedSearches(): TripResult<List<SavedTripSearch>> {
+    val uid = currentUserId() ?: return TripResult.Error(TripError.PermissionDenied)
+    return edit(uid) { it }
+  }
 
   override suspend fun saveSearch(
       name: String,
       criteria: TripSearchCriteria,
   ): TripResult<SavedTripSearch> {
-    if (currentUserId() == null) return TripResult.Error(TripError.PermissionDenied)
+    val uid = currentUserId() ?: return TripResult.Error(TripError.PermissionDenied)
     val valid = normalizedSearchName(name) ?: return TripResult.Error(TripError.InvalidData)
     // Stored as epoch milliseconds, so the returned preset must equal the one read back.
     val createdAt = now().truncatedTo(ChronoUnit.MILLIS)
     val saved = SavedTripSearch(UUID.randomUUID().toString(), valid, criteria, createdAt)
-    return edit { it + saved }.map { saved }
+    return edit(uid) { it + saved }.map { saved }
   }
 
   override suspend fun renameSearch(id: String, name: String): TripResult<Unit> {
-    if (currentUserId() == null) return TripResult.Error(TripError.PermissionDenied)
+    val uid = currentUserId() ?: return TripResult.Error(TripError.PermissionDenied)
     val valid = normalizedSearchName(name) ?: return TripResult.Error(TripError.InvalidData)
-    return edit { searches ->
-      if (searches.none { it.id == id }) return@edit null
-      searches.map { if (it.id == id) it.copy(name = valid) else it }
-    }
+    return edit(uid) { searches ->
+          if (searches.none { it.id == id }) return@edit null
+          searches.map { if (it.id == id) it.copy(name = valid) else it }
+        }
         .map {}
   }
 
-  override suspend fun deleteSearch(id: String): TripResult<Unit> = edit { searches ->
-    searches.filterNot { it.id == id }
+  override suspend fun deleteSearch(id: String): TripResult<Unit> {
+    val uid = currentUserId() ?: return TripResult.Error(TripError.PermissionDenied)
+    return edit(uid) { searches -> searches.filterNot { it.id == id } }.map {}
   }
-      .map {}
 
   /**
-   * Reads the current user's list, applies [change] and stores the result when it differs. A null
+   * Reads [uid]'s list, applies [change] and stores the result when it differs. [uid] is the one
+   * operation's account: if the session changed meanwhile, nothing is read or written. A null
    * result from [change] means the targeted preset does not exist.
    */
   private suspend fun edit(
-      change: (List<SavedTripSearch>) -> List<SavedTripSearch>?
-  ): TripResult<List<SavedTripSearch>> {
-    val uid = currentUserId() ?: return TripResult.Error(TripError.PermissionDenied)
-    return withContext(ioDispatcher) {
-      // ponytail: one lock for all users; per-user locks if presets ever see real contention.
-      synchronized(LOCK) {
-        val current =
-            readSearches(preferences.getString(uid, null))
-                ?: return@withContext TripResult.Error(TripError.InvalidData)
-        val updated = change(current) ?: return@withContext TripResult.Error(TripError.NotFound)
-        // commit(), not apply(): success is only reported once the change is on disk.
-        if (
-            updated != current &&
-                !preferences.edit().putString(uid, writeSearches(updated)).commit()
-        ) {
-          return@withContext TripResult.Error(TripError.Unknown)
+      uid: String,
+      change: (List<SavedTripSearch>) -> List<SavedTripSearch>?,
+  ): TripResult<List<SavedTripSearch>> =
+      withContext(ioDispatcher) {
+        // ponytail: one lock for all users; per-user locks if presets ever see real contention.
+        synchronized(LOCK) {
+          if (currentUserId() != uid)
+              return@withContext TripResult.Error(TripError.PermissionDenied)
+          // A value of another type under this key is unreadable data, never overwritten.
+          val stored =
+              try {
+                preferences.getString(uid, null)
+              } catch (_: ClassCastException) {
+                return@withContext TripResult.Error(TripError.InvalidData)
+              }
+          val current =
+              readSearches(stored) ?: return@withContext TripResult.Error(TripError.InvalidData)
+          val updated = change(current) ?: return@withContext TripResult.Error(TripError.NotFound)
+          // commit(), not apply(): success is only reported once the change is on disk.
+          if (
+              updated != current &&
+                  !preferences.edit().putString(uid, writeSearches(updated)).commit()
+          ) {
+            return@withContext TripResult.Error(TripError.Unknown)
+          }
+          TripResult.Success(updated.sortedWith(compareBy({ it.createdAt }, { it.id })))
         }
-        TripResult.Success(updated.sortedWith(compareBy({ it.createdAt }, { it.id })))
       }
-    }
-  }
 
   private companion object {
     const val PREFERENCES = "saved_trip_searches"
@@ -157,25 +168,28 @@ internal fun readSearches(json: String?): List<SavedTripSearch>? {
 // ponytail: skipped entries are dropped on the next write, so renaming or removing a StoreFilter /
 // TripSort value would erase presets using it; add a migration here before doing that.
 private fun readSearch(entry: JSONObject): SavedTripSearch? {
-  val id = entry.optString(ID).takeIf { it.isNotEmpty() } ?: return null
-  val name = normalizedSearchName(entry.optString(NAME)) ?: return null
-  val store = StoreFilter.entries.find { it.name == entry.optString(STORE) } ?: return null
-  val sort = TripSort.entries.find { it.name == entry.optString(SORT) } ?: return null
+  val id = entry.text(ID)?.takeIf { it.isNotEmpty() } ?: return null
+  val name = normalizedSearchName(entry.text(NAME) ?: return null) ?: return null
+  val store = StoreFilter.entries.find { it.name == entry.text(STORE) } ?: return null
+  val sort = TripSort.entries.find { it.name == entry.text(SORT) } ?: return null
   val createdAt = (entry.opt(CREATED_AT) as? Number)?.let { Instant.ofEpochMilli(it.toLong()) }
   if (createdAt == null) return null
   val period =
-      when (entry.optString(PERIOD)) {
+      when (entry.text(PERIOD)) {
         ANY_TIME -> DeparturePeriod.AnyTime
         TODAY -> DeparturePeriod.Today
         TOMORROW -> DeparturePeriod.Tomorrow
         CUSTOM ->
             DeparturePeriod.Custom(
-                isoDate(entry.optString(START)) ?: return null,
-                isoDate(entry.optString(END)) ?: return null,
+                isoDate(entry.text(START) ?: return null) ?: return null,
+                isoDate(entry.text(END) ?: return null) ?: return null,
             )
         else -> return null
       }
   return SavedTripSearch(id, name, TripSearchCriteria(store, period, sort), createdAt)
 }
+
+/** The field as a JSON string; null when missing or of another type (JSON null, number...). */
+private fun JSONObject.text(key: String): String? = opt(key) as? String
 
 private fun isoDate(value: String): LocalDate? = runCatching { LocalDate.parse(value) }.getOrNull()

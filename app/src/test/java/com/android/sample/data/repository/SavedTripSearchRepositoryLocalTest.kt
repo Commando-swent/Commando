@@ -133,6 +133,8 @@ class SavedTripSearchRepositoryLocalTest {
     clock = Instant.parse("2026-11-04T10:00:00.123456Z")
     val first = repository.saveSearch("First", TripSearchCriteria()).ok()
     assertEquals(listOf(first, second), repository.getSavedSearches().ok())
+    // Read back by a fresh instance, the sub-millisecond save is equal, timestamp included.
+    assertEquals(first, repo().getSavedSearches().ok().first())
   }
 
   @Test
@@ -249,6 +251,35 @@ class SavedTripSearchRepositoryLocalTest {
   }
 
   @Test
+  fun valueOfAnotherTypeIsInvalidDataAndNeverOverwritten() = runTest {
+    prefs.edit().putInt("alice", 7).commit()
+    val repository = repo()
+    val invalid = TripResult.Error(TripError.InvalidData)
+    assertEquals(invalid, repository.getSavedSearches())
+    assertEquals(invalid, repository.saveSearch("Name", custom))
+    assertEquals(invalid, repository.deleteSearch("x"))
+    assertEquals(7, prefs.getInt("alice", 0))
+  }
+
+  @Test
+  fun accountChangeDuringAnOperationTouchesNoAccount() = runTest {
+    // Signed in as alice when the call starts, bob by the time storage is reached.
+    var calls = 0
+    val switching =
+        SavedTripSearchRepositoryLocal(
+            context,
+            { if (calls++ == 0) "alice" else "bob" },
+            { clock },
+            UnconfinedTestDispatcher(testScheduler),
+        )
+    assertEquals(
+        TripResult.Error(TripError.PermissionDenied),
+        switching.saveSearch("Alice's", custom),
+    )
+    assertTrue(prefs.all.isEmpty())
+  }
+
+  @Test
   fun malformedEntriesAreSkipped() = runTest {
     val valid =
         entry(
@@ -281,7 +312,15 @@ class SavedTripSearchRepositoryLocalTest {
             "\"text\"",
             "null",
         )
-    prefs.edit().putString("alice", (malformed + valid).joinToString(",", "[", "]")).commit()
+    // Explicit JSON null or another type in a required field must not be coerced to text.
+    val wrongTypes =
+        listOf("id", "name", "store", "period", "start", "end", "sort").flatMap { field ->
+          listOf("null", "5").map { value ->
+            valid.replace(Regex("\"$field\":\"[^\"]*\""), "\"$field\":$value")
+          }
+        }
+    val all = malformed + wrongTypes + valid
+    prefs.edit().putString("alice", all.joinToString(",", "[", "]")).commit()
 
     assertEquals(
         listOf(SavedTripSearch("ok", "Good", custom, t0)),

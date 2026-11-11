@@ -144,6 +144,25 @@ class SavedTripSearchViewModelTest {
   }
 
   @Test
+  fun repositoryExceptionEndsLoadingWithUnknownAndKeepsTheList() = runTest {
+    val throwing =
+        object : SavedTripSearchRepository by repository {
+          var fail = false
+
+          override suspend fun getSavedSearches(): TripResult<List<SavedTripSearch>> =
+              if (fail) throw IllegalStateException("storage") else repository.getSavedSearches()
+        }
+    val viewModel = SavedTripSearchViewModel(throwing)
+    viewModel.save("Mine", migros)
+    advanceUntilIdle()
+    val list = viewModel.uiState.value.searches
+    throwing.fail = true
+    viewModel.refresh()
+    advanceUntilIdle()
+    assertEquals(SavedTripSearchUiState(list, error = TripError.Unknown), viewModel.uiState.value)
+  }
+
+  @Test
   fun signedOutRepositoryIsPermissionDenied() = runTest {
     uid = null
     val viewModel = SavedTripSearchViewModel(repository)

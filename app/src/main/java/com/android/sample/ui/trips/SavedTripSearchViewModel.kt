@@ -8,6 +8,7 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.SavedTripSearch
 import com.android.sample.model.TripSearchCriteria
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,15 +58,27 @@ class SavedTripSearchViewModel(private val repository: SavedTripSearchRepository
     mutableState.update { it.copy(isLoading = true, error = null) }
     viewModelScope.launch {
       mutex.withLock {
-        val failure = (action() as? TripResult.Error)?.error
-        val reloaded = repository.getSavedSearches()
-        pending--
-        mutableState.update { state ->
-          when (reloaded) {
-            is TripResult.Success ->
-                state.copy(searches = reloaded.data, isLoading = pending > 0, error = failure)
-            is TripResult.Error ->
-                state.copy(isLoading = pending > 0, error = failure ?: reloaded.error)
+        var failure: TripError? = null
+        var reloaded: TripResult<List<SavedTripSearch>>? = null
+        try {
+          failure = (action() as? TripResult.Error)?.error
+          reloaded = repository.getSavedSearches()
+        } catch (e: CancellationException) {
+          throw e
+        } catch (_: Exception) {
+          // An unexpected repository exception is reported like any failure; the list is kept.
+          failure = failure ?: TripError.Unknown
+        } finally {
+          // Always runs, so loading never stays on after an exception or a cancellation.
+          pending--
+          mutableState.update { state ->
+            when (val result = reloaded) {
+              is TripResult.Success ->
+                  state.copy(searches = result.data, isLoading = pending > 0, error = failure)
+              is TripResult.Error ->
+                  state.copy(isLoading = pending > 0, error = failure ?: result.error)
+              null -> state.copy(isLoading = pending > 0, error = failure ?: TripError.Unknown)
+            }
           }
         }
       }

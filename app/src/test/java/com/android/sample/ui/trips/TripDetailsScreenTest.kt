@@ -2,6 +2,8 @@ package com.android.sample.ui.trips
 
 // AI assistance: Claude Code for the incoming-orders entry point tests (#147) and the owner's
 // close and complete tests (#233).
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -25,6 +27,8 @@ import java.util.Locale
 import java.util.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -189,6 +193,42 @@ class TripDetailsScreenTest {
       compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
     }
     compose.runOnIdle { assertEquals(2, controls.requested.size) }
+  }
+
+  @Test
+  fun backIsBlockedOnlyWhileATransitionIsWritten() {
+    var backs = 0
+    var dispatcher: OnBackPressedDispatcher? = null
+    val state =
+        mutableStateOf<TripDetailsUiState>(
+            TripDetailsUiState.Content(trip, transitionInProgress = true)
+        )
+    compose.setContent {
+      dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+      MaterialTheme {
+        TripDetailsScreen(
+            state = state.value,
+            onRetry = {},
+            onBack = { backs++ },
+            onAddItems = null,
+            ownerControls = RecordingControls().build(),
+        )
+      }
+    }
+    // While the write is delayed, neither the Back button nor the system back leaves the screen.
+    compose.onNodeWithText("Back").assertIsNotEnabled().performTouchInput { click() }
+    compose.runOnIdle {
+      assertTrue(checkNotNull(dispatcher).hasEnabledCallbacks())
+      checkNotNull(dispatcher).onBackPressed()
+      assertEquals(0, backs)
+    }
+
+    state.value = TripDetailsUiState.Content(trip.copy(status = TripStatus.IN_PROGRESS))
+    compose.onNodeWithText("Back").assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, backs)
+      assertFalse(checkNotNull(dispatcher).hasEnabledCallbacks())
+    }
   }
 
   @Test

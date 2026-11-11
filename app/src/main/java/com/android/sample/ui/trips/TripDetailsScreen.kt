@@ -2,6 +2,7 @@ package com.android.sample.ui.trips
 
 // AI assistance: Claude Code for the incoming-orders entry point (#147) and the owner's close and
 // complete actions (#233).
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -63,6 +64,7 @@ fun TripDetailsScreen(
  * Stateless trip details for [state]. Both actions receive the trip ID: [onAddItems] opens the
  * catalogue (disabled when null, or once the trip is no longer published) and [onViewOrders] opens
  * the incoming orders (hidden when null). [ownerControls] shows the owner's section when not null.
+ * Back is blocked while a close or complete is being written.
  */
 @Composable
 fun TripDetailsScreen(
@@ -77,9 +79,13 @@ fun TripDetailsScreen(
   Column(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
   ) {
+    // Leaving before the write commits would let My Trips reload the old status.
+    val writing = (state as? TripDetailsUiState.Content)?.transitionInProgress == true
+    BackHandler(enabled = writing) {}
     // Keep Back outside the scrolling body and independent of the loading result.
     TextButton(
         onClick = onBack,
+        enabled = !writing,
         modifier = Modifier.padding(horizontal = 12.dp),
         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary),
     ) {

@@ -1,6 +1,6 @@
 package com.android.sample.emulator.firestore.adapter
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex and Claude Code.
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProductResult
@@ -115,6 +115,33 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
       val second = ids("cr", first.nextCursor, limit = 2, category = "Food")
       assertEquals(listOf("migros:105"), second.products.map(Product::id))
       assertEquals(null, second.nextCursor)
+    }
+  }
+
+  @Test
+  fun concreteAdapter_ranksWithTheImportersDoubleRanksAndPagesAcrossRanks() = runTest {
+    withFirestoreEmulator { firestore ->
+      // The importer writes JSON numbers as doubles; the query compares them to whole tiers.
+      val migros = firestore.collection("stores").document("migros")
+      migros.set(mapOf("search_rank_version" to 1.0)).await()
+      listOf(
+              Triple("101", "Vinaigre de pomme", 3.0),
+              Triple("102", "Pommes Gala", 1.0),
+              Triple("103", "Pommes frites", 2.0),
+          )
+          .forEach { (id, name, tier) ->
+            val ranked =
+                storedProduct("migros:$id", name, 2) + ("search_rank" to mapOf("pomme" to tier))
+            migros.collection("products").document(id).set(ranked).await()
+          }
+      val repository = ProductRepositoryFirestore(firestore)
+
+      val first = repository.searchProducts("migros", "pomme", limit = 2).successData()
+      assertEquals(listOf("migros:102", "migros:103"), first.products.map(Product::id))
+      assertEquals("2/103", first.nextCursor)
+      val rest = repository.searchProducts("migros", "pomme", first.nextCursor, 2).successData()
+      assertEquals(listOf("migros:101"), rest.products.map(Product::id))
+      assertEquals(null, rest.nextCursor)
     }
   }
 

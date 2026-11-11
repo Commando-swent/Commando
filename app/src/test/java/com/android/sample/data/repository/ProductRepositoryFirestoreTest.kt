@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex and Claude Code.
 import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
@@ -169,6 +169,7 @@ class ProductRepositoryFirestoreTest {
                   category: String?,
                   afterDocumentId: String?,
                   limit: Int,
+                  rank: SearchRank?,
               ) = documents.take(limit)
             }
         )
@@ -558,12 +559,127 @@ class ProductRepositoryFirestoreTest {
           category,
       )
     }
-    listOf("", " ", " 2", "a/b", ".", "..", "x".repeat(1_501)).forEach { cursor ->
+    val cursors = listOf("", " ", " 2", "a/b", ".", "..", "x".repeat(1_501))
+    // A ranked cursor needs a rank from 1 to 7 and a valid document ID.
+    val rankedCursors = listOf("0/1", "8/1", "1/", "1/ 2", "1/a/b", "/1", "1/" + "x".repeat(1_501))
+    (cursors + rankedCursors).forEach { cursor ->
       assertProductError(
           ProductError.InvalidCursor,
           repository.searchProducts("coop", "milk", cursor),
           cursor,
       )
+    }
+    // A blank query lists everything in document ID order, so it has no ranked position.
+    assertProductError(ProductError.InvalidCursor, repository.searchProducts("coop", "", "1/42"))
+    assertEquals(0, dataSource.queryCalls)
+  }
+
+  @Test
+  fun searchProducts_ranksByTierAndPagesAcrossTiers() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.storesById["migros"] = rankMetadata("migros")
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            ranked("migros:1", "Vinaigre de pomme", "pomme" to 7),
+            ranked("migros:2", "Pommes Gala", "pomme" to 1),
+            ranked("migros:3", "Pommes frites", "pomme" to 2, "frites" to 1),
+            ranked("migros:4", "Pommes Boskoop", "pomme" to 1),
+            ranked("migros:5", "Pommeau", "pomme" to 3),
+        )
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val first = repository.searchProducts("migros", "Pomme", limit = 2).successData()
+    assertEquals(listOf("migros:2", "migros:4"), first.products.map(Product::id))
+    assertEquals("1/4", first.nextCursor)
+    // The rest of tier 1 is empty, so the same page continues with tiers 2 and 3.
+    val second = repository.searchProducts("migros", "pomme", first.nextCursor, 2).successData()
+    assertEquals(listOf("migros:3", "migros:5"), second.products.map(Product::id))
+    assertEquals("3/5", second.nextCursor)
+    val last = repository.searchProducts("migros", "pomme", second.nextCursor, 2).successData()
+    assertEquals(ProductPage(listOf(productOf("migros:1", "Vinaigre de pomme")), null), last)
+    assertEquals(SearchRank("pomme", 7), dataSource.lastRank)
+    // Only the first term sets the tier; the others still filter.
+    val fries = repository.searchProducts("migros", "pomme frites").successData()
+    assertEquals(listOf("migros:3"), fries.products.map(Product::id))
+    assertEquals(
+        listOf("pomme", "frites") to SearchRank("pomme", 7),
+        dataSource.lastTerms to dataSource.lastRank,
+    )
+    // The store's ranking is read once for the repository, not on every page or search.
+    assertEquals(1, dataSource.storeReads)
+  }
+
+  @Test
+  fun searchProducts_keepsDocumentIdOrderUntilTheStoreHasThisSearchRankVersion() = runTest {
+    // No version, then a malformed fractional one that must not be truncated to this app's 1.
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.storesById["migros"] = rankMetadata("migros", version = 1.5)
+    listOf("coop", "migros").forEach { store ->
+      dataSource.documentsByStore[store] =
+          listOf(
+              ranked("$store:1", "Vinaigre de pomme", "pomme" to 7),
+              ranked("$store:2", "Pommes Gala", "pomme" to 1),
+          )
+    }
+    val repository = ProductRepositoryFirestore(dataSource)
+    listOf("coop", "migros").forEach { store ->
+      val page = repository.searchProducts(store, "pomme", limit = 1).successData()
+      assertEquals(ProductPage(listOf(productOf("$store:1", "Vinaigre de pomme")), "1"), page)
+      assertNull(dataSource.lastRank)
+    }
+    // An unranked store is read again, so its migration applies without restarting the app.
+    dataSource.storesById["coop"] = rankMetadata("coop")
+    val migrated = repository.searchProducts("coop", "pomme", limit = 1).successData()
+    assertEquals(listOf("coop:2"), migrated.products.map(Product::id))
+    // Browsing without a query never needs the store's ranking.
+    val reads = dataSource.storeReads
+    repository.searchProducts("coop", "")
+    assertEquals(reads, dataSource.storeReads)
+  }
+
+  @Test
+  fun searchProducts_fallsBackWhenRankMetadataFailsAndRetriesMigration() = runTest {
+    val dataSource = InMemoryProductFirestoreDataSource()
+    dataSource.documentsByStore["migros"] =
+        listOf(
+            ranked("migros:1", "Vinaigre de pomme", "pomme" to 7),
+            ranked("migros:2", "Pommes Gala", "pomme" to 1),
+        )
+    dataSource.metadataFailure = firebaseException(Code.UNAVAILABLE)
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    val fallback = repository.searchProducts("migros", "pomme", limit = 1).successData()
+    assertEquals(
+        ProductPage(listOf(productOf("migros:1", "Vinaigre de pomme")), "1"),
+        fallback,
+    )
+    assertNull(dataSource.lastRank)
+    assertEquals(1, dataSource.storeReads)
+
+    // A failed read is not cached: the next search sees a completed migration and ranks normally.
+    dataSource.metadataFailure = null
+    dataSource.storesById["migros"] = rankMetadata("migros")
+    val migrated = repository.searchProducts("migros", "pomme", limit = 1).successData()
+    assertEquals(listOf("migros:2"), migrated.products.map(Product::id))
+    assertEquals(SearchRank("pomme", 1), dataSource.lastRank)
+    assertEquals(2, dataSource.storeReads)
+
+    // Only metadata failures fall back; a ranked product query still reports its own failure.
+    dataSource.failure = firebaseException(Code.UNAVAILABLE)
+    assertProductError(ProductError.NetworkError, repository.searchProducts("migros", "pomme"))
+  }
+
+  @Test
+  fun searchProducts_preservesRankMetadataCancellation() = runTest {
+    val cancellation = CancellationException("metadata read cancelled")
+    val dataSource = InMemoryProductFirestoreDataSource().apply { metadataFailure = cancellation }
+    val repository = ProductRepositoryFirestore(dataSource)
+
+    try {
+      repository.searchProducts("coop", "milk")
+      fail("Expected CancellationException")
+    } catch (propagated: CancellationException) {
+      assertEquals(cancellation, propagated)
     }
     assertEquals(0, dataSource.queryCalls)
   }
@@ -643,6 +759,20 @@ class ProductRepositoryFirestoreTest {
               ),
       )
 
+  /** The `stores/{storeId}` document of a catalogue whose search ranks have [version]. */
+  private fun rankMetadata(storeId: String, version: Number = 1L) =
+      FirestoreDocument(storeId, mapOf("search_rank_version" to version))
+
+  /** A product with each term's tier in `search_rank`, as the importer writes it (doubles). */
+  private fun ranked(id: String, name: String, vararg tiers: Pair<String, Int>) =
+      productDocument(id, name).let { document ->
+        val prefixes = tiers.associate { (term, _) -> term to true }
+        val ranks = tiers.associate { (term, tier) -> term to tier.toDouble() }
+        document.copy(
+            data = document.data + mapOf("search_prefixes" to prefixes, "search_rank" to ranks)
+        )
+      }
+
   private companion object {
     val REMOVED_AT = Timestamp(1_760_000_000, 0)
   }
@@ -652,6 +782,7 @@ class ProductRepositoryFirestoreTest {
     val favouritesByUser = mutableMapOf<String, MutableMap<String, FirestoreDocument>>()
     val storesById = mutableMapOf<String, FirestoreDocument>()
     var failure: Exception? = null
+    var metadataFailure: Exception? = null
     var afterFavouriteRead: () -> Unit = {}
     var queryCalls = 0
     var lastStoreId: String? = null
@@ -659,11 +790,13 @@ class ProductRepositoryFirestoreTest {
     var lastTerms: List<String>? = null
     var lastCategory: String? = null
     var lastCursor: String? = null
+    var lastRank: SearchRank? = null
+    var storeReads = 0
 
     /**
      * Mirrors the Firestore query: `removed_at == null` (the field must be present) and every term
      * prefix are filtered before the limit, in document ID order. As in Firestore, the cursor is a
-     * position: it need not be a stored document.
+     * position: it need not be a stored document, and a stored rank of 1.0 equals the tier 1.
      */
     override suspend fun queryProducts(
         storeId: String,
@@ -671,6 +804,7 @@ class ProductRepositoryFirestoreTest {
         category: String?,
         afterDocumentId: String?,
         limit: Int,
+        rank: SearchRank?,
     ): List<ProductFirestoreDocument> {
       queryCalls++
       lastStoreId = storeId
@@ -678,6 +812,7 @@ class ProductRepositoryFirestoreTest {
       lastTerms = terms
       lastCategory = category
       lastCursor = afterDocumentId
+      lastRank = rank
       failure?.let { throw it }
       return documentsByStore[storeId]
           .orEmpty()
@@ -689,10 +824,16 @@ class ProductRepositoryFirestoreTest {
             val prefixes = document.data["search_prefixes"] as? Map<*, *>
             terms.all { prefixes?.get(it) == true }
           }
+          .filter { document ->
+            val ranks = document.data["search_rank"] as? Map<*, *>
+            rank == null || (ranks?.get(rank.term) as? Number)?.toDouble() == rank.tier.toDouble()
+          }
           .take(limit)
     }
 
     override suspend fun getStore(storeId: String): FirestoreDocument? {
+      storeReads++
+      metadataFailure?.let { throw it }
       failure?.let { throw it }
       return storesById[storeId]
     }

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   displayName, emulatorHost, FIREBASE_TOOLS_VERSION, firebaseTools, firestoreClient, firestoreTarget, importProducts, parseArgs,
   parseExport, parseSizes, planWrites, searchPrefixes, skippedReport, toProduct, writeCategories,
+  broadCategory, COOP_DEPARTMENTS, OTHER_CATEGORY, searchHomes, searchRank, SEARCH_RANK_VERSION,
 } from './import.mjs';
 
 const row = (number, overrides = {}) =>
@@ -91,8 +92,9 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
       source_name: 'Crème',
       brand: null,
       variant: null,
-      category: null,
+      category: OTHER_CATEGORY,
       category_path: null,
+      search_rank: { cr: 5, cre: 5, crem: 5, creme: 4 },
     },
   });
   assert.equal(toProduct(row('1', { price: 3, image_url: '' }), 'migros').data.price, 3);
@@ -103,13 +105,67 @@ test('toProduct maps an export row to the app schema with a CHF price and a stab
   assert.equal(toProduct(row('1', { price: 21_474_836.47 }), 'migros').data.price, 21_474_836.47);
 });
 
-test('categories keep a broad label and the cleaned full source path for both stores', () => {
-  const migros = toProduct(row('1', { category: ' Food  >  Dairy > Milk ' }), 'migros').data;
-  const coop = toProduct(coopRow({ category: ' Avocados ' }), 'coop').data;
+test('both chains share Migros departments as broad categories and keep the cleaned source path', () => {
+  const migros = toProduct(row('1', { category: ' Fruits & légumes  >  Fruits > Pommes ' }), 'migros').data;
+  const coop = toProduct(coopRow({ category: ' Avocats ' }), 'coop').data;
   const missing = toProduct(row('2', { category: ' > ' }), 'migros').data;
-  assert.deepEqual([migros.category, migros.category_path], ['Food', 'Food > Dairy > Milk']);
-  assert.deepEqual([coop.category, coop.category_path], ['Avocados', 'Avocados']);
-  assert.deepEqual([missing.category, missing.category_path], [null, null]);
+  assert.deepEqual([migros.category, migros.category_path], ['Fruits & légumes', 'Fruits & légumes > Fruits > Pommes']);
+  assert.deepEqual([coop.category, coop.category_path], ['Fruits & légumes', 'Avocats']);
+  assert.deepEqual([missing.category, missing.category_path], [OTHER_CATEGORY, null]);
+  // The department of a Migros path never depends on the Coop mapping.
+  assert.equal(broadCategory('migros', 'Avocats'), 'Avocats');
+});
+
+test('coop-categories.json files each cleaned Coop category under exactly one department', () => {
+  const departments = JSON.parse(readFileSync(new URL('./coop-categories.json', import.meta.url), 'utf8'));
+  const listed = Object.values(departments).flat();
+  assert.equal(listed.length, 565);
+  assert.equal(COOP_DEPARTMENTS.size, listed.length, 'a category listed under two departments');
+  for (const category of listed) assert.equal(category, category.replace(/\s+/g, ' ').trim(), `${category} would never match a stored path`);
+  // A misspelt department would silently add a category Migros never has.
+  for (const department of Object.keys(departments)) assert.ok(MIGROS_DEPARTMENTS.includes(department), `${department} is not a Migros department`);
+});
+
+// The 18 departments of the Migros export of 2026-11-08, exactly as swiss-cli writes them.
+const MIGROS_DEPARTMENTS = ['Animaux', 'Bébé et enfant', 'Beauté & santé', 'Boissons, café & thé', 'Boulangerie, pâtisserie & petit déjeuner',
+  'Fruits & légumes', 'Jardin & extérieur', 'Jeux, loisirs & cadeaux', 'Maison & cuisine', 'Ménage & nettoyage', 'Mode & accessoires',
+  'Papeterie, bureau & accessoires électroniques', 'Pâtes, condiments & conserves', 'Produits laitiers, œufs & plats préparés frais',
+  'Snacks & confiseries', 'Surgelés', 'Viandes & poissons', 'Vins, bières & spiritueux'];
+
+test('a catalogue imported before categories and ranks gets only those fields, then reruns without writes', async () => {
+  const products = exportOf(coopRow({ category: 'Avocats' }), coopRow({ id: 'coop:2', category: 'Nouvelle catégorie' }), coopRow({ id: 'coop:3', category: null }));
+  const legacy = ({ path: key, data }) => {
+    const { category, category_path: categoryPath, search_rank: rank, ...fields } = data;
+    return [key, { data: { ...fields, price_history: [1.9] }, updateTime: 'old' }];
+  };
+  const client = fakeClient(new Map(products.map(legacy)));
+  const logs = [];
+  const dryRun = await importProducts(products, { client, log: (line) => logs.push(line) });
+  // The product without a category also gets an explicit null category_path, as a created one has.
+  assert.deepEqual([dryRun.counts.update, dryRun.fields], [3, { category: 3, category_path: 3, search_rank: 3 }]);
+  assert.match(logs.join('\n'), /missing from coop-categories.json, filed under Autres: \{"Nouvelle catégorie":1\}/);
+  const { writes } = planWrites(products, client.documents);
+  assert.deepEqual(writes.map((write) => write.updateMask.fieldPaths), Array(3).fill(['category', 'category_path', 'search_rank']));
+
+  const migrated = await importProducts(products, { client, write: true, log: () => {} });
+  assert.deepEqual([migrated.written, migrated.categories], [3, [OTHER_CATEGORY, 'Fruits & légumes']]);
+  assert.deepEqual(client.documents.get(path('3465933', 'coop')).data, { ...products[0].data, price_history: [1.9] });
+  assert.equal((await importProducts(products, { client, write: true, log: () => {} })).written, 0);
+
+  // A stored path is regrouped when the mapping files it elsewhere, even if the export has no category.
+  client.documents.get(path('3465933', 'coop')).data.category = 'Avocats';
+  const regrouped = planWrites(exportOf(coopRow({ category: null })), client.documents);
+  assert.deepEqual([regrouped.fields, regrouped.writes[0].update.fields.category], [{ category: 1 }, { stringValue: 'Fruits & légumes' }]);
+});
+
+test('an owned field missing from Firestore is written as null, so the app can list the product', () => {
+  const product = toProduct(coopRow({ name: 'Avocat mûr' }), 'coop');
+  const { removed_at: removedAt, ...stored } = product.data;
+  const { writes } = planWrites([product], new Map([[product.path, { data: { ...stored, name: 'Avocat' }, updateTime: 't1' }]]));
+  assert.deepEqual(writes[0].updateMask.fieldPaths, ['name', 'removed_at']);
+  assert.deepEqual(writes[0].update.fields.removed_at, { nullValue: null });
+  // Without any other change, the missing field alone is still written.
+  assert.equal(planWrites([product], new Map([[product.path, { data: stored, updateTime: 't1' }]])).counts.update, 1);
 });
 
 test('a later export without category keeps the stored taxonomy and its search prefixes', async () => {
@@ -137,7 +193,60 @@ test('the store categories are the sorted distinct categories of listed products
   assert.equal(await writeCategories(client, 'migros', categories, () => {}), true);
   assert.equal(await writeCategories(client, 'migros', categories, () => {}), false, 'an unchanged list is not rewritten');
   assert.equal(await writeCategories(client, 'migros', ['Lait'], () => {}), true);
-  assert.deepEqual(client.documents.get('stores/migros').data, { categories: ['Lait'] });
+  // A store categorised before ranking gets the version once.
+  delete client.documents.get('stores/migros').data.search_rank_version;
+  assert.equal(await writeCategories(client, 'migros', ['Lait'], () => {}), true);
+  assert.deepEqual(client.documents.get('stores/migros').data, { categories: ['Lait'], search_rank_version: SEARCH_RANK_VERSION });
+});
+
+test('searchRank ranks a word in the department the catalogue files it under before other matches', () => {
+  const catalogue = exportOf(
+    row('1', { name: 'Bananes', brand: 'Migros', category: 'Fruits & légumes > Fruits > Bananes' }),
+    row('2', { name: 'Bananes Chips', brand: 'Alnatura', category: 'Snacks & confiseries > Fruits secs' }),
+    row('3', { name: 'Lait entier', category: 'Produits laitiers, œufs & plats préparés frais > Lait, beurre & œufs > Lait & boissons lactées > Lait entier' }),
+    row('4', { name: 'Lait Extra', brand: 'Frey', category: 'Snacks & confiseries > Chocolats & confiseries > Tablettes de chocolat > Lait' }),
+    row('5', { name: 'Lait pour nourrissons', brand: 'Holle', category: 'Bébé et enfant > Alimentation & lait infantile > Laits & poudres infantiles > Lait 1er âge' }),
+    row('6', { name: 'Laitue iceberg', category: 'Fruits & légumes > Légumes > Salades' }),
+    row('7', { name: 'Vinaigre de pomme', brand: 'Alnatura', category: 'Pâtes, condiments & conserves > Vinaigres & balsamiques' }),
+    row('8', { name: 'Poulet en gelée', brand: 'Sheba', category: 'Animaux > Chats > Aliments humides' }),
+    row('9', { name: 'Poulet entier', category: 'Viandes & poissons > Viandes & volaille > Volaille > Poulet' }),
+    row('10', { name: 'Salade de pommes de terre', category: 'Fruits & légumes > Prêt à l’emploi > Salades prêtes' }),
+  );
+  const rank = (number) => catalogue.find((product) => product.path === path(number)).data.search_rank;
+  // A later word of the name ("Chips") is any other word.
+  assert.deepEqual([rank('1').banane, rank('2').banane, rank('2').chips], [1, 4, 7]);
+  // Milk before milk chocolate, baby milk after both (an audience department), lettuce only starts with "lait".
+  assert.deepEqual([rank('3').lait, rank('4').lait, rank('5').lait, rank('6').lait], [2, 4, 6, 5]);
+  // Chicken before cat food; the vinegar is any other word for "pomme" but direct for "vinaigre".
+  assert.deepEqual([rank('9').poulet, rank('8').poulet, rank('7').pomme, rank('7').vinaigre], [2, 6, 7, 2]);
+  // A ready-made section of the fresh department is not fresh produce, but is still the home of "salade".
+  assert.deepEqual([rank('10').salade, rank('10').pomme, rank('1').ba], [2, 7, 5]);
+  assert.deepEqual(Object.keys(rank('7')), Object.keys(catalogue[6].data.search_prefixes));
+});
+
+test('searchHomes prefers fresh produce, then the most category levels, and skips audience departments', () => {
+  const homes = searchHomes([
+    { id: 'a', category: 'Bébé et enfant', category_path: 'Bébé et enfant > Lait infantile > Lait 1er âge > Lait 2e âge' },
+    { id: 'b', category: 'Produits laitiers', category_path: 'Produits laitiers > Lait' },
+    { id: 'c', category: 'Pâtes', category_path: 'Pâtes > Conserves de salade > Salades de thon > Salades de riz' },
+    { id: 'd', category: 'Fruits & légumes', category_path: 'Fruits & légumes > Salades vertes' },
+    { id: 'e', category: 'Viandes & poissons', category_path: 'Viandes & poissons > Viande de bœuf emballée' },
+  ]);
+  // Baby and canned goods name "lait" and "salade" more often; plurals and any category word count.
+  assert.deepEqual([homes.get('lait'), homes.get('salade'), homes.get('salades')], ['Produits laitiers', 'Fruits & légumes', 'Fruits & légumes']);
+  assert.deepEqual([homes.get('boeuf'), homes.get('de')], ['Viandes & poissons', undefined]);
+});
+
+test('searchRank reads Coop words after the brand and ranks within the Coop catalogue', () => {
+  const catalogue = exportOf(
+    coopRow({ id: 'coop:1', name: 'Munz Bananes au chocolat 7x19g', brand: 'Munz', category: 'Barres de chocolat' }),
+    coopRow({ id: 'coop:2', name: 'Plantains env. 600g', brand: null, category: 'Bananes' }),
+    coopRow({ id: 'coop:3', name: 'Ramseier Jus de pomme filtré 6x1.5l', brand: 'Ramseier', category: 'Jus de pomme & Cidre' }),
+  );
+  const [munz, plantains, juice] = catalogue.map((product) => product.data.search_rank);
+  assert.deepEqual([plantains.plantain, plantains.banane, munz.banane, munz.munz], [1, 3, 4, 7]);
+  assert.deepEqual([juice.jus, juice.pomme, juice.cidre], [2, 3, 3]);
+  assert.deepEqual(searchRank('coop', { name: 'Avocat', category_path: null }), { av: 5, avo: 5, avoc: 5, avoca: 5, avocat: 4 });
 });
 
 test('displayName writes brand, name and variant once each and never drops a different word', () => {

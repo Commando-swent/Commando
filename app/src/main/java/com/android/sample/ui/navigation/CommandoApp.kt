@@ -1,7 +1,8 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
-// Claude Code contributed the shared resume refresh, incoming orders (#147) and checklist (#193).
+// Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
+// and the trip owner's close and complete actions (#233).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -44,6 +45,8 @@ import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.data.repository.SavedTripSearchRepository
+import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.ShoppingChecklistRepository
 import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
 import com.android.sample.data.repository.TripRepository
@@ -97,6 +100,8 @@ import com.android.sample.ui.trips.CreateTripScreen
 import com.android.sample.ui.trips.CreateTripViewModel
 import com.android.sample.ui.trips.MyTripsScreen
 import com.android.sample.ui.trips.MyTripsViewModel
+import com.android.sample.ui.trips.SavedTripSearchViewModel
+import com.android.sample.ui.trips.SavedTripSearches
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
@@ -114,6 +119,7 @@ fun CommandoApp(
     productRepository: ProductRepository? = null,
     orderRepositoryFactory: ((() -> String?) -> OrderRepository)? = null,
     checklistRepositoryFactory: ((() -> String?) -> ShoppingChecklistRepository)? = null,
+    savedSearchRepositoryFactory: ((() -> String?) -> SavedTripSearchRepository)? = null,
     onLanguageSelected: (AppLanguage) -> Unit = {},
 ) {
   val context = LocalContext.current
@@ -199,6 +205,12 @@ fun CommandoApp(
                 checklistRepositoryFactory?.invoke(orders::currentUserId)
                     ?: ShoppingChecklistRepositoryFirestore(orders::currentUserId)
               }
+          // Presets stay on this phone, one list per account (#191).
+          val savedSearches =
+              remember(orders) {
+                savedSearchRepositoryFactory?.invoke(orders::currentUserId)
+                    ?: SavedTripSearchRepositoryLocal(context, orders::currentUserId)
+              }
           AuthenticatedApp(
               repository = repository,
               photoRepository = photoRepository,
@@ -206,6 +218,7 @@ fun CommandoApp(
               productRepository = productRepository,
               orders = orders,
               checklists = checklists,
+              savedSearches = savedSearches,
               userId = user.uid,
               onSignOut = {
                 if (sessionViewModel.signOut()) {
@@ -236,6 +249,7 @@ private fun AuthenticatedApp(
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
     checklists: ShoppingChecklistRepository,
+    savedSearches: SavedTripSearchRepository,
     userId: String,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
@@ -244,6 +258,9 @@ private fun AuthenticatedApp(
   val appViewModel: AppViewModel = viewModel()
   // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
   val locationFilter: TripLocationFilterViewModel = viewModel()
+  val savedSearchViewModel: SavedTripSearchViewModel = viewModel {
+    SavedTripSearchViewModel(savedSearches)
+  }
   val profileViewModel: ProfileViewModel = viewModel {
     ProfileViewModel(repository, photoRepository)
   }
@@ -351,12 +368,27 @@ private fun AuthenticatedApp(
             }
         RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
         val selectedPoint by locationFilter.selected.collectAsState()
+        val criteria by locationFilter.criteria.collectAsState()
         AvailableTripsScreen(
             viewModel = availableTripsViewModel,
             selectedPoint = selectedPoint,
             points = TripLocations.handoffPoints,
             onSelectPoint = locationFilter::select,
             onClearPoint = locationFilter::clear,
+            criteria = criteria,
+            onCriteriaChange = locationFilter::setCriteria,
+            onClearCriteria = locationFilter::clearCriteria,
+            presets = {
+              val presetState by savedSearchViewModel.uiState.collectAsState()
+              SavedTripSearches(
+                  state = presetState,
+                  onSave = { savedSearchViewModel.save(it, criteria) },
+                  // A preset replaces the criteria only; the delivery point is kept.
+                  onApply = { locationFilter.setCriteria(it.criteria) },
+                  onRename = savedSearchViewModel::rename,
+                  onDelete = savedSearchViewModel::delete,
+              )
+            },
             onTripSelected = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },
@@ -369,6 +401,8 @@ private fun AuthenticatedApp(
         // The authenticated graph is keyed by account, so this list never outlives its owner.
         val myTripsViewModel: MyTripsViewModel =
             viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
+        // Coming back from Trip Details shows a status the owner just changed there.
+        RefreshOnResume(myTripsViewModel, myTripsViewModel::retry)
         MyTripsScreen(
             viewModel = myTripsViewModel,
             onTripSelected = { tripId ->
@@ -410,6 +444,7 @@ private fun AuthenticatedApp(
                     }
                   }
                 } else null,
+            showOwnerActions = appUiState.mode == AppMode.Commando && ownsTrip,
         )
       }
       composable(

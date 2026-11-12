@@ -1,8 +1,13 @@
 package com.android.sample.ui.trips
 
-// AI assistance: Claude Code for the incoming-orders entry point tests (#147).
+// AI assistance: Claude Code for the incoming-orders entry point tests (#147) and the owner's
+// close and complete tests (#233).
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -13,6 +18,7 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -21,6 +27,8 @@ import java.util.Locale
 import java.util.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -64,6 +72,7 @@ class TripDetailsScreenTest {
       onAddItems: ((String) -> Unit)? = {},
       largeText: Boolean = false,
       onViewOrders: ((String) -> Unit)? = null,
+      ownerControls: TripOwnerControls? = null,
   ) {
     compose.setContent {
       val density = LocalDensity.current
@@ -77,6 +86,7 @@ class TripDetailsScreenTest {
               onBack = onBack,
               onAddItems = onAddItems,
               onViewOrders = onViewOrders,
+              ownerControls = ownerControls,
           )
         }
       }
@@ -148,29 +158,158 @@ class TripDetailsScreenTest {
   }
 
   @Test
-  fun inProgressAddItemsIsEnabledAndInvokesCallbackWithExactId() {
-    val addedTripIds = mutableListOf<String>()
+  fun inProgressAddItemsIsDisabledBecauseAClosedTripRefusesOrders() {
+    assertAddItemsDisabled(TripStatus.IN_PROGRESS)
+  }
+
+  @Test
+  fun ownerSectionIsHiddenWithoutOwnerControls() {
+    show(TripDetailsUiState.Content(trip))
+    compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
+  }
+
+  @Test
+  fun ownerRequestsTheTransitionMatchingTheStatusAndNoneOnceEnded() {
+    val controls = RecordingControls()
+    val state = mutableStateOf<TripDetailsUiState>(TripDetailsUiState.Content(trip))
+    showOwner(state, controls.build())
+    val expected =
+        listOf(
+            Triple(TripStatus.PUBLISHED, "Close to new orders", TripTransition.CLOSE),
+            Triple(TripStatus.IN_PROGRESS, "Complete trip", TripTransition.COMPLETE),
+        )
+    for ((status, label, transition) in expected) {
+      state.value = TripDetailsUiState.Content(trip.copy(status = status))
+      compose
+          .onNodeWithTag(TripOwnerTestTags.TRANSITION)
+          .performScrollTo()
+          .assertTextEquals(label)
+          .assertIsEnabled()
+          .performClick()
+      compose.runOnIdle { assertEquals(transition, controls.requested.last()) }
+    }
+    for (ended in listOf(TripStatus.COMPLETED, TripStatus.CANCELLED)) {
+      state.value = TripDetailsUiState.Content(trip.copy(status = ended))
+      compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
+    }
+    compose.runOnIdle { assertEquals(2, controls.requested.size) }
+  }
+
+  @Test
+  fun backIsBlockedOnlyWhileATransitionIsWritten() {
+    var backs = 0
+    var dispatcher: OnBackPressedDispatcher? = null
+    val state =
+        mutableStateOf<TripDetailsUiState>(
+            TripDetailsUiState.Content(trip, transitionInProgress = true)
+        )
+    compose.setContent {
+      dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+      MaterialTheme {
+        TripDetailsScreen(
+            state = state.value,
+            onRetry = {},
+            onBack = { backs++ },
+            onAddItems = null,
+            ownerControls = RecordingControls().build(),
+        )
+      }
+    }
+    // While the write is delayed, neither the Back button nor the system back leaves the screen.
+    compose.onNodeWithText("Back").assertIsNotEnabled().performTouchInput { click() }
+    compose.runOnIdle {
+      assertTrue(checkNotNull(dispatcher).hasEnabledCallbacks())
+      checkNotNull(dispatcher).onBackPressed()
+      assertEquals(0, backs)
+    }
+
+    state.value = TripDetailsUiState.Content(trip.copy(status = TripStatus.IN_PROGRESS))
+    compose.onNodeWithText("Back").assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, backs)
+      assertFalse(checkNotNull(dispatcher).hasEnabledCallbacks())
+    }
+  }
+
+  @Test
+  fun transitionInProgressDisablesTheAction() {
     show(
-        TripDetailsUiState.Content(trip.copy(status = TripStatus.IN_PROGRESS)),
-        onAddItems = { addedTripIds.add(it) },
+        TripDetailsUiState.Content(trip, transitionInProgress = true),
+        ownerControls = RecordingControls().build(),
     )
-    compose.runOnIdle { assertEquals(emptyList<String>(), addedTripIds) }
-    compose
-        .onNodeWithText("Add items to this run")
-        .assertIsDisplayed()
-        .assertIsEnabled()
-        .performClick()
-    compose.runOnIdle { assertEquals(listOf(trip.id), addedTripIds) }
+    compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).performScrollTo().assertIsNotEnabled()
   }
 
   @Test
-  fun completedAddItemsIsDisabledAndDoesNotInvokeCallback() {
-    assertAddItemsDisabled(TripStatus.COMPLETED)
+  fun confirmationDialogConfirmsOrDismisses() {
+    val controls = RecordingControls()
+    val state = TripDetailsUiState.Content(trip, pendingTransition = TripTransition.CLOSE)
+    show(state, ownerControls = controls.build())
+    compose.onNodeWithText("Close this trip?").assertIsDisplayed()
+    compose.onNodeWithTag(TripOwnerTestTags.CONFIRM).assertTextEquals("Confirm").performClick()
+    compose.onNodeWithTag(TripOwnerTestTags.DISMISS).assertTextEquals("Cancel").performClick()
+    compose.runOnIdle { assertEquals(listOf("confirm", "dismiss"), controls.answers) }
   }
 
   @Test
-  fun cancelledAddItemsIsDisabledAndDoesNotInvokeCallback() {
-    assertAddItemsDisabled(TripStatus.CANCELLED)
+  fun completeConfirmationExplainsThatItCannotBeUndone() {
+    val ended =
+        TripDetailsUiState.Content(
+            trip.copy(status = TripStatus.IN_PROGRESS),
+            pendingTransition = TripTransition.COMPLETE,
+        )
+    show(ended, ownerControls = RecordingControls().build())
+    compose.onNodeWithText("Complete this trip?").assertIsDisplayed()
+    compose.onNodeWithText("The trip ends and cannot be reopened.").assertIsDisplayed()
+  }
+
+  @Test
+  fun transitionErrorsShowTheMatchingMessage() {
+    val messages =
+        mapOf(
+            TripError.OrdersStillOpen to "Settle every open order before completing the trip.",
+            TripError.InvalidTransition to "This trip has changed. Go back and open it again.",
+            TripError.NetworkError to
+                "Could not reach the server. Check your connection and try again.",
+            TripError.Unknown to "Could not update the trip. Try again.",
+        )
+    val state = mutableStateOf<TripDetailsUiState>(TripDetailsUiState.Content(trip))
+    showOwner(state, RecordingControls().build())
+    for ((error, message) in messages) {
+      state.value = TripDetailsUiState.Content(trip, transitionError = error)
+      compose
+          .onNodeWithTag(TripOwnerTestTags.TRANSITION_ERROR)
+          .performScrollTo()
+          .assertTextEquals(message)
+    }
+  }
+
+  /** Shows Trip Details for [state]; tests change it instead of calling setContent again. */
+  private fun showOwner(state: MutableState<TripDetailsUiState>, controls: TripOwnerControls) {
+    compose.setContent {
+      MaterialTheme {
+        TripDetailsScreen(
+            state = state.value,
+            onRetry = {},
+            onBack = {},
+            onAddItems = null,
+            ownerControls = controls,
+        )
+      }
+    }
+  }
+
+  /** Owner controls that record every callback. */
+  private class RecordingControls {
+    val requested = mutableListOf<TripTransition>()
+    val answers = mutableListOf<String>()
+
+    fun build() =
+        TripOwnerControls(
+            onRequestTransition = { requested.add(it) },
+            onConfirmTransition = { answers.add("confirm") },
+            onDismissTransition = { answers.add("dismiss") },
+        )
   }
 
   private fun assertAddItemsDisabled(status: TripStatus) {

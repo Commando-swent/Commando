@@ -16,9 +16,12 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,14 +33,20 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.SavedTripSearchRepository
+import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
+import com.android.sample.model.SavedTripSearch
+import com.android.sample.model.StoreFilter
 import com.android.sample.model.Trip
+import com.android.sample.model.TripSearchCriteria
 import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepositoryProvider
@@ -57,7 +66,9 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.android.sample.ui.trips.SavedTripSearchTestTags
 import com.android.sample.ui.trips.ScriptedTripRepository
+import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.assertTripCard
 import com.android.sample.ui.trips.discoveryTrip
 import com.android.sample.ui.trips.onTripCard
@@ -66,7 +77,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -564,6 +577,76 @@ class CommandoAppTest {
         .assert(hasText(compose.activity.getString(R.string.trips_location_placeholder)))
     compose.assertTripCard(secondTrip)
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
+  }
+
+  @Test
+  fun storeFilterAppliesToListAndMapSurvivesNavigationAndClears() {
+    val migros =
+        discoveryTrip(
+            "migros-trip",
+            Location("Migros Ecublens", 46.52, 6.63),
+            Location("First handoff", 46.52, 6.57),
+            tripTime.plusSeconds(3600),
+            createdAt = tripTime,
+        )
+    val coop =
+        migros.copy(
+            id = "coop-trip",
+            store = Location("Coop Renens", 46.53, 6.64),
+            scheduledAt = tripTime.plusSeconds(7200),
+        )
+    // Expanded filters push later cards below the fold, so scroll the list before asserting.
+    val assertListedTripCard = { trip: Trip ->
+      compose
+          .onNode(hasScrollToNodeAction())
+          .performScrollToNode(hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id)))
+      compose.assertTripCard(trip)
+    }
+    show(
+        FakeAuthRepository(alice),
+        FakeTripRepository(alice.uid, now = { tripTime }, initialTrips = listOf(migros, coop)),
+    )
+    click(HomeTestTags.TRIP_ACTION)
+    assertListedTripCard(migros)
+    assertListedTripCard(coop)
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    click(TripSearchTestTags.TOGGLE)
+    click(TripSearchTestTags.store(StoreFilter.MIGROS))
+    val assertMigrosOnly = {
+      compose
+          .onNodeWithTag(TripSearchTestTags.TOGGLE)
+          .assert(
+              hasText(
+                  compose.activity.getString(
+                      R.string.trips_filters_active,
+                      compose.activity.getString(R.string.trips_store_migros),
+                  )
+              )
+          )
+      assertListedTripCard(migros)
+      compose.onTripCard(coop.id).assertDoesNotExist()
+    }
+    assertMigrosOnly()
+    // The expanded filter panel can scroll the list's first item (the map button) out of
+    // composition, so scroll the list itself back to it.
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(NavigationTestTags.OPEN_MAP))
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performClick()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
+    pressBack()
+    assertMigrosOnly()
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(TripSearchTestTags.CLEAR))
+    click(TripSearchTestTags.CLEAR)
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assert(hasText(compose.activity.getString(R.string.trips_filters)))
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    assertListedTripCard(migros)
+    assertListedTripCard(coop)
   }
 
   @Test
@@ -1243,6 +1326,238 @@ class CommandoAppTest {
       compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
     } finally {
       compose.runOnIdle { gate.complete(Unit) }
+    }
+  }
+
+  // Saved trip searches (#191). AI assistance: Claude Code.
+  // These run 320dp wide: from about 360dp wide, a Material3 AlertDialog holding an
+  // OutlinedTextField never lets Compose idle under Robolectric (reproduced with a bare dialog,
+  // independent of Command'o code). 800dp tall keeps Home's trip button above the bottom bar.
+
+  private fun showWithPresets(
+      repository: FakeAuthRepository,
+      trips: TripRepository,
+      savedSearches: ((() -> String?) -> SavedTripSearchRepository)?,
+  ) {
+    compose.setContent {
+      SampleAppTheme {
+        CommandoApp(
+            repository,
+            trips,
+            Picker(),
+            productRepository = products,
+            orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+            savedSearchRepositoryFactory = savedSearches,
+        )
+      }
+    }
+  }
+
+  private fun storeTrips(uid: String): Pair<TripRepository, Pair<Trip, Trip>> {
+    val migros =
+        discoveryTrip(
+            "migros-trip",
+            Location("Migros Ecublens", 46.52, 6.63),
+            Location("First handoff", 46.52, 6.57),
+            tripTime.plusSeconds(3600),
+            createdAt = tripTime,
+        )
+    val coop =
+        migros.copy(
+            id = "coop-trip",
+            store = Location("Coop Renens", 46.53, 6.64),
+            scheduledAt = tripTime.plusSeconds(7200),
+        )
+    return FakeTripRepository(uid, now = { tripTime }, initialTrips = listOf(migros, coop)) to
+        (migros to coop)
+  }
+
+  private fun scrollTo(tag: String) {
+    compose.onNode(hasScrollToNodeAction()).performScrollToNode(hasTestTag(tag))
+    // The expanded panel is taller than this screen, so also bring the node itself into view.
+    compose.onNodeWithTag(tag).performScrollTo()
+  }
+
+  private fun scrollAndClick(tag: String) {
+    scrollTo(tag)
+    click(tag)
+  }
+
+  private fun nameAndConfirm(name: String) {
+    compose.onNodeWithTag(SavedTripSearchTestTags.NAME_FIELD).performTextReplacement(name)
+    click(SavedTripSearchTestTags.CONFIRM)
+  }
+
+  private fun string(id: Int, vararg args: Any) = compose.activity.getString(id, *args)
+
+  private fun activeFilters(store: Int) = string(R.string.trips_filters_active, string(store))
+
+  private fun waitForText(text: String) =
+      compose.waitUntil(5_000) {
+        compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+      }
+
+  private fun waitForTag(tag: String) =
+      compose.waitUntil(5_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h800dp-mdpi")
+  fun savedSearchIsSavedRenamedAppliedKeepingThePointAndDeleted() {
+    val (trips, pair) = storeTrips(alice.uid)
+    val (migros, coop) = pair
+    // The real local repository, run inline so each change is visible on the next frame.
+    val presets =
+        SavedTripSearchRepositoryLocal(
+            ApplicationProvider.getApplicationContext(),
+            { alice.uid },
+            now = { tripTime },
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+    showWithPresets(FakeAuthRepository(alice), trips) { uid ->
+      assertEquals(alice.uid, uid())
+      presets
+    }
+    click(HomeTestTags.TRIP_ACTION)
+    scrollAndClick(AvailableTripsScreenTestTags.LOCATION_FIELD)
+    click(CreateTripScreenTestTags.locationOption("CE building"))
+    scrollAndClick(TripSearchTestTags.TOGGLE)
+    scrollAndClick(TripSearchTestTags.store(StoreFilter.MIGROS))
+    scrollTo(SavedTripSearchTestTags.EMPTY)
+    compose
+        .onNodeWithTag(SavedTripSearchTestTags.EMPTY)
+        .assertTextEquals(string(R.string.trips_presets_empty))
+    scrollAndClick(SavedTripSearchTestTags.SAVE)
+    nameAndConfirm("  Mine ")
+    val saved = compose.runOnIdle { runBlocking { presets.getSavedSearches() } }
+    val preset = (saved as TripResult.Success).data.single()
+    assertEquals(
+        SavedTripSearch(preset.id, "Mine", TripSearchCriteria(StoreFilter.MIGROS), tripTime),
+        preset,
+    )
+    val id = preset.id
+    scrollTo(SavedTripSearchTestTags.apply(id))
+    compose.onNodeWithTag(SavedTripSearchTestTags.apply(id)).assertTextEquals("Mine")
+
+    scrollAndClick(SavedTripSearchTestTags.rename(id))
+    compose.onNodeWithTag(SavedTripSearchTestTags.NAME_FIELD).assert(hasText("Mine"))
+    nameAndConfirm("Migros only")
+    scrollTo(SavedTripSearchTestTags.apply(id))
+    compose.onNodeWithTag(SavedTripSearchTestTags.apply(id)).assertTextEquals("Migros only")
+    compose.onNodeWithText("Mine").assertDoesNotExist()
+
+    scrollAndClick(TripSearchTestTags.CLEAR)
+    compose.onNodeWithTag(TripSearchTestTags.TOGGLE).assert(hasText(string(R.string.trips_filters)))
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    scrollTo(AvailableTripsScreenTestTags.tripCard(coop.id))
+    compose.assertTripCard(coop)
+
+    scrollAndClick(SavedTripSearchTestTags.apply(id))
+    scrollTo(TripSearchTestTags.TOGGLE)
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assert(hasText(activeFilters(R.string.trips_store_migros)))
+    scrollTo(AvailableTripsScreenTestTags.tripCard(migros.id))
+    compose.assertTripCard(migros)
+    compose.onTripCard(coop.id).assertDoesNotExist()
+    scrollTo(AvailableTripsScreenTestTags.LOCATION_FIELD)
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
+        .assert(hasText("CE building"))
+    compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertExists()
+
+    scrollAndClick(SavedTripSearchTestTags.delete(id))
+    scrollTo(SavedTripSearchTestTags.EMPTY)
+    compose
+        .onNodeWithTag(SavedTripSearchTestTags.EMPTY)
+        .assertTextEquals(string(R.string.trips_presets_empty))
+    compose.onNodeWithTag(SavedTripSearchTestTags.apply(id)).assertDoesNotExist()
+    // Deleting a preset does not touch the active criteria.
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assert(hasText(activeFilters(R.string.trips_store_migros)))
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h800dp-mdpi")
+  fun defaultLocalPresetsPersistPerAccountAcrossSessions() = runTest {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = context.getSharedPreferences("saved_trip_searches", Context.MODE_PRIVATE)
+    prefs.edit().clear().commit()
+    try {
+      val repository = FakeAuthRepository(alice)
+      // No factory: CommandoApp's default SavedTripSearchRepositoryLocal is used.
+      showWithPresets(repository, storeTrips(alice.uid).first, null)
+      val openPresets = {
+        click(HomeTestTags.TRIP_ACTION)
+        scrollAndClick(TripSearchTestTags.TOGGLE)
+        scrollTo(SavedTripSearchTestTags.SAVE)
+      }
+      openPresets()
+      waitForTag(SavedTripSearchTestTags.EMPTY)
+      scrollAndClick(SavedTripSearchTestTags.SAVE)
+      nameAndConfirm("Alice preset")
+      waitForText("Alice preset")
+
+      repository.signInWithEmailResult = Result.success(bob)
+      repository.signInWithEmail("", "")
+      assertScreen(NavigationTestTags.HOME_SCREEN)
+      openPresets()
+      waitForTag(SavedTripSearchTestTags.EMPTY)
+      compose.onNodeWithText("Alice preset").assertDoesNotExist()
+      scrollAndClick(SavedTripSearchTestTags.SAVE)
+      nameAndConfirm("Bob preset")
+      waitForText("Bob preset")
+      compose.onNodeWithText("Alice preset").assertDoesNotExist()
+
+      repository.signInWithEmailResult = Result.success(alice)
+      repository.signInWithEmail("", "")
+      assertScreen(NavigationTestTags.HOME_SCREEN)
+      openPresets()
+      waitForText("Alice preset")
+      compose.onNodeWithText("Bob preset").assertDoesNotExist()
+      compose.onNodeWithTag(SavedTripSearchTestTags.EMPTY).assertDoesNotExist()
+
+      // A fresh repository (as after an app restart) reads the same per-account lists.
+      val names = { uid: String ->
+        val result = runBlocking {
+          SavedTripSearchRepositoryLocal(context, { uid }).getSavedSearches()
+        }
+        (result as TripResult.Success).data.map { it.name to it.criteria }
+      }
+      assertEquals(listOf("Alice preset" to TripSearchCriteria()), names(alice.uid))
+      assertEquals(listOf("Bob preset" to TripSearchCriteria()), names(bob.uid))
+    } finally {
+      prefs.edit().clear().commit()
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h800dp-mdpi")
+  fun presetsStoredBeforeLaunchAreListedForTheirAccountOnly() = runTest {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val prefs = context.getSharedPreferences("saved_trip_searches", Context.MODE_PRIVATE)
+    prefs.edit().clear().commit()
+    try {
+      SavedTripSearchRepositoryLocal(context, { alice.uid })
+          .saveSearch("Earlier run", TripSearchCriteria(StoreFilter.COOP))
+      SavedTripSearchRepositoryLocal(context, { bob.uid }).saveSearch("Bob's", TripSearchCriteria())
+      val (trips, pair) = storeTrips(alice.uid)
+      showWithPresets(FakeAuthRepository(alice), trips, null)
+      click(HomeTestTags.TRIP_ACTION)
+      scrollAndClick(TripSearchTestTags.TOGGLE)
+      scrollTo(SavedTripSearchTestTags.SAVE)
+      waitForText("Earlier run")
+      compose.onNodeWithText("Bob's").assertDoesNotExist()
+      compose.onNodeWithText("Earlier run").performScrollTo().performClick()
+      scrollTo(TripSearchTestTags.TOGGLE)
+      compose
+          .onNodeWithTag(TripSearchTestTags.TOGGLE)
+          .assert(hasText(activeFilters(R.string.trips_store_coop)))
+      scrollTo(AvailableTripsScreenTestTags.tripCard(pair.second.id))
+      compose.assertTripCard(pair.second)
+      compose.onTripCard(pair.first.id).assertDoesNotExist()
+    } finally {
+      prefs.edit().clear().commit()
     }
   }
 }

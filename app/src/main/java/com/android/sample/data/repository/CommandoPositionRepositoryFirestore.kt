@@ -2,8 +2,6 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.CommandoPosition
-import com.android.sample.model.OrderStatus
-import com.android.sample.model.isActiveForTracking
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
@@ -87,7 +85,7 @@ class CommandoPositionRepositoryFirestore(
             MetadataChanges.INCLUDE,
         ) { doc, error ->
           when {
-            !sameSession(uid) -> close(SecurityException("Position session ended"))
+            !sameSession(uid) -> close(SecurityException(POSITION_SESSION_ENDED))
             error != null -> close(error)
             doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
                 trySend(null)
@@ -95,7 +93,7 @@ class CommandoPositionRepositoryFirestore(
           }
         }
     val sessionListener = FirebaseAuth.AuthStateListener {
-      if (!sameSession(uid)) close(SecurityException("Position session ended"))
+      if (!sameSession(uid)) close(SecurityException(POSITION_SESSION_ENDED))
     }
     auth.addAuthStateListener(sessionListener)
     awaitClose {
@@ -122,7 +120,7 @@ class CommandoPositionRepositoryFirestore(
           MetadataChanges.INCLUDE,
       ) { doc, error ->
         when {
-          !sameSession(uid) -> revoked(SecurityException("Position session ended"))
+          !sameSession(uid) -> revoked(SecurityException(POSITION_SESSION_ENDED))
           error != null -> revoked(error)
           doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
               confirmed(false)
@@ -138,8 +136,8 @@ class CommandoPositionRepositoryFirestore(
       }
 
   private companion object {
-    val ACTIVE_ORDER_STATUSES =
-        OrderStatus.entries.filter { it.isActiveForTracking() }.map { it.name }.toSet()
+    const val POSITION_SESSION_ENDED = "Position session ended"
+    val ACTIVE_ORDER_STATUSES = setOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
   }
 
   private suspend fun user(): String {
@@ -151,7 +149,7 @@ class CommandoPositionRepositoryFirestore(
   private fun sameSession(uid: String) = currentUserId() == uid && auth.currentUser?.uid == uid
 
   private fun checkSession(uid: String) {
-    check(sameSession(uid)) { "Position session ended" }
+    check(sameSession(uid)) { POSITION_SESSION_ENDED }
   }
 }
 

@@ -17,6 +17,9 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
+import com.android.sample.model.StoreFilter
+import com.android.sample.model.TripSearchCriteria
+import com.android.sample.model.TripSort
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -329,6 +332,59 @@ class AvailableTripsScreenTest {
       compose.onNodeWithTag(AvailableTripsScreenTestTags.ERROR).assertDoesNotExist()
     }
     compose.onNodeWithText(string(R.string.trips_range_invalid)).assertDoesNotExist()
+  }
+
+  @Test
+  fun searchControlsAreAbsentWithoutCriteria() {
+    show(AvailableTripsUiState.Content(listOf(trip)))
+    compose.onNodeWithTag(TripSearchTestTags.TOGGLE).assertDoesNotExist()
+    compose.assertTripCard(trip)
+  }
+
+  private fun showWithCriteria(selected: Location?, onChange: (TripSearchCriteria) -> Unit = {}) {
+    compose.setContent {
+      MaterialTheme {
+        AvailableTripsScreen(
+            state = AvailableTripsUiState.Content(listOf(trip)),
+            onRetry = {},
+            onTripSelected = {},
+            selectedPoint = selected,
+            points = listOf(rolex, metro),
+            criteria = TripSearchCriteria(store = StoreFilter.MIGROS),
+            onCriteriaChange = onChange,
+        )
+      }
+    }
+  }
+
+  @Test
+  fun searchControlsShowWithCriteriaAndDistanceNeedsASelectedPoint() {
+    showWithCriteria(selected = null)
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assertIsDisplayed()
+        .assert(hasText(string(R.string.trips_filters_active, string(R.string.trips_store_migros))))
+        .performClick()
+    compose.onNodeWithTag(TripSearchTestTags.sort(TripSort.DISTANCE)).assertIsNotEnabled()
+  }
+
+  @Test
+  // Tall viewport: performScrollTo does not scroll the list to a chip inside the already-visible
+  // controls item, so the sort row must be on screen to be clicked.
+  @Config(qualifiers = "en-rUS-w412dp-h915dp")
+  fun distanceSortIsEnabledWithASelectedPoint() {
+    val emitted = mutableListOf<TripSearchCriteria>()
+    showWithCriteria(selected = rolex) { emitted += it }
+    compose.onNodeWithTag(TripSearchTestTags.TOGGLE).performClick()
+    compose
+        .onNodeWithTag(TripSearchTestTags.sort(TripSort.DISTANCE))
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    assertEquals(
+        listOf(TripSearchCriteria(store = StoreFilter.MIGROS, sort = TripSort.DISTANCE)),
+        emitted,
+    )
   }
 
   private fun string(id: Int, vararg args: Any): String =

@@ -146,6 +146,23 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
     }
   }
 
+  @Test
+  fun owner_keepsUsingTheShoppingChecklistAfterCloseAndComplete() = runTest {
+    withClients("owner" to true) { (owner) ->
+      val trip = publish(owner, "PUBLISHED")
+      val checklist =
+          ShoppingChecklistRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+      val item = ShoppingChecklistItem("milk", "Milk", requiredQuantity = 2, purchased = false)
+      for (status in listOf("IN_PROGRESS", "COMPLETED")) {
+        updateDocumentAsOwner("trips/$trip", mapOf("status" to status))
+        val saved = checklist.setPurchased(trip, item, purchased = true)
+        assertTrue("$status save", saved is OrderResult.Success)
+        val progress = checklist.getPurchasedQuantities(trip) as OrderResult.Success
+        assertEquals(status, mapOf("milk" to 2L), progress.data)
+      }
+    }
+  }
+
   private fun move(status: String): Map<String, Any> =
       mapOf("status" to status, "updatedAt" to FieldValue.serverTimestamp())
 

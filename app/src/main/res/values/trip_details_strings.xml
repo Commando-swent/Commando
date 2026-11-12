@@ -7,4 +7,16 @@
     <string name="trip_details_view_orders">View orders</string>
     <string name="trip_details_not_found">This trip could not be found.</string>
     <string name="trip_details_error">Something went wrong while loading this trip.</string>
+    <string name="trip_details_close">Close to new orders</string>
+    <string name="trip_details_complete">Complete trip</string>
+    <string name="trip_details_close_title">Close this trip?</string>
+    <string name="trip_details_close_message">Requesters can no longer order on this trip. You can still manage the orders you already have.</string>
+    <string name="trip_details_complete_title">Complete this trip?</string>
+    <string name="trip_details_complete_message">The trip ends and cannot be reopened.</string>
+    <string name="trip_details_confirm">Confirm</string>
+    <string name="trip_details_cancel">Cancel</string>
+    <string name="trip_details_error_orders_open">Settle every open order before completing the trip.</string>
+    <string name="trip_details_error_status_changed">This trip has changed. Go back and open it again.</string>
+    <string name="trip_details_error_network">Could not reach the server. Check your connection and try again.</string>
+    <string name="trip_details_error_update">Could not update the trip. Try again.</string>
 </resources>

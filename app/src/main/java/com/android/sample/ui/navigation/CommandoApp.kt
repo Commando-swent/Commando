@@ -1,7 +1,8 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
-// Claude Code contributed the shared resume refresh, incoming orders (#147) and checklist (#193).
+// Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
+// and the trip owner's close and complete actions (#233).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -373,6 +374,8 @@ private fun AuthenticatedApp(
         // The authenticated graph is keyed by account, so this list never outlives its owner.
         val myTripsViewModel: MyTripsViewModel =
             viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
+        // Coming back from Trip Details shows a status the owner just changed there.
+        RefreshOnResume(myTripsViewModel, myTripsViewModel::retry)
         MyTripsScreen(
             viewModel = myTripsViewModel,
             onTripSelected = { tripId ->
@@ -414,6 +417,7 @@ private fun AuthenticatedApp(
                     }
                   }
                 } else null,
+            showOwnerActions = appUiState.mode == AppMode.Commando && ownsTrip,
         )
       }
       composable(

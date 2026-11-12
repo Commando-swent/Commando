@@ -9,6 +9,7 @@ espressoCore = "3.7.0"
 appcompat = "1.8.0"
 material = "1.14.0"
 composeBom = "2026.08.00"
+firebaseBom = "33.8.0"
 composeActivity = "1.13.0"
 composeViewModel = "2.11.0"
 lifecycleRuntimeKtx = "2.11.0"
@@ -23,6 +24,9 @@ navigation = "2.10.2"
 coil = "3.3.0"
 
 [libraries]
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { module = "com.google.firebase:firebase-auth" }
+firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

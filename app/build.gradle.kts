@@ -142,9 +142,9 @@ dependencies {
   implementation(libs.androidx.lifecycle.runtime.ktx)
 
   // Firebase
-  implementation(platform("com.google.firebase:firebase-bom:33.8.0"))
-  implementation("com.google.firebase:firebase-auth")
-  implementation("com.google.firebase:firebase-firestore")
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
 
   // Authentication and coroutines
   implementation(libs.androidx.credentials)

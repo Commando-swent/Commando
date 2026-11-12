@@ -85,7 +85,7 @@ class CommandoPositionRepositoryFirestore(
             MetadataChanges.INCLUDE,
         ) { doc, error ->
           when {
-            !sameSession(uid) -> close(SecurityException("Position session ended"))
+            !sameSession(uid) -> close(SecurityException(POSITION_SESSION_ENDED))
             error != null -> close(error)
             doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
                 trySend(null)
@@ -93,7 +93,7 @@ class CommandoPositionRepositoryFirestore(
           }
         }
     val sessionListener = FirebaseAuth.AuthStateListener {
-      if (!sameSession(uid)) close(SecurityException("Position session ended"))
+      if (!sameSession(uid)) close(SecurityException(POSITION_SESSION_ENDED))
     }
     auth.addAuthStateListener(sessionListener)
     awaitClose {
@@ -120,7 +120,7 @@ class CommandoPositionRepositoryFirestore(
           MetadataChanges.INCLUDE,
       ) { doc, error ->
         when {
-          !sameSession(uid) -> revoked(SecurityException("Position session ended"))
+          !sameSession(uid) -> revoked(SecurityException(POSITION_SESSION_ENDED))
           error != null -> revoked(error)
           doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
               confirmed(false)
@@ -136,6 +136,7 @@ class CommandoPositionRepositoryFirestore(
       }
 
   private companion object {
+    const val POSITION_SESSION_ENDED = "Position session ended"
     val ACTIVE_ORDER_STATUSES = setOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
   }
 
@@ -148,7 +149,7 @@ class CommandoPositionRepositoryFirestore(
   private fun sameSession(uid: String) = currentUserId() == uid && auth.currentUser?.uid == uid
 
   private fun checkSession(uid: String) {
-    check(sameSession(uid)) { "Position session ended" }
+    check(sameSession(uid)) { POSITION_SESSION_ENDED }
   }
 }
 

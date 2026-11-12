@@ -94,69 +94,28 @@ class CommandoPositionRepositoryTest {
   @Test
   fun invalidPublishDoesNotReplaceExistingPosition() = runTest {
     val storage = MutableStateFlow(mapOf("owner" to fix))
-    val repo =
-        FakeCommandoPositionRepository(
-            MutableStateFlow<String?>("owner"),
-            Clock.fixed(start, ZoneOffset.UTC),
-            storage,
-        )
-    try {
+    val repo = repository(storage)
+    rejects<IllegalArgumentException> {
       repo.publish("trip", fix.copy(accuracyMeters = Double.NaN))
-      fail()
-    } catch (_: IllegalArgumentException) {
-      assertEquals(fix, storage.value["owner"])
     }
+    assertEquals(fix, storage.value["owner"])
   }
 
   @Test
   fun signedOutOperationsAreRejected() = runTest {
     val repo = FakeCommandoPositionRepository(MutableStateFlow<String?>(null))
-    try {
-      repo.stopSharing()
-      fail()
-    } catch (_: SecurityException) {
-      /* expected */
-    }
-    try {
-      repo.publish("trip", fix)
-      fail()
-    } catch (_: SecurityException) {
-      /* expected */
-    }
-    try {
-      repo.observe("owner").first()
-      fail()
-    } catch (_: SecurityException) {
-      /* expected */
-    }
+    rejects<SecurityException> { repo.stopSharing() }
+    rejects<SecurityException> { repo.publish("trip", fix) }
+    rejects<SecurityException> { repo.observe("owner").first() }
   }
 
   @Test
   fun invalidReferencesNeverPublishOrStartObservation() = runTest {
-    val repo =
-        FakeCommandoPositionRepository(
-            MutableStateFlow<String?>("owner"),
-            Clock.fixed(start, ZoneOffset.UTC),
-        )
+    val repo = repository()
     for (id in listOf("", "a/b", ".", "..")) {
-      try {
-        repo.publish(id, fix)
-        fail()
-      } catch (_: IllegalArgumentException) {
-        /* expected */
-      }
-      try {
-        repo.observe(id).first()
-        fail()
-      } catch (_: IllegalArgumentException) {
-        /* expected */
-      }
-      try {
-        repo.observe("owner", id).first()
-        fail()
-      } catch (_: IllegalArgumentException) {
-        /* expected */
-      }
+      rejects<IllegalArgumentException> { repo.publish(id, fix) }
+      rejects<IllegalArgumentException> { repo.observe(id).first() }
+      rejects<IllegalArgumentException> { repo.observe("owner", id).first() }
     }
     assertNull(repo.observe("owner", "order").first())
   }
@@ -169,12 +128,7 @@ class CommandoPositionRepositoryTest {
             fix.copy(capturedAt = start.plusSeconds(1)),
             fix.copy(latitude = Double.NaN),
         )) {
-      val repo =
-          FakeCommandoPositionRepository(
-              MutableStateFlow<String?>("owner"),
-              Clock.fixed(start, ZoneOffset.UTC),
-              MutableStateFlow(mapOf("owner" to position)),
-          )
+      val repo = repository(MutableStateFlow(mapOf("owner" to position)))
       assertNull(repo.observe("owner").first())
     }
   }
@@ -209,19 +163,30 @@ class CommandoPositionRepositoryTest {
   @Test
   fun regressingFixIsRejectedAtomicallyWithoutReplacingStoredPosition() = runTest {
     val storage = MutableStateFlow(mapOf("owner" to fix))
-    val repo =
-        FakeCommandoPositionRepository(
-            MutableStateFlow<String?>("owner"),
-            Clock.fixed(start, ZoneOffset.UTC),
-            storage,
-        )
-    try {
+    val repo = repository(storage)
+    rejects<IllegalArgumentException> {
       repo.publish("trip", fix.copy(capturedAt = start.minusSeconds(1)))
-      fail("Expected regression rejection")
-    } catch (_: IllegalArgumentException) {
-      assertEquals(fix, storage.value["owner"])
     }
+    assertEquals(fix, storage.value["owner"])
     repo.publish("trip", fix.copy(latitude = 46.53))
     assertEquals(46.53, storage.value.getValue("owner").latitude, 0.0)
+  }
+
+  private fun repository(
+      storage: MutableStateFlow<Map<String, CommandoPosition>> = MutableStateFlow(emptyMap()),
+  ) =
+      FakeCommandoPositionRepository(
+          MutableStateFlow("owner"),
+          Clock.fixed(start, ZoneOffset.UTC),
+          storage,
+      )
+
+  private suspend inline fun <reified T : Exception> rejects(action: () -> Unit) {
+    try {
+      action()
+      fail("Expected ${T::class.simpleName}")
+    } catch (error: Exception) {
+      if (error !is T) throw error
+    }
   }
 }

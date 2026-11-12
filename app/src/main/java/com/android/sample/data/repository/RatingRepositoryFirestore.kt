@@ -130,17 +130,19 @@ internal constructor(
     } catch (exception: Exception) {
       context.ensureActive()
       RatingResult.Error(
-          if (currentUserId() != uid) RatingError.NotAuthenticated
-          else if (exception is RatingFailure) exception.error
-          else if (exception.cause is RatingFailure) (exception.cause as RatingFailure).error
-          else
-              when (exception.toFirestoreFailure()) {
-                FirestoreFailure.UNAUTHENTICATED -> RatingError.NotAuthenticated
-                FirestoreFailure.PERMISSION_DENIED -> RatingError.PermissionDenied
-                FirestoreFailure.NOT_FOUND -> RatingError.NotFound
-                FirestoreFailure.INVALID_DATA -> RatingError.InvalidData
-                else -> RatingError.Unknown
-              }
+          when {
+            currentUserId() != uid -> RatingError.NotAuthenticated
+            exception is RatingFailure -> exception.error
+            exception.cause is RatingFailure -> (exception.cause as RatingFailure).error
+            else ->
+                when (exception.toFirestoreFailure()) {
+                  FirestoreFailure.UNAUTHENTICATED -> RatingError.NotAuthenticated
+                  FirestoreFailure.PERMISSION_DENIED -> RatingError.PermissionDenied
+                  FirestoreFailure.NOT_FOUND -> RatingError.NotFound
+                  FirestoreFailure.INVALID_DATA -> RatingError.InvalidData
+                  else -> RatingError.Unknown
+                }
+          }
       )
     }
   }

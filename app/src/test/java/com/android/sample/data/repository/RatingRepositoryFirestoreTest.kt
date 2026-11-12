@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.android.sample.model.MAX_RATING_COMMENT_LENGTH
 import com.android.sample.model.NewRating
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -16,6 +17,56 @@ class RatingRepositoryFirestoreTest {
   private val source = MemorySource()
   private val repository = RatingRepositoryFirestore(source) { uid }
   private val input = NewRating("order", 4)
+
+  @Test
+  fun invalidInputsFailBeforeTransactionsOrWrites() = runTest {
+    for (invalid in
+        listOf(
+            input.copy(orderId = ""),
+            input.copy(orderId = " "),
+            input.copy(orderId = "orders/order"),
+            input.copy(score = RATING_SCORES.first - 1),
+            input.copy(score = RATING_SCORES.last + 1),
+            input.copy(comment = "x".repeat(MAX_RATING_COMMENT_LENGTH + 1)),
+        )) {
+      assertEquals(
+          invalid.toString(),
+          RatingResult.Error(RatingError.InvalidData),
+          repository.submitRating(invalid),
+      )
+      assertEquals(0, source.transactions)
+      assertEquals(0, source.attemptedWrites)
+    }
+  }
+
+  @Test
+  fun malformedRelationshipsFailWithoutWrites() = runTest {
+    val initial = source.documents.toMap()
+    for ((path, field) in
+        listOf(
+            "orders/order" to "tripId",
+            "orders/order" to "requesterId",
+            "trips/trip" to "ownerId",
+        )) {
+      val invalidValues: List<Any?> =
+          if (field == "tripId") listOf(null, 1L, "", " ", "trips/trip")
+          else listOf(null, 1L, "", " ")
+      for (value in invalidValues) {
+        source.documents.clear()
+        source.documents.putAll(initial)
+        source.documents[path] =
+            if (value == null) initial.getValue(path) - field
+            else initial.getValue(path) + (field to value)
+        assertEquals(
+            "$field=$value",
+            RatingResult.Error(RatingError.InvalidData),
+            repository.submitRating(input),
+        )
+        assertEquals(0, source.attemptedWrites)
+        assertEquals(initial.keys, source.documents.keys)
+      }
+    }
+  }
 
   @Test
   fun failuresAndUncertainCommitsNeverOverwriteFeedback() = runTest {

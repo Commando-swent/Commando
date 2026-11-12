@@ -64,7 +64,7 @@ internal fun ProfileMenuRow(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(10.dp),
   ) {
-    icon?.let { ProfileMenuIcon(it, iconTint) }
+    icon?.let { ProfileMenuIcon(it, tint = iconTint) }
     Text(stringResource(title), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
     value?.let {
       Text(
@@ -81,8 +81,8 @@ internal fun ProfileMenuRow(
 @Composable
 internal fun ProfileMenuIcon(
     @DrawableRes icon: Int,
-    tint: Color? = null,
     modifier: Modifier = Modifier,
+    tint: Color? = null,
 ) {
   Surface(
       modifier = modifier,

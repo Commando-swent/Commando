@@ -39,7 +39,7 @@ internal fun rememberPositionSharingControl(
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_STOP && activity?.isChangingConfigurations != true) {
         pending = false
-        model.stop()
+        model.requestStop()
       }
     }
     lifecycle.addObserver(observer)
@@ -48,7 +48,7 @@ internal fun rememberPositionSharingControl(
       lifecycle.removeObserver(observer)
       if (activity?.isChangingConfigurations != true) {
         pending = false
-        model.stop()
+        model.requestStop()
       }
     }
   }
@@ -56,7 +56,7 @@ internal fun rememberPositionSharingControl(
       { enabled: Boolean ->
         if (!enabled) {
           pending = false
-          model.stop()
+          model.requestStop()
         } else if (mayStart() && !pending) {
           if (
               ContextCompat.checkSelfPermission(

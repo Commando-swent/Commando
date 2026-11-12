@@ -70,6 +70,7 @@ class NotificationScreensTest {
     node(NotificationTestTags.ORDER + notice.event.id).performScrollTo().performClick()
     node(NotificationTestTags.READ + notice.event.id).performClick()
     node(NotificationTestTags.LIST).performScrollToKey(read.event.id)
+    compose.onNodeWithText("The commando rejected your order.").assertIsDisplayed()
     node(NotificationTestTags.READ + read.event.id).assertDoesNotExist()
     node(NotificationTestTags.LIST).performScrollToKey(placed.event.id)
     node(NotificationTestTags.ROW + placed.event.id).assertIsDisplayed()
@@ -99,9 +100,11 @@ class NotificationScreensTest {
     }
     node(NotificationTestTags.LOADING).assertIsDisplayed()
     compose.runOnIdle { state = NotificationPageState.Content(emptyList()) }
-    node(NotificationTestTags.RETRY).performClick()
+    node(NotificationTestTags.REFRESH).assertTextEquals("Refresh").performClick()
+    node(NotificationTestTags.RETRY).assertDoesNotExist()
     compose.runOnIdle { state = NotificationPageState.Error(OrderError.Unknown) }
-    node(NotificationTestTags.RETRY).performClick()
+    node(NotificationTestTags.RETRY).assertTextEquals("Retry").performClick()
+    node(NotificationTestTags.REFRESH).assertDoesNotExist()
     compose.runOnIdle {
       state = NotificationPageState.Content(listOf(notice), saveError = OrderError.Unknown)
     }
@@ -111,6 +114,8 @@ class NotificationScreensTest {
       assertEquals(2, retries)
     }
     node(NotificationTestTags.ROW + notice.event.id).assertDoesNotExist()
+    node(NotificationTestTags.REFRESH).assertDoesNotExist()
+    node(NotificationTestTags.RETRY).assertDoesNotExist()
   }
 
   @Test

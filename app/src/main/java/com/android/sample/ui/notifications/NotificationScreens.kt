@@ -38,6 +38,7 @@ object NotificationTestTags {
   const val INBOX = "notification_inbox"
   const val PREFERENCES = "notification_preferences"
   const val LOADING = "notification_loading"
+  const val REFRESH = "notification_refresh"
   const val RETRY = "notification_retry"
   const val SAVE_RETRY = "notification_save_retry"
   const val SETTINGS = "notification_settings"
@@ -60,7 +61,8 @@ private val TITLE_SIZE = 26.sp
 private const val REFERENCE_SUFFIX_LENGTH = 8
 
 /**
- * Scrollable inbox; callers own loading and confirmed read-state updates.
+ * Scrollable inbox; callers own loading and confirmed read-state updates. The authenticated host
+ * must leave this destination when the session ends.
  *
  * @param onMarkRead receives the full event ID; writes are disabled while the page is saving.
  * @param onOrder receives the full order ID, including characters hidden in the displayed suffix.
@@ -108,7 +110,11 @@ fun NotificationInboxScreen(
           item {
             PageState(state, onRefresh) {
               Text(stringResource(R.string.notifications_empty))
-              RetryButton(onRefresh)
+              PageActionButton(
+                  onRefresh,
+                  NotificationTestTags.REFRESH,
+                  R.string.notifications_refresh,
+              )
             }
           }
     }
@@ -116,7 +122,8 @@ fun NotificationInboxScreen(
 }
 
 /**
- * Confirmed account preferences; a failed change keeps the saved values and offers a retry.
+ * Confirmed account preferences; a failed change keeps the saved values and offers a retry. The
+ * authenticated host must leave this destination when the session ends.
  *
  * @param onChange receives the requested settings; the caller persists only changed toggles.
  * @param onRetrySave retries the failed preference update without an optimistic UI change.
@@ -224,9 +231,10 @@ private fun <T> PageState(
           stringResource(R.string.notifications_load_error),
           color = MaterialTheme.colorScheme.error,
       )
-      RetryButton(onRefresh)
+      PageActionButton(onRefresh)
     }
     is NotificationPageState.Content -> content(state)
+    // Hide private content immediately; the authenticated host owns the redirect.
     NotificationPageState.SessionEnded -> Unit
   }
 }
@@ -372,13 +380,17 @@ private fun SaveFeedback(saving: Boolean, failed: Boolean, onRetry: () -> Unit) 
             if (failed) MaterialTheme.colorScheme.error
             else MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    if (failed) RetryButton(onRetry, NotificationTestTags.SAVE_RETRY)
+    if (failed) PageActionButton(onRetry, NotificationTestTags.SAVE_RETRY)
   }
 }
 
 @Composable
-private fun RetryButton(onRetry: () -> Unit, tag: String = NotificationTestTags.RETRY) {
-  TextButton(onRetry, Modifier.testTag(tag)) { Text(stringResource(R.string.notifications_retry)) }
+private fun PageActionButton(
+    onAction: () -> Unit,
+    tag: String = NotificationTestTags.RETRY,
+    @StringRes label: Int = R.string.notifications_retry,
+) {
+  TextButton(onAction, Modifier.testTag(tag)) { Text(stringResource(label)) }
 }
 
 @Composable

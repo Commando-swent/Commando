@@ -4,10 +4,9 @@ package com.android.sample.data.repository
 import com.android.sample.model.*
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 
-/**
- * Shared schema for atomic publication and recipient-side processing; mirrored in firestore.rules.
- */
+/** Publication and recipient storage schema, mirrored in firestore.rules. */
 internal object NotificationFirestoreData {
   const val EVENTS = "orderEvents"
   const val INBOX = "notifications"
@@ -33,16 +32,22 @@ internal object NotificationFirestoreData {
           OCCURRED_AT to Timestamp(event.occurredAt.epochSecond, event.occurredAt.nano),
       )
 
-  /** Rejects malformed or non-canonical event identities instead of partially decoding them. */
+  /** Extra fields are ignored; null means a valid but unsupported type, malformed fields throw. */
   fun decodeEvent(id: String, data: Map<String, Any?>): OrderNotificationEvent? {
-    if (data.keys != EVENT_FIELDS) return null
-    val order = (data[ORDER_ID] as? String)?.takeIf { it.isDocumentId() } ?: return null
-    val recipient = (data[RECIPIENT_ID] as? String)?.takeIf { it.isDocumentId() } ?: return null
-    val type = NotificationEventType.entries.find { it.name == data[TYPE] } ?: return null
-    val time = data[OCCURRED_AT] as? Timestamp ?: return null
-    if (id != type.eventId(order)) return null
+    val order = (data[ORDER_ID] as? String)?.takeIf { it.isDocumentId() } ?: malformed()
+    val recipient = (data[RECIPIENT_ID] as? String)?.takeIf { it.isDocumentId() } ?: malformed()
+    val name = (data[TYPE] as? String)?.takeIf { it.isDocumentId() } ?: malformed()
+    val time = data[OCCURRED_AT] as? Timestamp ?: malformed()
+    if (id != "${order}_$name") malformed()
+    val type = NotificationEventType.entries.find { it.name == name } ?: return null
     return OrderNotificationEvent(order, recipient, type, time.toInstant())
   }
+
+  private fun malformed(): Nothing =
+      throw FirebaseFirestoreException(
+          "Malformed notification event",
+          FirebaseFirestoreException.Code.DATA_LOSS,
+      )
 
   /** Shared preference encoding for the adapter and its authenticated test clients. */
   fun preferenceData(preferences: NotificationPreferences) =

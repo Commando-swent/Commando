@@ -1,7 +1,9 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex (cancellation regression tests).
 // AI assistance: Claude Code.
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.data.repository.OrderError
@@ -9,6 +11,7 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import java.time.Instant
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -57,10 +60,89 @@ class IncomingOrdersScreenTest {
   }
 
   @Test
+  fun refreshedEditedOrderShowsNewCountAndTotalAndKeepsItsDetailsId() {
+    val updates =
+        MutableStateFlow<IncomingOrdersUiState>(
+            IncomingOrdersUiState.Content(listOf(IncomingOrderRow(pending)))
+        )
+    val opened = mutableListOf<String>()
+    compose.setContent {
+      val state = updates.collectAsState()
+      MaterialTheme { IncomingOrdersScreen(state.value, {}, opened::add) }
+    }
+    card(pending).assert(hasText("3 items · CHF 7.70"))
+    val edited =
+        pending.copy(items = listOf(milk.copy(quantity = 4)), commissionCents = 200, revision = 1)
+    compose.runOnIdle {
+      updates.value = IncomingOrdersUiState.Content(listOf(IncomingOrderRow(edited)))
+    }
+    compose.waitUntil {
+      compose.onAllNodesWithText("4 items · CHF 10.80").fetchSemanticsNodes().isNotEmpty()
+    }
+    card(edited).assert(hasText("4 items · CHF 10.80")).performClick()
+    compose.runOnIdle { assertEquals(listOf(pending.id), opened) }
+  }
+
+  @Test
+  fun cancelledOrderStaysVisibleAndCanOpenDetails() {
+    assertCancelledHistoryRow("CANCELLED", "3 items · CHF 7.70")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h640dp-mdpi")
+  fun cancelledOrderUsesFrenchLabelOnNarrowScreen() {
+    assertCancelledHistoryRow("ANNULÉE", "3 articles · CHF 7.70")
+  }
+
+  private fun assertCancelledHistoryRow(label: String, summary: String) {
+    val cancelled = pending.copy(status = OrderStatus.CANCELLED)
+    val opened = mutableListOf<String>()
+    show(
+        IncomingOrdersUiState.Content(listOf(IncomingOrderRow(cancelled))),
+        onOrderClick = { opened += it },
+    )
+    card(cancelled)
+        .assertIsDisplayed()
+        .assert(hasText(label))
+        .assert(hasText(summary))
+        .performClick()
+    compose.runOnIdle { assertEquals(listOf(cancelled.id), opened) }
+  }
+
+  @Test
   fun loadingShowsAnAccessiblePlaceholder() {
     show(IncomingOrdersUiState.Loading)
     compose.onNodeWithTag(IncomingOrdersTestTags.LOADING).assertIsDisplayed()
     compose.onNodeWithContentDescription("Loading incoming orders").assertExists()
+  }
+
+  @Test
+  fun rejectedOrderCardDisplaysStatus() {
+    val rejected = accepted.copy(status = OrderStatus.REJECTED)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(rejected))))
+    card(rejected).assertIsDisplayed().assert(hasText("REJECTED"))
+  }
+
+  @Test
+  fun readyForHandoffOrderCardDisplaysStatus() {
+    val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(ready))))
+    card(ready).assertIsDisplayed().assert(hasText("READY FOR HANDOFF"))
+  }
+
+  @Test
+  fun deliveredOrderCardDisplaysStatus() {
+    val delivered = accepted.copy(status = OrderStatus.DELIVERED)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(delivered))))
+    card(delivered).assertIsDisplayed().assert(hasText("DELIVERED"))
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun readyForHandoffOrderCardUsesFrenchLabel() {
+    val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(IncomingOrdersUiState.Content(listOf(IncomingOrderRow(ready))))
+    card(ready).assertIsDisplayed().assert(hasText("PRÊTE À ÊTRE REMISE"))
   }
 
   @Test

@@ -57,6 +57,14 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    // Trip lifecycle (#233): the owner closes (PUBLISHED -> IN_PROGRESS), then completes
+    // (IN_PROGRESS -> COMPLETED); nothing else changes. The completion rule (no open order)
+    // needs a query, so the app enforces it.
+    function isAllowedTripTransition(from, to) {
+      return (from == "PUBLISHED" && to == "IN_PROGRESS")
+        || (from == "IN_PROGRESS" && to == "COMPLETED");
+    }
+
     match /trips/{tripId} {
       allow create: if isAuthenticated()
         && isValidTrip(request.resource.data)
@@ -64,18 +72,25 @@ service cloud.firestore {
         && request.resource.data.status == "PUBLISHED"
         && request.resource.data.createdAt == request.resource.data.updatedAt;
 
-      allow read: if isAuthenticated()
+      // Requesters keep the trip of their order after it closes; listing stays PUBLISHED-or-owner.
+      allow get: if isAuthenticated()
+        && (resource == null
+          || resource.data.status in ["PUBLISHED", "IN_PROGRESS", "COMPLETED"]
+          || resource.data.ownerId == request.auth.uid);
+
+      allow list: if isAuthenticated()
         && (resource.data.status == "PUBLISHED"
           || resource.data.ownerId == request.auth.uid);
 
       allow update: if isAuthenticated()
         && resource.data.ownerId == request.auth.uid
-        && isValidTrip(request.resource.data)
-        && request.resource.data.ownerId == resource.data.ownerId
-        && request.resource.data.createdAt == resource.data.createdAt;
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"])
+        && request.resource.data.updatedAt == request.time
+        && isAllowedTripTransition(resource.data.status, request.resource.data.status);
 
-      allow delete: if isAuthenticated()
-        && resource.data.ownerId == request.auth.uid;
+      // The app never deletes trips; deleting and recreating one would bypass the transitions and
+      // strand its orders.
+      allow delete: if false;
     }
 
     // Order access is anchored to the persisted associated trip.
@@ -117,7 +132,9 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow create: if isAuthenticated()
         && request.resource.data.keys().hasAll(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
-        && request.resource.data.keys().hasOnly(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
+        && request.resource.data.keys().hasOnly(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt", "revision"])
+        && request.resource.data.get("revision", 0) is int
+        && request.resource.data.get("revision", 0) == 0
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.tripId is string
         && request.resource.data.tripId.matches('[^/]+')
@@ -140,12 +157,37 @@ service cloud.firestore {
       allow list: if isAuthenticated()
         && (resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
       allow update: if isAuthenticated()
-        && ownsOrderTrip(resource.data)
-        && resource.data.requesterId != request.auth.uid
-        && resource.data.status == "PENDING"
-        && request.resource.data.status in ["ACCEPTED", "REJECTED"]
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
-        && hasOrderEvent(orderId, "ORDER_" + request.resource.data.status, resource.data.requesterId);
+        && ((ownsOrderTrip(resource.data)
+              && resource.data.requesterId != request.auth.uid
+              && ((resource.data.status == "PENDING"
+                    && request.resource.data.status in ["ACCEPTED", "REJECTED"]
+                    && hasOrderEvent(orderId, "ORDER_" + request.resource.data.status, resource.data.requesterId))
+                  || (resource.data.status == "ACCEPTED"
+                    && request.resource.data.status == "READY_FOR_HANDOFF")))
+            || (resource.data.status == "PENDING"
+              && resource.data.requesterId == request.auth.uid
+              && request.resource.data.status == "CANCELLED")
+            || (resource.data.requesterId == request.auth.uid
+              && resource.data.status == "READY_FOR_HANDOFF"
+              && request.resource.data.status == "DELIVERED"));
+      // Requester edits preserve identity/status and independently revalidate the whole payload.
+      allow update: if isAuthenticated()
+        && resource.data.requesterId == request.auth.uid
+        && resource.data.status == "PENDING"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["items", "commissionCents", "revision"])
+        && request.resource.data.revision is int
+        && request.resource.data.revision == resource.data.get("revision", 0) + 1
+        && request.resource.data.revision <= 2147483647
+        && request.resource.data.commissionCents is int
+        && request.resource.data.commissionCents >= 0
+        && request.resource.data.commissionCents <= 2147483647
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 5
+        && validOrderItems(request.resource.data.items, request.resource.data.commissionCents)
+        && get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.ownerId != request.auth.uid
+        && get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.status == "PUBLISHED"
+        && get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.scheduledAt > request.time;
       allow delete: if false;
     }
 
@@ -239,6 +281,24 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(["newOrders", "orderDecisions"])
         && request.resource.data.newOrders is bool && request.resource.data.orderDecisions is bool;
       allow delete: if false;
+    }
+
+    // Private product references; product details remain canonical under stores/{storeId}/products.
+    match /users/{userId}/favourites/{productId} {
+      allow read, delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create, update: if isAuthenticated() && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(["productId", "storeId"])
+        && request.resource.data.keys().hasOnly(["productId", "storeId"])
+        && request.resource.data.productId == productId
+        && request.resource.data.storeId in ["migros", "coop"]
+        // As in ProductRepositoryFirestore: the part after the prefix is a product document ID.
+        && productId.matches(request.resource.data.storeId + ':[^\\s/]([^/]*[^\\s/])?')
+        && !(productId in [request.resource.data.storeId + ':.', request.resource.data.storeId + ':..']);
+    }
+
+    // Importer-written store metadata, such as its sorted product categories.
+    match /stores/{storeId} {
+      allow get: if isAuthenticated();
     }
 
     match /stores/{storeId}/products/{productId} {

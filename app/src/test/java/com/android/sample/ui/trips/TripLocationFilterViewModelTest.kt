@@ -2,8 +2,13 @@ package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
 import androidx.lifecycle.SavedStateHandle
+import com.android.sample.model.DeparturePeriod
 import com.android.sample.model.Location
+import com.android.sample.model.StoreFilter
 import com.android.sample.model.TripLocations
+import com.android.sample.model.TripSearchCriteria
+import com.android.sample.model.TripSort
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -68,5 +73,45 @@ class TripLocationFilterViewModelTest {
         )
     assertEquals(2, partial.keys().size)
     assertNull(TripLocationFilterViewModel(partial).selected.value)
+  }
+
+  // --- Search criteria ---
+
+  private val june20to22 =
+      DeparturePeriod.Custom(LocalDate.parse("2026-06-20"), LocalDate.parse("2026-06-22"))
+
+  @Test
+  fun defaultCriteriaAreAllStoresAnyTimeEarliestDeparture() {
+    assertEquals(
+        TripSearchCriteria(StoreFilter.ALL, DeparturePeriod.AnyTime, TripSort.EARLIEST_DEPARTURE),
+        TripLocationFilterViewModel(SavedStateHandle()).criteria.value,
+    )
+  }
+
+  @Test
+  fun clearCriteriaResetsStoreAndPeriodButKeepsSortAndPoint() {
+    val viewModel = TripLocationFilterViewModel(SavedStateHandle())
+    viewModel.select(cm)
+    viewModel.setCriteria(TripSearchCriteria(StoreFilter.MIGROS, june20to22, TripSort.DISTANCE))
+    viewModel.clearCriteria()
+    assertEquals(TripSearchCriteria(sort = TripSort.DISTANCE), viewModel.criteria.value)
+    assertEquals(cm, viewModel.selected.value)
+  }
+
+  @Test
+  fun setCriteriaReplacesAllCriteriaAndKeepsThePoint() {
+    val viewModel = TripLocationFilterViewModel(SavedStateHandle())
+    viewModel.select(gps)
+    val criteria = TripSearchCriteria(StoreFilter.MIGROS, DeparturePeriod.Today, TripSort.DISTANCE)
+    viewModel.setCriteria(criteria)
+    assertEquals(criteria, viewModel.criteria.value)
+    assertEquals(gps, viewModel.selected.value)
+    viewModel.setCriteria(TripSearchCriteria())
+    assertEquals(TripSearchCriteria(), viewModel.criteria.value)
+    assertEquals(gps, viewModel.selected.value)
+    // Clearing the point leaves the criteria alone.
+    viewModel.setCriteria(TripSearchCriteria(store = StoreFilter.COOP))
+    viewModel.clear()
+    assertEquals(TripSearchCriteria(store = StoreFilter.COOP), viewModel.criteria.value)
   }
 }

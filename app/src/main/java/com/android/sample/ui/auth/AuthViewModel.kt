@@ -38,9 +38,17 @@ data class AuthUiState(
     val user: AuthUser? = null,
 )
 
-/** Form state shared by login and sign-up; the repository owns authentication and sessions. */
-class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
-  private val mutableState = MutableStateFlow(AuthUiState())
+/**
+ * Form state shared by login and sign-up; the repository owns authentication and sessions.
+ *
+ * @param repository Shared authentication/session boundary.
+ * @param initialMode Form selected on Welcome, applied only when this ViewModel is created.
+ */
+class AuthViewModel(
+    private val repository: AuthRepository,
+    initialMode: AuthMode = AuthMode.LOGIN,
+) : ViewModel() {
+  private val mutableState = MutableStateFlow(AuthUiState(mode = initialMode))
   val uiState = mutableState.asStateFlow()
 
   fun updateFullName(fullName: String) = edit { copy(fullName = fullName, fullNameError = null) }

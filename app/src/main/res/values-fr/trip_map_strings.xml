@@ -14,7 +14,7 @@
     <string name="trip_map_attribution">© Contributeurs OpenStreetMap · ODbL</string>
     <string name="trip_map_off_map">Choisir le trajet : %1$s · %2$s</string>
     <string name="trip_map_locate">Me localiser</string>
-    <string name="trip_map_location_unavailable">La géolocalisation n’est pas activée dans cette version. Choisissez un lieu de remise dans la liste des trajets.</string>
+    <string name="trip_map_location_unavailable">Votre position est indisponible. Vous pouvez consulter les trajets. Réessayez.</string>
     <string name="trip_map_distance">%1$d m</string>
     <string name="trip_map_loading_subtitle">Recherche des trajets à venir…</string>
     <string name="trip_map_error_subtitle">Impossible de charger les trajets</string>

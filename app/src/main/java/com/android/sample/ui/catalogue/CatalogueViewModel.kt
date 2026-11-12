@@ -42,6 +42,8 @@ sealed interface CatalogueContent {
       val nextCursor: String? = null,
       val isLoadingMore: Boolean = false,
       val loadMoreError: ProductError? = null,
+      /** Exact stored [Product.category] these results are limited to; null for every category. */
+      val category: String? = null,
   ) : CatalogueContent {
     val canLoadMore: Boolean
       get() = nextCursor != null && !isLoadingMore
@@ -69,6 +71,10 @@ data class CatalogueUiState(
     val query: String = "",
     /** Mirror of the shared draft's items; the draft stays the single source of truth. */
     val items: List<OrderItem> = emptyList(),
+    /** Stored category values of the trip's chain, as `getCategories` returns them. */
+    val categories: List<String> = emptyList(),
+    /** Exact stored value the catalogue is filtered on; null shows every category. */
+    val category: String? = null,
 ) {
   val products: List<Product>
     get() = (content as? CatalogueContent.Loaded)?.products.orEmpty()
@@ -115,6 +121,8 @@ class CatalogueViewModel(
   val uiState: StateFlow<CatalogueUiState>
   private var searchJob: Job? = null
   private var pageJob: Job? = null
+  private var categoriesJob: Job? = null
+  private var categoriesFailed = false
 
   init {
     require(tripId.isNotBlank())
@@ -137,6 +145,13 @@ class CatalogueViewModel(
 
   fun clearSearch() = onQueryChange("")
 
+  /** Filters on one stored [category] value, or none for null, from the first page. */
+  fun selectCategory(category: String?) {
+    if (category == mutableState.value.category) return
+    mutableState.update { it.copy(category = category) }
+    search(debounce = false)
+  }
+
   /**
    * Repeats a failed first page; ignored while a search is already running or once products are
    * loaded, so it never drops them. A failed later page is retried through [loadMore].
@@ -158,7 +173,13 @@ class CatalogueViewModel(
     pageJob = viewModelScope.launch {
       val result =
           try {
-            productRepository.searchProducts(storeId, loaded.query, cursor, MAX_PRODUCT_QUERY_LIMIT)
+            productRepository.searchProducts(
+                storeId,
+                loaded.query,
+                cursor,
+                MAX_PRODUCT_QUERY_LIMIT,
+                loaded.category,
+            )
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {
@@ -209,6 +230,7 @@ class CatalogueViewModel(
     pageJob?.cancel()
     setLoaded { it.copy(isLoadingMore = false) }
     val query = mutableState.value.query.trim()
+    val category = mutableState.value.category
     if (!debounce) mutableState.update { it.copy(content = CatalogueContent.Loading) }
     searchJob = viewModelScope.launch {
       // While typing, the current results stay until the search is actually sent.
@@ -218,7 +240,7 @@ class CatalogueViewModel(
       }
       val content =
           try {
-            loadFirstPage(query)
+            loadFirstPage(query, category)
           } catch (cancelled: CancellationException) {
             throw cancelled
           } catch (_: Exception) {
@@ -227,21 +249,31 @@ class CatalogueViewModel(
       // The query changed while this request ran: its results are stale.
       ensureActive()
       mutableState.update { it.copy(content = content) }
+      // The store is reachable again: read categories that failed beside an earlier request.
+      val storeId = mutableState.value.trip?.let { storeIdFor(it.store.name) }
+      if (content is CatalogueContent.Loaded && categoriesFailed && storeId != null) {
+        loadCategories(storeId)
+      }
     }
   }
 
-  private suspend fun loadFirstPage(query: String): CatalogueContent {
+  private suspend fun loadFirstPage(query: String, category: String?): CatalogueContent {
     val trip =
         mutableState.value.trip
             ?: when (val result = tripRepository.getTripById(tripId)) {
-              is TripResult.Success ->
-                  result.data.also { trip -> mutableState.update { it.copy(trip = trip) } }
+              is TripResult.Success -> result.data.also(::onTripLoaded)
               is TripResult.Error -> return CatalogueContent.TripFailed(result.error)
             }
     val storeId =
         storeIdFor(trip.store.name) ?: return CatalogueContent.UnsupportedStore(trip.store.name)
     val result =
-        productRepository.searchProducts(storeId, query, cursor = null, MAX_PRODUCT_QUERY_LIMIT)
+        productRepository.searchProducts(
+            storeId,
+            query,
+            cursor = null,
+            MAX_PRODUCT_QUERY_LIMIT,
+            category,
+        )
     return when (result) {
       // Never show, or let the requester select, a product from another chain.
       is ProductResult.Success ->
@@ -249,6 +281,7 @@ class CatalogueViewModel(
               result.data.products.filter { it.belongsTo(storeId) }.distinctBy { it.id },
               query,
               result.data.nextCursor,
+              category = category,
           )
       is ProductResult.Error ->
           when (result.error) {
@@ -257,6 +290,30 @@ class CatalogueViewModel(
             ProductError.InvalidQuery -> CatalogueContent.UnsearchableQuery(query)
             else -> CatalogueContent.ProductsFailed(result.error)
           }
+    }
+  }
+
+  /** Loads category metadata once beside the first catalogue page for a supported trip. */
+  private fun onTripLoaded(trip: Trip) {
+    mutableState.update { it.copy(trip = trip) }
+    storeIdFor(trip.store.name)?.let(::loadCategories)
+  }
+
+  /** Without categories there are no chips; a failed read is retried after a later search loads. */
+  private fun loadCategories(storeId: String) {
+    if (categoriesJob?.isActive == true) return
+    categoriesFailed = false
+    categoriesJob = viewModelScope.launch {
+      val categories =
+          try {
+            (productRepository.getCategories(storeId) as? ProductResult.Success)?.data
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            null
+          }
+      categoriesFailed = categories == null
+      mutableState.update { it.copy(categories = categories.orEmpty().distinct()) }
     }
   }
 

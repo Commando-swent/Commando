@@ -1,6 +1,6 @@
 package com.android.sample.emulator.firestore.adapter
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex and Claude Code.
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProductResult
@@ -41,7 +41,10 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           .set(storedProduct("migros:150", "No removal field", 1.0) - "removed_at")
           .await()
       val coop = stores.document("coop").collection("products")
-      coop.document("4446520").set(storedProduct("coop:4446520", "Example product", 3.95)).await()
+      coop
+          .document("4446520")
+          .set(storedProduct("coop:4446520", "Example product", 3.95) + ("size_text" to "1 Stück"))
+          .await()
       coop.document("4446521").set(storedProduct("coop:4446521", "Gone", 1.0, REMOVED_AT)).await()
       coop.document("4446522").set(storedProduct("migros:4446522", "Wrong store", 1.0)).await()
 
@@ -59,6 +62,7 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
                   "Example product",
                   395,
                   "https://example.com/product.jpg",
+                  sizeText = "1 Stück",
               )
           ),
           repository.getProducts("coop").successData(),
@@ -79,8 +83,9 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
               "105" to "Crème entière",
           )
           .forEach { (id, name) ->
-            migros.document(id).set(storedProduct("migros:$id", name, 2.5)).await()
+            migros.document(id).set(storedProduct("migros:$id", name, 2, null, "Food")).await()
           }
+      migros.document("106").set(storedProduct("migros:106", "Cristal", 1, null, "Drinks")).await()
       migros.document("100").set(storedProduct("migros:100", "Crème gone", 1.0, REMOVED_AT)).await()
       stores
           .document("coop")
@@ -89,8 +94,12 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           .set(storedProduct("coop:1", "Crème coop", 1.0))
           .await()
       val repository = ProductRepositoryFirestore(firestore)
-      suspend fun ids(query: String, cursor: String? = null, limit: Int = 50) =
-          repository.searchProducts("migros", query, cursor, limit).successData()
+      suspend fun ids(
+          query: String,
+          cursor: String? = null,
+          limit: Int = 50,
+          category: String? = null,
+      ) = repository.searchProducts("migros", query, cursor, limit, category).successData()
 
       assertEquals(
           listOf("migros:101", "migros:104", "migros:105"),
@@ -98,14 +107,41 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
       )
       assertEquals(listOf("migros:105"), ids("entière crème").products.map(Product::id))
       assertEquals(listOf("migros:102"), ids("lait ecreme").products.map(Product::id))
-      val first = ids("cr", limit = 2)
+      val first = ids("cr", limit = 2, category = "Food")
       assertEquals(listOf("migros:101", "migros:104"), first.products.map(Product::id))
       assertEquals("104", first.nextCursor)
       // A cursor is a position, so it still works once its product is deleted.
       migros.document("104").delete().await()
-      val second = ids("cr", first.nextCursor, limit = 2)
+      val second = ids("cr", first.nextCursor, limit = 2, category = "Food")
       assertEquals(listOf("migros:105"), second.products.map(Product::id))
       assertEquals(null, second.nextCursor)
+    }
+  }
+
+  @Test
+  fun concreteAdapter_ranksWithTheImportersDoubleRanksAndPagesAcrossRanks() = runTest {
+    withFirestoreEmulator { firestore ->
+      // The importer writes JSON numbers as doubles; the query compares them to whole tiers.
+      val migros = firestore.collection("stores").document("migros")
+      migros.set(mapOf("search_rank_version" to 1.0)).await()
+      listOf(
+              Triple("101", "Vinaigre de pomme", 3.0),
+              Triple("102", "Pommes Gala", 1.0),
+              Triple("103", "Pommes frites", 2.0),
+          )
+          .forEach { (id, name, tier) ->
+            val ranked =
+                storedProduct("migros:$id", name, 2) + ("search_rank" to mapOf("pomme" to tier))
+            migros.collection("products").document(id).set(ranked).await()
+          }
+      val repository = ProductRepositoryFirestore(firestore)
+
+      val first = repository.searchProducts("migros", "pomme", limit = 2).successData()
+      assertEquals(listOf("migros:102", "migros:103"), first.products.map(Product::id))
+      assertEquals("2/103", first.nextCursor)
+      val rest = repository.searchProducts("migros", "pomme", first.nextCursor, 2).successData()
+      assertEquals(listOf("migros:101"), rest.products.map(Product::id))
+      assertEquals(null, rest.nextCursor)
     }
   }
 
@@ -164,7 +200,13 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
     )
   }
 
-  private fun storedProduct(id: String, name: String, price: Number, removedAt: Timestamp? = null) =
+  private fun storedProduct(
+      id: String,
+      name: String,
+      price: Number,
+      removedAt: Timestamp? = null,
+      category: String? = null,
+  ) =
       mapOf(
           "id" to id,
           "name" to name,
@@ -172,6 +214,7 @@ class FirebaseProductFirestoreDataSourceEmulatorTest {
           "image_url" to "https://example.com/product.jpg",
           "removed_at" to removedAt,
           "search_prefixes" to productSearchPrefixes(name),
+          "category" to category,
       )
 
   private companion object {

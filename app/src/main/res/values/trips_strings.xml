@@ -12,4 +12,25 @@
     <string name="trips_location_helper">Trips within %1$d m of this point</string>
     <string name="trips_location_clear">Clear location</string>
     <string name="trips_no_matches">No trips near %1$s yet.</string>
+    <string name="trips_no_matches_filters">No trips match your filters.</string>
+    <string name="trips_range_invalid">The end date is before the start date.</string>
+    <string name="trips_range_expired">This date range has already passed.</string>
+    <string name="trips_filter_store_label">Supermarket</string>
+    <string name="trips_store_all">All</string>
+    <string name="trips_store_migros">Migros</string>
+    <string name="trips_store_coop">Coop</string>
+    <string name="trips_filter_period_label">Departure</string>
+    <string name="trips_period_any">Any time</string>
+    <string name="trips_period_today">Today</string>
+    <string name="trips_period_tomorrow">Tomorrow</string>
+    <string name="trips_period_custom">Pick dates</string>
+    <string name="trips_period_custom_range">%1$s – %2$s</string>
+    <string name="trips_sort_label">Sort by</string>
+    <string name="trips_sort_earliest">Earliest departure</string>
+    <string name="trips_sort_distance">Closest to delivery point</string>
+    <string name="trips_filters_clear">Clear filters</string>
+    <string name="trips_filters">Filters</string>
+    <string name="trips_filters_active">Filters: %1$s</string>
+    <string name="trips_filters_expanded">Expanded</string>
+    <string name="trips_filters_collapsed">Collapsed</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.android.sample.model
 
+// AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude Code for the shared item count and total.
 import java.time.Instant
 
@@ -25,6 +26,12 @@ enum class OrderStatus {
   PENDING,
   ACCEPTED,
   REJECTED,
+  /** The trip owner has marked the order as ready to hand over to its requester. */
+  READY_FOR_HANDOFF,
+  /** The requester cancelled the order while it was pending; its history remains readable. */
+  CANCELLED,
+  /** The requester has confirmed receipt of the order. */
+  DELIVERED,
 }
 
 enum class OrderDecision {
@@ -41,6 +48,8 @@ data class Order(
     val commissionCents: Int,
     val status: OrderStatus,
     val createdAt: Instant,
+    /** Monotonic edit revision; legacy documents without this field start at zero. */
+    val revision: Int = 0,
 )
 
 /** Total quantity across products, e.g. two apples and one milk count as three items. */

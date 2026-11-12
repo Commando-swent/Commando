@@ -53,10 +53,11 @@ class NotificationScreensTest {
         )
     var opened = ""
     var marked = ""
+    var state by mutableStateOf(NotificationPageState.Content(listOf(notice, read, placed)))
     compose.setContent {
       SampleAppTheme {
         NotificationInboxScreen(
-            NotificationPageState.Content(listOf(notice, read, placed)),
+            state,
             {},
             {},
             {},
@@ -72,6 +73,10 @@ class NotificationScreensTest {
     node(NotificationTestTags.READ + read.event.id).assertDoesNotExist()
     node(NotificationTestTags.LIST).performScrollToKey(placed.event.id)
     node(NotificationTestTags.ROW + placed.event.id).assertIsDisplayed()
+    compose.runOnIdle { state = state.copy(isSaving = true) }
+    node(NotificationTestTags.LIST).performScrollToKey(notice.event.id)
+    node(NotificationTestTags.READ + notice.event.id).assertIsNotEnabled()
+    node(NotificationTestTags.ORDER + notice.event.id).assertIsEnabled()
     compose.runOnIdle {
       assertEquals(notice.event.orderId, opened)
       assertEquals(notice.event.id, marked)

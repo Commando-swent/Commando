@@ -2,7 +2,6 @@ package com.android.sample.ui.auth
 
 // AI assistance: OpenAI Codex.
 import android.content.Context
-import android.content.res.Resources
 import android.os.Bundle
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
@@ -10,7 +9,9 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
+import com.android.sample.R
 import com.android.sample.model.authentication.AuthException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import io.mockk.coEvery
@@ -28,21 +29,12 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class GoogleCredentialClientTest {
   private val context = mockk<Context>()
-  private val resources = mockk<Resources>()
   private val manager = mockk<CredentialManager>()
   private val credential = CustomCredential("google", Bundle())
   private val client = AndroidGoogleCredentialClient(context, manager)
 
-  private fun configure(
-      resourceId: Int = 123,
-      clientId: String = "web.apps.googleusercontent.com",
-  ) {
-    every { context.resources } returns resources
-    every { context.packageName } returns "com.android.sample"
-    every {
-      resources.getIdentifier("default_web_client_id", "string", "com.android.sample")
-    } returns resourceId
-    every { context.getString(resourceId) } returns clientId
+  private fun configure(clientId: String = "web.apps.googleusercontent.com") {
+    every { context.getString(R.string.default_web_client_id) } returns clientId
   }
 
   @Test
@@ -58,15 +50,13 @@ class GoogleCredentialClientTest {
   }
 
   @Test
-  fun missingOrBlankConfigurationDoesNotOpenPicker() = runTest {
-    for (id in listOf(0, 123)) {
-      configure(id, "")
-      try {
-        client.request(context)
-        fail("Missing configuration must fail")
-      } catch (_: GoogleSignInNotConfiguredException) {
-        coVerify(exactly = 0) { manager.getCredential(any<Context>(), any<GetCredentialRequest>()) }
-      }
+  fun blankConfigurationDoesNotOpenPicker() = runTest {
+    configure("")
+    try {
+      client.request(context)
+      fail("Blank configuration must fail")
+    } catch (_: GoogleSignInNotConfiguredException) {
+      coVerify(exactly = 0) { manager.getCredential(any<Context>(), any<GetCredentialRequest>()) }
     }
   }
 
@@ -82,6 +72,19 @@ class GoogleCredentialClientTest {
   fun noAccountIsReportedAsSafeGoogleAuthenticationError() = runTest {
     configure()
     val error = NoCredentialException()
+    coEvery { manager.getCredential(context, any<GetCredentialRequest>()) } throws error
+    try {
+      client.request(context)
+      fail("Provider error must be reported")
+    } catch (failure: AuthException.InvalidGoogleCredential) {
+      assertSame(error, failure.cause)
+    }
+  }
+
+  @Test
+  fun otherProviderErrorsRetainTheirCause() = runTest {
+    configure()
+    val error = GetCredentialUnknownException()
     coEvery { manager.getCredential(context, any<GetCredentialRequest>()) } throws error
     try {
       client.request(context)

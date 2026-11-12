@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), closed-trip creation (#233): Claude
+// Code.
 import com.android.sample.model.Location
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
@@ -345,6 +346,17 @@ class FakeOrderRepositoryTest {
   }
 
   @Test
+  fun creationOnTripThatIsNotPublishedIsInvalidAndStoresNothing() = runTest {
+    for (status in TripStatus.entries - TripStatus.PUBLISHED) {
+      val repository = FakeOrderRepository({ userId }, tripRepository = trips(status = status))
+      assertEquals(status.name, failure(OrderError.InvalidData), repository.createOrder(input))
+      assertTrue(repository.getMyOrders().data().isEmpty())
+    }
+    val published = FakeOrderRepository({ userId }, tripRepository = trips())
+    assertTrue(published.createOrder(input) is OrderResult.Success)
+  }
+
+  @Test
   fun creationLookupExceptionsAndCancellationLeaveStorageAndMutexUsable() = runTest {
     for (scenario in listOf("exception", "account-change", "cancellation")) {
       userId = "requester-demo"
@@ -382,7 +394,7 @@ class FakeOrderRepositoryTest {
     }
   }
 
-  private fun trips(ownerId: String = "commando") =
+  private fun trips(ownerId: String = "commando", status: TripStatus = TripStatus.PUBLISHED) =
       FakeTripRepository(
           ownerId,
           initialTrips =
@@ -393,7 +405,7 @@ class FakeOrderRepositoryTest {
                       Location("Store", 46.5, 6.6),
                       time,
                       Location("Campus", 46.5, 6.6),
-                      TripStatus.PUBLISHED,
+                      status,
                       time,
                       time,
                   )
@@ -584,7 +596,7 @@ class FakeOrderRepositoryTest {
       val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
       val target = if (decision == ACCEPT) OrderStatus.ACCEPTED else OrderStatus.REJECTED
       val expected = stored.copy(status = if (status == OrderStatus.PENDING) target else status)
-      val result = orders.decideOrder(stored.id, decision)
+      val result = orders.decideOrder(stored.id, decision, stored.revision)
       if (selfOrder) {
         assertEquals(failure(OrderError.PermissionDenied), result)
         assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
@@ -608,13 +620,13 @@ class FakeOrderRepositoryTest {
       userId = caller
       val expected =
           if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
-      assertEquals(failure(expected), orders.decideOrder(order().id, ACCEPT))
+      assertEquals(failure(expected), orders.decideOrder(order().id, ACCEPT, 0))
     }
     userId = "commando"
     for (id in listOf("", " ", "a/b", ".", "..")) {
-      assertEquals(failure(OrderError.InvalidData), orders.decideOrder(id, ACCEPT))
+      assertEquals(failure(OrderError.InvalidData), orders.decideOrder(id, ACCEPT, 0))
     }
-    assertEquals(failure(OrderError.NotFound), orders.decideOrder("missing", ACCEPT))
+    assertEquals(failure(OrderError.NotFound), orders.decideOrder("missing", ACCEPT, 0))
     assertEquals(OrderResult.Success(order()), orders.getOrderById(order().id))
   }
 
@@ -634,7 +646,7 @@ class FakeOrderRepositoryTest {
           }
       userId = "commando"
       val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = delayed)
-      val pending = async { orders.decideOrder(order().id, ACCEPT) }
+      val pending = async { orders.decideOrder(order().id, ACCEPT, 0) }
       entered.await()
       if (cancel) {
         pending.cancel()
@@ -651,7 +663,7 @@ class FakeOrderRepositoryTest {
       userId = "commando"
       assertEquals(
           OrderResult.Success(order().copy(status = OrderStatus.REJECTED)),
-          orders.decideOrder(order().id, REJECT),
+          orders.decideOrder(order().id, REJECT, 0),
       )
     }
   }
@@ -669,7 +681,7 @@ class FakeOrderRepositoryTest {
       val results = decisions.map {
         async(Dispatchers.Default) {
           gate.await()
-          orders.decideOrder(order().id, it)
+          orders.decideOrder(order().id, it, 0)
         }
       }
       gate.complete(Unit)
@@ -685,7 +697,164 @@ class FakeOrderRepositoryTest {
     }
   }
 
+  @Test
+  fun requesterCanCancelPendingOrderIdempotently() = runTest {
+    userId = "requester-demo"
+    val original = order().copy(items = listOf(item, item.copy(productId = "bread")))
+    val orders = FakeOrderRepository({ userId }, listOf(original), tripRepository = trips())
+    val cancelled = original.copy(status = OrderStatus.CANCELLED)
+
+    repeat(2) { assertEquals(OrderResult.Success(cancelled), orders.cancelOrder(original.id)) }
+    assertEquals(OrderResult.Success(cancelled), orders.getOrderById(original.id))
+  }
+
+  @Test
+  fun cancellationRequiresRequesterAndPendingStatus() = runTest {
+    for (status in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      userId = "requester-demo"
+      val persisted = order().copy(status = status)
+      val orders = FakeOrderRepository({ userId }, listOf(persisted), tripRepository = trips())
+      assertEquals(
+          failure(OrderError.AlreadyDecided(persisted)),
+          orders.cancelOrder(persisted.id),
+      )
+    }
+    val orders = FakeOrderRepository({ userId }, listOf(order()), tripRepository = trips())
+    userId = "commando"
+    assertEquals(failure(OrderError.PermissionDenied), orders.cancelOrder(order().id))
+    userId = null
+    assertEquals(failure(OrderError.NotAuthenticated), orders.cancelOrder(order().id))
+  }
+
+  @Test
+  fun invalidOrFailedCancellationLeavesTheOrderUnchanged() = runTest {
+    val stored = order()
+    val orders = fake(listOf(stored))
+    for (id in listOf("", "a/b", ".", "..")) {
+      assertEquals(failure(OrderError.InvalidData), orders.cancelOrder(id))
+    }
+    assertEquals(failure(OrderError.NotFound), orders.cancelOrder("missing"))
+    orders.forcedError = OrderError.Unknown
+    assertEquals(failure(OrderError.Unknown), orders.cancelOrder(stored.id))
+    orders.forcedError = null
+    assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+  }
+
   private fun failure(error: OrderError) = OrderResult.Error(error)
+
+  @Test
+  fun readinessPreservesFieldsAndAuthorizesBeforeIdempotencyOrConflicts() = runTest {
+    for (status in OrderStatus.entries) for (selfOrder in listOf(false, true)) {
+      val stored =
+          order()
+              .copy(status = status, requesterId = if (selfOrder) "commando" else "requester-demo")
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      for (caller in listOf("requester-demo", "outsider", null, "commando")) {
+        userId = caller
+        val result = orders.markReadyForHandoff(stored.id)
+        val expected =
+            when {
+              caller == null -> failure(OrderError.NotAuthenticated)
+              caller != "commando" || selfOrder -> failure(OrderError.PermissionDenied)
+              status in listOf(OrderStatus.ACCEPTED, OrderStatus.READY_FOR_HANDOFF) ->
+                  OrderResult.Success(stored.copy(status = OrderStatus.READY_FOR_HANDOFF))
+              else -> failure(OrderError.AlreadyDecided(stored))
+            }
+        assertEquals(expected, result)
+        assertEquals(expected, orders.markReadyForHandoff(stored.id))
+      }
+      val expected =
+          if (!selfOrder && status == OrderStatus.ACCEPTED)
+              stored.copy(status = OrderStatus.READY_FOR_HANDOFF)
+          else stored
+      assertEquals(OrderResult.Success(expected), orders.getOrderById(stored.id))
+    }
+  }
+
+  @Test
+  fun receiptConfirmationPreservesFieldsAndRepeatedResultsAreIndependentSnapshots() = runTest {
+    val ready =
+        order()
+            .copy(
+                status = OrderStatus.READY_FOR_HANDOFF,
+                items = listOf(item, item.copy(productId = "bread")),
+            )
+    val orders = fake(listOf(ready))
+    val delivered = ready.copy(status = OrderStatus.DELIVERED)
+    val first = orders.confirmReceipt(ready.id).data()
+    assertEquals(delivered, first)
+    (first.items as MutableList).clear()
+    repeat(2) {
+      assertEquals(OrderResult.Success(delivered), orders.confirmReceipt(ready.id))
+      assertEquals(OrderResult.Success(delivered), orders.getOrderById(ready.id))
+    }
+  }
+
+  @Test
+  fun receiptConfirmationRejectsNonReadyStatusesWithoutChangingOrders() = runTest {
+    for (status in listOf(OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      val stored = order().copy(status = status)
+      val orders = fake(listOf(stored))
+      assertEquals(
+          failure(OrderError.AlreadyDecided(stored)),
+          orders.confirmReceipt(stored.id),
+      )
+      assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+    }
+    val delivered = order().copy(status = OrderStatus.DELIVERED)
+    assertEquals(
+        OrderResult.Success(delivered),
+        fake(listOf(delivered)).confirmReceipt(delivered.id),
+    )
+  }
+
+  @Test
+  fun receiptConfirmationAuthorizesBeforeSuccessOrConflictDetails() = runTest {
+    for (status in OrderStatus.entries) {
+      val stored = order().copy(status = status)
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      for (caller in listOf("commando", "outsider", null, " ")) {
+        userId = caller
+        val expected =
+            if (caller.isNullOrBlank()) OrderError.NotAuthenticated else OrderError.PermissionDenied
+        assertEquals(failure(expected), orders.confirmReceipt(stored.id))
+      }
+      userId = stored.requesterId
+      assertEquals(OrderResult.Success(stored), orders.getOrderById(stored.id))
+    }
+  }
+
+  @Test
+  fun receiptConfirmationValidatesIdsAndKeepsStorageOnInjectedFailure() = runTest {
+    val ready = order().copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val orders = fake(listOf(ready))
+    for (id in listOf("", " ", "a/b", ".", "..")) {
+      assertEquals(failure(OrderError.InvalidData), orders.confirmReceipt(id))
+    }
+    assertEquals(failure(OrderError.NotFound), orders.confirmReceipt("missing"))
+    orders.forcedError = OrderError.Unknown
+    assertEquals(failure(OrderError.Unknown), orders.confirmReceipt(ready.id))
+    orders.forcedError = null
+    assertEquals(OrderResult.Success(ready), orders.getOrderById(ready.id))
+  }
+
+  @Test
+  fun concurrentReceiptConfirmationsReturnTheSameDeliveredOrder() = runTest {
+    val ready = order().copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val orders = fake(listOf(ready))
+    val gate = CompletableDeferred<Unit>()
+    val calls =
+        List(2) {
+          async(Dispatchers.Default) {
+            gate.await()
+            orders.confirmReceipt(ready.id)
+          }
+        }
+    gate.complete(Unit)
+    val delivered = OrderResult.Success(ready.copy(status = OrderStatus.DELIVERED))
+    assertEquals(listOf(delivered, delivered), calls.awaitAll())
+    assertEquals(delivered, orders.getOrderById(ready.id))
+  }
 
   private fun OrderResult<Order>.persisted(): Order =
       when (this) {

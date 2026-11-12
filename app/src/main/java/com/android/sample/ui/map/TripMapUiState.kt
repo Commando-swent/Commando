@@ -1,7 +1,8 @@
 package com.android.sample.ui.map
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; Claude Code (search criteria states).
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 
@@ -11,8 +12,14 @@ sealed interface TripMapUiState {
 
   data object Empty : TripMapUiState
 
-  /** The repository has trips, but none serve the selected delivery point. */
-  data class NoMatches(val location: Location) : TripMapUiState
+  /**
+   * The repository has trips, but none match. [location] is set when only the delivery point
+   * filtered them out, and null when store or departure criteria are active too.
+   */
+  data class NoMatches(val location: Location?) : TripMapUiState
+
+  /** The search criteria cannot match any upcoming trip (invalid or expired range). */
+  data class InvalidCriteria(val problem: CriteriaProblem) : TripMapUiState
 
   data class Error(val error: TripError) : TripMapUiState
 

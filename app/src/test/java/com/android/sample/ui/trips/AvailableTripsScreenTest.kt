@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+import android.content.Context
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -10,11 +11,15 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.android.sample.R
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
+import com.android.sample.model.StoreFilter
+import com.android.sample.model.TripSearchCriteria
+import com.android.sample.model.TripSort
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -38,15 +43,11 @@ class AvailableTripsScreenTest {
   private lateinit var originalTimeZone: TimeZone
   private val departure = Instant.parse("2026-10-06T13:00:00Z")
   private val trip =
-      Trip(
-          id = "migros-trip",
-          ownerId = "owner",
-          store = Location("Migros", 46.52, 6.63),
-          scheduledAt = departure,
-          handoffLocation = Location("EPFL", 46.52, 6.57),
-          status = TripStatus.PUBLISHED,
-          createdAt = departure,
-          updatedAt = departure,
+      discoveryTrip(
+          "migros-trip",
+          Location("Migros", 46.52, 6.63),
+          Location("EPFL", 46.52, 6.57),
+          departure,
       )
 
   @Before
@@ -75,20 +76,24 @@ class AvailableTripsScreenTest {
   @Test
   fun loadingStateIsDisplayed() {
     show(AvailableTripsUiState.Loading)
-    compose.onNodeWithContentDescription("Loading available trips").assertIsDisplayed()
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.LOADING)
+        .assertIsDisplayed()
+        .assertContentDescriptionEquals(string(R.string.trips_loading))
   }
 
   @Test
   fun contentDisplaysStoreDepartureAndHandoff() {
     show(AvailableTripsUiState.Content(listOf(trip)))
-    compose.onNodeWithText("Migros").assertIsDisplayed()
     val expectedDeparture =
         DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
             .withLocale(Locale.US)
             .withZone(ZoneId.of("UTC"))
             .format(departure)
-    compose.onNodeWithText("Departure: $expectedDeparture").assertIsDisplayed()
-    compose.onNodeWithText("EPFL \u00b7 Handoff point").assertIsDisplayed()
+    compose
+        .assertTripCard(trip)
+        .assert(hasText(string(R.string.trips_departure, expectedDeparture)))
+        .assert(hasText(string(R.string.trips_handoff, "EPFL")))
   }
 
   @Test
@@ -100,8 +105,8 @@ class AvailableTripsScreenTest {
             scheduledAt = departure.minusSeconds(3600),
         )
     show(AvailableTripsUiState.Content(listOf(trip, earlier)))
-    val first = compose.onNodeWithText("Migros").assertIsDisplayed().fetchSemanticsNode()
-    val second = compose.onNodeWithText("Coop").assertIsDisplayed().fetchSemanticsNode()
+    val first = compose.assertTripCard(trip).fetchSemanticsNode()
+    val second = compose.assertTripCard(earlier.id, "Coop").fetchSemanticsNode()
     assertTrue(
         "Trips must retain the supplied display order",
         first.boundsInRoot.bottom <= second.boundsInRoot.top,
@@ -117,17 +122,14 @@ class AvailableTripsScreenTest {
         onTripSelected = { selections.add(it) },
     )
     compose.runOnIdle { assertTrue(selections.isEmpty()) }
-    compose.onNodeWithText("Coop").assertHasClickAction().performClick()
+    compose.onTripCard(other.id).assert(hasText("Coop")).assertHasClickAction().performClick()
     compose.runOnIdle { assertEquals(listOf(other.id), selections) }
   }
 
   @Test
   fun emptyStateDisplaysExactMessage() {
     show(AvailableTripsUiState.Empty)
-    compose
-        .onNodeWithText("No trips available right now.")
-        .assertIsDisplayed()
-        .assertTextEquals("No trips available right now.")
+    assertStatus(AvailableTripsScreenTestTags.EMPTY, string(R.string.trips_empty))
   }
 
   @Test
@@ -147,9 +149,12 @@ class AvailableTripsScreenTest {
     }
     compose.onRoot().assertWidthIsEqualTo(640.dp).assertHeightIsEqualTo(320.dp)
     compose.runOnIdle { assertEquals(0, retries) }
-    val retry = compose.onNodeWithText("Retry")
-    scrollTo(hasText("Retry"))
-    retry.assertIsDisplayed().assertHasClickAction().performClick()
+    scrollTo(hasTestTag(AvailableTripsScreenTestTags.RETRY))
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.RETRY)
+        .assertIsDisplayed()
+        .assertHasClickAction()
+        .performClick()
     compose.runOnIdle { assertEquals(1, retries) }
   }
 
@@ -157,12 +162,14 @@ class AvailableTripsScreenTest {
   fun errorDisplaysSafeMessageAndRetryInvokesCallback() {
     var retries = 0
     show(AvailableTripsUiState.Error(TripError.Unknown), onRetry = { retries++ })
-    compose
-        .onNodeWithText("Something went wrong while loading trips.")
-        .assertIsDisplayed()
-        .assertTextEquals("Something went wrong while loading trips.")
+    assertStatus(AvailableTripsScreenTestTags.ERROR, string(R.string.trips_error))
     compose.runOnIdle { assertEquals(0, retries) }
-    compose.onNodeWithText("Retry").assertIsDisplayed().assertHasClickAction().performClick()
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.RETRY)
+        .assert(hasText(string(R.string.trips_retry)))
+        .assertIsDisplayed()
+        .assertHasClickAction()
+        .performClick()
     compose.runOnIdle { assertEquals(1, retries) }
   }
 
@@ -195,18 +202,24 @@ class AvailableTripsScreenTest {
   fun locationFieldShowsPlaceholderAndPickingReportsExactPoint() {
     val picked = mutableListOf<Location>()
     showFilter(AvailableTripsUiState.Content(listOf(trip)), null, onSelect = { picked.add(it) })
-    val helper = "Trips within ${HANDOFF_RADIUS_METERS.toInt()} m of this point"
+    val helper = string(R.string.trips_location_helper, HANDOFF_RADIUS_METERS.toInt())
     compose.onNodeWithText(helper).assertIsDisplayed().assertTextEquals(helper)
     compose
         .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
-        .assert(hasText("All locations"))
+        .assert(hasText(string(R.string.trips_location_placeholder)))
         .assertHasClickAction()
         .performClick()
-    compose.onNodeWithText(rolex.name).assertIsDisplayed()
-    compose.onNodeWithText(metro.name).assertIsDisplayed().performClick()
+    compose
+        .onNodeWithTag(CreateTripScreenTestTags.locationOption(rolex.name))
+        .assert(hasText(rolex.name))
+        .assertIsDisplayed()
+    compose
+        .onNodeWithTag(CreateTripScreenTestTags.locationOption(metro.name))
+        .assert(hasText(metro.name))
+        .assertIsDisplayed()
+        .performClick()
     compose.runOnIdle { assertEquals(listOf(metro), picked) }
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
-    compose.onNodeWithText("Clear location").assertDoesNotExist()
   }
 
   @Test
@@ -214,10 +227,11 @@ class AvailableTripsScreenTest {
     var clears = 0
     showFilter(AvailableTripsUiState.Content(listOf(trip)), rolex, onClear = { clears++ })
     compose.onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD).assert(hasText(rolex.name))
-    compose.onNodeWithText("All locations").assertDoesNotExist()
+    compose.onNodeWithText(string(R.string.trips_location_placeholder)).assertDoesNotExist()
     compose.runOnIdle { assertEquals(0, clears) }
     compose
-        .onNodeWithText("Clear location")
+        .onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION)
+        .assert(hasText(string(R.string.trips_location_clear)))
         .assertIsDisplayed()
         .assertHasClickAction()
         .performClick()
@@ -239,21 +253,22 @@ class AvailableTripsScreenTest {
         )
       }
     }
-    val noMatches =
-        hasText("No trips near Rolex Learning Center yet.") and
-            hasAnyAncestor(hasTestTag(AvailableTripsScreenTestTags.NO_MATCHES))
-    scrollTo(noMatches)
-    compose.onNode(noMatches).assertIsDisplayed()
-    compose.onNodeWithText("No trips available right now.").assertDoesNotExist()
+    assertStatus(
+        AvailableTripsScreenTestTags.NO_MATCHES,
+        string(R.string.trips_no_matches, rolex.name),
+    )
+    compose.onNodeWithTag(AvailableTripsScreenTestTags.EMPTY).assertDoesNotExist()
     state = AvailableTripsUiState.Empty
-    scrollTo(hasText("No trips available right now."))
-    compose.onNodeWithText("No trips available right now.").assertIsDisplayed()
+    assertStatus(AvailableTripsScreenTestTags.EMPTY, string(R.string.trips_empty))
     compose.onNodeWithTag(AvailableTripsScreenTestTags.NO_MATCHES).assertDoesNotExist()
     state = AvailableTripsUiState.Error(TripError.NetworkError)
-    scrollTo(hasText("Something went wrong while loading trips."))
-    compose.onNodeWithText("Something went wrong while loading trips.").assertIsDisplayed()
-    scrollTo(hasText("Retry"))
-    compose.onNodeWithText("Retry").assertIsDisplayed().performClick()
+    assertStatus(AvailableTripsScreenTestTags.ERROR, string(R.string.trips_error))
+    scrollTo(hasTestTag(AvailableTripsScreenTestTags.RETRY))
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.RETRY)
+        .assertIsDisplayed()
+        .assert(hasText(string(R.string.trips_retry)))
+        .performClick()
     compose.runOnIdle { assertEquals(1, retries) }
   }
 
@@ -278,10 +293,107 @@ class AvailableTripsScreenTest {
     compose.onRoot().assertHeightIsEqualTo(320.dp)
     // The whole screen scrolls, so the picker, Clear and status card can each be reached.
     compose.onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD).assertIsDisplayed()
-    compose.onNodeWithText("Clear location").assertIsDisplayed().performClick()
+    compose
+        .onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION)
+        .assertIsDisplayed()
+        .assert(hasText(string(R.string.trips_location_clear)))
+        .performClick()
     compose.runOnIdle { assertEquals(1, clears) }
     scrollTo(hasTestTag(AvailableTripsScreenTestTags.NO_MATCHES))
     compose.onNodeWithTag(AvailableTripsScreenTestTags.NO_MATCHES).assertIsDisplayed()
+  }
+
+  @Test
+  fun noMatchesWithoutPointShowsTheGenericFiltersMessage() {
+    showFilter(AvailableTripsUiState.NoMatches(null), selected = rolex)
+    assertStatus(AvailableTripsScreenTestTags.NO_MATCHES, string(R.string.trips_no_matches_filters))
+    compose.onNodeWithText(string(R.string.trips_no_matches, rolex.name)).assertDoesNotExist()
+    compose.onNodeWithTag(AvailableTripsScreenTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun invalidCriteriaShowsTheProblemWithoutRetry() {
+    var state by
+        mutableStateOf<AvailableTripsUiState>(
+            AvailableTripsUiState.InvalidCriteria(CriteriaProblem.INVALID_RANGE)
+        )
+    compose.setContent {
+      MaterialTheme { AvailableTripsScreen(state = state, onRetry = {}, onTripSelected = {}) }
+    }
+    for ((problem, message) in
+        listOf(
+            CriteriaProblem.INVALID_RANGE to R.string.trips_range_invalid,
+            CriteriaProblem.EXPIRED_RANGE to R.string.trips_range_expired,
+        )) {
+      compose.runOnIdle { state = AvailableTripsUiState.InvalidCriteria(problem) }
+      assertStatus(AvailableTripsScreenTestTags.INVALID_CRITERIA, string(message))
+      compose.onNodeWithTag(AvailableTripsScreenTestTags.RETRY).assertDoesNotExist()
+      compose.onNodeWithTag(AvailableTripsScreenTestTags.NO_MATCHES).assertDoesNotExist()
+      compose.onNodeWithTag(AvailableTripsScreenTestTags.ERROR).assertDoesNotExist()
+    }
+    compose.onNodeWithText(string(R.string.trips_range_invalid)).assertDoesNotExist()
+  }
+
+  @Test
+  fun searchControlsAreAbsentWithoutCriteria() {
+    show(AvailableTripsUiState.Content(listOf(trip)))
+    compose.onNodeWithTag(TripSearchTestTags.TOGGLE).assertDoesNotExist()
+    compose.assertTripCard(trip)
+  }
+
+  private fun showWithCriteria(selected: Location?, onChange: (TripSearchCriteria) -> Unit = {}) {
+    compose.setContent {
+      MaterialTheme {
+        AvailableTripsScreen(
+            state = AvailableTripsUiState.Content(listOf(trip)),
+            onRetry = {},
+            onTripSelected = {},
+            selectedPoint = selected,
+            points = listOf(rolex, metro),
+            criteria = TripSearchCriteria(store = StoreFilter.MIGROS),
+            onCriteriaChange = onChange,
+        )
+      }
+    }
+  }
+
+  @Test
+  fun searchControlsShowWithCriteriaAndDistanceNeedsASelectedPoint() {
+    showWithCriteria(selected = null)
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assertIsDisplayed()
+        .assert(hasText(string(R.string.trips_filters_active, string(R.string.trips_store_migros))))
+        .performClick()
+    compose.onNodeWithTag(TripSearchTestTags.sort(TripSort.DISTANCE)).assertIsNotEnabled()
+  }
+
+  @Test
+  // Tall viewport: performScrollTo does not scroll the list to a chip inside the already-visible
+  // controls item, so the sort row must be on screen to be clicked.
+  @Config(qualifiers = "en-rUS-w412dp-h915dp")
+  fun distanceSortIsEnabledWithASelectedPoint() {
+    val emitted = mutableListOf<TripSearchCriteria>()
+    showWithCriteria(selected = rolex) { emitted += it }
+    compose.onNodeWithTag(TripSearchTestTags.TOGGLE).performClick()
+    compose
+        .onNodeWithTag(TripSearchTestTags.sort(TripSort.DISTANCE))
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    assertEquals(
+        listOf(TripSearchCriteria(store = StoreFilter.MIGROS, sort = TripSort.DISTANCE)),
+        emitted,
+    )
+  }
+
+  private fun string(id: Int, vararg args: Any): String =
+      ApplicationProvider.getApplicationContext<Context>().getString(id, *args)
+
+  /** Finds a discovery state by its tag only, then checks its wording from string resources. */
+  private fun assertStatus(tag: String, message: String) {
+    scrollTo(hasTestTag(tag))
+    compose.onNodeWithTag(tag).assertIsDisplayed().assert(hasAnyDescendant(hasText(message)))
   }
 
   private fun scrollTo(matcher: SemanticsMatcher) {

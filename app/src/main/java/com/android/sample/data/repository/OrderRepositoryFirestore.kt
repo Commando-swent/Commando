@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
 import com.android.sample.model.*
+import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
@@ -65,15 +66,7 @@ internal constructor(
                 mapOf(
                     "tripId" to input.tripId,
                     "requesterId" to uid,
-                    "items" to
-                        input.items.map {
-                          mapOf(
-                              "productId" to it.productId,
-                              "name" to it.name,
-                              "unitPriceCents" to it.unitPriceCents,
-                              "quantity" to it.quantity,
-                          )
-                        },
+                    "items" to input.items.firestoreItems(),
                     "commissionCents" to input.commissionCents,
                     "status" to OrderStatus.PENDING.name,
                     "createdAt" to FieldValue.serverTimestamp(),
@@ -89,6 +82,33 @@ internal constructor(
         source.getMine(uid).map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
     if (orders.any { it.requesterId != uid }) return@session failure(OrderError.PermissionDenied)
     OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
+  }
+
+  override suspend fun editOrder(
+      orderId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
+  ): OrderResult<Order> = session { uid ->
+    val input = draft.copy(items = draft.items.toList())
+    if (
+        !orderId.isDocumentId() ||
+            !input.tripId.isDocumentId() ||
+            !input.isValid() ||
+            expectedRevision < 0
+    )
+        return@session failure(OrderError.InvalidData)
+    val order =
+        source.edit(orderId, uid, input, expectedRevision).toOrder()
+            ?: return@session failure(OrderError.InvalidData)
+    if (order.id != orderId || order.requesterId != uid || order.tripId != input.tripId)
+        return@session failure(OrderError.InvalidData)
+    if (order.status != OrderStatus.PENDING) failure(OrderError.AlreadyDecided(order))
+    else if (order.items != input.items || order.commissionCents != input.commissionCents)
+        failure(
+            if (order.revision != expectedRevision) OrderError.AlreadyDecided(order)
+            else OrderError.InvalidData
+        )
+    else OrderResult.Success(order)
   }
 
   override suspend fun getOrderById(orderId: String): OrderResult<Order> = session { uid ->
@@ -119,17 +139,56 @@ internal constructor(
   override suspend fun decideOrder(
       orderId: String,
       decision: OrderDecision,
+      expectedRevision: Int,
+  ): OrderResult<Order> =
+      transitionOrder(orderId, decision.ownerTransition(), expectedRevision) { uid ->
+        source.decide(orderId, uid, decision, expectedRevision)
+      }
+
+  override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OwnerOrderTransition.MARK_READY) { uid ->
+        source.markReadyForHandoff(orderId, uid)
+      }
+
+  /** Confirms receipt for the persisted requester; see [OrderRepository.confirmReceipt]. */
+  override suspend fun confirmReceipt(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OrderStatus.READY_FOR_HANDOFF, OrderStatus.DELIVERED) { uid ->
+        source.confirmReceipt(orderId, uid)
+      }
+
+  private suspend fun transitionOrder(
+      orderId: String,
+      transition: OwnerOrderTransition,
+      expectedRevision: Int? = null,
+      update: suspend (String) -> OrderFirestoreDocument,
+  ): OrderResult<Order> =
+      transitionOrder(orderId, transition.source, transition.target, expectedRevision, update)
+
+  private suspend fun transitionOrder(
+      orderId: String,
+      from: OrderStatus,
+      target: OrderStatus,
+      expectedRevision: Int? = null,
+      update: suspend (String) -> OrderFirestoreDocument,
   ): OrderResult<Order> = session { uid ->
-    if (!orderId.isDocumentId()) return@session failure(OrderError.InvalidData)
-    val order =
-        source.decide(orderId, uid, decision).toOrder()
-            ?: return@session failure(OrderError.InvalidData)
-    if (order.id != orderId || order.status == OrderStatus.PENDING) {
+    if (!orderId.isDocumentId() || (expectedRevision != null && expectedRevision < 0))
+        return@session failure(OrderError.InvalidData)
+    val order = update(uid).toOrder() ?: return@session failure(OrderError.InvalidData)
+    if (
+        order.id != orderId ||
+            (order.status == from &&
+                (expectedRevision == null || order.revision == expectedRevision))
+    ) {
       return@session failure(OrderError.InvalidData)
     }
-    if (order.status == decision.targetStatus()) OrderResult.Success(order)
+    if (order.status == target) OrderResult.Success(order)
     else failure(OrderError.AlreadyDecided(order))
   }
+
+  override suspend fun cancelOrder(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OrderStatus.PENDING, OrderStatus.CANCELLED) { uid ->
+        source.cancel(orderId, uid)
+      }
 
   private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
     currentCoroutineContext().ensureActive()
@@ -153,23 +212,66 @@ internal constructor(
   }
 }
 
-internal data class OrderFirestoreDocument(val id: String, val data: Map<String, Any?>)
+/** Order transport alias; [toOrder] validates the shared raw document against the order schema. */
+internal typealias OrderFirestoreDocument = FirestoreDocument
 
+/**
+ * Persistence boundary for raw order snapshots; repositories validate input and decoded results.
+ *
+ * Reads use the server. Transactions authorize owners against the latest order/trip, and authorize
+ * editing, cancellation and receipt confirmation against the persisted requester. Implementations
+ * throw storage failures; the repository maps them after checking the active session.
+ */
 internal interface OrderFirestoreDataSource {
+  /**
+   * Authorizes the stored requester, reads the trip and edits eligible orders in one transaction.
+   */
+  suspend fun edit(
+      id: String,
+      requesterId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
+  ): OrderFirestoreDocument
+
+  /** Writes the order and placement event atomically, then confirms the server snapshot. */
   suspend fun create(id: String, data: Map<String, Any?>): OrderFirestoreDocument
 
+  /** Server snapshot, or null for a readable missing document; denied reads still throw. */
   suspend fun get(id: String): OrderFirestoreDocument?
 
+  /** Server query filtered by the persisted requester; the repository applies shared ordering. */
   suspend fun getMine(uid: String): List<OrderFirestoreDocument>
 
   /** Server read of every order whose `tripId` is [tripId]; the rules restrict it to the owner. */
   suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument>
 
+  /** Server trip fields used for creation eligibility and associated-owner authorization. */
   suspend fun getTrip(id: String): Map<String, Any?>?
 
-  suspend fun decide(id: String, ownerId: String, decision: OrderDecision): OrderFirestoreDocument
+  /** Atomically authorizes the owner and publishes a decision event only for a new decision. */
+  suspend fun decide(
+      id: String,
+      ownerId: String,
+      decision: OrderDecision,
+      expectedRevision: Int,
+  ): OrderFirestoreDocument
+
+  /** Owner-only ACCEPTED → READY_FOR_HANDOFF; repeats return a stored snapshot without writing. */
+  suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument
+
+  /** Authorizes the stored requester before atomically cancelling or returning a stored outcome. */
+  suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument
+
+  /** Authorizes the persisted requester before returning any transition outcome. */
+  suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument
 }
 
+/**
+ * Firebase implementation of [OrderFirestoreDataSource], preserving server reads and atomic events.
+ *
+ * @param instance Firebase client; null resolves the default application lazily.
+ * @param currentUserId Optional session-bound identity checked alongside Firebase Auth on retries.
+ */
 internal class FirebaseOrderFirestoreDataSource(
     private val instance: FirebaseFirestore? = null,
     private val currentUserId: (() -> String?)? = null,
@@ -185,7 +287,10 @@ internal class FirebaseOrderFirestoreDataSource(
     val trip = getTrip(data.getValue("tripId") as String)
     val recipient =
         trip?.get("ownerId") as? String
-            ?: throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
+            ?: throw FirebaseFirestoreException(
+                "Order creation failed",
+                FirebaseFirestoreException.Code.NOT_FOUND,
+            )
     firestore
         .runBatch { batch ->
           batch.set(ref, data)
@@ -201,7 +306,7 @@ internal class FirebaseOrderFirestoreDataSource(
           .get(Source.SERVER)
           .await()
           .takeIf { it.exists() }
-          ?.let { OrderFirestoreDocument(it.id, it.data.orEmpty()) }
+          ?.let { it.toFirestoreDocument() }
 
   override suspend fun getMine(uid: String) = whereEqualTo("requesterId", uid)
 
@@ -209,7 +314,7 @@ internal class FirebaseOrderFirestoreDataSource(
 
   private suspend fun whereEqualTo(field: String, value: String) =
       orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {
-        OrderFirestoreDocument(it.id, it.data.orEmpty())
+        it.toFirestoreDocument()
       }
 
   override suspend fun getTrip(id: String) =
@@ -225,66 +330,216 @@ internal class FirebaseOrderFirestoreDataSource(
       id: String,
       ownerId: String,
       decision: OrderDecision,
+      expectedRevision: Int,
+  ): OrderFirestoreDocument =
+      transitionOrder(id, ownerId, decision.ownerTransition(), expectedRevision)
+
+  /**
+   * Reads both mutable eligibility documents before writing; Firestore retries conflicting reads.
+   */
+  override suspend fun edit(
+      id: String,
+      requesterId: String,
+      draft: OrderDraft,
+      expectedRevision: Int,
   ): OrderFirestoreDocument {
     val context = currentCoroutineContext()
     val database = firestore
-    // Decisions verify session and Firebase identities; creation uses repository guards and rules.
     fun ensureSession() {
       context.ensureActive()
-      if (
-          FirebaseAuth.getInstance(database.app).currentUser?.uid != ownerId ||
-              (currentUserId != null && currentUserId.invoke() != ownerId)
-      ) {
-        throw decisionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
-      }
+      ensureDecisionIdentity(database.app, requesterId)
     }
     ensureSession()
     fun attempt(write: Boolean) = database.runTransaction { transaction ->
       ensureSession()
       val ref = database.collection("orders").document(id)
-      val document = transaction.readOrder(ref, ownerId)
-      // Retried callbacks read both documents before writing and recheck session/cancellation.
+      val stored = transaction.readOrder(ref, requesterId, requester = true)
+      if (stored.data["tripId"] != draft.tripId)
+          throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+      if (!write || stored.data["status"] != OrderStatus.PENDING.name) return@runTransaction stored
+      transaction.requireEditableTrip(database, draft.tripId, requesterId)
+      val fields = stored.editFields(draft) ?: return@runTransaction stored
+      if (stored.staleRevision(expectedRevision)) return@runTransaction stored
       ensureSession()
-      if (write && document.data["status"] == OrderStatus.PENDING.name) {
-        val status = decision.targetStatus().name
-        transaction.update(ref, "status", status)
-        val type =
-            if (decision == OrderDecision.ACCEPT) NotificationEventType.ORDER_ACCEPTED
-            else NotificationEventType.ORDER_REJECTED
-        transaction.set(
-            database.collection(NotificationFirestoreData.EVENTS).document(type.eventId(id)),
-            publishedEvent(id, document.data.getValue("requesterId") as String, type),
-        )
-        document.copy(data = document.data + ("status" to status))
-      } else document
+      transaction.update(ref, fields)
+      stored.copy(data = stored.data + fields)
     }
     return try {
       attempt(true).await()
     } catch (denied: FirebaseFirestoreException) {
       if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
-      // Rules can reject a stale PENDING write after a competing commit. Never retry that write.
       attempt(false).await().also {
         ensureSession()
-        if (it.data["status"] == OrderStatus.PENDING.name) throw denied
+        it.requireEditConflict(expectedRevision, denied)
       }
     }
   }
 
-  private fun Transaction.readOrder(ref: DocumentReference, uid: String): OrderFirestoreDocument {
+  /** A denied write is recoverable only when a competing revision or status is now persisted. */
+  private fun OrderFirestoreDocument.requireEditConflict(
+      expected: Int,
+      denied: FirebaseFirestoreException,
+  ) {
+    if (data["status"] == OrderStatus.PENDING.name && !staleRevision(expected)) throw denied
+  }
+
+  /** Identical retries are read-only; changing content advances the persisted revision once. */
+  private fun OrderFirestoreDocument.editFields(draft: OrderDraft): Map<String, Any>? {
+    val order = checkNotNull(toOrder())
+    if (order.items == draft.items && order.commissionCents == draft.commissionCents) return null
+    if (order.revision == Int.MAX_VALUE)
+        throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+    return mapOf(
+        "items" to draft.items.firestoreItems(),
+        "commissionCents" to draft.commissionCents,
+        "revision" to order.revision + 1,
+    )
+  }
+
+  /** Reads trip eligibility inside the transaction so a concurrent closure forces a retry. */
+  private fun Transaction.requireEditableTrip(
+      database: FirebaseFirestore,
+      tripId: String,
+      uid: String,
+  ) {
+    val trip =
+        try {
+          get(database.collection("trips").document(tripId))
+        } catch (denied: FirebaseFirestoreException) {
+          if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+          throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+        }
+    if (
+        !trip.exists() ||
+            trip.getString("ownerId") == uid ||
+            trip.getString("status") != "PUBLISHED" ||
+            trip.getTimestamp("scheduledAt")?.toInstant()?.isAfter(Instant.now()) != true
+    )
+        throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+  }
+
+  override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
+      transitionOrder(id, ownerId, OwnerOrderTransition.MARK_READY)
+
+  override suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument =
+      transitionOrder(id, requesterId, OrderStatus.READY_FOR_HANDOFF, OrderStatus.DELIVERED, true)
+
+  private suspend fun transitionOrder(
+      id: String,
+      ownerId: String,
+      transition: OwnerOrderTransition,
+      expectedRevision: Int? = null,
+  ): OrderFirestoreDocument =
+      transitionOrder(
+          id,
+          ownerId,
+          transition.source,
+          transition.target,
+          ownerTransition = transition,
+          expectedRevision = expectedRevision,
+      )
+
+  private suspend fun transitionOrder(
+      id: String,
+      uid: String,
+      from: OrderStatus,
+      target: OrderStatus,
+      requester: Boolean = false,
+      ownerTransition: OwnerOrderTransition? = null,
+      expectedRevision: Int? = null,
+  ): OrderFirestoreDocument {
+    val context = currentCoroutineContext()
+    val database = firestore
+    // Every transition verifies Firebase identity and the session-bound repository identity.
+    fun ensureSession() {
+      context.ensureActive()
+      ensureDecisionIdentity(database.app, uid)
+    }
+    ensureSession()
+    fun attempt(write: Boolean) = database.runTransaction { transaction ->
+      ensureSession()
+      val ref = database.collection("orders").document(id)
+      val document = transaction.readOrder(ref, uid, requester)
+      // Retried callbacks authorize current persisted data before writing.
+      ensureSession()
+      if (
+          write && document.data["status"] == from.name && !document.staleRevision(expectedRevision)
+      ) {
+        val status = target.name
+        transaction.update(ref, "status", status)
+        ownerTransition?.let { transaction.setDecisionEvent(ref, document, it) }
+        document.copy(data = document.data + ("status" to status))
+      } else document
+    }
+    return try {
+      attempt(write = true).await()
+    } catch (denied: FirebaseFirestoreException) {
+      if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+      // Reconcile a competing commit without retrying a denied write or bypassing authorization.
+      attempt(write = false).await().also {
+        ensureSession()
+        if (it.data["status"] == from.name) throw denied
+      }
+    }
+  }
+
+  // Cancellation changes status only; order placement and decisions retain their atomic events.
+  override suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument =
+      transitionOrder(id, requesterId, OrderStatus.PENDING, OrderStatus.CANCELLED, requester = true)
+
+  /** Verifies Firebase and session identities on each transaction attempt. */
+  private fun ensureDecisionIdentity(app: FirebaseApp, uid: String) {
+    if (
+        FirebaseAuth.getInstance(app).currentUser?.uid != uid ||
+            (currentUserId != null && currentUserId.invoke() != uid)
+    ) {
+      throw transitionError(FirebaseFirestoreException.Code.UNAUTHENTICATED)
+    }
+  }
+
+  private fun Transaction.readOrder(
+      ref: DocumentReference,
+      uid: String,
+      requester: Boolean,
+  ): OrderFirestoreDocument {
     val stored = get(ref)
-    if (!stored.exists()) throw decisionError(FirebaseFirestoreException.Code.NOT_FOUND)
-    val document = OrderFirestoreDocument(stored.id, stored.data.orEmpty())
+    if (!stored.exists()) throw transitionError(FirebaseFirestoreException.Code.NOT_FOUND)
+    val document = stored.toFirestoreDocument()
     val order =
-        document.toOrder() ?: throw decisionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
-    val trip = get(ref.firestore.collection("trips").document(order.tripId))
-    if (!trip.exists() || trip.getString("ownerId") != uid || order.requesterId == uid) {
-      throw decisionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+        document.toOrder()
+            ?: throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+    val authorized =
+        if (requester) {
+          order.requesterId == uid
+        } else {
+          val trip = get(ref.firestore.collection("trips").document(order.tripId))
+          trip.exists() && trip.getString("ownerId") == uid && order.requesterId != uid
+        }
+    if (!authorized) {
+      throw transitionError(FirebaseFirestoreException.Code.PERMISSION_DENIED)
     }
     return document
   }
 
-  private fun decisionError(code: FirebaseFirestoreException.Code) =
-      FirebaseFirestoreException("Order decision failed", code)
+  private fun transitionError(code: FirebaseFirestoreException.Code) =
+      FirebaseFirestoreException("Order transition failed", code)
+
+  private fun Transaction.setDecisionEvent(
+      ref: DocumentReference,
+      order: OrderFirestoreDocument,
+      transition: OwnerOrderTransition,
+  ) {
+    val type =
+        when (transition) {
+          OwnerOrderTransition.ACCEPT -> NotificationEventType.ORDER_ACCEPTED
+          OwnerOrderTransition.REJECT -> NotificationEventType.ORDER_REJECTED
+          OwnerOrderTransition.MARK_READY -> return
+        }
+    set(
+        ref.firestore.collection(NotificationFirestoreData.EVENTS).document(type.eventId(ref.id)),
+        publishedEvent(ref.id, order.data.getValue("requesterId") as String, type),
+    )
+  }
 
   private fun WriteBatch.setEvent(id: String, recipient: String, type: NotificationEventType) {
     set(
@@ -304,20 +559,44 @@ internal class FirebaseOrderFirestoreDataSource(
 
 private fun failure(error: OrderError) = OrderResult.Error(error)
 
-/** Shared by the order and shopping-checklist adapters; non-Firestore failures are Unknown. */
-internal fun Exception.toOrderError(): OrderError =
-    when ((this as? FirebaseFirestoreException)?.code) {
-      FirebaseFirestoreException.Code.UNAUTHENTICATED -> OrderError.NotAuthenticated
-      FirebaseFirestoreException.Code.PERMISSION_DENIED -> OrderError.PermissionDenied
-      FirebaseFirestoreException.Code.NOT_FOUND -> OrderError.NotFound
-      FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-      FirebaseFirestoreException.Code.OUT_OF_RANGE,
-      FirebaseFirestoreException.Code.DATA_LOSS -> OrderError.InvalidData
-      else -> OrderError.Unknown
+/**
+ * Maps the shared classifier from #209 to Order's existing errors, also used by notifications and
+ * checklist persistence. Network/IO failures remain Unknown; wrapped causes are not unwrapped.
+ * Coroutine cancellation must be rethrown by the calling session guard before reaching this mapper.
+ */
+internal fun Exception.toOrderError(): OrderError = toFirestoreFailure().toOrderError()
+
+/** Keeps Order-specific outcomes separate from Trip/Product, including authentication failures. */
+internal fun FirestoreFailure.toOrderError(): OrderError =
+    when (this) {
+      FirestoreFailure.UNAUTHENTICATED -> OrderError.NotAuthenticated
+      FirestoreFailure.PERMISSION_DENIED -> OrderError.PermissionDenied
+      FirestoreFailure.NOT_FOUND -> OrderError.NotFound
+      FirestoreFailure.INVALID_DATA -> OrderError.InvalidData
+      FirestoreFailure.NETWORK_UNAVAILABLE,
+      FirestoreFailure.UNKNOWN -> OrderError.Unknown
     }
 
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)
+
+/** Missing revision means legacy zero; malformed or overflowing revisions fail decoding. */
+private fun OrderFirestoreDocument.revisionOrNull(): Int? =
+    if ("revision" in data) data["revision"].cents() else 0
+
+/** Null is reserved for transitions that do not depend on editable order content. */
+private fun OrderFirestoreDocument.staleRevision(expected: Int?): Boolean =
+    expected != null && revisionOrNull() != expected
+
+/** Reuses the stored product-snapshot schema for creation and edits. */
+private fun List<OrderItem>.firestoreItems(): List<Map<String, Any>> = map {
+  mapOf(
+      "productId" to it.productId,
+      "name" to it.name,
+      "unitPriceCents" to it.unitPriceCents,
+      "quantity" to it.quantity,
+  )
+}
 
 private fun Any?.cents(): Int? =
     when (this) {
@@ -327,13 +606,15 @@ private fun Any?.cents(): Int? =
     }
 
 internal fun OrderFirestoreDocument.toOrder(): Order? {
-  val trip = data["tripId"] as? String ?: return null
-  val requester = data["requesterId"] as? String ?: return null
-  val fee = data["commissionCents"].cents() ?: return null
-  val status = OrderStatus.entries.find { it.name == data["status"] } ?: return null
-  val created = data["createdAt"] as? Timestamp ?: return null
+  val fields: Map<String, Any?> = data
+  val trip = fields["tripId"] as? String ?: return null
+  val requester = fields["requesterId"] as? String ?: return null
+  val fee = fields["commissionCents"].cents() ?: return null
+  val revision = revisionOrNull() ?: return null
+  val status = OrderStatus.entries.find { it.name == fields["status"] } ?: return null
+  val created = fields["createdAt"] as? Timestamp ?: return null
   val items =
-      (data["items"] as? List<*>)?.map { entry ->
+      (fields["items"] as? List<*>)?.map { entry ->
         val item = entry as? Map<*, *> ?: return null
         OrderItem(
             item["productId"] as? String ?: return null,
@@ -349,5 +630,5 @@ internal fun OrderFirestoreDocument.toOrder(): Order? {
           !OrderDraft(trip, items, fee).isValid()
   )
       return null
-  return Order(id, trip, requester, items.toList(), fee, status, created.toInstant())
+  return Order(id, trip, requester, items.toList(), fee, status, created.toInstant(), revision)
 }

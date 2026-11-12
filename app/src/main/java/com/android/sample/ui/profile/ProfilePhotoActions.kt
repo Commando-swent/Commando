@@ -37,7 +37,7 @@ fun ProfilePhotoSnackbarHost(state: SnackbarHostState) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfilePhotoActions(
+fun rememberProfilePhotoActions(
     model: ProfileViewModel,
     snackbarHost: SnackbarHostState,
 ): Pair<PhotoUiState, () -> Unit> {

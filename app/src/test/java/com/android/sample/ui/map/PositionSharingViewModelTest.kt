@@ -105,6 +105,17 @@ class PositionSharingViewModelTest {
   }
 
   @Test
+  fun lifecycleStopRequestDeletesTheActivePosition() = modelTest {
+    val model = model()
+    model.start(true)
+    runCurrent()
+    model.requestStop()
+    runCurrent()
+    assertNull(positions.current)
+    assertEquals(PositionSharingState.Off, model.uiState.value)
+  }
+
+  @Test
   fun revokedPermissionStopsPublicationAndDeletesTheLastFix() = modelTest {
     val model = model()
     model.start(true)

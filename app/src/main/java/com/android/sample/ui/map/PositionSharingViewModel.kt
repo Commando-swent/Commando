@@ -84,15 +84,20 @@ class PositionSharingViewModel(
   }
 
   /** Returns a ViewModel-owned stop operation; await confirmation before normal sign-out. */
-  fun stop(): Deferred<Boolean> = viewModelScope.async {
-    transitions.withLock {
-      worker?.cancelAndJoin()
-      worker = null
-      if (dirty) cleanup()
-      else {
-        mutableState.value = PositionSharingState.Off
-        true
-      }
+  fun stop(): Deferred<Boolean> = viewModelScope.async { stopPublishing() }
+
+  /** Requests ViewModel-owned lifecycle cleanup; failures remain visible in [uiState]. */
+  fun requestStop() {
+    viewModelScope.launch { stopPublishing() }
+  }
+
+  private suspend fun stopPublishing(): Boolean = transitions.withLock {
+    worker?.cancelAndJoin()
+    worker = null
+    if (dirty) cleanup()
+    else {
+      mutableState.value = PositionSharingState.Off
+      true
     }
   }
 

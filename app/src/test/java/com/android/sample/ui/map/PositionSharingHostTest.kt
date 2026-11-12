@@ -16,7 +16,6 @@ import androidx.lifecycle.*
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import io.mockk.*
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.*
 import org.junit.runner.RunWith
@@ -57,7 +56,6 @@ class PositionSharingHostTest {
   @Before
   fun show() {
     every { model.uiState } returns MutableStateFlow(PositionSharingState.Off)
-    every { model.stop() } returns CompletableDeferred(true)
     shadowOf(ApplicationProvider.getApplicationContext<Application>())
         .denyPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
     lifecycle.registry.currentState = Lifecycle.State.RESUMED
@@ -90,7 +88,7 @@ class PositionSharingHostTest {
   fun disposingTheHostStartsViewModelOwnedCleanup() {
     compose.runOnIdle { attached.value = false }
     compose.waitForIdle()
-    verify(exactly = 1) { model.stop() }
+    verify(exactly = 1) { model.requestStop() }
   }
 
   @Test
@@ -117,7 +115,7 @@ class PositionSharingHostTest {
     }
     compose.waitForIdle()
     verify(exactly = 1) { model.start(true) }
-    verify(exactly = 0) { model.stop() }
+    verify(exactly = 0) { model.requestStop() }
   }
 
   @Test
@@ -130,6 +128,6 @@ class PositionSharingHostTest {
     }
     compose.waitForIdle()
     verify(exactly = 0) { model.start(any()) }
-    verify { model.stop() }
+    verify { model.requestStop() }
   }
 }

@@ -35,7 +35,8 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      // AI assistance: OpenAI Codex enabled release obfuscation for Sonar rule kotlin:S7204.
+      isMinifyEnabled = true
       proguardFiles(
           getDefaultProguardFile("proguard-android-optimize.txt"),
           "proguard-rules.pro",

@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+// AI assistance: Claude Code for the close and complete tests (#233).
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
@@ -7,12 +8,14 @@ import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -203,11 +206,140 @@ class TripDetailsViewModelTest {
     assertEquals(TripDetailsUiState.Content(trip), viewModel.uiState.value)
   }
 
+  @Test
+  fun confirmedCloseShowsTheStoredInProgressTrip() = runTest {
+    val viewModel = loaded()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    assertEquals(TripTransition.CLOSE, content(viewModel).pendingTransition)
+
+    viewModel.confirmTransition()
+    assertTrue(content(viewModel).transitionInProgress)
+    assertNull(content(viewModel).pendingTransition)
+    advanceUntilIdle()
+
+    val state = content(viewModel)
+    assertEquals(TripStatus.IN_PROGRESS, state.trip.status)
+    assertFalse(state.transitionInProgress)
+    assertNull(state.transitionError)
+    assertEquals(listOf(trip.id to TripTransition.CLOSE), repository.transitions)
+  }
+
+  @Test
+  fun dismissedOrUnrequestedTransitionWritesNothing() = runTest {
+    val viewModel = loaded()
+    viewModel.confirmTransition()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    viewModel.dismissTransition()
+    viewModel.confirmTransition()
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Content(trip), viewModel.uiState.value)
+    assertTrue(repository.transitions.isEmpty())
+  }
+
+  @Test
+  fun failedTransitionKeepsTheTripAndTheNextRequestClearsTheError() = runTest {
+    repository.transitionResult = TripResult.Error(TripError.OrdersStillOpen)
+    val viewModel = loaded()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    viewModel.confirmTransition()
+    advanceUntilIdle()
+    assertEquals(
+        TripDetailsUiState.Content(trip, transitionError = TripError.OrdersStillOpen),
+        viewModel.uiState.value,
+    )
+
+    viewModel.requestTransition(TripTransition.CLOSE)
+    assertEquals(
+        TripDetailsUiState.Content(trip, pendingTransition = TripTransition.CLOSE),
+        viewModel.uiState.value,
+    )
+  }
+
+  @Test
+  fun unexpectedTransitionFailureBecomesUnknown() = runTest {
+    repository.transitionFailure = IllegalStateException("Unexpected repository failure")
+    val viewModel = loaded()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    viewModel.confirmTransition()
+    advanceUntilIdle()
+    assertEquals(TripError.Unknown, content(viewModel).transitionError)
+    assertFalse(content(viewModel).transitionInProgress)
+  }
+
+  @Test
+  fun requestsAreIgnoredWhileATransitionIsWritten() = runTest {
+    repository.transitionGate = CompletableDeferred()
+    val viewModel = loaded()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    viewModel.confirmTransition()
+    runCurrent()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    assertNull(content(viewModel).pendingTransition)
+
+    repository.transitionGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf(trip.id to TripTransition.CLOSE), repository.transitions)
+  }
+
+  @Test
+  fun transitionActionsAreIgnoredBeforeTheTripIsLoaded() = runTest {
+    repository.gate = CompletableDeferred()
+    val viewModel = TripDetailsViewModel(repository, trip.id)
+    viewModel.requestTransition(TripTransition.CLOSE)
+    viewModel.dismissTransition()
+    viewModel.confirmTransition()
+    runCurrent()
+    assertEquals(TripDetailsUiState.Loading, viewModel.uiState.value)
+    assertTrue(repository.transitions.isEmpty())
+  }
+
+  @Test
+  fun reloadDuringATransitionShowsTheReloadedTrip() = runTest {
+    repository.transitionGate = CompletableDeferred()
+    val viewModel = loaded()
+    viewModel.requestTransition(TripTransition.CLOSE)
+    viewModel.confirmTransition()
+    runCurrent()
+
+    repository.gate = CompletableDeferred()
+    viewModel.retry()
+    repository.transitionGate!!.complete(Unit)
+    runCurrent()
+    assertEquals(TripDetailsUiState.Loading, viewModel.uiState.value)
+
+    repository.gate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(TripStatus.IN_PROGRESS, content(viewModel).trip.status)
+  }
+
+  private fun TestScope.loaded(): TripDetailsViewModel {
+    val viewModel = TripDetailsViewModel(repository, trip.id)
+    advanceUntilIdle()
+    return viewModel
+  }
+
+  private fun content(viewModel: TripDetailsViewModel) =
+      viewModel.uiState.value as TripDetailsUiState.Content
+
   private class RecordingRepository(private val fake: FakeTripRepository) : TripRepository by fake {
     val requestedIds = mutableListOf<String>()
     var gate: CompletableDeferred<Unit>? = null
     var result: TripResult<Trip>? = null
     var failure: Exception? = null
+    val transitions = mutableListOf<Pair<String, TripTransition>>()
+    var transitionGate: CompletableDeferred<Unit>? = null
+    var transitionResult: TripResult<Trip>? = null
+    var transitionFailure: Exception? = null
+
+    override suspend fun transitionTrip(
+        tripId: String,
+        transition: TripTransition,
+    ): TripResult<Trip> {
+      transitions.add(tripId to transition)
+      transitionGate?.await()
+      transitionFailure?.let { throw it }
+      return transitionResult ?: fake.transitionTrip(tripId, transition)
+    }
 
     override suspend fun getTripById(tripId: String): TripResult<Trip> {
       requestedIds.add(tripId)

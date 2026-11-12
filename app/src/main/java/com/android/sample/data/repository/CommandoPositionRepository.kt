@@ -10,18 +10,15 @@ import kotlinx.coroutines.flow.transformLatest
 
 /** One shared position per commando; consumers must cancel observation when their session ends. */
 interface CommandoPositionRepository {
-  /**
-   * Replaces the signed-in owner's position. [tripId] is an owned discovery eligibility witness.
-   */
+  /** Replaces the signed-in owner's position. [tripId] identifies an owned eligible trip. */
   suspend fun publish(tripId: String, position: CommandoPosition)
 
   /** Deletes the owner's position; call and await before signing out while still authenticated. */
   suspend fun stopSharing()
 
   /**
-   * Observes one owner, never a collection scan. Supply an active [orderId] to follow a closed
-   * trip. Null means absent/unconfirmed/expired; authorization and transport failures terminate the
-   * flow.
+   * Observes one owner, never a collection scan. Supply an active [orderId] for requester tracking.
+   * Null means absent/unconfirmed/expired; authorization and transport failures terminate the flow.
    */
   fun observe(ownerId: String, orderId: String? = null): Flow<CommandoPosition?>
 }

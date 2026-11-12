@@ -82,28 +82,22 @@ class CommandoPositionSecurityRulesEmulatorTest {
       }
       repo(owner).publish(own, fix())
       assertTrue(ref.get(Source.SERVER).await().exists())
+      updateDocumentAsOwner("trips/$own", mapOf("status" to "COMPLETED"))
+      assertPermissionDenied { ref.set(data(own)).await() }
     }
   }
 
   @Test
-  fun discoveryRequiresAnOpenFutureTripAndAnOrderWitnessAllowsClosedTripTracking() = runTest {
+  fun onlyAnActiveOrderWitnessAllowsTrackingIncludingAfterTripClosure() = runTest {
     withClients("owner" to true, "requester" to true, "outsider" to true) {
         (owner, requester, outsider) ->
       val trip = trip(owner)
       val uid = owner.auth.currentUser!!.uid
       repo(owner).publish(trip, fix())
       val position = requester.firestore.collection("commandoPositions").document(uid)
-      assertTrue(position.get(Source.SERVER).await().exists())
-      val orderId = UUID.randomUUID().toString()
-      createDocumentAsOwner(
-          "orders",
-          orderId,
-          mapOf(
-              "requesterId" to requester.auth.currentUser!!.uid,
-              "tripId" to trip,
-              "status" to "PENDING",
-          ),
-      )
+      assertPermissionDenied { position.get(Source.SERVER).await() }
+      assertPermissionDenied { repo(outsider).observe(uid).first() }
+      val orderId = order(requester, trip)
       owner.firestore
           .collection("trips")
           .document(trip)
@@ -137,10 +131,10 @@ class CommandoPositionSecurityRulesEmulatorTest {
 
   @Test
   fun liveObservationReceivesServerFix() = runTest {
-    withClients("owner" to true, "viewer" to true) { (owner, viewer) ->
+    withClients("owner" to true) { (owner) ->
       val trip = trip(owner)
       val uid = owner.auth.currentUser!!.uid
-      val next = async { repo(viewer).observe(uid).filterNotNull().first() }
+      val next = async { repo(owner).observe(uid).filterNotNull().first() }
       val position = fix()
       repo(owner).publish(trip, position)
       assertEquals(position, next.await())
@@ -154,16 +148,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
         val trip = trip(owner)
         val uid = owner.auth.currentUser!!.uid
         repo(owner).publish(trip, fix())
-        val orderId = UUID.randomUUID().toString()
-        createDocumentAsOwner(
-            "orders",
-            orderId,
-            mapOf(
-                "requesterId" to requester.auth.currentUser!!.uid,
-                "tripId" to trip,
-                "status" to "PENDING",
-            ),
-        )
+        val orderId = order(requester, trip)
         owner.firestore
             .collection("trips")
             .document(trip)
@@ -218,6 +203,19 @@ class CommandoPositionSecurityRulesEmulatorTest {
           "capturedAt" to Timestamp(Instant.now()),
           "updatedAt" to FieldValue.serverTimestamp(),
       )
+
+  private fun order(requester: EmulatorClient, trip: String): String =
+      UUID.randomUUID().toString().also { id ->
+        createDocumentAsOwner(
+            "orders",
+            id,
+            mapOf(
+                "requesterId" to requester.auth.currentUser!!.uid,
+                "tripId" to trip,
+                "status" to "PENDING",
+            ),
+        )
+      }
 
   private fun replaceOrder(id: String, requester: EmulatorClient, trip: String, status: String) {
     updateDocumentAsOwner(

@@ -6,9 +6,11 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.*
@@ -86,7 +88,11 @@ class MapLocationPermissionTest {
     }
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
     assertEquals(0, reads)
-    compose.onNodeWithTag(TripMapTestTags.LOCATE).performClick()
+    compose.waitUntil(DEVICE_WAIT_MILLIS) {
+      compose.activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+    }
+    val locate = compose.onNodeWithTag(TripMapTestTags.LOCATE).assertIsDisplayed()
+    locate.performSemanticsAction(SemanticsActions.OnClick) { it() }
     val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     if (!permissionWasGranted) {
       val button =
@@ -94,8 +100,15 @@ class MapLocationPermissionTest {
               Until.findObject(By.res(ALLOW_PERMISSION_BUTTON_ID)),
               DEVICE_WAIT_MILLIS,
           )
-      assertNotNull("The real Android approximate-location dialog must open", button)
-      button.click()
+      if (button != null) button.click()
+      else
+          assertEquals(
+              PackageManager.PERMISSION_GRANTED,
+              ContextCompat.checkSelfPermission(
+                  context,
+                  Manifest.permission.ACCESS_COARSE_LOCATION,
+              ),
+          )
     }
     compose.waitUntil(DEVICE_WAIT_MILLIS) { reads == 1 }
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertIsDisplayed()

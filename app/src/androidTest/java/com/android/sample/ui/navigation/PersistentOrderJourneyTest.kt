@@ -9,6 +9,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.android.sample.R
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthRepositoryFirebase
@@ -16,8 +17,7 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
-import com.google.firebase.*
-import com.google.firebase.auth.FirebaseAuth
+import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.google.firebase.firestore.*
 import java.io.File
 import java.time.Instant
@@ -43,16 +43,16 @@ class PersistentOrderJourneyTest {
         "Requires running Auth/Firestore emulators and firebaseEmulatorHost",
         !host.isNullOrBlank(),
     )
-    val clients = mutableListOf<Client>()
+    val clients = mutableListOf<OrderJourneyFirebaseClient>()
     try {
-      val first = client(host!!).also(clients::add)
+      val first = orderJourneyClient(host!!).also(clients::add)
       val email = "android-${UUID.randomUUID()}@example.test"
       val password = "emulator-password"
       first.auth.createUserWithEmailAndPassword(email, password).await()
       val auth = AuthRepositoryFirebase(first.auth)
       val uid = auth.currentUser!!.uid
       val trips = TripRepositoryFirestore(auth, first.firestore)
-      val owner = client(host).also(clients::add)
+      val owner = orderJourneyClient(host).also(clients::add)
       owner.auth.signInAnonymously().await()
       val ownerTrips = TripRepositoryFirestore(AuthRepositoryFirebase(owner.auth), owner.firestore)
       val place = Location("Migros ${uid.take(8)}", 46.52, 6.57)
@@ -105,40 +105,49 @@ class PersistentOrderJourneyTest {
         }
       }
       compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).performClick()
-      awaitText(trip.store.name)
-      compose.onNodeWithText(trip.store.name).performClick()
-      awaitText("Add items to this run")
-      compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
-      compose.waitUntil(15000) {
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+        compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty()
+      }
+      val tripCard = hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id))
+      compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard)
+      compose.onNode(tripCard).performClick()
+      awaitText(instrumentation.targetContext.getString(R.string.trip_details_add_items))
+      compose
+          .onNodeWithText(instrumentation.targetContext.getString(R.string.trip_details_add_items))
+          .performScrollTo()
+          .performClick()
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
         compose.onAllNodesWithTag(CatalogueTestTags.add(milk.id)).fetchSemanticsNodes().isNotEmpty()
       }
       compose.onNodeWithTag(CatalogueTestTags.add(milk.id)).performClick()
       compose.onNodeWithTag(CatalogueTestTags.CONTINUE).performClick()
-      awaitText("Review order")
+      awaitText(instrumentation.targetContext.getString(R.string.order_review))
       compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
-      awaitText("Your order is sent")
-      compose.onNodeWithText("View my orders").performClick()
+      awaitText(instrumentation.targetContext.getString(R.string.order_sent))
+      compose
+          .onNodeWithText(instrumentation.targetContext.getString(R.string.order_view))
+          .performClick()
       val saved =
           (OrderRepositoryFirestore({ uid }, first.firestore).getMyOrders() as OrderResult.Success)
               .data
               .single()
-      compose.waitUntil(15000) {
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
         compose
             .onAllNodesWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + saved.id)
             .fetchSemanticsNodes()
             .isNotEmpty()
       }
       compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + saved.id).performClick()
-      awaitText("Order details")
-      awaitText("Milk", substring = true)
-      compose.onNodeWithText("Milk", substring = true).assertExists()
+      awaitText(instrumentation.targetContext.getString(R.string.order_details_title))
+      awaitText(milk.name, substring = true)
+      compose.onNodeWithText(milk.name, substring = true).assertExists()
       instrumentation.uiAutomation.takeScreenshot()?.let { bitmap ->
         File(instrumentation.targetContext.cacheDir, "persistent-order.png").outputStream().use {
           bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
         }
         bitmap.recycle()
       }
-      val fresh = client(host).also(clients::add)
+      val fresh = orderJourneyClient(host).also(clients::add)
       fresh.auth.signInWithEmailAndPassword(email, password).await()
       val reloaded = OrderRepositoryFirestore({ fresh.auth.currentUser?.uid }, fresh.firestore)
       assertEquals(OrderResult.Success(saved), reloaded.getOrderById(saved.id))
@@ -158,36 +167,7 @@ class PersistentOrderJourneyTest {
   }
 
   private fun awaitText(text: String, substring: Boolean = false) =
-      compose.waitUntil(15000) {
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
         compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty()
       }
-
-  private data class Client(
-      val app: FirebaseApp,
-      val auth: FirebaseAuth,
-      val firestore: FirebaseFirestore,
-  )
-
-  private fun client(host: String): Client {
-    val app =
-        FirebaseApp.initializeApp(
-            InstrumentationRegistry.getInstrumentation().targetContext,
-            FirebaseOptions.Builder()
-                .setProjectId("demo-commando")
-                .setApplicationId("1:123456789:android:orders-emulator")
-                .setApiKey("fake-api-key")
-                .build(),
-            "orders-${UUID.randomUUID()}",
-        )
-    val auth = FirebaseAuth.getInstance(app).apply { useEmulator(host, 9099) }
-    val firestore =
-        FirebaseFirestore.getInstance(app).apply {
-          firestoreSettings =
-              FirebaseFirestoreSettings.Builder()
-                  .setLocalCacheSettings(MemoryCacheSettings.newBuilder().build())
-                  .build()
-          useEmulator(host, 8080)
-        }
-    return Client(app, auth, firestore)
-  }
 }

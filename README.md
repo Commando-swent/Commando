@@ -45,6 +45,8 @@ Actions performed without connectivity will be marked as pending and synchronize
 
 ## Firebase emulator tests
 
+See [Firestore ratings](docs/ratings.md) for the rating schema, security policy and retry behavior.
+
 Firebase emulator tests are grouped by the environment they require:
 
 - `app/src/test/java/com/android/sample/emulator/auth/` uses the Auth emulator.

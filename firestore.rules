@@ -66,6 +66,13 @@ service cloud.firestore {
     }
 
     match /commandoPositions/{ownerId} {
+      function canTrackSharedTrip() {
+        let orderId = get(/databases/$(database)/documents/commandoPositions/$(ownerId)/viewers/$(request.auth.uid)).data.orderId;
+        return positionOrderAccess(ownerId, orderId)
+          && (resource == null
+            || get(/databases/$(database)/documents/orders/$(orderId)).data.tripId == resource.data.tripId);
+      }
+
       allow create, update: if isAuthenticated() && request.auth.uid == ownerId
         && request.resource.data.keys().hasAll([
           "tripId", "latitude", "longitude", "accuracyMeters", "capturedAt", "updatedAt"])
@@ -90,9 +97,8 @@ service cloud.firestore {
         && (resource == null || request.resource.data.capturedAt >= resource.data.capturedAt)
         && request.resource.data.updatedAt == request.time;
       allow delete: if isAuthenticated() && request.auth.uid == ownerId;
-      allow get: if isAuthenticated() && (resource == null || request.auth.uid == ownerId
-        || positionOrderAccess(ownerId,
-          get(/databases/$(database)/documents/commandoPositions/$(ownerId)/viewers/$(request.auth.uid)).data.orderId));
+      allow get: if isAuthenticated()
+        && (request.auth.uid == ownerId || canTrackSharedTrip());
       allow list: if false;
 
       // Each requester privately identifies one current order; no coordinates are duplicated.

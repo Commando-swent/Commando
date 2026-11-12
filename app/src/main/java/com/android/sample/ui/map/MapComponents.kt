@@ -133,6 +133,7 @@ internal fun MapDiscoveryHeader(
     onRefresh: () -> Unit,
     refreshEnabled: Boolean,
     modifier: Modifier = Modifier,
+    tracking: Boolean = false,
 ) {
   MapFloatingSurface(
       modifier.testTag(TripMapTestTags.HEADER),
@@ -145,7 +146,9 @@ internal fun MapDiscoveryHeader(
     ) {
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
-            stringResource(R.string.mock_map_title),
+            stringResource(
+                if (tracking) R.string.order_tracking_title else R.string.mock_map_title
+            ),
             style = MaterialTheme.typography.titleMedium,
             fontSize = 21.sp,
             lineHeight = 28.sp,
@@ -170,10 +173,15 @@ internal fun MapDiscoveryHeader(
                   .testTag(NavigationTestTags.MAP_LIST),
               contentAlignment = Alignment.Center,
           ) {
-            Image(
-                painterResource(R.drawable.map_list),
-                stringResource(R.string.nav_trip_list),
+            Icon(
+                painterResource(
+                    if (tracking) R.drawable.ic_trip_arrow_left else R.drawable.map_list
+                ),
+                stringResource(if (tracking) R.string.nav_back else R.string.nav_trip_list),
                 Modifier.size(20.dp),
+                tint =
+                    if (tracking) MaterialTheme.colorScheme.onSurface
+                    else androidx.compose.ui.graphics.Color.Unspecified,
             )
           }
           Box(

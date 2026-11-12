@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI assistance: OpenAI Codex. -->
+<resources>
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_preferences">Préférences de notifications</string>
+    <string name="notifications_empty">Aucune notification pour le moment. Les mises à jour de vos commandes apparaîtront ici.</string>
+    <string name="notifications_choose">Choisissez vos notifications</string>
+    <string name="notifications_settings_description">Gérez les notifications de commande reçues dans Command’o.</string>
+    <string name="notifications_new_orders">Nouvelles commandes</string>
+    <string name="notifications_new_orders_help">Quand une personne passe commande sur un de vos trajets.</string>
+    <string name="notifications_decisions">Réponses aux commandes</string>
+    <string name="notifications_decisions_help">Quand votre commande est acceptée ou refusée.</string>
+    <string name="notifications_preferences_scope">Les changements s’appliquent aux nouvelles notifications. Les notifications déjà affichées restent disponibles.</string>
+    <string name="notifications_in_app">Dans Command’o\nCes réglages concernent les notifications affichées dans l’application.</string>
+    <string name="notifications_loading">Chargement des notifications…</string>
+    <string name="notifications_load_error">Impossible de charger cette page. Veuillez réessayer.</string>
+    <string name="notifications_placed">Nouvelle commande reçue</string>
+    <string name="notifications_accepted">Commande acceptée</string>
+    <string name="notifications_rejected">Commande refusée</string>
+    <string name="notifications_placed_body">Une nouvelle commande a été passée sur votre trajet.</string>
+    <string name="notifications_accepted_body">Le commando a accepté votre commande.</string>
+    <string name="notifications_rejected_body">Le commando a refusé votre commande.</string>
+    <string name="notifications_read">Lue</string>
+    <string name="notifications_unread">Non lue</string>
+    <string name="notifications_order_reference">Commande · %1$s</string>
+    <string name="notifications_view_order">Voir la commande</string>
+    <string name="notifications_mark_read">Marquer comme lue</string>
+    <string name="notifications_saving">Enregistrement…</string>
+    <string name="notifications_save_error">La modification n’a pas pu être enregistrée. Les valeurs précédentes sont conservées. Veuillez réessayer.</string>
+    <string name="notifications_refresh_error">Les valeurs enregistrées sont affichées, mais les dernières mises à jour n’ont pas pu être chargées. Veuillez réessayer.</string>
+    <string name="notifications_retry">Réessayer</string>
+    <string name="notifications_refresh">Actualiser</string>
+    <plurals name="notifications_unread">
+        <item quantity="one">%1$d notification non lue</item>
+        <item quantity="many">%1$d notifications non lues</item>
+        <item quantity="other">%1$d notifications non lues</item>
+    </plurals>
+</resources>

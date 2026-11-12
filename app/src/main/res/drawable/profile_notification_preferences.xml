@@ -1,0 +1,15 @@
+<!-- AI assistance: OpenAI Codex. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+  <!-- Monochrome glyph; ProfileMenuIcon applies the current theme color. -->
+  <path
+      android:fillColor="@android:color/transparent"
+      android:strokeColor="@android:color/white"
+      android:strokeWidth="1.8"
+      android:strokeLineCap="round"
+      android:strokeLineJoin="round"
+      android:pathData="M4,6h3M11,6h9M4,12h9M17,12h3M4,18h3M11,18h9M7,3v6h4V3zM13,9v6h4V9zM7,15v6h4v-6z" />
+</vector>

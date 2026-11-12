@@ -24,11 +24,12 @@ sealed interface NotificationPageState<out T> {
   /** A page load is in progress, without keeping stale account data in this state. */
   data object Loading : NotificationPageState<Nothing>
 
-  /** Only confirmed values are shown; failed saves keep them and expose a retryable error. */
+  /** Confirmed values with separate errors for failed writes and background reloads. */
   data class Content<T>(
       val value: T,
       val isSaving: Boolean = false,
       val saveError: OrderError? = null,
+      val refreshError: OrderError? = null,
   ) : NotificationPageState<T>
 
   /** A failed load, retryable through the corresponding page refresh. */
@@ -80,10 +81,10 @@ class NotificationsViewModel(
   /** Restores the persisted preferences when their page opens or retries. */
   fun refreshPreferences() = preferencesPage.refresh()
 
-  /** Retries the last failed read-state update while the same content and session are active. */
+  /** Retries the failed read-state write or background reload within the active session. */
   fun retryReadUpdate() = inboxPage.retry()
 
-  /** Retries the last failed preference changes without asking the UI to retain them. */
+  /** Retries failed preference writes or reloads without asking the UI to retain their inputs. */
   fun retryPreferenceUpdate() = preferencesPage.retry()
 
   /**
@@ -140,10 +141,12 @@ class NotificationsViewModel(
     private var retrySave: (() -> Unit)? = null
 
     fun retry() {
-      if ((state.value as? NotificationPageState.Content)?.saveError != null) retrySave?.invoke()
+      val content = state.value as? NotificationPageState.Content ?: return
+      if (content.refreshError != null) refresh(keepContent = true)
+      else if (content.saveError != null) retrySave?.invoke()
     }
 
-    fun refresh() {
+    fun refresh(keepContent: Boolean = false) {
       if (!active()) return
       if ((state.value as? NotificationPageState.Content)?.isSaving == true) {
         refreshAfterSave = true
@@ -152,7 +155,8 @@ class NotificationsViewModel(
       job?.cancel()
       refreshAfterSave = false
       retrySave = null
-      state.value = NotificationPageState.Loading
+      val confirmed = (state.value as? NotificationPageState.Content)?.takeIf { keepContent }
+      state.value = confirmed?.copy(refreshError = null) ?: NotificationPageState.Loading
       job =
           viewModelScope.launch(start = CoroutineStart.LAZY) {
             val result = request(read)
@@ -160,7 +164,9 @@ class NotificationsViewModel(
               state.value =
                   when (result) {
                     is OrderResult.Success -> NotificationPageState.Content(result.data)
-                    is OrderResult.Error -> NotificationPageState.Error(result.error)
+                    is OrderResult.Error ->
+                        confirmed?.copy(refreshError = result.error)
+                            ?: NotificationPageState.Error(result.error)
                   }
             }
           }
@@ -175,9 +181,10 @@ class NotificationsViewModel(
       if (!active()) return
       val content = state.value as? NotificationPageState.Content ?: return
       if (content.isSaving) return
+      job?.cancel()
       retrySave = { save(write, reloadAfterSuccess, confirmed) }
       refreshAfterSave = refreshAfterSave || reloadAfterSuccess
-      state.value = content.copy(isSaving = true, saveError = null)
+      state.value = content.copy(isSaving = true, saveError = null, refreshError = null)
       job =
           viewModelScope.launch(start = CoroutineStart.LAZY) {
             val result = request(write)
@@ -186,10 +193,11 @@ class NotificationsViewModel(
             state.value =
                 when (result) {
                   is OrderResult.Success -> NotificationPageState.Content(confirmed(content.value))
-                  is OrderResult.Error -> content.copy(saveError = result.error)
+                  is OrderResult.Error ->
+                      content.copy(saveError = result.error, refreshError = null)
                 }
             // Preserve the error and pending reload until a retry succeeds or an explicit refresh.
-            if (result is OrderResult.Success && refreshAfterSave) refresh()
+            if (result is OrderResult.Success && refreshAfterSave) refresh(keepContent = true)
           }
       job?.start()
     }

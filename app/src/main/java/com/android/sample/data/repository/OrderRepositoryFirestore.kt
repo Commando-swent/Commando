@@ -11,7 +11,6 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
@@ -83,35 +82,6 @@ internal constructor(
         source.getMine(uid).map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
     if (orders.any { it.requesterId != uid }) return@session failure(OrderError.PermissionDenied)
     OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
-  }
-
-  override fun observeMyOrders(): Flow<OrderResult<List<Order>>> = flow {
-    val uid = currentUserId()
-    if (uid.isNullOrBlank()) {
-      emit(failure(OrderError.NotAuthenticated))
-      return@flow
-    }
-    emitAll(
-        source
-            .observeMine(uid)
-            .map { documents ->
-              if (currentUserId() != uid) failure(OrderError.NotAuthenticated)
-              else if (documents == null) failure(OrderError.Unknown)
-              else {
-                val orders = documents.map { it.toOrder() }
-                when {
-                  null in orders -> failure(OrderError.InvalidData)
-                  orders.filterNotNull().any { it.requesterId != uid } ->
-                      failure(OrderError.PermissionDenied)
-                  else -> OrderResult.Success(orders.filterNotNull().sortedWith(NEWEST_ORDER_FIRST))
-                }
-              }
-            }
-            .catch { error ->
-              if (error is CancellationException) throw error
-              emit(failure((error as? Exception)?.toOrderError() ?: OrderError.Unknown))
-            }
-    )
   }
 
   override suspend fun editOrder(
@@ -275,8 +245,6 @@ internal interface OrderFirestoreDataSource {
   /** Server read of every order whose `tripId` is [tripId]; the rules restrict it to the owner. */
   suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument>
 
-  fun observeMine(uid: String): Flow<List<OrderFirestoreDocument>?> = flow { emit(getMine(uid)) }
-
   /** Server trip fields used for creation eligibility and associated-owner authorization. */
   suspend fun getTrip(id: String): Map<String, Any?>?
 
@@ -343,9 +311,6 @@ internal class FirebaseOrderFirestoreDataSource(
   override suspend fun getMine(uid: String) = whereEqualTo("requesterId", uid)
 
   override suspend fun getForTrip(tripId: String) = whereEqualTo("tripId", tripId)
-
-  override fun observeMine(uid: String) =
-      orders.whereEqualTo("requesterId", uid).observeServerDocuments(firestore, uid)
 
   private suspend fun whereEqualTo(field: String, value: String) =
       orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {

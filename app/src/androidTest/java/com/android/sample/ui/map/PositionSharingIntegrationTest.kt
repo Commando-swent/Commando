@@ -14,12 +14,17 @@ import androidx.test.uiautomator.UiDevice
 import com.android.sample.data.location.*
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
+import com.android.sample.model.authentication.AuthUser
+import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.home.*
 import com.android.sample.ui.navigation.*
+import com.android.sample.ui.orders.MyOrdersTestTags
+import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -93,6 +98,47 @@ class PositionSharingIntegrationTest {
     compose.waitUntil(WAIT_MILLIS) { storage.value.isNotEmpty() }
     UiDevice.getInstance(instrumentation).pressHome()
     compose.waitUntil(WAIT_MILLIS) { storage.value.isEmpty() }
+  }
+
+  @Test
+  fun requesterSeesTheSelectedOwnersSharedFixThenItsRemoval() {
+    val now = Instant.now()
+    val trip = trip("shared-trip", "owner", now)
+    val storage = MutableStateFlow<Map<String, CommandoPosition>>(emptyMap())
+    val owner = FakeCommandoPositionRepository(MutableStateFlow("owner"), positions = storage)
+    val viewer = FakeCommandoPositionRepository(MutableStateFlow("viewer"), positions = storage)
+    val order =
+        Order(
+            "selected-order",
+            trip.id,
+            "viewer",
+            listOf(OrderItem("milk", "Milk", 100, 1)),
+            0,
+            OrderStatus.ACCEPTED,
+            now,
+        )
+    runBlocking { owner.publish(trip.id, CommandoPosition(46.521, 6.566, 20.0, now)) }
+    compose.setContent {
+      SampleAppTheme {
+        CommandoApp(
+            repository = FakeAuthRepository(AuthUser("viewer")),
+            tripRepository = FakeTripRepository("viewer", initialTrips = listOf(trip)),
+            orderRepositoryFactory = { identity ->
+              FakeOrderRepository(identity, initialOrders = listOf(order))
+            },
+            positionRepositoryFactory = { viewer },
+        )
+      }
+    }
+    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).performClick()
+    compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id).performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.TRACK).performClick()
+    compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertIsDisplayed()
+    screenshot("selected-order-tracking.png")
+    runBlocking { owner.stopSharing() }
+    compose.waitForIdle()
+    compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertDoesNotExist()
+    assertTrue(storage.value.isEmpty())
   }
 
   private fun screenshot(name: String) {

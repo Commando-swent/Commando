@@ -8,6 +8,7 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.*
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.core.app.ActivityOptionsCompat
@@ -34,6 +35,7 @@ class PositionSharingHostTest {
         override val lifecycle: Lifecycle
           get() = registry
       }
+  private val attached = mutableStateOf(true)
   private var request = 0
   private val registry =
       object : ActivityResultRegistry() {
@@ -63,13 +65,22 @@ class PositionSharingHostTest {
           LocalLifecycleOwner provides lifecycle,
           LocalActivityResultRegistryOwner provides permissionOwner,
       ) {
-        val (state, toggle) = rememberPositionSharingControl(model)
-        PositionSharingCard(state, toggle)
+        if (attached.value) {
+          val (state, toggle) = rememberPositionSharingControl(model)
+          PositionSharingCard(state, toggle)
+        }
       }
     }
   }
 
   @After fun clear() = unmockkAll()
+
+  @Test
+  fun disposingTheHostStartsViewModelOwnedCleanup() {
+    compose.runOnIdle { attached.value = false }
+    compose.waitForIdle()
+    verify(exactly = 1) { model.stop() }
+  }
 
   @Test
   fun denialThenGrantOnlyStartsAfterEachExplicitTap() {

@@ -16,8 +16,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.time.Instant
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
 
 class TripRepositoryFirestore
@@ -90,39 +88,6 @@ internal constructor(
           )
           .toTripsResult()
     }
-  }
-
-  override fun observeMyTrips() = observeTrips(dataSource::observeOwnedTrips)
-
-  override fun observeUpcomingTrips() = observeTrips { uid ->
-    dataSource.observeUpcomingTrips(TripStatus.PUBLISHED.name, now(), uid)
-  }
-
-  private fun observeTrips(
-      query: (String) -> Flow<List<TripFirestoreDocument>?>
-  ): Flow<TripResult<List<Trip>>> = flow {
-    val uid = authRepository.currentUser?.uid
-    if (uid.isNullOrBlank()) {
-      emit(TripResult.Error(TripError.PermissionDenied))
-      return@flow
-    }
-    emitAll(
-        query(uid)
-            .map { documents ->
-              if (authRepository.currentUser?.uid != uid)
-                  TripResult.Error(TripError.PermissionDenied)
-              else documents?.toTripsResult() ?: TripResult.Error(TripError.NetworkError)
-            }
-            .catch { error ->
-              if (error is CancellationException) throw error
-              emit(
-                  TripResult.Error(
-                      (error as? Exception)?.toFirestoreFailure()?.toTripError(TripError.Unknown)
-                          ?: TripError.Unknown
-                  )
-              )
-            }
-    )
   }
 
   override suspend fun getMyTrips(): TripResult<List<Trip>> {
@@ -207,16 +172,6 @@ internal interface TripFirestoreDataSource {
       scheduledAfter: Instant,
   ): List<TripFirestoreDocument>
 
-  fun observeOwnedTrips(uid: String): Flow<List<TripFirestoreDocument>?> = flow {
-    emit(getTripsByOwner(uid))
-  }
-
-  fun observeUpcomingTrips(
-      status: String,
-      scheduledAfter: Instant,
-      uid: String,
-  ): Flow<List<TripFirestoreDocument>?> = flow { emit(getUpcomingTrips(status, scheduledAfter)) }
-
   /**
    * Queries persisted owner identity; callers and rules retain responsibility for access control.
    */
@@ -265,16 +220,6 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
           .await()
           .documents
           .map { it.toFirestoreDocument() }
-
-  override fun observeOwnedTrips(uid: String) =
-      trips.whereEqualTo(FIELD_OWNER_ID, uid).observeServerDocuments(firestore, uid)
-
-  override fun observeUpcomingTrips(status: String, scheduledAfter: Instant, uid: String) =
-      trips
-          .whereEqualTo(FIELD_STATUS, status)
-          .whereGreaterThan(FIELD_SCHEDULED_AT, scheduledAfter.toTimestamp())
-          .orderBy(FIELD_SCHEDULED_AT, Query.Direction.ASCENDING)
-          .observeServerDocuments(firestore, uid)
 
   override suspend fun getTripsByOwner(ownerId: String): List<TripFirestoreDocument> =
       trips.whereEqualTo(FIELD_OWNER_ID, ownerId).get().await().documents.map {

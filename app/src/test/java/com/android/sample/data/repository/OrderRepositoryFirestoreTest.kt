@@ -10,7 +10,6 @@ import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import java.time.Instant
 import kotlinx.coroutines.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -448,29 +447,6 @@ class OrderRepositoryFirestoreTest {
         fresh.markReadyForHandoff("uncertain"),
     )
     assertEquals(before, source.writes)
-  }
-
-  @Test
-  fun liveOrdersRejectSignedOutForeignAndMalformedSnapshots() = runTest {
-    repository.createOrder(draft)
-    val saved = source.documents.getValue("b")
-    source.documents["b"] = saved.copy(data = saved.data + ("requesterId" to "other"))
-    assertEquals(error(OrderError.PermissionDenied), repository.observeMyOrders().first())
-    source.documents["b"] = saved.copy(data = saved.data - "items")
-    assertEquals(error(OrderError.InvalidData), repository.observeMyOrders().first())
-    source.documents["b"] = saved
-    source.beforeRead = { uid = "other" }
-    assertEquals(error(OrderError.NotAuthenticated), repository.observeMyOrders().first())
-    uid = "alice"
-    source.beforeRead = { throw java.io.IOException() }
-    assertEquals(error(OrderError.Unknown), repository.observeMyOrders().first())
-    source.beforeRead = { throw CancellationException() }
-    assertTrue(
-        runCatching { repository.observeMyOrders().first() }.exceptionOrNull()
-            is CancellationException
-    )
-    uid = null
-    assertEquals(error(OrderError.NotAuthenticated), repository.observeMyOrders().first())
   }
 
   private fun sourceError(code: Code): Nothing = throw FirebaseFirestoreException("test", code)

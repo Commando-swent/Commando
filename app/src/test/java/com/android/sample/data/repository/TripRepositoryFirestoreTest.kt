@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: Claude Code for trip transitions; OpenAI Codex for live-feed tests.
+// AI assistance: Claude Code for trip transition tests (#233).
 
 import com.android.sample.data.repository.TripError.*
 import com.android.sample.model.Location
@@ -15,16 +15,12 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
-import io.mockk.every
-import io.mockk.mockk
 import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -569,43 +565,6 @@ class TripRepositoryFirestoreTest {
 
     assertEquals(COMPLETED, result.successData().status)
     assertEquals(1, dataSource.transitionCalls)
-  }
-
-  @Test
-  fun liveUpcomingFeedRejectsMissingSessionsAndMapsSourceFailures() = runTest {
-    val source = InMemoryTripFirestoreDataSource()
-    val repository = createRepository(source)
-    assertTripError(
-        PermissionDenied,
-        createRepository(source, userId = null).observeUpcomingTrips().first(),
-    )
-    assertTrue(repository.observeUpcomingTrips().first() is TripResult.Success)
-    source.failure = IOException("offline")
-    assertTripError(NetworkError, repository.observeUpcomingTrips().first())
-    source.failure = CancellationException("cancelled")
-    val failure = runCatching { repository.observeUpcomingTrips().first() }.exceptionOrNull()
-    assertTrue(failure is CancellationException)
-  }
-
-  @Test
-  fun liveTripFeedRejectsAnAccountChangeAndUnconfirmedData() = runTest {
-    val auth = fakeAuthRepository("viewer")
-    val repo =
-        TripRepositoryFirestore(InMemoryTripFirestoreDataSource(), auth) {
-          auth.signOut()
-          currentTime
-        }
-    assertTripError(PermissionDenied, repo.observeUpcomingTrips().first())
-    val source = mockk<TripFirestoreDataSource>()
-    every { source.observeUpcomingTrips(any(), any(), any()) } returns flowOf(null)
-    val unconfirmed = TripRepositoryFirestore(source, fakeAuthRepository("viewer")) { currentTime }
-    assertTripError(NetworkError, unconfirmed.observeUpcomingTrips().first())
-  }
-
-  @Test
-  fun ownedTripAdapterUsesTheSameConfirmedQueryContract() = runTest {
-    val repo = createRepository(InMemoryTripFirestoreDataSource())
-    assertEquals(TripResult.Success(emptyList<Trip>()), repo.observeMyTrips().first())
   }
 
   private fun dataSourceWithTrip(status: TripStatus) =

@@ -7,13 +7,6 @@ import com.android.sample.model.TripTransition
 import com.android.sample.model.blocksTripCompletion
 
 interface TripRepository {
-  /** Current owner's trips, including ongoing trips used by foreground position sharing. */
-  fun observeMyTrips(): kotlinx.coroutines.flow.Flow<TripResult<List<Trip>>> =
-      kotlinx.coroutines.flow.flow { emit(getMyTrips()) }
-
-  /** Observe upcoming trips; legacy adapters retain one-shot behavior. */
-  fun observeUpcomingTrips(): kotlinx.coroutines.flow.Flow<TripResult<List<Trip>>> =
-      kotlinx.coroutines.flow.flow { emit(getUpcomingTrips()) }
 
   suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip>
 

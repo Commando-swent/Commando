@@ -42,7 +42,7 @@ class PositionSharingViewModelTest {
       DeviceLocationResult.Available(DeviceLocation(46.52, 6.56, 100f, 1000))
   private val trips =
       object : TripRepository by FakeTripRepository("owner") {
-        override fun observeMyTrips() = owned
+        override suspend fun getMyTrips() = owned.value
       }
 
   private fun model(
@@ -98,7 +98,6 @@ class PositionSharingViewModelTest {
     assertEquals("trip", positions.tripId)
     assertTrue(model.stop().await())
     assertNull(positions.current)
-    assertEquals(0, owned.subscriptionCount.value)
     advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS * 2)
     runCurrent()
     assertEquals(1, reads)
@@ -152,6 +151,7 @@ class PositionSharingViewModelTest {
     model.start(true)
     runCurrent()
     owned.value = TripResult.Success(listOf(trip.copy(status = TripStatus.COMPLETED)))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
     runCurrent()
     assertNull(positions.current)
     assertEquals(PositionSharingState.Failed(SharingFailureReason.NO_TRIP), model.uiState.value)
@@ -169,22 +169,43 @@ class PositionSharingViewModelTest {
   }
 
   @Test
-  fun unconfirmedTripsHideSharingUntilTheServerConfirmsAgain() = modelTest {
+  fun tripFetchFailureStopsSharingAndExplicitRetryRecovers() = modelTest {
     val model = model()
     model.start(true)
     runCurrent()
     owned.value = TripResult.Error(TripError.NetworkError)
-    runCurrent()
-    assertNull(positions.current)
-    assertEquals(PositionSharingState.Starting, model.uiState.value)
-    owned.value = TripResult.Success(listOf(trip))
-    runCurrent()
-    assertEquals(PositionSharingState.Live, model.uiState.value)
-    assertEquals(2, positions.writes.size)
-    owned.value = TripResult.Error(TripError.Unknown)
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
     runCurrent()
     assertNull(positions.current)
     assertEquals(PositionSharingState.Failed(SharingFailureReason.PUBLISH), model.uiState.value)
+    owned.value = TripResult.Success(listOf(trip))
+    model.start(true)
+    runCurrent()
+    assertEquals(PositionSharingState.Live, model.uiState.value)
+  }
+
+  @Test
+  fun inProgressTripIsPreferredOverAFuturePublishedTrip() = modelTest {
+    owned.value =
+        TripResult.Success(listOf(trip, trip.copy(id = "active", status = TripStatus.IN_PROGRESS)))
+    val model = model()
+    model.start(true)
+    runCurrent()
+    assertEquals("active", positions.tripId)
+  }
+
+  @Test
+  fun accountSwitchStopsAndCannotRestartTheOldSession() = modelTest {
+    val model = model()
+    model.start(true)
+    runCurrent()
+    identity.value = "another"
+    runCurrent()
+    assertNull(positions.current)
+    val writes = positions.writes.size
+    model.start(true)
+    runCurrent()
+    assertEquals(writes, positions.writes.size)
   }
 
   @Test

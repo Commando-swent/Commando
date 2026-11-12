@@ -13,7 +13,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import kotlinx.coroutines.launch
 
 /** Permission and foreground bridge; this helper owns no layout. Opt-in never happens on resume. */
 @Composable
@@ -23,7 +22,6 @@ internal fun rememberPositionSharingControl(
   val context = LocalContext.current
   val activity = LocalActivity.current
   val lifecycle = LocalLifecycleOwner.current.lifecycle
-  val scope = rememberCoroutineScope()
   val state by model.uiState.collectAsState()
   var attached by remember { mutableStateOf(true) }
   var pending by rememberSaveable { mutableStateOf(false) }
@@ -38,7 +36,7 @@ internal fun rememberPositionSharingControl(
     val observer = LifecycleEventObserver { _, event ->
       if (event == Lifecycle.Event.ON_STOP && activity?.isChangingConfigurations != true) {
         pending = false
-        scope.launch { model.stop().await() }
+        model.stop()
       }
     }
     lifecycle.addObserver(observer)
@@ -47,7 +45,7 @@ internal fun rememberPositionSharingControl(
       lifecycle.removeObserver(observer)
       if (activity?.isChangingConfigurations != true) {
         pending = false
-        scope.launch { model.stop().await() }
+        model.stop()
       }
     }
   }
@@ -55,7 +53,7 @@ internal fun rememberPositionSharingControl(
       { enabled: Boolean ->
         if (!enabled) {
           pending = false
-          scope.launch { model.stop().await() }
+          model.stop()
         } else if (mayStart() && !pending) {
           if (
               ContextCompat.checkSelfPermission(

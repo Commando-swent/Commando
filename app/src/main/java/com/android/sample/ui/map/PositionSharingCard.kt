@@ -46,7 +46,7 @@ fun PositionSharingCard(
     ) {
       Column(Modifier.weight(1f)) {
         Text(
-            stringResource(R.string.position_sharing_title),
+            title,
             style = MaterialTheme.typography.titleSmall,
         )
         Text(stringResource(message), style = MaterialTheme.typography.bodySmall)

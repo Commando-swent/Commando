@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex (requester cancellation, pending-order editing and live feeds).
+// AI assistance: OpenAI Codex (requester cancellation and pending-order editing).
 // AI assistance: Claude Code for the trip-owner query (#147).
 // AI assistance: Claude Code for refusing orders on non-published trips (#233).
 import com.android.sample.model.Order
@@ -14,7 +14,6 @@ import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -30,10 +29,6 @@ class FakeOrderRepository(
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val tripRepository: TripRepository? = null,
 ) : OrderRepository {
-  private val changes = MutableStateFlow(0L)
-
-  override fun observeMyOrders() = changes.map { getMyOrders() }
-
   private val mutex = Mutex()
   private val orders = linkedMapOf<String, Order>()
 
@@ -69,7 +64,6 @@ class FakeOrderRepository(
             createdAt = now(),
         )
     orders[id] = order
-    changes.value += 1
     OrderResult.Success(order.snapshot())
   }
 
@@ -111,7 +105,6 @@ class FakeOrderRepository(
     val updated =
         copy(items = input.items, commissionCents = input.commissionCents, revision = revision + 1)
     orders[id] = updated
-    changes.value += 1
     return OrderResult.Success(updated.snapshot())
   }
 
@@ -177,10 +170,7 @@ class FakeOrderRepository(
     }
     val persisted =
         if (order.status == OrderStatus.READY_FOR_HANDOFF) {
-          order.copy(status = OrderStatus.DELIVERED).also {
-            orders[orderId] = it
-            changes.value += 1
-          }
+          order.copy(status = OrderStatus.DELIVERED).also { orders[orderId] = it }
         } else order
     val snapshot = persisted.snapshot()
     if (snapshot.status == OrderStatus.DELIVERED) OrderResult.Success(snapshot)
@@ -205,10 +195,7 @@ class FakeOrderRepository(
     if (revisionError != null) return@withSession OrderResult.Error(revisionError)
     val persisted =
         if (order.status == transition.source) {
-          order.copy(status = transition.target).also {
-            orders[orderId] = it
-            changes.value += 1
-          }
+          order.copy(status = transition.target).also { orders[orderId] = it }
         } else order
     val snapshot = persisted.snapshot()
     if (snapshot.status == transition.target) OrderResult.Success(snapshot)
@@ -234,10 +221,7 @@ class FakeOrderRepository(
     if (currentUserId() != userId) return@withSession OrderResult.Error(OrderError.NotAuthenticated)
     val persisted =
         if (order.status == OrderStatus.PENDING) {
-          order.copy(status = OrderStatus.CANCELLED).also {
-            orders[orderId] = it
-            changes.value += 1
-          }
+          order.copy(status = OrderStatus.CANCELLED).also { orders[orderId] = it }
         } else order
     val snapshot = persisted.snapshot()
     if (snapshot.status == OrderStatus.CANCELLED) OrderResult.Success(snapshot)

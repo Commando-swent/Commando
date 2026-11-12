@@ -17,7 +17,11 @@ outside the current sprint scope.
 
 The private `commandoPositions/{ownerUid}/viewers/{requesterUid}` pointer stores one order ID.
 It is a lookup witness, not an ACL: rules recheck the persisted requester, active status
-(PENDING/ACCEPTED/READY_FOR_HANDOFF) and trip owner on every position read. Terminal orders
+(PENDING/ACCEPTED/READY_FOR_HANDOFF), trip owner and exact equality between the order's
+trip ID and the published position's trip ID on every position read. An order on another
+trip of the same commando grants no access. Missing positions are readable only by the owner
+or an authenticated requester with a valid active-order witness, preventing an existence oracle.
+Terminal orders
 revoke access. The repository also watches the order, so a quiet stream closes on revocation.
 Pointers contain no coordinates and are readable/deletable only by their requester.
 

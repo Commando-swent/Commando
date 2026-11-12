@@ -130,6 +130,60 @@ class CommandoPositionSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun anActiveOrderOnAnotherTripCannotReadTheSharedTripPosition() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val orderedTrip = trip(owner)
+      val sharedTrip = trip(owner)
+      val orderOnOtherTrip = order(requester, orderedTrip)
+      val uid = owner.auth.currentUser!!.uid
+      repo(owner).publish(sharedTrip, fix())
+      val position = requester.firestore.collection("commandoPositions").document(uid)
+      val witness = position.collection("viewers").document(requester.auth.currentUser!!.uid)
+      witness.set(mapOf("orderId" to orderOnOtherTrip)).await()
+      assertPermissionDenied { position.get(Source.SERVER).await() }
+      witness.set(mapOf("orderId" to order(requester, sharedTrip))).await()
+      assertTrue(position.get(Source.SERVER).await().exists())
+    }
+  }
+
+  @Test
+  fun missingPositionsAreReadableOnlyByTheOwnerOrAnActiveOrderRequester() = runTest {
+    withClients("owner" to true, "requester" to true, "stranger" to true, "out" to false) {
+        (owner, requester, stranger, out) ->
+      val trip = trip(owner)
+      val uid = owner.auth.currentUser!!.uid
+      val requesterPosition = requester.firestore.collection("commandoPositions").document(uid)
+      requesterPosition
+          .collection("viewers")
+          .document(requester.auth.currentUser!!.uid)
+          .set(mapOf("orderId" to order(requester, trip)))
+          .await()
+      assertFalse(
+          owner.firestore
+              .collection("commandoPositions")
+              .document(uid)
+              .get(Source.SERVER)
+              .await()
+              .exists()
+      )
+      assertFalse(requesterPosition.get(Source.SERVER).await().exists())
+      for (client in listOf(stranger, out)) {
+        val position = client.firestore.collection("commandoPositions").document(uid)
+        assertPermissionDenied { position.get(Source.SERVER).await() }
+      }
+      repo(owner).publish(trip, fix())
+      assertPermissionDenied {
+        stranger.firestore.collection("commandoPositions").document(uid).get(Source.SERVER).await()
+      }
+      repo(owner).stopSharing()
+      assertFalse(requesterPosition.get(Source.SERVER).await().exists())
+      assertPermissionDenied {
+        stranger.firestore.collection("commandoPositions").document(uid).get(Source.SERVER).await()
+      }
+    }
+  }
+
+  @Test
   fun liveObservationReceivesServerFix() = runTest {
     withClients("owner" to true) { (owner) ->
       val trip = trip(owner)

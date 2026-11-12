@@ -44,6 +44,8 @@ import com.android.sample.data.location.AndroidDeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
+import com.android.sample.data.repository.NotificationRepository
+import com.android.sample.data.repository.NotificationRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
@@ -80,6 +82,7 @@ import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.map.rememberPositionSharingControl
+import com.android.sample.ui.notifications.*
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
@@ -132,6 +135,7 @@ fun CommandoApp(
     onLanguageSelected: (AppLanguage) -> Unit = {},
     positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)? = null,
     locationProvider: DeviceLocationProvider? = null,
+    notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -228,6 +232,7 @@ fun CommandoApp(
               tripRepository = trips,
               productRepository = productRepository,
               orders = orders,
+              notificationRepositoryFactory = notificationRepositoryFactory,
               checklists = checklists,
               savedSearches = savedSearches,
               userId = user.uid,
@@ -261,6 +266,7 @@ private fun AuthenticatedApp(
     tripRepository: TripRepository,
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
+    notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)?,
     checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
     userId: String,
@@ -270,6 +276,14 @@ private fun AuthenticatedApp(
     positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)?,
     locationProvider: DeviceLocationProvider?,
 ) {
+  // Lazily constructed so isolated previews and unrelated routes need no Firebase instance.
+  val notifications =
+      remember(orders) {
+        lazy {
+          notificationRepositoryFactory?.invoke(orders::currentUserId)
+              ?: NotificationRepositoryFirestore(orders::currentUserId)
+        }
+      }
   val appViewModel: AppViewModel = viewModel()
   // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
   val locationFilter: TripLocationFilterViewModel = viewModel()
@@ -748,10 +762,48 @@ private fun AuthenticatedApp(
             },
             onHelp = { navController.openScreen(CommandoScreens.ProfileHelp) },
             onLanguage = { navController.openScreen(CommandoScreens.ProfileLanguage) },
+            onNotifications = { navController.openScreen(CommandoScreens.Notifications) },
+            onNotificationPreferences = {
+              navController.openScreen(CommandoScreens.NotificationPreferences)
+            },
             onEdit = {
               profileViewModel.beginEditing()
               navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
             },
+        )
+      }
+      composable(route = CommandoScreens.Notifications.name) {
+        val model: NotificationsViewModel = viewModel {
+          NotificationsViewModel(notifications.value, orders::currentUserId, orders.sessionChanges)
+        }
+        RefreshOnResume(model, model::refreshInbox)
+        val state by model.inbox.collectAsState()
+        NotificationInboxScreen(
+            state,
+            { navController.popBackStack() },
+            { navController.openScreen(CommandoScreens.NotificationPreferences) },
+            model::refreshInbox,
+            model::markAsRead,
+            model::retryReadUpdate,
+            {
+              navController.navigate(CommandoScreens.orderDetailsRoute(it)) {
+                launchSingleTop = true
+              }
+            },
+        )
+      }
+      composable(route = CommandoScreens.NotificationPreferences.name) {
+        val model: NotificationsViewModel = viewModel {
+          NotificationsViewModel(notifications.value, orders::currentUserId, orders.sessionChanges)
+        }
+        RefreshOnResume(model, model::refreshPreferences)
+        val state by model.preferences.collectAsState()
+        NotificationPreferencesScreen(
+            state,
+            { navController.popBackStack() },
+            model::refreshPreferences,
+            model::updatePreferences,
+            model::retryPreferenceUpdate,
         )
       }
       composable(route = CommandoScreens.ProfileHelp.name) {

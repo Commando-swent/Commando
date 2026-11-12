@@ -44,19 +44,8 @@ class OrderTrackingViewModel(
     if (session.initialUserId == null || session.hasEnded()) return
     observer = viewModelScope.launch {
       try {
-        val order = (orders.getOrderById(orderId) as? OrderResult.Success)?.data
-        check(
-            order?.id == orderId &&
-                order.requesterId == session.initialUserId &&
-                order.status.isActiveForTracking()
-        )
-        val trip = (trips.getTripById(order.tripId) as? TripResult.Success)?.data
-        check(
-            trip?.id == order.tripId &&
-                !trip.ownerId.isBlank() &&
-                trip.ownerId != session.initialUserId
-        )
-        positions.observe(trip.ownerId, orderId).collect {
+        val ownerId = ownerForSelectedOrder()
+        positions.observe(ownerId, orderId).collect {
           currentCoroutineContext().ensureActive()
           if (!session.hasEnded()) mutableState.value = OrderTrackingState.Position(it)
         }
@@ -67,6 +56,20 @@ class OrderTrackingViewModel(
         if (!session.hasEnded()) mutableState.value = OrderTrackingState.Unavailable
       }
     }
+  }
+
+  private suspend fun ownerForSelectedOrder(): String {
+    val order = (orders.getOrderById(orderId) as? OrderResult.Success)?.data
+    check(
+        order?.id == orderId &&
+            order.requesterId == session.initialUserId &&
+            order.status.isActiveForTracking()
+    )
+    val trip = (trips.getTripById(order.tripId) as? TripResult.Success)?.data
+    check(
+        trip?.id == order.tripId && !trip.ownerId.isBlank() && trip.ownerId != session.initialUserId
+    )
+    return trip.ownerId
   }
 
   /** Immediately clears coordinates on backgrounding, navigation or account change. */

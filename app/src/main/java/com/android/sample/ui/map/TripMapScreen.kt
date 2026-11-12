@@ -81,7 +81,6 @@ fun TripMapScreen(
     tracking: OrderTrackingState? = null,
     mapSurface: @Composable (Modifier) -> Unit = { CampusMapBackground(it) },
 ) {
-  var trackingCentered by rememberSaveable { mutableStateOf(false) }
   val trackedFix = (tracking as? OrderTrackingState.Position)?.fix
   val content = state as? TripMapUiState.Content
   val groups = remember(content?.trips) { content?.markerGroups.orEmpty() }
@@ -92,14 +91,7 @@ fun TripMapScreen(
       ((locationState as? MapLocationUiState.Resolved)?.result as? DeviceLocationResult.Available)
           ?.location
   var camera by rememberSaveable(stateSaver = MapCamera.Saver) { mutableStateOf(MapCamera()) }
-  LaunchedEffect(trackedFix) {
-    if (!trackingCentered && trackedFix != null) {
-      CAMPUS_MAP_PROJECTION.project(Location("", trackedFix.latitude, trackedFix.longitude))?.let {
-        camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM)
-        trackingCentered = true
-      }
-    }
-  }
+  CenterTrackingPosition(trackedFix) { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
   var lastCenteredFixTimestamp by rememberSaveable { mutableStateOf<Long?>(null) }
   LaunchedEffect(fix) {
     if (fix == null) lastCenteredFixTimestamp = null
@@ -166,23 +158,7 @@ fun TripMapScreen(
                 )
             )
     )
-    val subtitle =
-        if (tracking == null) mapSubtitle(state, fix, nearby.size)
-        else
-            stringResource(
-                when (tracking) {
-                  OrderTrackingState.Loading -> R.string.order_tracking_loading
-                  OrderTrackingState.Unavailable -> R.string.order_tracking_error
-                  is OrderTrackingState.Position ->
-                      when {
-                        tracking.fix == null -> R.string.order_tracking_unavailable
-                        CAMPUS_MAP_PROJECTION.project(
-                            Location("", tracking.fix.latitude, tracking.fix.longitude)
-                        ) == null -> R.string.order_tracking_off_map
-                        else -> R.string.order_tracking_live
-                      }
-                }
-            )
+    val subtitle = trackingSubtitle(tracking) ?: mapSubtitle(state, fix, nearby.size)
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
           controlsBounds = it.boundsInRoot()
@@ -330,6 +306,39 @@ fun TripMapScreen(
 }
 
 /** Header subtitle shared by the loading, error and location-aware discovery states. */
+/** Centers only the first tracking fix; later updates preserve the user's camera. */
+@Composable
+private fun CenterTrackingPosition(fix: CommandoPosition?, onCenter: (MapPosition) -> Unit) {
+  var centered by rememberSaveable { mutableStateOf(false) }
+  LaunchedEffect(fix) {
+    if (!centered && fix != null) {
+      CAMPUS_MAP_PROJECTION.project(Location("", fix.latitude, fix.longitude))?.let {
+        onCenter(it)
+        centered = true
+      }
+    }
+  }
+}
+
+@Composable
+private fun trackingSubtitle(state: OrderTrackingState?): String? {
+  if (state == null) return null
+  return stringResource(
+      when (state) {
+        OrderTrackingState.Loading -> R.string.order_tracking_loading
+        OrderTrackingState.Unavailable -> R.string.order_tracking_error
+        is OrderTrackingState.Position ->
+            when {
+              state.fix == null -> R.string.order_tracking_unavailable
+              CAMPUS_MAP_PROJECTION.project(
+                  Location("", state.fix.latitude, state.fix.longitude)
+              ) == null -> R.string.order_tracking_off_map
+              else -> R.string.order_tracking_live
+            }
+      }
+  )
+}
+
 @Composable
 private fun mapSubtitle(
     state: TripMapUiState,

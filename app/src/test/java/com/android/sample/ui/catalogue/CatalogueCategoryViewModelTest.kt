@@ -1,29 +1,26 @@
 package com.android.sample.ui.catalogue
 
 // AI assistance: OpenAI Codex and Claude Code.
+import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.model.Product
 import com.android.sample.ui.orders.OrderDraftState
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 /** Category metadata, filtering, cancellation and pagination for Migros and Coop trips. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CatalogueCategoryViewModelTest {
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
   private val migrosTrip = catalogueTrip("trip-migros", "Migros EPFL")
   private val coopTrip = catalogueTrip("trip-coop", "Coop Lausanne")
   private val trips = FakeTripRepository("owner", initialTrips = listOf(migrosTrip, coopTrip))
@@ -34,24 +31,10 @@ class CatalogueCategoryViewModelTest {
   private val coopMilk = Product("coop:1", "coop", "Coop milk", 180, category = dairy)
   private val products = StubProductRepository(ProductResult.Success(listOf(milk, apple, coopMilk)))
 
-  @Before
-  fun setUp() {
-    Dispatchers.setMain(StandardTestDispatcher())
-  }
-
-  @After
-  fun tearDown() {
-    Dispatchers.resetMain()
-  }
-
-  private fun viewModel(tripId: String = migrosTrip.id) =
-      CatalogueViewModel(
-          tripId,
-          trips,
-          products,
-          OrderDraftState(tripId),
-          searchDebounceMillis = 0,
-      )
+  private fun viewModel(
+      tripId: String = migrosTrip.id,
+      draft: OrderDraftState = OrderDraftState(tripId),
+  ) = CatalogueViewModel(tripId, trips, products, draft, searchDebounceMillis = 0)
 
   private fun CatalogueViewModel.loaded() = uiState.value.content as CatalogueContent.Loaded
 
@@ -179,5 +162,41 @@ class CatalogueCategoryViewModelTest {
     )
     // The stub ignores the store; the ViewModel still rejects the Migros product.
     assertEquals(listOf(coopMilk), viewModel.loaded().products)
+  }
+
+  @Test
+  fun basketQuantitiesSurviveCategoryFilteringAndSearchingAllCategories() = runTest {
+    val draft = OrderDraftState(migrosTrip.id)
+    val viewModel = viewModel(draft = draft)
+    advanceUntilIdle()
+    viewModel.add(milk.id)
+    viewModel.increment(milk.id)
+    viewModel.increment(milk.id)
+    viewModel.add(apple.id)
+    viewModel.increment(apple.id)
+    val basket = draft.draft.value.items
+    assertEquals(listOf(milk.id to 3, apple.id to 2), basket.map { it.productId to it.quantity })
+
+    viewModel.selectCategory(fruit)
+    advanceUntilIdle()
+    assertEquals(listOf(apple), viewModel.loaded().products)
+
+    viewModel.onQueryChange("oat")
+    advanceUntilIdle()
+    assertEquals(emptyList<Product>(), viewModel.loaded().products)
+    assertEquals(fruit, viewModel.loaded().category)
+
+    // "Search all categories" clears only the category filter.
+    viewModel.selectCategory(null)
+    advanceUntilIdle()
+    assertEquals(
+        StubProductRepository.Request("migros", "oat", null, 50, null),
+        products.requests.last(),
+    )
+    assertNull(viewModel.loaded().category)
+    assertEquals(listOf(milk), viewModel.loaded().products)
+    assertEquals(basket, draft.draft.value.items)
+    assertEquals(3, viewModel.uiState.value.quantityOf(milk.id))
+    assertEquals(2, viewModel.uiState.value.quantityOf(apple.id))
   }
 }

@@ -89,6 +89,10 @@ class CatalogueCategoryScreenTest {
   @Test
   fun otherExplainsItsProductsAndAnEmptyCategoryOffersEveryCategory() {
     show()
+    compose.runOnIdle {
+      viewModel.add(card.id)
+      viewModel.increment(card.id)
+    }
     compose.onNodeWithTag(CatalogueTestTags.category(OTHER_CATEGORY)).performClick()
     compose.waitForIdle()
     compose.onNodeWithText("OTHER · 1").assertIsDisplayed()
@@ -110,6 +114,8 @@ class CatalogueCategoryScreenTest {
         StubProductRepository.Request("migros", "chocolat", null, 50, null),
         products.requests.last(),
     )
+    // Widening the search keeps the basket, even for products no longer listed.
+    assertEquals(2, viewModel.uiState.value.quantityOf(card.id))
   }
 
   @Test

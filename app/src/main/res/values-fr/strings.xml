@@ -451,4 +451,14 @@
         <item quantity="other">%1$d sur %2$d achetés</item>
     </plurals>
     <string name="shopping_checklist_quantity">Qté %1$d</string>
+    <string name="position_sharing_title">Partager ma position en direct</string>
+    <string name="position_sharing_off">Le partage est désactivé</string>
+    <string name="position_sharing_starting">Connexion au partage de position…</string>
+    <string name="position_sharing_live">Partage actif tant que l’application est au premier plan</string>
+    <string name="position_sharing_stopping">Arrêt et suppression de votre position…</string>
+    <string name="position_sharing_permission">Autorisez la localisation puis réactivez le partage.</string>
+    <string name="position_sharing_location">Position indisponible. Réactivez le partage pour réessayer.</string>
+    <string name="position_sharing_publish">Le partage a échoué. Réactivez-le pour réessayer.</string>
+    <string name="position_sharing_stop">Votre position n’a pas pu être supprimée. Désactivez le partage pour réessayer.</string>
+    <string name="position_sharing_no_trip">Aucun trajet disponible ou en cours à partager</string>
 </resources>

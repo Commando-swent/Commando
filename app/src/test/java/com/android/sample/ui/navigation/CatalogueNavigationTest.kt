@@ -2,6 +2,7 @@ package com.android.sample.ui.navigation
 
 // AI assistance: Claude; review and regression tests: OpenAI Codex.
 import android.content.Context
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
@@ -14,10 +15,12 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.catalogue.CatalogueTestTags
+import com.android.sample.ui.catalogue.SEARCH_DEBOUNCE_MILLIS
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.theme.SampleAppTheme
+import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
@@ -25,6 +28,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -184,6 +189,53 @@ class CatalogueNavigationTest {
       assertEquals(1, factoryCalls)
       assertEquals(1, createdOrders)
     }
+  }
+
+  @Test
+  fun rotationKeepsTheCategoryQueryAndBasket() {
+    val drinks = "Boissons, café & thé"
+    val bakery = "Boulangerie, pâtisserie & petit déjeuner"
+    products.result =
+        ProductResult.Success(listOf(oat.copy(category = drinks), bread.copy(category = bakery)))
+    products.categories = ProductResult.Success(listOf(drinks, bakery))
+    show()
+    openCatalogue(migrosTrip)
+    click(CatalogueTestTags.add(oat.id))
+    click(CatalogueTestTags.increase(oat.id))
+    click(CatalogueTestTags.category(bakery))
+
+    RuntimeEnvironment.setQualifiers("w917dp-h412dp-land")
+    recreate()
+    compose.onNodeWithTag(CatalogueTestTags.category(bakery)).assertIsSelected()
+    // Landscape leaves little room under the header, so the list scrolls to its rows.
+    compose
+        .onNodeWithTag(CatalogueTestTags.PRODUCT_LIST)
+        .performScrollToNode(hasTestTag(CatalogueTestTags.row(bread.id)))
+    compose.onNodeWithTag(CatalogueTestTags.row(bread.id)).assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.row(oat.id)).assertDoesNotExist()
+    compose
+        .onNodeWithTag(CatalogueTestTags.PRODUCT_LIST)
+        .performScrollToNode(hasTestTag(CatalogueTestTags.SEARCH))
+    compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("oat")
+    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SEARCH_DEBOUNCE_MILLIS))
+    compose
+        .onNodeWithTag(CatalogueTestTags.PRODUCT_LIST)
+        .performScrollToNode(hasText("Search all categories"))
+    compose.onNodeWithText("Search all categories").performClick()
+    compose
+        .onNodeWithTag(CatalogueTestTags.PRODUCT_LIST)
+        .performScrollToNode(hasTestTag(CatalogueTestTags.quantity(oat.id)))
+    compose.onNodeWithTag(CatalogueTestTags.quantity(oat.id)).assertTextEquals("2")
+
+    RuntimeEnvironment.setQualifiers("w412dp-h917dp-port")
+    recreate()
+    compose.onNodeWithTag(CatalogueTestTags.CATEGORY_ALL).assertIsSelected()
+    compose.onNodeWithTag(CatalogueTestTags.SEARCH).assertTextContains("oat")
+    compose.onNodeWithTag(CatalogueTestTags.quantity(oat.id)).assertTextEquals("2")
+    assertEquals(
+        StubProductRepository.Request("migros", "oat", null, 50, null),
+        products.requests.last(),
+    )
   }
 
   @Test

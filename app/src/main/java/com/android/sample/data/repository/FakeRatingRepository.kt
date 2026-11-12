@@ -109,11 +109,12 @@ class FakeRatingRepository(
     if (order.id != orderId || !order.tripId.isDocumentId() || order.requesterId.isBlank()) {
       return RatingResult.Error(RatingError.InvalidData)
     }
-    if (submitting) {
-      if (order.requesterId != uid) return RatingResult.Error(RatingError.PermissionDenied)
-      if (order.status != OrderStatus.DELIVERED) {
-        return RatingResult.Error(RatingError.OrderNotDelivered)
-      }
+    // Submission checks precede trip lookup; reads skip these eligibility checks.
+    when {
+      !submitting -> Unit
+      order.requesterId != uid -> return RatingResult.Error(RatingError.PermissionDenied)
+      order.status != OrderStatus.DELIVERED ->
+          return RatingResult.Error(RatingError.OrderNotDelivered)
     }
     val tripResult = tripRepository.getTripById(order.tripId)
     if (!sameSession(uid)) return RatingResult.Error(RatingError.NotAuthenticated)

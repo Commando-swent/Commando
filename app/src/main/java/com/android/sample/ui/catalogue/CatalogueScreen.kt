@@ -86,6 +86,7 @@ fun CatalogueRoute(
       onLoadMore = viewModel::loadMore,
       onContinue = { if (state.canContinue) state.trip?.let(onContinue) },
       modifier = modifier,
+      onSelectCategory = viewModel::selectCategory,
   )
 }
 
@@ -102,6 +103,7 @@ fun CatalogueScreen(
     onLoadMore: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
+    onSelectCategory: (String?) -> Unit = {},
 ) {
   val c = MaterialTheme.colorScheme
   val listState = rememberLazyListState()
@@ -136,20 +138,36 @@ fun CatalogueScreen(
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      item(key = "header") {
-        Column {
-          state.trip?.let { TripSummary(it) }
-          CatalogueSearchField(
-              query = state.query,
-              onQueryChange = onQueryChange,
-              enabled = state.canSearch,
-              modifier = Modifier.padding(horizontal = 24.dp),
-          )
-        }
+      item(key = "header") { CatalogueHeader(state, onQueryChange, onSelectCategory) }
+      val content = state.content
+      if (content is CatalogueContent.Loaded && content.products.isNotEmpty()) {
+        catalogueProducts(state, content, onAdd, onIncrease, onDecrease, onLoadMore)
+      } else {
+        catalogueStatus(content, onClearSearch, onRetry) { onSelectCategory(null) }
       }
-      catalogueBody(state, onClearSearch, onAdd, onIncrease, onDecrease, onRetry, onLoadMore)
     }
     CatalogueBottomBar(state, onContinue)
+  }
+}
+
+@Composable
+private fun CatalogueHeader(
+    state: CatalogueUiState,
+    onQueryChange: (String) -> Unit,
+    onSelectCategory: (String?) -> Unit,
+) {
+  Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    state.trip?.let { TripSummary(it) }
+    CatalogueSearchField(
+        query = state.query,
+        onQueryChange = onQueryChange,
+        enabled = state.canSearch,
+        modifier = Modifier.padding(horizontal = 24.dp),
+    )
+    // A store imported before category metadata simply has no chips.
+    if (state.canSearch && state.categories.isNotEmpty()) {
+      CategoryChips(state.categories, state.category, onSelectCategory)
+    }
   }
 }
 
@@ -195,7 +213,8 @@ private fun TripSummary(trip: Trip) {
           tomorrow = stringResource(R.string.trip_tomorrow),
       )
   Row(
-      Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
+      // With the header's spacing, this keeps a 16 dp gap above the next control.
+      Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 4.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -215,43 +234,43 @@ private val ListItemPadding = Modifier.padding(horizontal = 20.dp)
 /** The next page is requested once one of the last [AUTO_LOAD_DISTANCE] list items is visible. */
 private const val AUTO_LOAD_DISTANCE = 3
 
-private fun LazyListScope.catalogueBody(
-    state: CatalogueUiState,
+/** Loading skeleton, or the message for every state without products to list. */
+private fun LazyListScope.catalogueStatus(
+    content: CatalogueContent,
     onClearSearch: () -> Unit,
-    onAdd: (String) -> Unit,
-    onIncrease: (String) -> Unit,
-    onDecrease: (String) -> Unit,
     onRetry: () -> Unit,
-    onLoadMore: () -> Unit,
+    onClearCategory: () -> Unit,
 ) {
-  val content = state.content
   if (content is CatalogueContent.Loading) {
     item(key = "loading") { SectionLabel(stringResource(R.string.catalogue_loading)) }
     items(6) { SkeletonProductRow(ListItemPadding) }
-    return
+  } else {
+    item(key = "message") {
+      CatalogueStateMessage(content, onClearSearch, onRetry, onClearCategory)
+    }
   }
-  if (content !is CatalogueContent.Loaded || content.products.isEmpty()) {
-    item(key = "message") { CatalogueStateMessage(content, onClearSearch, onRetry) }
-    return
-  }
+}
+
+/** A non-empty page of products, with the next page's loading row or retry button. */
+private fun LazyListScope.catalogueProducts(
+    state: CatalogueUiState,
+    content: CatalogueContent.Loaded,
+    onAdd: (String) -> Unit,
+    onIncrease: (String) -> Unit,
+    onDecrease: (String) -> Unit,
+    onLoadMore: () -> Unit,
+) {
   val loaded = content.products
-  // Only loaded pages are counted; "+" marks that the store has more matching products.
-  val more = content.nextCursor != null
-  item(key = "label") {
-    SectionLabel(
-        if (content.query.isEmpty())
-            stringResource(
-                if (more) R.string.catalogue_all_products_more else R.string.catalogue_all_products,
-                loaded.size,
-            )
-        else
-            pluralStringResource(
-                if (more) R.plurals.catalogue_results_more else R.plurals.catalogue_results,
-                loaded.size,
-                loaded.size,
-                content.query.uppercase(),
-            )
-    )
+  item(key = "label") { ResultsLabel(content) }
+  if (content.category == OTHER_CATEGORY) {
+    item(key = "other_hint") {
+      Text(
+          stringResource(R.string.catalogue_category_other_hint),
+          ListItemPadding,
+          style = catalogueText(13),
+          color = MaterialTheme.colorScheme.onSurfaceVariant,
+      )
+    }
   }
   items(loaded, key = { it.id }) { product ->
     CatalogueProductRow(
@@ -300,14 +319,65 @@ private fun LazyListScope.catalogueBody(
       }
 }
 
+/** Only loaded pages are counted; "+" marks that the store has more matching products. */
+@Composable
+private fun ResultsLabel(content: CatalogueContent.Loaded) {
+  val count = content.products.size
+  val more = content.nextCursor != null
+  SectionLabel(
+      when {
+        content.query.isNotEmpty() ->
+            pluralStringResource(
+                if (more) R.plurals.catalogue_results_more else R.plurals.catalogue_results,
+                count,
+                count,
+                content.query.uppercase(),
+            )
+        content.category != null ->
+            stringResource(
+                if (more) R.string.catalogue_category_products_more
+                else R.string.catalogue_category_products,
+                categoryLabel(content.category).uppercase(),
+                count,
+            )
+        else ->
+            stringResource(
+                if (more) R.string.catalogue_all_products_more else R.string.catalogue_all_products,
+                count,
+            )
+      }
+  )
+}
+
 /** Empty catalogue, empty search, unsupported store and failures; never a silent empty list. */
 @Composable
 private fun CatalogueStateMessage(
     content: CatalogueContent,
     onClearSearch: () -> Unit,
     onRetry: () -> Unit,
+    onClearCategory: () -> Unit,
 ) {
   val modifier = ListItemPadding.padding(top = 4.dp)
+  val category = (content as? CatalogueContent.Loaded)?.category
+  // Widening to every category keeps the current query and selected basket items.
+  if (category != null) {
+    val label = categoryLabel(category)
+    val query = content.query
+    CatalogueMessage(
+        R.drawable.ic_catalogue_search_x,
+        if (query.isEmpty()) stringResource(R.string.catalogue_category_empty_title, label)
+        else stringResource(R.string.catalogue_category_no_match_title, label, query),
+        stringResource(
+            if (query.isEmpty()) R.string.catalogue_category_empty_body
+            else R.string.catalogue_category_no_match_body
+        ),
+        accentIcon = false,
+        action = stringResource(R.string.catalogue_search_all_categories),
+        onAction = onClearCategory,
+        modifier = modifier,
+    )
+    return
+  }
   val failure = content.failureMessage()
   if (failure != null) {
     CatalogueMessage(

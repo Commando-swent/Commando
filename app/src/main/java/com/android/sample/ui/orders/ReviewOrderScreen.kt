@@ -1,6 +1,8 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex extracted focused review sections without changing the order flow.
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -36,6 +38,7 @@ object ReviewOrderTags {
   const val TOTAL = "order_total"
 }
 
+/** Connects the shared review ViewModel to its trip and navigation callbacks. */
 @Composable
 fun ReviewOrderRoute(
     viewModel: ReviewOrderViewModel,
@@ -49,8 +52,6 @@ fun ReviewOrderRoute(
   val observed by viewModel.uiState.collectAsState()
   val state = observed.copy(tripMatches = observed.tripMatches && trip.id == observed.draft.tripId)
   val c = MaterialTheme.colorScheme
-  val success = state.order != null
-  val empty = state.draft.items.isEmpty()
   BackHandler { if (!state.saving) onBack() }
   Column(
       Modifier.fillMaxSize()
@@ -59,165 +60,222 @@ fun ReviewOrderRoute(
           .navigationBarsPadding()
           .imePadding()
   ) {
-    Row(
-        Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-      IconButton(
-          onBack,
-          enabled = !state.saving,
-          modifier = Modifier.size(40.dp).background(c.surfaceContainer, CircleShape),
-      ) {
-        OrderIcon(R.drawable.order_back, 24, stringResource(R.string.nav_back))
-      }
-      Label(if (success) R.string.order_confirmation else R.string.order_review, 20, true)
-    }
+    ReviewHeader(state, onBack)
     Column(
         Modifier.weight(1f)
             .verticalScroll(rememberScrollState())
             .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-      if (!success && (state.error != null || !state.tripMatches || state.hasTooManyProducts)) {
-        val error =
-            when {
-              !state.tripMatches -> R.string.order_invalid_error
-              state.error == OrderError.NotAuthenticated -> R.string.order_session_error
-              state.error is OrderError.AlreadyDecided -> R.string.order_edit_conflict
-              state.editing &&
-                  (state.error == OrderError.InvalidData ||
-                      state.error == OrderError.PermissionDenied) -> R.string.order_edit_unavailable
-              else -> R.string.order_failure_help
-            }
-        Text(
-            if (state.tripMatches && state.hasTooManyProducts)
-                stringResource(R.string.order_product_limit, MAX_ORDER_PRODUCTS)
-            else stringResource(error),
-            Modifier.testTag(ReviewOrderTags.ERROR),
-            color = c.error,
-        )
-      }
-      if (trip.id == state.draft.tripId)
-          Panel(c.primaryContainer) {
-            Label(trip.store.name, 16, true, c.onPrimaryContainer)
-            Label(
-                tripSubtitle ?: trip.scheduledAt.toString(),
-                12,
-                color = c.onPrimaryContainer,
-            )
-            Label(
-                stringResource(R.string.order_handoff, trip.handoffLocation.name),
-                12,
-                color = c.onPrimaryContainer,
-            )
-          }
-      if (empty || success) {
-        Panel(c.primaryContainer) {
-          OrderIcon(
-              if (success) R.drawable.order_check else R.drawable.order_bag,
-              if (success) 36 else 32,
-          )
-          Label(
-              if (success) {
-                if (state.editing) R.string.order_updated else R.string.order_sent
-              } else R.string.order_empty,
-              24,
-              true,
-          )
-        }
-      } else {
-        Label(R.string.order_items, 11, color = c.onSurfaceVariant)
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          state.draft.items.forEach { item ->
-            key(item.productId) { ProductRow(item, state.editable, viewModel::changeQuantity) }
-          }
-        }
-        CommissionField(state, viewModel::updateCommission)
-        if (state.editing)
-            TextButton(onClick = onAddProducts, enabled = state.editable) {
-              Text(stringResource(R.string.order_add))
-            }
-      }
-      if (!empty) {
-        Panel(c.surfaceContainerLow) {
-          TotalRow(R.string.order_products_total, state.productsCents)
-          TotalRow(R.string.order_fee, state.commissionCents)
-          TotalRow(R.string.order_total, state.totalCents, true)
-        }
-        if (!success && state.commissionCents != null && state.totalCents == null)
-            Label(R.string.order_total_invalid, 11, color = c.error)
-        Label(R.string.order_estimate, 11, color = c.onSurfaceVariant)
-      }
+      ReviewError(state)
+      if (trip.id == state.draft.tripId) ReviewTrip(trip, tripSubtitle)
+      ReviewItems(state, viewModel::changeQuantity, viewModel::updateCommission, onAddProducts)
+      if (state.draft.items.isNotEmpty()) ReviewTotals(state)
     }
-    Column(
-        Modifier.fillMaxWidth()
-            .background(c.surfaceContainerLowest)
-            .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ReviewFooter(state, isDemo, onAddProducts, onViewOrders, viewModel::submit)
+  }
+}
+
+/** Keeps the title and Back action consistent with saving and successful submission. */
+@Composable
+private fun ReviewHeader(state: ReviewOrderState, onBack: () -> Unit) {
+  val c = MaterialTheme.colorScheme
+  Row(
+      Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 24.dp),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(14.dp),
+  ) {
+    IconButton(
+        onBack,
+        enabled = !state.saving,
+        modifier = Modifier.size(40.dp).background(c.surfaceContainer, CircleShape),
     ) {
-      val title =
-          when {
-            state.error is OrderError.AlreadyDecided -> R.string.order_view_saved
-            success && state.editing -> R.string.order_view_saved
-            success -> R.string.order_view
-            empty -> R.string.order_add
-            state.saving -> R.string.order_saving
-            state.error != null -> R.string.order_retry
-            state.editing -> R.string.order_save_changes
-            else -> R.string.order_submit
-          }
-      val enabled =
-          success ||
-              state.error is OrderError.AlreadyDecided ||
-              (state.editable && (empty || state.canSubmit))
-      Button(
-          onClick = {
-            when {
-              state.error is OrderError.AlreadyDecided ->
-                  onViewOrders(state.error.persistedOrder.id)
-              success -> onViewOrders(checkNotNull(state.order).id)
-              empty -> onAddProducts()
-              else -> viewModel.submit()
-            }
-          },
-          enabled = enabled,
-          modifier = Modifier.fillMaxWidth().height(56.dp).testTag(ReviewOrderTags.SUBMIT),
-          shape = RoundedCornerShape(28.dp),
-          colors =
-              ButtonDefaults.buttonColors(
-                  disabledContainerColor =
-                      if (state.saving) c.primaryContainer else c.surfaceContainerHigh,
-                  disabledContentColor =
-                      if (state.saving) c.onPrimaryContainer else c.onSurfaceVariant,
-              ),
-      ) {
-        if (state.saving) {
-          val rotation by
-              rememberInfiniteTransition(label = "saving")
-                  .animateFloat(
-                      0f,
-                      360f,
-                      infiniteRepeatable(tween(900, easing = LinearEasing)),
-                      label = "spinner",
-                  )
-          Image(
-              painterResource(R.drawable.order_spinner),
-              null,
-              Modifier.size(24.dp).rotate(rotation),
-          )
-          Spacer(Modifier.width(10.dp))
-        }
-        Text(stringResource(title), style = MaterialTheme.typography.labelLarge)
-      }
+      OrderIcon(R.drawable.order_back, 24, stringResource(R.string.nav_back))
+    }
+    Label(if (state.order != null) R.string.order_confirmation else R.string.order_review, 20, true)
+  }
+}
+
+/** Displays validation or repository feedback, preserving the product-limit message priority. */
+@Composable
+private fun ReviewError(state: ReviewOrderState) {
+  if (
+      state.order != null || (state.error == null && state.tripMatches && !state.hasTooManyProducts)
+  )
+      return
+  Text(
+      if (state.tripMatches && state.hasTooManyProducts)
+          stringResource(R.string.order_product_limit, MAX_ORDER_PRODUCTS)
+      else stringResource(state.errorMessage()),
+      Modifier.testTag(ReviewOrderTags.ERROR),
+      color = MaterialTheme.colorScheme.error,
+  )
+}
+
+/** Maps review failures to the existing localized creation and editing messages. */
+@StringRes
+private fun ReviewOrderState.errorMessage(): Int =
+    when {
+      !tripMatches -> R.string.order_invalid_error
+      error == OrderError.NotAuthenticated -> R.string.order_session_error
+      error is OrderError.AlreadyDecided -> R.string.order_edit_conflict
+      editing && (error == OrderError.InvalidData || error == OrderError.PermissionDenied) ->
+          R.string.order_edit_unavailable
+      else -> R.string.order_failure_help
+    }
+
+/** Shows the selected trip using its existing subtitle and handoff presentation. */
+@Composable
+private fun ReviewTrip(trip: Trip, subtitle: String?) {
+  val c = MaterialTheme.colorScheme
+  Panel(c.primaryContainer) {
+    Label(trip.store.name, 16, true, c.onPrimaryContainer)
+    Label(subtitle ?: trip.scheduledAt.toString(), 12, color = c.onPrimaryContainer)
+    Label(
+        stringResource(R.string.order_handoff, trip.handoffLocation.name),
+        12,
+        color = c.onPrimaryContainer,
+    )
+  }
+}
+
+/** Shows confirmation, an empty basket, or the editable items and commission. */
+@Composable
+private fun ReviewItems(
+    state: ReviewOrderState,
+    onQuantity: (String, Int) -> Unit,
+    onCommission: (String) -> Unit,
+    onAddProducts: () -> Unit,
+) {
+  val success = state.order != null
+  val c = MaterialTheme.colorScheme
+  if (state.draft.items.isEmpty() || success) {
+    Panel(c.primaryContainer) {
+      OrderIcon(
+          if (success) R.drawable.order_check else R.drawable.order_bag,
+          if (success) 36 else 32,
+      )
       Label(
-          if (isDemo) R.string.order_submit_help else R.string.order_persistent_help,
-          11,
-          color = c.onSurfaceVariant,
+          when {
+            !success -> R.string.order_empty
+            state.editing -> R.string.order_updated
+            else -> R.string.order_sent
+          },
+          24,
+          true,
       )
     }
+  } else {
+    Label(R.string.order_items, 11, color = c.onSurfaceVariant)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      state.draft.items.forEach { item ->
+        key(item.productId) { ProductRow(item, state.editable, onQuantity) }
+      }
+    }
+    CommissionField(state, onCommission)
+    if (state.editing)
+        TextButton(onClick = onAddProducts, enabled = state.editable) {
+          Text(stringResource(R.string.order_add))
+        }
   }
+}
+
+/** Reuses the checked totals and warns when the full amount cannot be represented. */
+@Composable
+private fun ReviewTotals(state: ReviewOrderState) {
+  val c = MaterialTheme.colorScheme
+  Panel(c.surfaceContainerLow) {
+    TotalRow(R.string.order_products_total, state.productsCents)
+    TotalRow(R.string.order_fee, state.commissionCents)
+    TotalRow(R.string.order_total, state.totalCents, true)
+  }
+  if (state.order == null && state.commissionCents != null && state.totalCents == null)
+      Label(R.string.order_total_invalid, 11, color = c.error)
+  Label(R.string.order_estimate, 11, color = c.onSurfaceVariant)
+}
+
+/** Resolves the primary action label, giving persisted conflict recovery priority. */
+@StringRes
+private fun ReviewOrderState.actionTitle(): Int =
+    when {
+      error is OrderError.AlreadyDecided -> R.string.order_view_saved
+      order != null && editing -> R.string.order_view_saved
+      order != null -> R.string.order_view
+      draft.items.isEmpty() -> R.string.order_add
+      saving -> R.string.order_saving
+      error != null -> R.string.order_retry
+      editing -> R.string.order_save_changes
+      else -> R.string.order_submit
+    }
+
+/** Submits the draft or opens the persisted order, keeping the existing action enablement. */
+@Composable
+private fun ReviewFooter(
+    state: ReviewOrderState,
+    isDemo: Boolean,
+    onAddProducts: () -> Unit,
+    onViewOrders: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+  val c = MaterialTheme.colorScheme
+  val order = state.order
+  val error = state.error
+  val empty = state.draft.items.isEmpty()
+  val enabled =
+      order != null ||
+          error is OrderError.AlreadyDecided ||
+          (state.editable && (empty || state.canSubmit))
+  Column(
+      Modifier.fillMaxWidth()
+          .background(c.surfaceContainerLowest)
+          .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 24.dp),
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Button(
+        onClick = {
+          when {
+            error is OrderError.AlreadyDecided -> onViewOrders(error.persistedOrder.id)
+            order != null -> onViewOrders(order.id)
+            empty -> onAddProducts()
+            else -> onSubmit()
+          }
+        },
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth().height(56.dp).testTag(ReviewOrderTags.SUBMIT),
+        shape = RoundedCornerShape(28.dp),
+        colors =
+            ButtonDefaults.buttonColors(
+                disabledContainerColor =
+                    if (state.saving) c.primaryContainer else c.surfaceContainerHigh,
+                disabledContentColor =
+                    if (state.saving) c.onPrimaryContainer else c.onSurfaceVariant,
+            ),
+    ) {
+      if (state.saving) ReviewSavingIndicator()
+      Text(stringResource(state.actionTitle()), style = MaterialTheme.typography.labelLarge)
+    }
+    Label(
+        if (isDemo) R.string.order_submit_help else R.string.order_persistent_help,
+        11,
+        color = c.onSurfaceVariant,
+    )
+  }
+}
+
+/** Preserves the saving animation while keeping the primary action focused on submission. */
+@Composable
+private fun ReviewSavingIndicator() {
+  val rotation by
+      rememberInfiniteTransition(label = "saving")
+          .animateFloat(
+              0f,
+              360f,
+              infiniteRepeatable(tween(900, easing = LinearEasing)),
+              label = "spinner",
+          )
+  Image(painterResource(R.drawable.order_spinner), null, Modifier.size(24.dp).rotate(rotation))
+  Spacer(Modifier.width(10.dp))
 }
 
 @Composable

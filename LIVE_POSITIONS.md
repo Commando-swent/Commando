@@ -1,56 +1,41 @@
-# Live commando position foundation (#259, part 1)
+# Selected-order live positions (#259 / #269)
 
 AI assistance: OpenAI Codex (implementation, tests and documentation).
 
 ## Contract
 
-`CommandoPositionRepository` replaces or deletes the authenticated owner's one position.
-`observe(ownerId, orderId?)` is cold and cancellable: no collection scan. Exceptions indicate
-failed authorization/transport; null means absent, unconfirmed, malformed or expired.
-Only server-confirmed snapshots are exposed. A quiet snapshot expires after **120 seconds**,
-including without another write. Capture time is a cross-device UTC Instant, never the
-monotonic DeviceLocation timestamp. Coordinates and accuracy must be finite and valid;
-server rules reject future, stale or regressing capture timestamps. Clock skew is an error,
-not permission to label an old fix live. No location history is stored.
+`CommandoPositionRepository` replaces/deletes the authenticated owner's one position.
+The document contains `tripId`, latitude, longitude, accuracy, UTC capture time and a server
+update timestamp. No location history is stored. Publication requires an owned IN_PROGRESS
+trip or a PUBLISHED trip with a future departure. Invalid, future, stale and regressing
+capture timestamps are rejected; equal capture timestamps are allowed.
 
-`commandoPositions/{ownerUid}` contains exactly `tripId`, `latitude`, `longitude`,
-`accuracyMeters`, `capturedAt` and server-set `updatedAt`. The owned trip is a discovery
-witness; discovery requires it to be PUBLISHED with a future departure. Only the owner
-writes/deletes this document. No unauthenticated reads or collection listing are permitted.
+`observe(ownerId, orderId?)` is cold and cancellable. A requester supplies an active order ID;
+only the owner can read without an order witness. Authenticated strangers cannot read a
+position even while the trip is published, and collection scans are denied. Discovery is
+outside the current sprint scope.
 
-For a closed trip, the requester supplies one active order ID. Their private document
-`commandoPositions/{ownerUid}/viewers/{requesterUid}` contains only that `orderId`.
-This is a lookup witness, not a durable access grant: EVERY position read checks the actual
-order requester, active status (PENDING/ACCEPTED/READY_FOR_HANDOFF) and persisted trip owner.
-A forged witness cannot grant access and a terminal order immediately fails authorization.
-Tracking also observes the witness order itself: terminal/deleted/foreign-order snapshots close
-the position flow even when no position changes. Cancellation or logout removes the position,
-order (when tracking) and Auth listeners together. Server rules still independently restrict reads.
-Position snapshots and order confirmation are combined independently. Pending/cached order
-snapshots hide the position; active server confirmation restores the last confirmed position
-without another position event, only if its original capture time is still fresh.
-Pointers hold no positions and are readable/deletable only by their requester. The integration
-must replace the pointer if another active order should take over; retaining a pointer does
-not retain authorization. Discovery positions are readable by any authenticated user while
-the witness trip is open; radius/filtering is a discovery UI rule, not a geographic read ACL.
+The private `commandoPositions/{ownerUid}/viewers/{requesterUid}` pointer stores one order ID.
+It is a lookup witness, not an ACL: rules recheck the persisted requester, active status
+(PENDING/ACCEPTED/READY_FOR_HANDOFF) and trip owner on every position read. Terminal orders
+revoke access. The repository also watches the order, so a quiet stream closes on revocation.
+Pointers contain no coordinates and are readable/deletable only by their requester.
 
-## Integration boundary
+Only server-confirmed positions are exposed. Null means absent/unconfirmed/malformed/expired;
+exceptions mean authorization or transport failure. Quiet snapshots expire after 120 seconds.
+Order confirmation and position updates are combined independently: confirming a pending order
+restores the previous fix only if its original capture time is still fresh. Cancellation or
+logout removes position, order and Auth listeners. Fake storage models transport and freshness,
+not authorization; its observable identity terminates quiet streams on logout/account change.
 
-This PR supplies storage/observation and emulator-validated rules. It does not activate sharing
-in the app, collect device locations, add markers or implement discovery/tracking modes.
-The following integration must reuse DeviceLocationProvider, require explicit foreground
-opt-in, validate monotonic fix age, convert capture time correctly, and show sharing/errors.
-Await stopSharing BEFORE sign-out; the delete must reach the server. An offline deletion
-cannot guarantee immediate remote erasure, so readers also expire snapshots. Cancel flows
-at lifecycle/session exit; Firebase auth changes additionally terminate active SDK listeners.
-Publish cadence, GPS wiring, opt-in controls, active-order subscriptions and map integration
-belong to the follow-up. Fake storage models transport/freshness, not backend authorization.
-The fake takes an observable StateFlow identity: logout/account change closes a quiet stream
-and releases its session/position subscriptions. Regressing timestamps are rejected inside the
-atomic storage update, matching Firestore's write rule; equal capture times remain permitted.
+## Integration and verification
 
-## Validation
+This backend does not activate GPS collection or render markers. Integration must reuse the
+existing provider/map, require explicit foreground opt-in, preserve the original monotonic fix
+age when converting to UTC, cancel late results and display sharing/cleanup failures.
+Await deletion before normal sign-out while still authenticated. Offline deletion or forced
+external logout cannot guarantee immediate remote erasure; reader expiry is the fallback.
 
-Run `./gradlew ktfmtCheck check assembleDebug` and
-`bash scripts/ci/run-firebase-emulator-tests.sh`. Rules changes are local until deployed;
-no production rule deployment or real-device location-sharing demonstration is claimed here.
+Run `./gradlew ktfmtCheck check assembleDebug` and the Firebase emulator security suite.
+Versioned rules are not deployed automatically. Emulator/injected coordinates do not establish
+production-rule deployment or physical-device location acquisition.

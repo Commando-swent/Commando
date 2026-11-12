@@ -65,12 +65,6 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/trips/$(order.tripId)).data.ownerId == ownerId;
     }
 
-    function positionDiscovery(ownerId, tripId) {
-      let trip = get(/databases/$(database)/documents/trips/$(tripId)).data;
-      return trip.ownerId == ownerId && trip.status == "PUBLISHED"
-        && trip.scheduledAt > request.time;
-    }
-
     match /commandoPositions/{ownerId} {
       allow create, update: if isAuthenticated() && request.auth.uid == ownerId
         && request.resource.data.keys().hasAll([
@@ -79,7 +73,10 @@ service cloud.firestore {
           "tripId", "latitude", "longitude", "accuracyMeters", "capturedAt", "updatedAt"])
         && request.resource.data.tripId is string
         && request.resource.data.tripId.matches('[^/]+')
-        && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.ownerId == ownerId
+        && ownsTrip(request.resource.data.tripId)
+        && (get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "IN_PROGRESS"
+          || (get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "PUBLISHED"
+            && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time))
         && request.resource.data.latitude is number
         && request.resource.data.latitude >= -90 && request.resource.data.latitude <= 90
         && request.resource.data.longitude is number
@@ -94,7 +91,6 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow delete: if isAuthenticated() && request.auth.uid == ownerId;
       allow get: if isAuthenticated() && (resource == null || request.auth.uid == ownerId
-        || positionDiscovery(ownerId, resource.data.tripId)
         || positionOrderAccess(ownerId,
           get(/databases/$(database)/documents/commandoPositions/$(ownerId)/viewers/$(request.auth.uid)).data.orderId));
       allow list: if false;

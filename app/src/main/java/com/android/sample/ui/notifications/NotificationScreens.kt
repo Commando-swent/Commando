@@ -59,7 +59,13 @@ private val MIN_TOUCH_HEIGHT = 48.dp
 private val TITLE_SIZE = 26.sp
 private const val REFERENCE_SUFFIX_LENGTH = 8
 
-/** Scrollable inbox. Callers own loading, persisted read-state updates and navigation. */
+/**
+ * Scrollable inbox; callers own loading and confirmed read-state updates.
+ *
+ * @param onMarkRead receives the full event ID; writes are disabled while the page is saving.
+ * @param onOrder receives the full order ID, including characters hidden in the displayed suffix.
+ * @param onRetrySave retries the last failed read-state update.
+ */
 @Composable
 fun NotificationInboxScreen(
     state: NotificationPageState<List<OrderNotification>>,
@@ -109,7 +115,12 @@ fun NotificationInboxScreen(
   }
 }
 
-/** Confirmed account preferences; a failed change keeps the saved values and offers a retry. */
+/**
+ * Confirmed account preferences; a failed change keeps the saved values and offers a retry.
+ *
+ * @param onChange receives the requested settings; the caller persists only changed toggles.
+ * @param onRetrySave retries the failed preference update without an optimistic UI change.
+ */
 @Composable
 fun NotificationPreferencesScreen(
     state: NotificationPageState<NotificationPreferences>,

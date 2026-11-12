@@ -13,7 +13,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,8 +52,8 @@ fun SavedTripSearches(
     onDelete: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  var saving by remember { mutableStateOf(false) }
-  var renamingId by remember { mutableStateOf<String?>(null) }
+  var saving by rememberSaveable { mutableStateOf(false) }
+  var renamingId by rememberSaveable { mutableStateOf<String?>(null) }
 
   Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
     Text(
@@ -133,7 +133,7 @@ private fun PresetNameDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
-  var name by remember { mutableStateOf(initial) }
+  var name by rememberSaveable { mutableStateOf(initial) }
   val valid = normalizedSearchName(name)
   AlertDialog(
       onDismissRequest = onDismiss,

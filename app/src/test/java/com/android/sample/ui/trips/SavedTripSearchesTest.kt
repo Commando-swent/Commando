@@ -3,12 +3,14 @@ package com.android.sample.ui.trips
 // AI assistance: Claude Code.
 import android.content.Context
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,9 +50,14 @@ class SavedTripSearchesTest {
   private val renamed = mutableListOf<Pair<String, String>>()
   private val deleted = mutableListOf<String>()
 
-  private fun show(initial: SavedTripSearchUiState) {
+  private fun show(
+      initial: SavedTripSearchUiState,
+      restoration: StateRestorationTester? = null,
+  ) {
     state = initial
-    compose.setContent {
+    val setContent: (@Composable () -> Unit) -> Unit =
+        restoration?.let { it::setContent } ?: compose::setContent
+    setContent {
       MaterialTheme {
         SavedTripSearches(
             state = state,
@@ -174,5 +181,24 @@ class SavedTripSearchesTest {
     tag(SavedTripSearchTestTags.apply(mine.id)).assertTextEquals("Mine")
     compose.runOnIdle { state = state.copy(error = null) }
     tag(SavedTripSearchTestTags.ERROR).assertDoesNotExist()
+  }
+
+  @Test
+  fun openDialogsAndDraftNamesSurviveStateRestoration() {
+    val restoration = StateRestorationTester(compose)
+    show(SavedTripSearchUiState(listOf(mine, other)), restoration)
+    tag(SavedTripSearchTestTags.SAVE).performClick()
+    typeName("Draft")
+    restoration.emulateSavedInstanceStateRestore()
+    tag(SavedTripSearchTestTags.NAME_FIELD).assertTextEquals("Draft", nameLabel)
+    compose.onNodeWithText(string(R.string.create_trip_dialog_cancel)).performClick()
+
+    tag(SavedTripSearchTestTags.rename(other.id)).performClick()
+    typeName("Renamed draft")
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithText(string(R.string.trips_presets_rename_title)).assertExists()
+    tag(SavedTripSearchTestTags.CONFIRM).performClick()
+    assertEquals(listOf(other.id to "Renamed draft"), renamed)
+    assertEquals(emptyList<String>(), saved)
   }
 }

@@ -74,6 +74,7 @@ fun AvailableTripsScreen(
     criteria: TripSearchCriteria? = null,
     onCriteriaChange: (TripSearchCriteria) -> Unit = {},
     onClearCriteria: () -> Unit = {},
+    presets: (@Composable () -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
   AvailableTripsScreen(
@@ -89,6 +90,7 @@ fun AvailableTripsScreen(
       criteria,
       onCriteriaChange,
       onClearCriteria,
+      presets = presets,
   )
 }
 
@@ -110,6 +112,7 @@ fun AvailableTripsScreen(
     criteria: TripSearchCriteria? = null,
     onCriteriaChange: (TripSearchCriteria) -> Unit = {},
     onClearCriteria: () -> Unit = {},
+    presets: (@Composable () -> Unit)? = null,
     today: LocalDate = LocalDate.now(),
 ) {
   // One scrolling container, so every state stays reachable on small screens with large fonts.
@@ -178,6 +181,7 @@ fun AvailableTripsScreen(
             distanceAvailable = selectedPoint != null,
             today = today,
             labelColor = runsMuted,
+            presets = presets,
         )
       }
     }

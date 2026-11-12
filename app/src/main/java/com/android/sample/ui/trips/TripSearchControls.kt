@@ -52,6 +52,7 @@ object TripSearchTestTags {
  * Store, departure and sort controls for available trips, collapsed by default into one row that
  * names the active filters. [onClear] resets store and departure (not the sort or the delivery
  * point). Distance sorting is only offered when [distanceAvailable], i.e. a point is selected.
+ * [presets] (saved searches) is shown at the end of the expanded panel.
  */
 @Composable
 fun TripSearchControls(
@@ -62,6 +63,7 @@ fun TripSearchControls(
     today: LocalDate,
     modifier: Modifier = Modifier,
     labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    presets: (@Composable () -> Unit)? = null,
 ) {
   var expanded by remember { mutableStateOf(false) }
   var pickingStart by remember { mutableStateOf(false) }
@@ -113,6 +115,7 @@ fun TripSearchControls(
       Filters(criteria, onCriteriaChange, distanceAvailable, labelColor, customLabel) {
         pickingStart = true
       }
+      presets?.invoke()
     }
   }
 

@@ -191,6 +191,58 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Ratings (#261): each immutable feedback and its exact summary increment commit together.
+    function ratingParticipant(orderId) {
+      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+      return order.requesterId == request.auth.uid || ownsOrderTrip(order);
+    }
+
+    function validRating(orderId, data) {
+      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+      let owner = get(/databases/$(database)/documents/trips/$(order.tripId)).data.ownerId;
+      return data.keys().hasAll(["orderId", "tripId", "requesterId", "commandoId", "score", "comment", "createdAt"])
+        && data.keys().hasOnly(["orderId", "tripId", "requesterId", "commandoId", "score", "comment", "createdAt"])
+        && data.orderId == orderId && data.tripId == order.tripId
+        && data.requesterId == order.requesterId && data.requesterId == request.auth.uid
+        && data.commandoId == owner && owner != request.auth.uid && order.status == "DELIVERED"
+        && data.score is int && data.score >= 1 && data.score <= 5
+        && data.createdAt == request.time
+        // Count supplementary characters twice, matching Kotlin's UTF-16 String.length.
+        && (data.comment == null || (data.comment is string
+          && data.comment.matches('(?s).*[^\\x{0009}-\\x{000d}\\x{001c}-\\x{001f}\\p{Z}].*')
+          && data.comment.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 250));
+    }
+
+    function validRatingSummary(commandoId, data) {
+      let ratingPath = /databases/$(database)/documents/ratings/$(data.lastOrderId);
+      let rating = getAfter(ratingPath).data;
+      let summaryPath = /databases/$(database)/documents/ratingSummaries/$(commandoId);
+      let old = exists(summaryPath) ? get(summaryPath).data : {"ratingCount": 0, "scoreTotal": 0};
+      return data.keys().hasAll(["ratingCount", "scoreTotal", "lastOrderId"])
+        && data.keys().hasOnly(["ratingCount", "scoreTotal", "lastOrderId"])
+        && data.lastOrderId is string && data.lastOrderId.matches('[^/]+')
+        && !exists(ratingPath) && rating.commandoId == commandoId
+        && rating.requesterId == request.auth.uid
+        && data.ratingCount is int && data.ratingCount > 0 && data.ratingCount <= 2147483647
+        && data.scoreTotal is int
+        && data.ratingCount == old.ratingCount + 1 && data.scoreTotal == old.scoreTotal + rating.score;
+    }
+
+    match /ratings/{orderId} {
+      allow get: if isAuthenticated() && ratingParticipant(orderId);
+      allow create: if isAuthenticated() && validRating(orderId, request.resource.data)
+        && getAfter(/databases/$(database)/documents/ratingSummaries/$(request.resource.data.commandoId)).data.lastOrderId == orderId
+        && validRatingSummary(request.resource.data.commandoId,
+          getAfter(/databases/$(database)/documents/ratingSummaries/$(request.resource.data.commandoId)).data);
+      allow list, update, delete: if false;
+    }
+
+    match /ratingSummaries/{commandoId} {
+      allow get: if isAuthenticated();
+      allow create, update: if isAuthenticated() && validRatingSummary(commandoId, request.resource.data);
+      allow list, delete: if false;
+    }
+
     // Shopping checklist progress (#193): only the owner of trips/{tripId} may read or write it.
     function ownsTrip(tripId) {
       return get(/databases/$(database)/documents/trips/$(tripId)).data.ownerId == request.auth.uid;

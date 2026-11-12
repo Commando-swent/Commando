@@ -33,4 +33,13 @@
     <string name="trips_filters_active">Filters: %1$s</string>
     <string name="trips_filters_expanded">Expanded</string>
     <string name="trips_filters_collapsed">Collapsed</string>
+    <string name="trips_presets_label">Saved searches</string>
+    <string name="trips_presets_empty">No saved searches yet.</string>
+    <string name="trips_presets_save">Save this search</string>
+    <string name="trips_presets_save_title">Save search</string>
+    <string name="trips_presets_rename">Rename</string>
+    <string name="trips_presets_rename_title">Rename search</string>
+    <string name="trips_presets_delete">Delete</string>
+    <string name="trips_presets_name_label">Name (up to 40 characters)</string>
+    <string name="trips_presets_error">Saved searches could not be updated.</string>
 </resources>

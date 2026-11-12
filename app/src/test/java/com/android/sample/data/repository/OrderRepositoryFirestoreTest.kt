@@ -9,6 +9,8 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import java.time.Instant
 import kotlinx.coroutines.*
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -275,6 +277,79 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  fun requesterCancellationIsIdempotentAndPreservesFinalOrders() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val cancelled = saved.copy(status = OrderStatus.CANCELLED)
+    assertEquals(OrderResult.Success(cancelled), repository.cancelOrder(saved.id))
+    assertEquals(OrderResult.Success(cancelled), repository.cancelOrder(saved.id))
+    assertEquals(cancelled, source.documents.getValue(saved.id).toOrder())
+    assertEquals(2, source.writes)
+
+    for (status in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      val persisted = saved.copy(status = status)
+      source.documents[saved.id] =
+          source.documents
+              .getValue(saved.id)
+              .copy(data = source.documents.getValue(saved.id).data + ("status" to status.name))
+      assertEquals(
+          error(OrderError.AlreadyDecided(persisted)),
+          repository.cancelOrder(saved.id),
+      )
+    }
+  }
+
+  @Test
+  fun cancellationRejectsInvalidMissingAndUnauthorizedRequests() = runTest {
+    repository.createOrder(draft)
+    for (id in listOf("", " ", "a/b", ".", "..")) {
+      assertEquals(error(OrderError.InvalidData), repository.cancelOrder(id))
+    }
+    assertEquals(error(OrderError.NotFound), repository.cancelOrder("missing"))
+    uid = "owner"
+    assertEquals(error(OrderError.PermissionDenied), repository.cancelOrder("b"))
+    uid = null
+    assertEquals(error(OrderError.NotAuthenticated), repository.cancelOrder("b"))
+  }
+
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun cancellationRecoversUncertainCommitAndDiscardsAnEndedSession() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.cancelOrder(saved.id))
+    source.confirmationFails = false
+    val writes = source.writes
+    assertEquals(
+        OrderResult.Success(saved.copy(status = OrderStatus.CANCELLED)),
+        OrderRepositoryFirestore(source, { uid }).cancelOrder(saved.id),
+    )
+    assertEquals(writes, source.writes)
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.cancelOrder(saved.id) }
+    runCurrent()
+    uid = "another-requester"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+    assertEquals(writes, source.writes)
+  }
+
+  @Test
+  fun cancellationRejectsMalformedOrInconsistentSourceResponses() = runTest {
+    repository.createOrder(draft)
+    val document = source.documents.getValue("b")
+    for (response in
+        listOf(
+            document,
+            document.copy(id = "other"),
+            document.copy(data = document.data - "status"),
+        )) {
+      source.decisionResult = response
+      assertEquals(error(OrderError.InvalidData), repository.cancelOrder("b"))
+    }
+  }
+
+  @Test
   fun suspendedDecisionsHandleSessionLossCancellationAndUncertainCommits() = runTest {
     val saved = (repository.createOrder(draft) as OrderResult.Success).data
     uid = "owner"
@@ -318,11 +393,229 @@ class OrderRepositoryFirestoreTest {
   }
 
   private suspend fun decide(decision: OrderDecision = ACCEPT, id: String = "b") =
-      repository.decideOrder(id, decision)
+      repository.decideOrder(id, decision, 0)
+
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun readinessUsesPersistedSnapshotsAndAuthorizesBeforeReadOnlyOutcomes() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue("b")
+    for (status in OrderStatus.entries) {
+      val stored = saved.copy(status = status)
+      source.documents["b"] = original.copy(data = original.data + ("status" to status.name))
+      val before = source.writes
+      for (caller in listOf("alice", "outsider", null)) {
+        uid = caller
+        val denied =
+            if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
+        assertEquals(error(denied), repository.markReadyForHandoff("b"))
+      }
+      uid = "owner"
+      val expected = saved.copy(status = OrderStatus.READY_FOR_HANDOFF)
+      val result =
+          if (status in listOf(OrderStatus.ACCEPTED, OrderStatus.READY_FOR_HANDOFF))
+              OrderResult.Success(expected)
+          else error(OrderError.AlreadyDecided(stored))
+      repeat(2) { assertEquals(result, repository.markReadyForHandoff("b")) }
+      assertEquals(before + if (status == OrderStatus.ACCEPTED) 1 else 0, source.writes)
+      assertEquals(
+          if (result is OrderResult.Success) expected else stored,
+          source.documents.getValue("b").toOrder(),
+      )
+    }
+    source.documents["b"] = original.copy(data = original.data + ("status" to "ACCEPTED"))
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.markReadyForHandoff("b") }
+    runCurrent()
+    uid = "outsider"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+    source.beforeRead = {}
+    uid = "owner"
+    val ready = saved.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    assertEquals(OrderResult.Success(ready), repository.getOrderById("b"))
+    source.documents["uncertain"] =
+        original.copy(id = "uncertain", data = original.data + ("status" to "ACCEPTED"))
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.markReadyForHandoff("uncertain"))
+    source.confirmationFails = false
+    val before = source.writes
+    val fresh = OrderRepositoryFirestore(source, { uid })
+    assertEquals(
+        OrderResult.Success(ready.copy(id = "uncertain")),
+        fresh.markReadyForHandoff("uncertain"),
+    )
+    assertEquals(before, source.writes)
+  }
 
   private fun sourceError(code: Code): Nothing = throw FirebaseFirestoreException("test", code)
 
+  @Test
+  @OptIn(ExperimentalCoroutinesApi::class)
+  fun receiptUsesAuthorizedPersistedResultsAndRecoversUncertainCommits() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue("b")
+    for ((status, succeeds) in
+        listOf(
+            OrderStatus.PENDING to false,
+            OrderStatus.ACCEPTED to false,
+            OrderStatus.REJECTED to false,
+            OrderStatus.READY_FOR_HANDOFF to true,
+            OrderStatus.DELIVERED to true,
+        )) {
+      source.documents["b"] = original.copy(data = original.data + ("status" to status.name))
+      val before = source.writes
+      for (caller in listOf("owner", "other", null)) {
+        uid = caller
+        assertEquals(
+            error(if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied),
+            repository.confirmReceipt("b"),
+        )
+      }
+      uid = "alice"
+      val expected =
+          if (succeeds) OrderResult.Success(saved.copy(status = OrderStatus.DELIVERED))
+          else error(OrderError.AlreadyDecided(saved.copy(status = status)))
+      repeat(2) { assertEquals(expected, repository.confirmReceipt("b")) }
+      assertEquals(before + if (status == OrderStatus.READY_FOR_HANDOFF) 1 else 0, source.writes)
+    }
+    for (id in listOf("", "a/b", ".", "..")) assertEquals(
+        error(OrderError.InvalidData),
+        repository.confirmReceipt(id),
+    )
+    assertEquals(error(OrderError.NotFound), repository.confirmReceipt("missing"))
+    source.documents["b"] = original.copy(data = original.data + ("status" to "READY_FOR_HANDOFF"))
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.confirmReceipt("b"))
+    source.confirmationFails = false
+    val before = source.writes
+    assertEquals(
+        OrderResult.Success(saved.copy(status = OrderStatus.DELIVERED)),
+        OrderRepositoryFirestore(source, { uid }).confirmReceipt("b"),
+    )
+    assertEquals(before, source.writes)
+    val gate = CompletableDeferred<Unit>()
+    source.beforeRead = { gate.await() }
+    val pending = async { repository.confirmReceipt("b") }
+    runCurrent()
+    uid = "other"
+    gate.complete(Unit)
+    assertEquals(error(OrderError.NotAuthenticated), pending.await())
+  }
+
+  @Test
+  fun editDecodesThePersistedResultAndRejectsStaleOrMalformedResults() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue(saved.id)
+    val edited = draft.copy(commissionCents = 250)
+    source.decisionResult = original.copy(data = original.data + ("commissionCents" to 250L))
+    assertEquals(
+        OrderResult.Success(saved.copy(commissionCents = 250)),
+        repository.editOrder(saved.id, edited, saved.revision),
+    )
+    source.decisionResult = original
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, edited, saved.revision),
+    )
+    source.decisionResult = original.copy(data = original.data + ("status" to "ACCEPTED"))
+    assertEquals(
+        error(OrderError.AlreadyDecided(saved.copy(status = OrderStatus.ACCEPTED))),
+        repository.editOrder(saved.id, edited, saved.revision),
+    )
+    source.decisionResult = original.copy(data = original.data - "items")
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, edited, saved.revision),
+    )
+    assertEquals(error(OrderError.InvalidData), repository.editOrder("a/b", edited, 0))
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, edited.copy(items = emptyList()), saved.revision),
+    )
+  }
+
+  @Test
+  fun editRejectsMismatchedIdentityTripAndItemResults() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val original = source.documents.getValue(saved.id)
+    for (response in
+        listOf(
+            original.copy(id = "other"),
+            original.copy(data = original.data + ("requesterId" to "other")),
+            original.copy(data = original.data + ("tripId" to "other")),
+            original.copy(
+                data =
+                    original.data +
+                        ("items" to
+                            listOf(
+                                mapOf(
+                                    "productId" to "bread",
+                                    "name" to "Bread",
+                                    "unitPriceCents" to 100L,
+                                    "quantity" to 1L,
+                                )
+                            ))
+            ),
+        )) {
+      source.decisionResult = response
+      assertEquals(
+          error(OrderError.InvalidData),
+          repository.editOrder(saved.id, draft, saved.revision),
+      )
+    }
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.editOrder(saved.id, draft.copy(tripId = "a/b"), saved.revision),
+    )
+  }
+
+  @Test
+  fun staleDecisionReturnsTheLatestPendingOrderAndInvalidRevisionsAreRejected() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    val document = source.documents.getValue(saved.id)
+    source.decisionResult = document.copy(data = document.data + ("revision" to 1L))
+    assertEquals(
+        error(OrderError.AlreadyDecided(saved.copy(revision = 1))),
+        repository.editOrder(saved.id, draft.copy(commissionCents = 999), saved.revision),
+    )
+    uid = "owner"
+    assertEquals(
+        error(OrderError.AlreadyDecided(saved.copy(revision = 1))),
+        repository.decideOrder(saved.id, OrderDecision.ACCEPT, 0),
+    )
+    assertEquals(
+        error(OrderError.InvalidData),
+        repository.decideOrder(saved.id, OrderDecision.ACCEPT, -1),
+    )
+    for (revision in listOf(-1L, null, "1", 2147483648L)) {
+      assertNull(document.copy(data = document.data + ("revision" to revision)).toOrder())
+    }
+  }
+
+  @Test
+  fun editDiscardsACommittedResultWhenTheSessionChanges() = runTest {
+    val saved = (repository.createOrder(draft) as OrderResult.Success).data
+    source.decisionResult = source.documents.getValue(saved.id)
+    source.beforeRead = { uid = "other" }
+    assertEquals(
+        error(OrderError.NotAuthenticated),
+        repository.editOrder(saved.id, draft, saved.revision),
+    )
+  }
+
   private inner class MemorySource : OrderFirestoreDataSource {
+    override suspend fun edit(
+        id: String,
+        requesterId: String,
+        draft: OrderDraft,
+        expectedRevision: Int,
+    ): OrderFirestoreDocument {
+      beforeRead()
+      return checkNotNull(decisionResult)
+    }
+
     val documents = linkedMapOf<String, OrderFirestoreDocument>()
     var decisionResult: OrderFirestoreDocument? = null
     var beforeRead: suspend () -> Unit = {}
@@ -361,6 +654,29 @@ class OrderRepositoryFirestoreTest {
         id: String,
         ownerId: String,
         decision: OrderDecision,
+        expectedRevision: Int,
+    ): OrderFirestoreDocument = transition(id, ownerId, "PENDING", decision.targetStatus().name)
+
+    override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
+        transition(id, ownerId, "ACCEPTED", "READY_FOR_HANDOFF")
+
+    override suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument {
+      beforeRead()
+      val document = documents[id] ?: sourceError(Code.NOT_FOUND)
+      if (document.data["requesterId"] != requesterId) sourceError(Code.PERMISSION_DENIED)
+      if (document.data["status"] != "READY_FOR_HANDOFF") return document
+      return document.copy(data = document.data + ("status" to "DELIVERED")).also {
+        documents[id] = it
+        writes++
+        if (confirmationFails) error("Confirmation unavailable")
+      }
+    }
+
+    private suspend fun transition(
+        id: String,
+        ownerId: String,
+        from: String,
+        target: String,
     ): OrderFirestoreDocument {
       beforeRead()
       decisionResult?.let {
@@ -371,8 +687,24 @@ class OrderRepositoryFirestoreTest {
       if (trip?.get("ownerId") != ownerId || document.data["requesterId"] == ownerId) {
         sourceError(Code.PERMISSION_DENIED)
       }
-      if (document.data["status"] != OrderStatus.PENDING.name) return document
-      return document.copy(data = document.data + ("status" to decision.targetStatus().name)).also {
+      if (document.data["status"] != from) return document
+      return document.copy(data = document.data + ("status" to target)).also {
+        documents[id] = it
+        writes++
+        if (confirmationFails) throw IllegalStateException("Confirmation unavailable")
+      }
+    }
+
+    override suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument {
+      beforeRead()
+      decisionResult?.let {
+        return it
+      }
+      val document = documents[id] ?: sourceError(Code.NOT_FOUND)
+      val order = document.toOrder() ?: sourceError(Code.INVALID_ARGUMENT)
+      if (order.requesterId != requesterId) sourceError(Code.PERMISSION_DENIED)
+      if (order.status != OrderStatus.PENDING) return document
+      return document.copy(data = document.data + ("status" to OrderStatus.CANCELLED.name)).also {
         documents[id] = it
         writes++
         if (confirmationFails) throw IllegalStateException("Confirmation unavailable")

@@ -1,3 +1,4 @@
 # Exports and local credentials: never commit them.
 *.jsonl
 .env
+tmp/

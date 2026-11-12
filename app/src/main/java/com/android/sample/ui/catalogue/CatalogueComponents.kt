@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -35,20 +37,26 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -65,6 +73,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import com.android.sample.R
 import com.android.sample.model.Product
 import com.android.sample.ui.orders.money
@@ -169,6 +180,134 @@ internal fun ProductImagePlaceholder(modifier: Modifier = Modifier) {
   }
 }
 
+/**
+ * Product photo, whole and centered on white like store packshots, over the placeholder that stays
+ * while it loads, when it fails, or when there is none. Tapping a photo opens
+ * [ProductImagePreview]; photos tell apart products with the same name and size, such as three
+ * "M-Budget Lait 100g".
+ */
+@Composable
+internal fun ProductImage(product: Product, modifier: Modifier = Modifier) {
+  val imageUrl = product.imageUrl
+  var previewOpen by rememberSaveable(imageUrl) { mutableStateOf(false) }
+  var loaded by remember(imageUrl) { mutableStateOf(false) }
+  val description = stringResource(R.string.catalogue_view_photo, product.name)
+  val tile = modifier.size(56.dp).clip(RoundedCornerShape(12.dp))
+  Box(
+      if (imageUrl == null) tile
+      else
+          tile
+              .clickable(role = Role.Button) { previewOpen = true }
+              .semantics { contentDescription = description }
+              .testTag(CatalogueTestTags.PRODUCT_IMAGE),
+      contentAlignment = Alignment.Center,
+  ) {
+    if (!loaded) ProductImagePlaceholder()
+    if (imageUrl != null) {
+      AsyncImage(
+          model = productImageUrl(imageUrl, THUMBNAIL_PX),
+          contentDescription = null,
+          modifier =
+              Modifier.matchParentSize()
+                  .background(if (loaded) PHOTO_BACKGROUND else Color.Transparent)
+                  .padding(4.dp),
+          contentScale = ContentScale.Fit,
+          onState = { loaded = it is AsyncImagePainter.State.Success },
+      )
+    }
+  }
+  if (previewOpen && imageUrl != null) {
+    ProductImagePreview(product.name, imageUrl, onDismiss = { previewOpen = false })
+  }
+}
+
+/** Larger photo in a dialog over the catalogue; Back, a tap outside or Close dismiss it. */
+@Composable
+private fun ProductImagePreview(name: String, imageUrl: String, onDismiss: () -> Unit) {
+  val c = MaterialTheme.colorScheme
+  var state by
+      remember(imageUrl) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
+  val loaded = state is AsyncImagePainter.State.Success
+  Dialog(onDismissRequest = onDismiss) {
+    Column(
+        Modifier.fillMaxWidth()
+            .background(c.surface, RoundedCornerShape(20.dp))
+            .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 16.dp)
+            .testTag(CatalogueTestTags.IMAGE_PREVIEW),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+      Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            name,
+            Modifier.weight(1f),
+            style = catalogueText(16, FontWeight.Medium),
+            color = c.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        IconButton(
+            onClick = onDismiss,
+            Modifier.size(48.dp).testTag(CatalogueTestTags.IMAGE_PREVIEW_CLOSE),
+        ) {
+          CatalogueIcon(
+              R.drawable.ic_catalogue_close,
+              24.dp,
+              c.onSurface,
+              stringResource(R.string.catalogue_close_photo),
+          )
+        }
+      }
+      // A square frame keeps tall, wide and square packs the same size while they load.
+      Box(
+          Modifier.padding(end = 12.dp)
+              .fillMaxWidth()
+              .aspectRatio(1f)
+              .clip(RoundedCornerShape(12.dp))
+              .background(if (loaded) PHOTO_BACKGROUND else c.background),
+          contentAlignment = Alignment.Center,
+      ) {
+        AsyncImage(
+            model = productImageUrl(imageUrl, PREVIEW_PX),
+            // A failed photo is not announced; the error text below explains it instead.
+            contentDescription =
+                if (state is AsyncImagePainter.State.Error) null
+                else stringResource(R.string.catalogue_photo_of, name),
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            contentScale = ContentScale.Fit,
+            onState = { state = it },
+        )
+        when (state) {
+          is AsyncImagePainter.State.Success -> Unit
+          is AsyncImagePainter.State.Error ->
+              Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  verticalArrangement = Arrangement.spacedBy(12.dp),
+              ) {
+                ProductImagePlaceholder()
+                Text(
+                    stringResource(R.string.catalogue_photo_error),
+                    style = catalogueText(14),
+                    color = c.onSurfaceVariant,
+                )
+              }
+          else -> CircularProgressIndicator(Modifier.size(32.dp))
+        }
+      }
+    }
+  }
+}
+
+/** Migros image URLs keep a `{stack}` placeholder; this picks their [sizePx] square rendition. */
+internal fun productImageUrl(imageUrl: String, sizePx: Int): String =
+    imageUrl.replace(MIGROS_IMAGE_STACK, "mo-custom/v-w-$sizePx-h-$sizePx")
+
+internal const val THUMBNAIL_PX = 200
+internal const val PREVIEW_PX = 800
+private val MIGROS_IMAGE_STACK = Regex("%7Bstack%7D|\\{stack\\}", RegexOption.IGNORE_CASE)
+
+// Store packshots are shot on white, so a white frame makes their edges disappear.
+private val PHOTO_BACKGROUND = Color.White
+
 @Composable
 internal fun CatalogueProductRow(
     product: Product,
@@ -190,7 +329,7 @@ internal fun CatalogueProductRow(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(14.dp),
   ) {
-    ProductImagePlaceholder()
+    ProductImage(product)
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(
           product.name,
@@ -199,7 +338,12 @@ internal fun CatalogueProductRow(
           maxLines = 2,
           overflow = TextOverflow.Ellipsis,
       )
-      Text(money(product.priceCents), style = catalogueText(14), color = c.onSurfaceVariant)
+      // The size tells apart products with the same name, such as two "M-Budget Lait".
+      Text(
+          listOfNotNull(product.sizeText, money(product.priceCents)).joinToString(" · "),
+          style = catalogueText(14),
+          color = c.onSurfaceVariant,
+      )
     }
     QuantityControl(product, quantity, onAdd, onIncrease, onDecrease)
   }
@@ -384,17 +528,23 @@ internal fun CatalogueMessage(
   }
 }
 
-/** Outlined 48 dp pill for secondary actions such as Clear search and Load more. */
+/** Outlined 48 dp pill for secondary actions, at least 200 dp wide with one label line. */
 @Composable
 internal fun SecondaryPillButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
   val c = MaterialTheme.colorScheme
   OutlinedButton(
       onClick = onClick,
-      modifier = modifier.width(200.dp).heightIn(min = 48.dp),
+      modifier = modifier.widthIn(min = 200.dp).heightIn(min = 48.dp),
       shape = RoundedCornerShape(24.dp),
       border = BorderStroke(1.dp, c.outline),
   ) {
-    Text(text, style = catalogueText(15, FontWeight.Bold), color = c.onSurface)
+    Text(
+        text,
+        style = catalogueText(15, FontWeight.Bold),
+        color = c.onSurface,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
   }
 }
 

@@ -1,18 +1,21 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+// AI assistance: Claude Code for the trip transition (#233).
 import com.android.sample.model.Location
 import com.android.sample.model.NewTrip
+import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
 import com.android.sample.model.authentication.AuthRepository
+import com.android.sample.model.blocksTripCompletion
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
-import java.io.IOException
+import com.google.firebase.firestore.Source
 import java.time.Instant
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.tasks.await
 
 class TripRepositoryFirestore
@@ -95,26 +98,101 @@ internal constructor(
     return runRepositoryOperation { dataSource.getTripsByOwner(ownerId).toTripsResult() }
   }
 
+  override suspend fun transitionTrip(
+      tripId: String,
+      transition: TripTransition,
+  ): TripResult<Trip> {
+    val uid =
+        authRepository.currentUser?.uid?.takeIf(String::isNotBlank)
+            ?: return TripResult.Error(TripError.PermissionDenied)
+    if (!tripId.isDocumentId()) return TripResult.Error(TripError.InvalidData)
+
+    return runRepositoryOperation(notFoundError = TripError.NotFound) {
+      val document = dataSource.getTrip(tripId) ?: return@runRepositoryOperation notFound()
+      val trip = document.toTrip() ?: return@runRepositoryOperation invalidData()
+      trip.transitionPrecheck(uid, transition)?.let {
+        return@runRepositoryOperation it
+      }
+      // The trip is seen IN_PROGRESS before its orders are read: from then on no order can be
+      // created (the rules require PUBLISHED) and order statuses only move to terminal ones, so
+      // this server read cannot go stale. The transaction re-checks the status anyway.
+      if (transition == TripTransition.COMPLETE) {
+        val statuses = dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() }
+        if (null in statuses) return@runRepositoryOperation invalidData()
+        if (statuses.any { it?.blocksTripCompletion() == true }) {
+          return@runRepositoryOperation TripResult.Error(TripError.OrdersStillOpen)
+        }
+      }
+      val stored =
+          dataSource.transitionTrip(tripId, transition.source.name, transition.target.name)
+              ?: return@runRepositoryOperation notFound()
+      val updated = stored.document.toTrip() ?: return@runRepositoryOperation invalidData()
+      // A change this call wrote is a success even if another device changed the trip right after.
+      if (stored.written || updated.status == transition.target) TripResult.Success(updated)
+      else TripResult.Error(TripError.InvalidTransition)
+    }
+  }
+
+  private fun notFound() = TripResult.Error(TripError.NotFound)
+
+  private fun invalidData() = TripResult.Error(TripError.InvalidData)
+
+  private fun String?.toOrderStatus(): OrderStatus? =
+      OrderStatus.entries.firstOrNull { it.name == this }
+
   private fun NewTrip.isValid(currentTime: Instant): Boolean =
       store.isValid() && handoffLocation.isValid() && scheduledAt > currentTime
 }
 
-internal data class TripFirestoreDocument(val id: String, val data: Map<String, Any?>)
+/** Raw trip transport; [FirestoreDocument] is decoded with Trip-specific validation below. */
+internal typealias TripFirestoreDocument = FirestoreDocument
 
+/**
+ * Outcome of [TripFirestoreDataSource.transitionTrip]: [document] is the trip read after the
+ * transaction, and [written] is true when that transaction wrote the requested status itself.
+ */
+internal data class TripTransitionWrite(val document: TripFirestoreDocument, val written: Boolean)
+
+/**
+ * SDK-independent trip persistence; typed validation and missing-trip policy stay in the
+ * repository.
+ */
 internal interface TripFirestoreDataSource {
+  /**
+   * Stores supplied fields under a generated document ID and returns that ID after confirmation.
+   */
   suspend fun createTrip(data: Map<String, Any?>): String
 
+  /** Uses the SDK default read source; returns null only for a readable missing document. */
   suspend fun getTrip(tripId: String): TripFirestoreDocument?
 
+  /** Filters by status and future departure, ordered by scheduled time ascending. */
   suspend fun getUpcomingTrips(
       status: String,
       scheduledAfter: Instant,
   ): List<TripFirestoreDocument>
 
+  /**
+   * Queries persisted owner identity; callers and rules retain responsibility for access control.
+   */
   suspend fun getTripsByOwner(ownerId: String): List<TripFirestoreDocument>
+
+  /**
+   * Raw `status` of every order whose `tripId` is [tripId], read from the server; null when the
+   * field is missing or not a string. The rules allow this query to the trip owner only.
+   */
+  suspend fun getOrderStatuses(tripId: String): List<String?>
+
+  /**
+   * In one transaction, reads trip [tripId] and, only if its stored status is [from], writes status
+   * [to] and a server `updatedAt`. Then returns the stored trip read from the server and whether
+   * the transaction wrote, or null if the trip does not exist.
+   */
+  suspend fun transitionTrip(tripId: String, from: String, to: String): TripTransitionWrite?
 }
 
-internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
+/** Trip SDK adapter; intentionally preserves default-source reads and existing query filters. */
+internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFirestore) :
     TripFirestoreDataSource {
 
   private val trips = firestore.collection(TRIPS_COLLECTION)
@@ -127,9 +205,7 @@ internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
 
   override suspend fun getTrip(tripId: String): TripFirestoreDocument? {
     val snapshot = trips.document(tripId).get().await()
-    return snapshot
-        .takeIf { it.exists() }
-        ?.let { TripFirestoreDocument(id = it.id, data = it.data.orEmpty()) }
+    return snapshot.takeIf { it.exists() }?.let { it.toFirestoreDocument() }
   }
 
   override suspend fun getUpcomingTrips(
@@ -143,12 +219,45 @@ internal class FirebaseTripFirestoreDataSource(firestore: FirebaseFirestore) :
           .get()
           .await()
           .documents
-          .map { TripFirestoreDocument(id = it.id, data = it.data.orEmpty()) }
+          .map { it.toFirestoreDocument() }
 
   override suspend fun getTripsByOwner(ownerId: String): List<TripFirestoreDocument> =
       trips.whereEqualTo(FIELD_OWNER_ID, ownerId).get().await().documents.map {
-        TripFirestoreDocument(id = it.id, data = it.data.orEmpty())
+        it.toFirestoreDocument()
       }
+
+  override suspend fun getOrderStatuses(tripId: String): List<String?> =
+      firestore
+          .collection(ORDERS_COLLECTION)
+          .whereEqualTo(FIELD_ORDER_TRIP_ID, tripId)
+          .get(Source.SERVER)
+          .await()
+          .documents
+          .map { it.get(FIELD_STATUS) as? String }
+
+  override suspend fun transitionTrip(
+      tripId: String,
+      from: String,
+      to: String,
+  ): TripTransitionWrite? {
+    val reference = trips.document(tripId)
+    val written =
+        firestore
+            .runTransaction { transaction ->
+              val snapshot = transaction.get(reference)
+              val matches = snapshot.exists() && snapshot.getString(FIELD_STATUS) == from
+              if (matches) {
+                transaction.update(
+                    reference,
+                    mapOf(FIELD_STATUS to to, FIELD_UPDATED_AT to FieldValue.serverTimestamp()),
+                )
+              }
+              matches
+            }
+            .await()
+    val stored = reference.get(Source.SERVER).await().takeIf { it.exists() } ?: return null
+    return TripTransitionWrite(stored.toFirestoreDocument(), written)
+  }
 }
 
 private fun NewTrip.toFirestoreData(ownerId: String, creationTime: Instant): Map<String, Any?> =
@@ -229,36 +338,24 @@ private suspend fun <T> runRepositoryOperation(
     notFoundError: TripError = TripError.Unknown,
     operation: suspend () -> TripResult<T>,
 ): TripResult<T> =
-    try {
-      operation()
-    } catch (exception: CancellationException) {
-      throw exception
-    } catch (exception: Exception) {
-      exception.toTripErrorResult(notFoundError)
-    }
+    runFirestoreOperation(
+        onFailure = { TripResult.Error(it.toTripError(notFoundError)) },
+        operation,
+    )
 
-private fun Exception.toTripErrorResult(notFoundError: TripError): TripResult.Error =
-    TripResult.Error(toTripError(notFoundError))
-
-private fun Exception.toTripError(notFoundError: TripError): TripError =
+private fun FirestoreFailure.toTripError(notFoundError: TripError): TripError =
     when (this) {
-      is FirebaseFirestoreException ->
-          when (code) {
-            FirebaseFirestoreException.Code.PERMISSION_DENIED,
-            FirebaseFirestoreException.Code.UNAUTHENTICATED -> TripError.PermissionDenied
-            FirebaseFirestoreException.Code.UNAVAILABLE,
-            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED -> TripError.NetworkError
-            FirebaseFirestoreException.Code.NOT_FOUND -> notFoundError
-            FirebaseFirestoreException.Code.INVALID_ARGUMENT,
-            FirebaseFirestoreException.Code.OUT_OF_RANGE,
-            FirebaseFirestoreException.Code.DATA_LOSS -> TripError.InvalidData
-            else -> TripError.Unknown
-          }
-      is IOException -> TripError.NetworkError
-      else -> TripError.Unknown
+      FirestoreFailure.PERMISSION_DENIED,
+      FirestoreFailure.UNAUTHENTICATED -> TripError.PermissionDenied
+      FirestoreFailure.NETWORK_UNAVAILABLE -> TripError.NetworkError
+      FirestoreFailure.NOT_FOUND -> notFoundError
+      FirestoreFailure.INVALID_DATA -> TripError.InvalidData
+      FirestoreFailure.UNKNOWN -> TripError.Unknown
     }
 
 private const val TRIPS_COLLECTION = "trips"
+private const val ORDERS_COLLECTION = "orders"
+private const val FIELD_ORDER_TRIP_ID = "tripId"
 private const val FIELD_OWNER_ID = "ownerId"
 private const val FIELD_STORE = "store"
 private const val FIELD_SCHEDULED_AT = "scheduledAt"

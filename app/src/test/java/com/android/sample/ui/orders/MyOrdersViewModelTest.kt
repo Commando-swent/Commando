@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+// AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude (Anthropic).
 
 import com.android.sample.data.repository.FakeOrderRepository
@@ -93,6 +94,22 @@ class MyOrdersViewModelTest {
 
   private fun rowIds(state: MyOrdersUiState) =
       (state as MyOrdersUiState.Content).rows.map { it.order.id }
+
+  @Test
+  fun refreshAfterCancellationRetainsHistoryWithPersistedStatusAndUnchangedOtherRows() = runTest {
+    val vm = MyOrdersViewModel(orders, trips, "alice")
+    advanceUntilIdle()
+    val cancelled = aliceNew.copy(status = OrderStatus.CANCELLED)
+    assertEquals(OrderResult.Success(cancelled), orders.cancelOrder(aliceNew.id))
+    vm.retry()
+    advanceUntilIdle()
+    val rows = (vm.uiState.value as MyOrdersUiState.Content).rows
+    assertEquals(listOf(cancelled, aliceOld), rows.map { it.order })
+    assertEquals(trip, rows.first().trip)
+    val reopened = MyOrdersViewModel(orders, trips, "alice")
+    advanceUntilIdle()
+    assertEquals(rows, (reopened.uiState.value as MyOrdersUiState.Content).rows)
+  }
 
   @Test
   fun startsLoadingThenShowsOnlyRequesterOrdersNewestFirst() = runTest {
@@ -338,6 +355,14 @@ class MyOrdersViewModelTest {
    */
   private class GatedOrderRepository(private val swallowCancellation: Boolean = false) :
       OrderRepository {
+    override suspend fun editOrder(
+        orderId: String,
+        draft: OrderDraft,
+        expectedRevision: Int,
+    ): OrderResult<Order> = error("Not used")
+
+    override suspend fun confirmReceipt(orderId: String): OrderResult<Order> = error("Not used")
+
     val gates = mutableListOf<CompletableDeferred<OrderResult<List<Order>>>>()
     var staleReturns = 0
 
@@ -359,8 +384,16 @@ class MyOrdersViewModelTest {
 
     override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = error("Not used")
 
-    override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> =
+    override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
         error("Not used")
+
+    override suspend fun decideOrder(
+        orderId: String,
+        decision: OrderDecision,
+        expectedRevision: Int,
+    ): OrderResult<Order> = error("Not used")
+
+    override suspend fun cancelOrder(orderId: String): OrderResult<Order> = error("Not used")
 
     override suspend fun getOrderById(orderId: String): OrderResult<Order> = error("Not used")
 

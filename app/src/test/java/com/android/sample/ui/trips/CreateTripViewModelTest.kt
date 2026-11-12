@@ -10,6 +10,8 @@ import com.android.sample.model.NewTrip
 import com.android.sample.model.Trip
 import com.android.sample.model.TripLocations
 import com.android.sample.model.TripStatus.PUBLISHED
+import com.android.sample.model.TripTransition
+import com.android.sample.model.storeIdFor
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
@@ -163,6 +165,23 @@ class CreateTripViewModelTest {
   }
 
   @Test
+  fun publish_coopTripKeepsTheCoopStoreSoItsCatalogueIsCoop() = runTest {
+    val coop = TripLocations.stores.single { it.name == "Coop Ecublens" }
+    val fake = FakeTripRepository(currentUserId = "me", now = { NOW })
+    val viewModel = CreateTripViewModel(fake, Clock.fixed(NOW, ZONE))
+    viewModel.fillValidForm()
+    viewModel.setStore(coop)
+
+    viewModel.publish()
+    advanceUntilIdle()
+
+    val trip = requireNotNull(viewModel.uiState.value.publishedTrip)
+    assertEquals(coop, trip.store)
+    assertEquals(coop, (fake.getTripById(trip.id) as TripResult.Success).data.store)
+    assertEquals("coop", storeIdFor(trip.store.name))
+  }
+
+  @Test
   fun failedPublish_keepsTheInputsAndAllowsARetry() = runTest {
     val timeout = runCatching { withTimeout(1) { awaitCancellation() } }.exceptionOrNull()
     val failures =
@@ -257,6 +276,9 @@ class CreateTripViewModelTest {
     override suspend fun getUpcomingTrips() = error("not used")
 
     override suspend fun getMyTrips() = error("not used")
+
+    override suspend fun transitionTrip(tripId: String, transition: TripTransition) =
+        error("not used")
   }
 
   private class MutableClock(var instant: Instant) : Clock() {

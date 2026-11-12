@@ -1,5 +1,6 @@
 package com.android.sample.data.repository
 
+import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
 
@@ -22,7 +23,7 @@ interface ProductRepository {
    * every active product. A [query] longer than 100 characters, or one that is not blank but has no
    * word of at least two characters (such as "a" or "?!"), fails with [ProductError.InvalidQuery]
    * rather than listing everything. Pages are ordered by document ID: pass the returned
-   * [ProductPage.nextCursor], with the same [storeId] and [query], to get the next one; it stays
+   * [ProductPage.nextCursor], with the same [storeId], [query] and [category], for more; it stays
    * valid if that product is removed meanwhile. As with [getProducts], malformed documents are
    * dropped, so a page may hold fewer than [limit] products even when a next page exists.
    */
@@ -31,5 +32,24 @@ interface ProductRepository {
       query: String,
       cursor: String? = null,
       limit: Int = 50,
+      category: String? = null,
   ): ProductResult<ProductPage>
+
+  /**
+   * Returns the [Product.category] values of one store's listed products, sorted, as the catalogue
+   * importer last wrote them to `stores/{storeId}`: one read, never a catalogue scan. Each value is
+   * a valid [searchProducts] category. The list is empty until the store is imported with
+   * categories.
+   */
+  suspend fun getCategories(storeId: String): ProductResult<List<String>>
+
+  /** Returns current products favourited by the authenticated user for one store. */
+  suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts>
+
+  /** Idempotently adds or removes one store-scoped favourite for the authenticated user. */
+  suspend fun setFavourite(
+      storeId: String,
+      productId: String,
+      favourite: Boolean,
+  ): ProductResult<Unit>
 }

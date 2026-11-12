@@ -1,5 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
+// AI assistance: Claude Code for trip status seeding (#233).
+
 import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.data.repository.successData
 import com.android.sample.model.Location
@@ -8,6 +10,7 @@ import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.FieldValue
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -114,11 +117,14 @@ class TripFirestoreSecurityRulesEmulatorTest {
       }
 
       nonPublished.set(storedTrip(ownerId)).await()
-      nonPublished.update("status", TripStatus.IN_PROGRESS.name).await()
+      setStatusAsAdmin(nonPublished.id, TripStatus.IN_PROGRESS)
       assertTrue(nonPublished.get().await().exists())
-      assertPermissionDenied {
-        other.firestore.collection(TRIPS_COLLECTION).document(nonPublished.id).get().await()
-      }
+      // A closed trip stays readable by id so requesters keep the trip of their order (#233).
+      val otherNonPublished = other.firestore.collection(TRIPS_COLLECTION).document(nonPublished.id)
+      assertTrue(otherNonPublished.get().await().exists())
+      setStatusAsAdmin(nonPublished.id, TripStatus.CANCELLED)
+      assertTrue(nonPublished.get().await().exists())
+      assertPermissionDenied { otherNonPublished.get().await() }
     }
   }
 
@@ -155,10 +161,10 @@ class TripFirestoreSecurityRulesEmulatorTest {
       val otherTripId = "other-${UUID.randomUUID()}"
       val ownedTrip = owner.firestore.collection(TRIPS_COLLECTION).document(ownedTripId)
       ownedTrip.set(storedTrip(ownerId)).await()
-      ownedTrip.update("status", TripStatus.IN_PROGRESS.name).await()
+      setStatusAsAdmin(ownedTripId, TripStatus.IN_PROGRESS)
       val otherTrip = other.firestore.collection(TRIPS_COLLECTION).document(otherTripId)
       otherTrip.set(storedTrip(otherId)).await()
-      otherTrip.update("status", TripStatus.CANCELLED.name).await()
+      setStatusAsAdmin(otherTripId, TripStatus.CANCELLED)
       val repository =
           TripRepositoryFirestore(
               authRepository = FakeAuthRepository(AuthUser(uid = ownerId)),
@@ -182,9 +188,10 @@ class TripFirestoreSecurityRulesEmulatorTest {
       published.set(storedTrip(ownerId)).await()
       val otherPublished = other.firestore.collection(TRIPS_COLLECTION).document(published.id)
 
-      assertPermissionDenied { otherPublished.update("status", "COMPLETED").await() }
-      published.update("status", "COMPLETED").await()
-      assertEquals("COMPLETED", published.get().await().getString("status"))
+      val close = mapOf("status" to "IN_PROGRESS", "updatedAt" to FieldValue.serverTimestamp())
+      assertPermissionDenied { otherPublished.update(close).await() }
+      published.update(close).await()
+      assertEquals("IN_PROGRESS", published.get().await().getString("status"))
       assertPermissionDenied { published.update("ownerId", otherId).await() }
       assertPermissionDenied {
         published.update("createdAt", Timestamp(NOW.epochSecond + 1, NOW.nano)).await()
@@ -193,17 +200,17 @@ class TripFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun delete_requiresOwner() = runTest {
+  fun delete_isDeniedEvenToTheOwner() = runTest {
     withClients("owner" to true, "other" to true) { (owner, other) ->
       val ownerId = checkNotNull(owner.auth.currentUser).uid
       val published =
           owner.firestore.collection(TRIPS_COLLECTION).document("delete-${UUID.randomUUID()}")
       published.set(storedTrip(ownerId)).await()
-      published.update("status", TripStatus.CANCELLED.name).await()
+      setStatusAsAdmin(published.id, TripStatus.CANCELLED)
       val otherPublished = other.firestore.collection(TRIPS_COLLECTION).document(published.id)
 
       assertPermissionDenied { otherPublished.delete().await() }
-      published.delete().await()
+      assertPermissionDenied { published.delete().await() }
     }
   }
 
@@ -242,6 +249,10 @@ class TripFirestoreSecurityRulesEmulatorTest {
       }
     }
   }
+
+  /** Owners can no longer set arbitrary statuses (#233), so seed them as the emulator admin. */
+  private fun setStatusAsAdmin(tripId: String, status: TripStatus) =
+      updateDocumentAsOwner("$TRIPS_COLLECTION/$tripId", mapOf("status" to status.name))
 
   private fun storedTrip(
       ownerId: String,

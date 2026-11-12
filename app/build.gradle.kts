@@ -35,7 +35,8 @@ android {
 
   buildTypes {
     release {
-      isMinifyEnabled = false
+      // AI assistance: OpenAI Codex enabled release obfuscation for Sonar rule kotlin:S7204.
+      isMinifyEnabled = true
       proguardFiles(
           getDefaultProguardFile("proguard-android-optimize.txt"),
           "proguard-rules.pro",
@@ -80,7 +81,11 @@ android {
     res.directories.addAll(test.res.directories)
     resources.directories.clear()
     resources.directories.addAll(test.resources.directories)
+    // Fixtures shared with the device tests (androidTest).
+    kotlin.directories.add(file("src/sharedTest/java").path)
   }
+
+  sourceSets.getByName("androidTest") { kotlin.directories.add(file("src/sharedTest/java").path) }
 
   sourceSets.getByName("test") {
     java.directories.clear()
@@ -158,6 +163,9 @@ dependencies {
   // Integration with ViewModels
   implementation(libs.compose.viewmodel)
   implementation(libs.compose.navigation)
+  // Product images
+  implementation(libs.coil.compose)
+  implementation(libs.coil.network.okhttp)
   // Android Studio Preview support
   implementation(libs.compose.preview)
 
@@ -233,6 +241,7 @@ tasks.withType<Test> {
 }
 
 tasks.register("jacocoTestReport", JacocoReport::class) {
+  dependsOn("testDebugUnitTest")
   mustRunAfter("testDebugUnitTest", "connectedDebugAndroidTest")
 
   reports {

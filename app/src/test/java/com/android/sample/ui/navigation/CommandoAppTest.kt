@@ -5,6 +5,7 @@ package com.android.sample.ui.navigation
 import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -23,17 +25,20 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
+import com.android.sample.model.StoreFilter
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthException
@@ -42,6 +47,7 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
+import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.home.HomeTestTags
@@ -53,6 +59,11 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.android.sample.ui.trips.ScriptedTripRepository
+import com.android.sample.ui.trips.TripSearchTestTags
+import com.android.sample.ui.trips.assertTripCard
+import com.android.sample.ui.trips.discoveryTrip
+import com.android.sample.ui.trips.onTripCard
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -70,6 +81,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowToast
+
+private const val SEEDED_TRIP_ID = "known-trip"
 
 @RunWith(RobolectricTestRunner::class)
 class CommandoAppTest {
@@ -138,7 +151,7 @@ class CommandoAppTest {
     compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals("Alice Smith")
     compose.onNodeWithTag(ProfileTestTags.HELP).performScrollTo().performClick()
     compose.runOnIdle { repository.signOut() }
-    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertDoesNotExist()
   }
@@ -165,14 +178,19 @@ class CommandoAppTest {
   // These fixtures use unsupported store names, so the catalogue never queries this stub.
   private val products = StubProductRepository()
 
-  private fun show(repository: FakeAuthRepository, picker: Picker = Picker()) {
-    show(repository, FakeTripRepository(currentUserId = "alice"), picker)
+  private fun show(
+      repository: FakeAuthRepository,
+      picker: Picker = Picker(),
+      openForm: Boolean = true,
+  ) {
+    show(repository, FakeTripRepository(currentUserId = "alice"), picker, openForm)
   }
 
   private fun show(
       repository: FakeAuthRepository,
       trips: TripRepository,
       picker: Picker = Picker(),
+      openForm: Boolean = true,
   ) {
     compose.setContent {
       SampleAppTheme {
@@ -185,22 +203,23 @@ class CommandoAppTest {
         )
       }
     }
+    // Existing form tests explicitly enter through the new public welcome destination.
+    if (openForm && repository.currentUser == null) {
+      compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
+    }
   }
 
   private fun seededTrips(uid: String, storeName: String): TripRepository {
-    val now = Instant.parse("2026-10-07T12:00:00Z")
     val trip =
-        Trip(
-            id = "known-trip",
+        discoveryTrip(
+            SEEDED_TRIP_ID,
+            Location(storeName, 46.52, 6.63),
+            Location("Known handoff", 46.52, 6.57),
+            tripTime.plusSeconds(3600),
             ownerId = "trip-owner",
-            store = Location(storeName, 46.52, 6.63),
-            scheduledAt = now.plusSeconds(3600),
-            handoffLocation = Location("Known handoff", 46.52, 6.57),
-            status = TripStatus.PUBLISHED,
-            createdAt = now,
-            updatedAt = now,
+            createdAt = tripTime,
         )
-    return FakeTripRepository(uid, now = { now }, initialTrips = listOf(trip))
+    return FakeTripRepository(uid, now = { tripTime }, initialTrips = listOf(trip))
   }
 
   private fun assertScreen(tag: String) {
@@ -225,15 +244,13 @@ class CommandoAppTest {
 
   private val tripTime = Instant.parse("2026-10-07T12:00:00Z")
   private val firstTrip =
-      Trip(
-          id = "trip-a",
+      discoveryTrip(
+          "trip-a",
+          Location("First store", 46.52, 6.63),
+          Location("First handoff", 46.52, 6.57),
+          tripTime.plusSeconds(3600),
           ownerId = "owner-a",
-          store = Location("First store", 46.52, 6.63),
-          scheduledAt = tripTime.plusSeconds(3600),
-          handoffLocation = Location("First handoff", 46.52, 6.57),
-          status = TripStatus.PUBLISHED,
           createdAt = tripTime,
-          updatedAt = tripTime,
       )
   private val secondTrip =
       firstTrip.copy(
@@ -279,33 +296,20 @@ class CommandoAppTest {
 
   private fun assertAvailableTripsRestored() {
     compose.onNodeWithText("Back").assertDoesNotExist()
-    compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
-    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
+    compose.assertTripCard(firstTrip)
+    compose.assertTripCard(secondTrip)
     compose.onNodeWithTag(AppTestTags.TOP_BAR).assertIsDisplayed()
     assertScreen(AppTestTags.BOTTOM_BAR)
   }
 
   @Test
   fun selectedOpaqueTripIsLoadedExactlyAndBothBackActionsRestoreTheExistingList() {
-    val requestedIds = mutableListOf<String>()
-    var listLoads = 0
-    val fake = twoTrips(alice.uid)
-    val trips =
-        object : TripRepository by fake {
-          override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
-            listLoads++
-            return fake.getUpcomingTrips()
-          }
-
-          override suspend fun getTripById(tripId: String): TripResult<Trip> {
-            requestedIds.add(tripId)
-            return fake.getTripById(tripId)
-          }
-        }
+    val trips = ScriptedTripRepository(twoTrips(alice.uid))
+    val requestedIds = trips.requestedIds
     show(FakeAuthRepository(alice), trips)
     click(HomeTestTags.TRIP_ACTION)
     assertAvailableTripsRestored()
-    compose.onNodeWithText(secondTrip.store.name).performClick()
+    compose.onTripCard(secondTrip.id).performClick()
     assertTripDetails(secondTrip)
     compose.onNodeWithText(firstTrip.store.name).assertDoesNotExist()
     compose.onNodeWithText(firstTrip.handoffLocation.name).assertDoesNotExist()
@@ -337,15 +341,15 @@ class CommandoAppTest {
     compose.onNodeWithText("Add items").assertDoesNotExist()
     // Reopening the Catalogue creates a new entry, which loads the same trip once more.
     compose.runOnIdle { assertEquals(List(3) { secondTrip.id }, requestedIds) }
-    compose.onNodeWithText("Back").performClick()
+    click(AppTestTags.BACK_BUTTON)
     assertAvailableTripsRestored()
 
-    compose.onNodeWithText(firstTrip.store.name).performClick()
+    compose.onTripCard(firstTrip.id).performClick()
     assertTripDetails(firstTrip)
     compose.onNodeWithText(secondTrip.store.name).assertDoesNotExist()
-    compose.onNodeWithText("Back").performClick()
+    click(AppTestTags.BACK_BUTTON)
     assertAvailableTripsRestored()
-    compose.onNodeWithText(secondTrip.store.name).performClick()
+    compose.onTripCard(secondTrip.id).performClick()
     assertTripDetails(secondTrip)
     pressBack()
     assertAvailableTripsRestored()
@@ -353,31 +357,31 @@ class CommandoAppTest {
       // The first three are the Details and the two Catalogue lookups of the opaque trip.
       assertEquals(List(3) { secondTrip.id } + listOf(firstTrip.id, secondTrip.id), requestedIds)
       // The list reloads on every resume: one load on entry plus one per return from Details.
-      assertEquals(4, listLoads)
+      assertEquals(4, trips.upcomingLoads)
     }
   }
 
   @Test
   fun detailsBackRestoresAvailableTripsWhileLoadingAndAfterAnError() {
     var detailLoads = 0
-    val fake = twoTrips(alice.uid)
     val trips =
-        object : TripRepository by fake {
-          override suspend fun getTripById(tripId: String): TripResult<Trip> {
-            detailLoads++
-            if (detailLoads == 1) awaitCancellation()
-            return TripResult.Error(TripError.NetworkError)
-          }
-        }
+        ScriptedTripRepository(
+            twoTrips(alice.uid),
+            details = {
+              detailLoads++
+              if (detailLoads == 1) awaitCancellation()
+              TripResult.Error(TripError.NetworkError)
+            },
+        )
     show(FakeAuthRepository(alice), trips)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText(firstTrip.store.name).performClick()
+    compose.onTripCard(firstTrip.id).performClick()
     compose.onNodeWithText("Loading trip details").assertIsDisplayed()
     compose.onNodeWithTag(AppTestTags.BACK_BUTTON).performClick()
     assertAvailableTripsRestored()
-    compose.onNodeWithText(secondTrip.store.name).performClick()
+    compose.onTripCard(secondTrip.id).performClick()
     compose.onNodeWithText("Something went wrong while loading this trip.").assertIsDisplayed()
-    compose.onNodeWithText("Back").performClick()
+    click(AppTestTags.BACK_BUTTON)
     assertAvailableTripsRestored()
   }
 
@@ -401,7 +405,7 @@ class CommandoAppTest {
     val repository = FakeAuthRepository(alice)
     showCatalogueForSession(repository)
     compose.runOnIdle { repository.signOut() }
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.runOnIdle { assertNull(repository.currentUser) }
     assertTripScreensAbsent()
     pressBack()
@@ -413,7 +417,7 @@ class CommandoAppTest {
     show(repository, twoTrips(requireNotNull(repository.currentUser).uid))
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText(secondTrip.store.name).performClick()
+    compose.onTripCard(secondTrip.id).performClick()
     assertTripDetails(secondTrip)
     compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
     assertCatalogue()
@@ -429,18 +433,11 @@ class CommandoAppTest {
   @Test
   fun sameUidKeepsDetailsButAccountReplacementAndSignOutClearTheDetailsStack() = runTest {
     val repository = FakeAuthRepository(alice)
-    val requestedIds = mutableListOf<String>()
-    val fake = twoTrips(alice.uid)
-    val trips =
-        object : TripRepository by fake {
-          override suspend fun getTripById(tripId: String): TripResult<Trip> {
-            requestedIds.add(tripId)
-            return fake.getTripById(tripId)
-          }
-        }
+    val trips = ScriptedTripRepository(twoTrips(alice.uid))
+    val requestedIds = trips.requestedIds
     show(repository, trips)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText(secondTrip.store.name).performClick()
+    compose.onTripCard(secondTrip.id).performClick()
     assertTripDetails(secondTrip)
     repository.signInWithEmailResult = Result.success(alice.copy(displayName = "Alice updated"))
     repository.signInWithEmail("", "")
@@ -452,10 +449,10 @@ class CommandoAppTest {
     assertScreen(NavigationTestTags.HOME_SCREEN)
     compose.onNodeWithText("Back").assertDoesNotExist()
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText(firstTrip.store.name).performClick()
+    compose.onTripCard(firstTrip.id).performClick()
     assertTripDetails(firstTrip)
     compose.runOnIdle { repository.signOut() }
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithText(firstTrip.store.name).assertDoesNotExist()
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
@@ -469,54 +466,44 @@ class CommandoAppTest {
   @Test
   fun findTripRendersInjectedTripsAndKeepsRepositoryAcrossRecompositionAndNavigation() = runTest {
     val repository = FakeAuthRepository(alice)
-    val fake = seededTrips(alice.uid, "Injected store")
-    var listLoads = 0
+    val scripted = ScriptedTripRepository(seededTrips(alice.uid, "Injected store"))
+    val requestedIds = scripted.requestedIds
     var homeLoads = 0
-    val requestedIds = mutableListOf<String>()
     val trips =
-        object : TripRepository by fake {
-          override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
-            listLoads++
-            return fake.getUpcomingTrips()
-          }
-
+        object : TripRepository by scripted {
           override suspend fun getMyTrips(): TripResult<List<Trip>> {
             homeLoads++
             return TripResult.Success(
                 listOf(firstTrip.copy(ownerId = alice.uid, status = TripStatus.IN_PROGRESS))
             )
           }
-
-          override suspend fun getTripById(tripId: String): TripResult<Trip> {
-            requestedIds.add(tripId)
-            return fake.getTripById(tripId)
-          }
         }
     show(repository, trips)
     assertScreen(NavigationTestTags.HOME_SCREEN)
     compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).assertTextEquals("Find a trip").performClick()
-    compose.onNodeWithText("Injected store").assertIsDisplayed()
-    compose.onNodeWithText("Known handoff \u00b7 Handoff point").assertIsDisplayed()
+    compose
+        .assertTripCard(SEEDED_TRIP_ID, "Injected store")
+        .assert(hasText("Known handoff \u00b7 Handoff point"))
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(AppTestTags.TOP_BAR).assertIsDisplayed()
     compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsNotSelected()
     assertScreen(AppTestTags.BOTTOM_BAR)
-    compose.runOnIdle { assertEquals(1, listLoads) }
-    compose.onNodeWithText("Injected store").performClick()
+    compose.runOnIdle { assertEquals(1, scripted.upcomingLoads) }
+    compose.onTripCard(SEEDED_TRIP_ID).performClick()
     compose.onNodeWithText("Back").assertIsDisplayed()
     compose.onNodeWithText("Known handoff").assertIsDisplayed()
-    compose.runOnIdle { assertEquals(listOf("known-trip"), requestedIds) }
-    compose.onNodeWithText("Back").performClick()
+    compose.runOnIdle { assertEquals(listOf(SEEDED_TRIP_ID), requestedIds) }
+    click(AppTestTags.BACK_BUTTON)
 
     // Updating session state with the same UID recomposes the root without changing accounts.
     repository.signInWithEmailResult = Result.success(alice.copy(displayName = "Alice updated"))
     repository.signInWithEmail("", "")
-    compose.onNodeWithText("Injected store").assertIsDisplayed()
+    compose.assertTripCard(SEEDED_TRIP_ID, "Injected store")
     click(AppTestTags.PROFILE_BUTTON)
     assertScreen(NavigationTestTags.PROFILE_SCREEN)
     pressBack()
-    compose.onNodeWithText("Injected store").assertIsDisplayed()
+    compose.assertTripCard(SEEDED_TRIP_ID, "Injected store")
     click(AppTestTags.HOME_BUTTON)
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(AppTestTags.COMMANDO_MODE)
@@ -524,39 +511,31 @@ class CommandoAppTest {
     compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
     click(AppTestTags.REQUESTER_MODE)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText("Injected store").assertIsDisplayed()
+    compose.assertTripCard(SEEDED_TRIP_ID, "Injected store")
     compose.runOnIdle {
       // The list reloads on every resume: one load on entry plus one per return (Details, Profile).
-      assertEquals(4, listLoads)
+      assertEquals(4, scripted.upcomingLoads)
       assertTrue(homeLoads > 0)
-      assertEquals(listOf("known-trip"), requestedIds)
+      assertEquals(listOf(SEEDED_TRIP_ID), requestedIds)
     }
   }
 
   @Test
   fun locationFilterSurvivesNavigationReloadsOnReturnAndResetsOnSignOut() = runTest {
     val repository = FakeAuthRepository(alice)
-    val fake = twoTrips(alice.uid)
-    var listLoads = 0
-    val trips =
-        object : TripRepository by fake {
-          override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
-            listLoads++
-            return fake.getUpcomingTrips()
-          }
-        }
+    val trips = ScriptedTripRepository(twoTrips(alice.uid))
     show(repository, trips)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
-    compose.runOnIdle { assertEquals(1, listLoads) }
+    compose.assertTripCard(secondTrip)
+    compose.runOnIdle { assertEquals(1, trips.upcomingLoads) }
     // CE building is about 60 m from the first handoff and over 1 km from the second.
     click(AvailableTripsScreenTestTags.LOCATION_FIELD)
-    compose.onNodeWithText("CE building").performClick()
+    click(CreateTripScreenTestTags.locationOption("CE building"))
     val assertFiltered = {
       compose
           .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
           .assert(hasText("CE building"))
-      compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
+      compose.assertTripCard(firstTrip)
       compose.onNodeWithText(secondTrip.store.name).assertDoesNotExist()
     }
     assertFiltered()
@@ -568,26 +547,96 @@ class CommandoAppTest {
     compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
     click(NavigationTestTags.MAP_LIST)
     assertFiltered()
-    compose.onNodeWithText(firstTrip.store.name).performClick()
+    compose.onTripCard(firstTrip.id).performClick()
     assertTripDetails(firstTrip)
-    compose.onNodeWithText("Back").performClick()
+    click(AppTestTags.BACK_BUTTON)
     assertFiltered()
     click(AppTestTags.PROFILE_BUTTON)
     assertScreen(NavigationTestTags.PROFILE_SCREEN)
     pressBack()
     assertFiltered()
-    compose.runOnIdle { assertEquals(5, listLoads) }
+    compose.runOnIdle { assertEquals(5, trips.upcomingLoads) }
 
     compose.runOnIdle { repository.signOut() }
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     click(HomeTestTags.TRIP_ACTION)
     compose
         .onNodeWithTag(AvailableTripsScreenTestTags.LOCATION_FIELD)
-        .assert(hasText("All locations"))
-    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
+        .assert(hasText(compose.activity.getString(R.string.trips_location_placeholder)))
+    compose.assertTripCard(secondTrip)
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
+  }
+
+  @Test
+  fun storeFilterAppliesToListAndMapSurvivesNavigationAndClears() {
+    val migros =
+        discoveryTrip(
+            "migros-trip",
+            Location("Migros Ecublens", 46.52, 6.63),
+            Location("First handoff", 46.52, 6.57),
+            tripTime.plusSeconds(3600),
+            createdAt = tripTime,
+        )
+    val coop =
+        migros.copy(
+            id = "coop-trip",
+            store = Location("Coop Renens", 46.53, 6.64),
+            scheduledAt = tripTime.plusSeconds(7200),
+        )
+    // Expanded filters push later cards below the fold, so scroll the list before asserting.
+    val assertListedTripCard = { trip: Trip ->
+      compose
+          .onNode(hasScrollToNodeAction())
+          .performScrollToNode(hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id)))
+      compose.assertTripCard(trip)
+    }
+    show(
+        FakeAuthRepository(alice),
+        FakeTripRepository(alice.uid, now = { tripTime }, initialTrips = listOf(migros, coop)),
+    )
+    click(HomeTestTags.TRIP_ACTION)
+    assertListedTripCard(migros)
+    assertListedTripCard(coop)
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    click(TripSearchTestTags.TOGGLE)
+    click(TripSearchTestTags.store(StoreFilter.MIGROS))
+    val assertMigrosOnly = {
+      compose
+          .onNodeWithTag(TripSearchTestTags.TOGGLE)
+          .assert(
+              hasText(
+                  compose.activity.getString(
+                      R.string.trips_filters_active,
+                      compose.activity.getString(R.string.trips_store_migros),
+                  )
+              )
+          )
+      assertListedTripCard(migros)
+      compose.onTripCard(coop.id).assertDoesNotExist()
+    }
+    assertMigrosOnly()
+    // The expanded filter panel can scroll the list's first item (the map button) out of
+    // composition, so scroll the list itself back to it.
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(NavigationTestTags.OPEN_MAP))
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performClick()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
+    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
+    pressBack()
+    assertMigrosOnly()
+    compose
+        .onNode(hasScrollToNodeAction())
+        .performScrollToNode(hasTestTag(TripSearchTestTags.CLEAR))
+    click(TripSearchTestTags.CLEAR)
+    compose
+        .onNodeWithTag(TripSearchTestTags.TOGGLE)
+        .assert(hasText(compose.activity.getString(R.string.trips_filters)))
+    compose.onNodeWithTag(TripSearchTestTags.CLEAR).assertDoesNotExist()
+    assertListedTripCard(migros)
+    assertListedTripCard(coop)
   }
 
   @Test
@@ -619,25 +668,27 @@ class CommandoAppTest {
     pressBack()
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled()
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
-    compose.onNode(hasScrollAction()).performScrollToNode(hasText(firstTrip.store.name))
-    compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
-    compose.onNode(hasScrollAction()).performScrollToNode(hasText(secondTrip.store.name))
-    compose.onNodeWithText(secondTrip.store.name).assertIsDisplayed()
+    for (trip in listOf(firstTrip, secondTrip)) {
+      compose
+          .onNode(hasScrollAction())
+          .performScrollToNode(hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id)))
+      compose.assertTripCard(trip)
+    }
   }
 
   @Test
   fun tripListsAreNotLoadedWhileSignedOutAndAreReloadedForNewSessions() = runTest {
     val repository = FakeAuthRepository()
     val requestedUids = mutableListOf<String>()
-    val fake = seededTrips(alice.uid, "alice store")
     val trips =
-        object : TripRepository by fake {
-          override suspend fun getUpcomingTrips(): TripResult<List<Trip>> {
-            val uid = requireNotNull(repository.currentUser).uid
-            requestedUids.add(uid)
-            return seededTrips(uid, "$uid store").getUpcomingTrips()
-          }
-        }
+        ScriptedTripRepository(
+            seededTrips(alice.uid, "alice store"),
+            upcoming = {
+              val uid = requireNotNull(repository.currentUser).uid
+              requestedUids.add(uid)
+              seededTrips(uid, "$uid store").getUpcomingTrips()
+            },
+        )
     show(repository, trips)
     assertScreen(NavigationTestTags.LOGIN_SCREEN)
     compose.runOnIdle { assertTrue(requestedUids.isEmpty()) }
@@ -645,25 +696,25 @@ class CommandoAppTest {
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText("alice store").assertIsDisplayed()
+    compose.assertTripCard(SEEDED_TRIP_ID, "alice store")
 
     repository.signInWithEmailResult = Result.success(bob)
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText("bob store").assertIsDisplayed()
+    compose.assertTripCard(SEEDED_TRIP_ID, "bob store")
     compose.onNodeWithText("alice store").assertDoesNotExist()
     compose.runOnIdle { assertEquals(listOf(alice.uid, bob.uid), requestedUids) }
 
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithText("bob store").assertDoesNotExist()
     compose.runOnIdle { assertEquals(listOf(alice.uid, bob.uid), requestedUids) }
     repository.signInWithEmail("", "")
     assertScreen(NavigationTestTags.HOME_SCREEN)
     click(HomeTestTags.TRIP_ACTION)
-    compose.onNodeWithText("bob store").assertIsDisplayed()
+    compose.assertTripCard(SEEDED_TRIP_ID, "bob store")
     compose.runOnIdle { assertEquals(listOf(alice.uid, bob.uid, bob.uid), requestedUids) }
   }
 
@@ -731,7 +782,7 @@ class CommandoAppTest {
     click(AppTestTags.REQUESTER_MODE)
     click(AppTestTags.TRIPS_BUTTON)
     compose.onNodeWithTag(MyTripsTestTags.SCREEN).assertDoesNotExist()
-    compose.onNodeWithText(firstTrip.store.name).assertIsDisplayed()
+    compose.assertTripCard(firstTrip)
   }
 
   @Test
@@ -840,7 +891,7 @@ class CommandoAppTest {
     click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
@@ -901,7 +952,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     assertProfile("Alice Smith", "alice@example.com", "AS")
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
     assertNull(repository.currentUser)
     pressBack()
@@ -919,7 +970,7 @@ class CommandoAppTest {
     show(repository)
     click(AppTestTags.PROFILE_BUTTON)
     compose.runOnIdle { repository.signOut() }
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
   }
 
@@ -937,7 +988,7 @@ class CommandoAppTest {
     compose.runOnIdle { assertEquals(0, picker.clearCalls) }
     repository.signOutResult = Result.success(Unit)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 
@@ -989,7 +1040,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     assertProfile("Alice Smith", "alice@example.com", "AS")
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
     compose.onNodeWithText("Alice Smith").assertDoesNotExist()
@@ -1066,6 +1117,44 @@ class CommandoAppTest {
   }
 
   @Test
+  fun welcomeOpensBothFormsAndSystemBackReturnsWithoutFinishing() {
+    show(FakeAuthRepository(), openForm = false)
+    assertScreen(WelcomeTestTags.SCREEN)
+    compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    pressBack()
+    assertScreen(WelcomeTestTags.SCREEN)
+    compose.runOnIdle { assertTrue(!compose.activity.isFinishing) }
+    compose.onNodeWithTag(WelcomeTestTags.CREATE_ACCOUNT).performScrollTo().performClick()
+    assertScreen(NavigationTestTags.SIGN_UP_SCREEN)
+    click("auth_back")
+    assertScreen(WelcomeTestTags.SCREEN)
+    compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+  }
+
+  @Test
+  fun repeatedWelcomeActionsKeepOnlyOneAuthEntry() {
+    show(FakeAuthRepository(), openForm = false)
+    for ((tag, screen) in
+        listOf(
+            WelcomeTestTags.LOGIN to NavigationTestTags.LOGIN_SCREEN,
+            WelcomeTestTags.CREATE_ACCOUNT to NavigationTestTags.SIGN_UP_SCREEN,
+        )) {
+      compose.onNodeWithTag(tag).performScrollTo().performSemanticsAction(
+          SemanticsActions.OnClick
+      ) {
+        it()
+        it()
+      }
+      assertScreen(screen)
+      pressBack()
+      assertScreen(WelcomeTestTags.SCREEN)
+      compose.runOnIdle { assertTrue(!compose.activity.isFinishing) }
+    }
+  }
+
+  @Test
   fun defaultAppUsesProviderAndEmailLoginReachesHome() {
     val repository = FakeAuthRepository()
     repository.signInWithEmailResult = Result.success(alice)
@@ -1080,14 +1169,18 @@ class CommandoAppTest {
         )
       }
     }
+    compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
     fillEmailForm()
     click("auth_submit")
     assertScreen(NavigationTestTags.HOME_SCREEN)
     assertEquals(alice, repository.currentUser)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").assertTextEquals("", "Your university email")
+    pressBack()
+    assertScreen(WelcomeTestTags.SCREEN)
     pressBack()
     compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
   }
@@ -1153,7 +1246,7 @@ class CommandoAppTest {
     assertEquals(alice, repository.currentUser)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 
@@ -1198,7 +1291,7 @@ class CommandoAppTest {
     show(repository, picker)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
     assertNull(repository.currentUser)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
@@ -1212,7 +1305,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     try {
-      assertScreen(NavigationTestTags.LOGIN_SCREEN)
+      assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
       compose.runOnIdle {
         assertNull(repository.currentUser)
         assertEquals(1, picker.clearCalls)

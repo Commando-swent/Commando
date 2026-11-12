@@ -9,6 +9,7 @@ import com.android.sample.data.repository.OrderResult
 import com.android.sample.model.NotificationPreferences
 import com.android.sample.model.OrderNotification
 import com.android.sample.ui.session.SessionGuard
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -47,7 +48,7 @@ class NotificationsViewModel(
     sessionChanges: Flow<String?>,
 ) : ViewModel() {
   private val session = SessionGuard(currentUserId)
-  private val inboxPage = Page {
+  private val inboxPage = PageController {
     when (val result = repository.getNotifications()) {
       is OrderResult.Success ->
           if (result.data.any { it.event.recipientId != session.initialUserId })
@@ -56,7 +57,7 @@ class NotificationsViewModel(
       is OrderResult.Error -> result
     }
   }
-  private val preferencesPage = Page(repository::getPreferences)
+  private val preferencesPage = PageController(repository::getPreferences)
 
   /** Inbox entries in repository order; a failed read update never optimistically marks them. */
   val inbox: StateFlow<NotificationPageState<List<OrderNotification>>> = inboxPage.uiState
@@ -82,10 +83,13 @@ class NotificationsViewModel(
   /** Retries the last failed read-state update while the same content and session are active. */
   fun retryReadUpdate() = inboxPage.retry()
 
-  /** Retries the last failed preference snapshot without asking the UI to retain it. */
+  /** Retries the last failed preference changes without asking the UI to retain them. */
   fun retryPreferenceUpdate() = preferencesPage.retry()
 
-  /** Marks a currently visible unread entry; ignores unknown, read or already-saving entries. */
+  /**
+   * Marks a visible unread entry. Disable inbox mutation controls while its page isSaving; further
+   * writes on that page, unknown entries and already-read entries are ignored.
+   */
   fun markAsRead(notificationId: String) {
     if (!active()) return
     val content = inbox.value as? NotificationPageState.Content ?: return
@@ -95,11 +99,25 @@ class NotificationsViewModel(
     }
   }
 
-  /** Saves an entire preference snapshot; confirmed settings stay visible until success. */
+  /**
+   * Saves changed toggles, then reloads authoritative settings from all devices. Disable preference
+   * controls while their page isSaving; further writes on that page are ignored.
+   */
   fun updatePreferences(settings: NotificationPreferences) {
     if (!active()) return
-    if ((preferences.value as? NotificationPageState.Content)?.value == settings) return
-    preferencesPage.save({ repository.updatePreferences(settings) }) { settings }
+    val previous = (preferences.value as? NotificationPageState.Content)?.value ?: return
+    if (previous == settings) return
+    preferencesPage.save(
+        {
+          repository.updatePreferences(
+              newOrders = settings.newOrders.takeIf { it != previous.newOrders },
+              orderDecisions = settings.orderDecisions.takeIf { it != previous.orderDecisions },
+          )
+        },
+        reloadAfterSuccess = true,
+    ) {
+      settings
+    }
   }
 
   private fun active(): Boolean =
@@ -114,7 +132,7 @@ class NotificationsViewModel(
   }
 
   /** Shared lifecycle for the two pages, without sharing their data, loading or failure state. */
-  private inner class Page<T>(private val read: suspend () -> OrderResult<T>) {
+  private inner class PageController<T>(private val read: suspend () -> OrderResult<T>) {
     private val state = MutableStateFlow<NotificationPageState<T>>(NotificationPageState.Loading)
     val uiState: StateFlow<NotificationPageState<T>> = state.asStateFlow()
     private var job: Job? = null
@@ -132,40 +150,48 @@ class NotificationsViewModel(
         return
       }
       job?.cancel()
+      refreshAfterSave = false
       retrySave = null
       state.value = NotificationPageState.Loading
-      job = viewModelScope.launch {
-        val result = request(read)
-        if (active()) {
-          state.value =
-              when (result) {
-                is OrderResult.Success -> NotificationPageState.Content(result.data)
-                is OrderResult.Error -> NotificationPageState.Error(result.error)
-              }
-        }
-      }
+      job =
+          viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val result = request(read)
+            if (active()) {
+              state.value =
+                  when (result) {
+                    is OrderResult.Success -> NotificationPageState.Content(result.data)
+                    is OrderResult.Error -> NotificationPageState.Error(result.error)
+                  }
+            }
+          }
+      job?.start()
     }
 
-    fun save(write: suspend () -> OrderResult<Unit>, confirmed: (T) -> T) {
+    fun save(
+        write: suspend () -> OrderResult<Unit>,
+        reloadAfterSuccess: Boolean = false,
+        confirmed: (T) -> T,
+    ) {
       if (!active()) return
       val content = state.value as? NotificationPageState.Content ?: return
       if (content.isSaving) return
-      retrySave = { save(write, confirmed) }
+      retrySave = { save(write, reloadAfterSuccess, confirmed) }
+      refreshAfterSave = refreshAfterSave || reloadAfterSuccess
       state.value = content.copy(isSaving = true, saveError = null)
-      job = viewModelScope.launch {
-        val result = request(write)
-        if (!active()) return@launch
-        if (result is OrderResult.Success) retrySave = null
-        state.value =
-            when (result) {
-              is OrderResult.Success -> NotificationPageState.Content(confirmed(content.value))
-              is OrderResult.Error -> content.copy(saveError = result.error)
-            }
-        val reload = refreshAfterSave
-        refreshAfterSave = false
-        // Preserve visible failure feedback; a successful save may now reload authoritative data.
-        if (reload && result is OrderResult.Success) refresh()
-      }
+      job =
+          viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val result = request(write)
+            if (!active()) return@launch
+            if (result is OrderResult.Success) retrySave = null
+            state.value =
+                when (result) {
+                  is OrderResult.Success -> NotificationPageState.Content(confirmed(content.value))
+                  is OrderResult.Error -> content.copy(saveError = result.error)
+                }
+            // Preserve the error and pending reload until a retry succeeds or an explicit refresh.
+            if (result is OrderResult.Success && refreshAfterSave) refresh()
+          }
+      job?.start()
     }
 
     fun end() {

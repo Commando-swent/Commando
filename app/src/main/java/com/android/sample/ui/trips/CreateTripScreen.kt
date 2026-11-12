@@ -241,6 +241,8 @@ internal fun PublishErrorBanner(error: TripError) {
         TripError.PermissionDenied -> R.string.create_trip_publish_failed_permission
         TripError.InvalidData -> R.string.create_trip_publish_failed_invalid
         TripError.NotFound,
+        TripError.InvalidTransition,
+        TripError.OrdersStillOpen,
         TripError.Unknown -> R.string.create_trip_publish_failed_unknown
       }
   Row(

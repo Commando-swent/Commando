@@ -2,6 +2,7 @@ package com.android.sample.model
 
 // AI assistance: Claude Code; OpenAI Codex (classification tests).
 import java.time.Instant
+import java.time.ZoneOffset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -43,6 +44,10 @@ class TripLocationFilterTest {
   /** A point [meters] due north of [from], using the same Earth radius as the production code. */
   private fun north(from: Location, meters: Double) =
       Location("offset", from.latitude + Math.toDegrees(meters / 6_371_008.8), from.longitude)
+
+  /** The Sprint 3 location-only classification, now served by the shared search function. */
+  private fun classifyTrips(trips: List<Trip>, point: Location?) =
+      classifyTripSearch(trips, point, TripSearchCriteria(), now, ZoneOffset.UTC)
 
   @Test
   fun classificationDistinguishesEmptyNoMatchesAndOrderedMatches() {

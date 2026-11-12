@@ -95,7 +95,7 @@ class ProfileInformationTest {
             {},
             snackbarHost = { ProfilePhotoSnackbarHost(snackbar) },
         ) { padding ->
-          val (photo, onPhotoClick) = ProfilePhotoActions(model, snackbar)
+          val (photo, onPhotoClick) = rememberProfilePhotoActions(model, snackbar)
           ProfileScreen(
               profile.value,
               {},

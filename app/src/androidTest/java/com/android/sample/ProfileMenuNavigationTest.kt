@@ -111,7 +111,7 @@ class ProfileMenuNavigationTest {
     compose.onNode(hasSetTextAction()).assertDoesNotExist()
     capture("pr1-contact")
     compose.runOnIdle { auth.signOut() }
-    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertDoesNotExist()
   }
 }

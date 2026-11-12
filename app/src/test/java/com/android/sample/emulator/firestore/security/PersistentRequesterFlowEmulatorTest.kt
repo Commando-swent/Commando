@@ -1,6 +1,6 @@
 package com.android.sample.emulator.firestore.security
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; trip seeding (#233): Claude Code.
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.data.repository.*
 import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
@@ -49,14 +49,13 @@ class PersistentRequesterFlowEmulatorTest {
         draft.addItem(OrderItem("milk", "Milk", 220, 2))
         draft.updateCommission(150)
         // Exercise a real adapter/rules failure before a successful retry of the same draft.
-        val tripRef = owner.firestore.collection("trips").document(trip.id)
-        tripRef.update("status", "CANCELLED").await()
+        updateDocumentAsOwner("trips/${trip.id}", mapOf("status" to "CANCELLED"))
         val failed = ReviewOrderViewModel(session.repository, draft)
         store.put("failed", failed)
         failed.submit()
         failed.uiState.first { it.error != null }
         assertEquals(2, draft.draft.value.items.single().quantity)
-        tripRef.update("status", "PUBLISHED").await()
+        updateDocumentAsOwner("trips/${trip.id}", mapOf("status" to "PUBLISHED"))
         val review = failed
         review.submit()
         review.submit()

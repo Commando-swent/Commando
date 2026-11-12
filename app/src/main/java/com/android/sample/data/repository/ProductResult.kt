@@ -7,6 +7,8 @@ sealed class ProductError {
 
   data object InvalidQuery : ProductError()
 
+  data object InvalidCategory : ProductError()
+
   data object InvalidCursor : ProductError()
 
   data object NetworkError : ProductError()

@@ -1,56 +1,39 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex. Contract choices remain documented for teammate review.
-import com.android.sample.data.repository.NotificationFirestoreData.IS_READ
-import com.android.sample.data.repository.NotificationFirestoreData.RECIPIENT_ID
-import com.android.sample.data.repository.NotificationFirestoreData.VISIBLE
+import com.android.sample.data.repository.NotificationFirestoreData as Schema
 import com.android.sample.model.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
+import com.google.firebase.firestore.FirebaseFirestoreException.Code
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
-/**
- * Server-backed recipient inbox. Persisted events are processed with the recipient's private
- * preferences in a transaction. An invisible record permanently deduplicates a muted event.
- */
+/** Transactional recipient inbox; invisible records permanently deduplicate muted events. */
 class NotificationRepositoryFirestore(
     private val currentUserId: () -> String?,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) : NotificationRepository {
   override suspend fun getNotifications(): OrderResult<List<OrderNotification>> =
       session { uid, guard ->
-        val documents =
-            firestore
-                .collection(NotificationFirestoreData.EVENTS)
-                .whereEqualTo(RECIPIENT_ID, uid)
-                .get(Source.SERVER)
-                .await()
-                .documents
+        val events = firestore.collection(Schema.EVENTS).whereEqualTo(Schema.RECIPIENT_ID, uid)
+        val documents = events.get(Source.SERVER).await().documents
         guard()
-        val stored =
-            firestore
-                .notificationUser(uid)
-                .collection(NotificationFirestoreData.INBOX)
-                .get(Source.SERVER)
-                .await()
-                .documents
-                .associateBy { it.id }
+        val inbox = firestore.notificationUser(uid).collection(Schema.INBOX)
+        val stored = inbox.get(Source.SERVER).await().documents.associateBy { it.id }
         guard()
         val notifications = documents.mapNotNull { document ->
-          val event =
-              NotificationFirestoreData.decodeEvent(document.id, document.data.orEmpty())
-                  ?: throw error(FirebaseFirestoreException.Code.DATA_LOSS)
-          if (event.recipientId != uid)
-              throw error(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+          val data = document.data.orEmpty()
+          val event = Schema.decodeEvent(document.id, data)
+          if (data[Schema.RECIPIENT_ID] != uid) throw error(Code.PERMISSION_DENIED)
+          if (event == null) return@mapNotNull null
           val existing = stored[event.id]
           if (existing == null) process(event, uid, guard)
           else {
             val entry = decodeInbox(existing, uid)
-            if (entry.notification.event != event)
-                throw error(FirebaseFirestoreException.Code.DATA_LOSS)
+            if (entry.notification.event != event) throw error(Code.DATA_LOSS)
             entry.notification.takeIf { entry.visible }
           }
         }
@@ -61,22 +44,17 @@ class NotificationRepositoryFirestore(
 
   override suspend fun markAsRead(notificationId: String): OrderResult<Unit> =
       session { uid, guard ->
-        if (!notificationId.isDocumentId())
-            throw error(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
-        val ref =
-            firestore
-                .notificationUser(uid)
-                .collection(NotificationFirestoreData.INBOX)
-                .document(notificationId)
+        if (!notificationId.isDocumentId()) throw error(Code.INVALID_ARGUMENT)
+        val ref = firestore.notificationUser(uid).collection(Schema.INBOX).document(notificationId)
         firestore
             .runTransaction { transaction ->
               guard()
               val snapshot = transaction.get(ref)
               guard()
-              if (!snapshot.exists()) throw error(FirebaseFirestoreException.Code.NOT_FOUND)
+              if (!snapshot.exists()) throw error(Code.NOT_FOUND)
               val entry = decodeInbox(snapshot, uid)
-              if (!entry.visible) throw error(FirebaseFirestoreException.Code.NOT_FOUND)
-              if (!entry.notification.isRead) transaction.update(ref, IS_READ, true)
+              if (!entry.visible) throw error(Code.NOT_FOUND)
+              if (!entry.notification.isRead) transaction.update(ref, Schema.IS_READ, true)
               Unit
             }
             .await()
@@ -86,26 +64,38 @@ class NotificationRepositoryFirestore(
       session { uid, guard ->
         val data = preferenceRef(uid).get(Source.SERVER).await().data
         guard()
-        NotificationFirestoreData.decodePreferences(data)
-            ?: throw error(FirebaseFirestoreException.Code.DATA_LOSS)
+        Schema.decodePreferences(data) ?: throw error(Code.DATA_LOSS)
       }
 
-  override suspend fun updatePreferences(preferences: NotificationPreferences): OrderResult<Unit> =
-      session { uid, guard ->
-        guard()
-        preferenceRef(uid).set(NotificationFirestoreData.preferenceData(preferences)).await()
-      }
+  override suspend fun updatePreferences(
+      newOrders: Boolean?,
+      orderDecisions: Boolean?,
+  ): OrderResult<Unit> = session { uid, guard ->
+    val changes =
+        mapOf(Schema.NEW_ORDERS to newOrders, Schema.ORDER_DECISIONS to orderDecisions)
+            .filterValues { it != null }
+    if (changes.isNotEmpty()) {
+      val ref = preferenceRef(uid)
+      firestore
+          .runTransaction { transaction ->
+            guard()
+            val stored = transaction.get(ref)
+            val current = Schema.decodePreferences(stored.data) ?: throw error(Code.DATA_LOSS)
+            guard()
+            if (stored.exists()) transaction.update(ref, changes)
+            else transaction.set(ref, Schema.preferenceData(current) + changes)
+            Unit
+          }
+          .await()
+    }
+  }
 
   private suspend fun process(
       event: OrderNotificationEvent,
       uid: String,
       guard: () -> Unit,
   ): OrderNotification? {
-    val ref =
-        firestore
-            .notificationUser(uid)
-            .collection(NotificationFirestoreData.INBOX)
-            .document(event.id)
+    val ref = firestore.notificationUser(uid).collection(Schema.INBOX).document(event.id)
     return firestore
         .runTransaction { transaction ->
           guard()
@@ -113,20 +103,18 @@ class NotificationRepositoryFirestore(
           val result =
               if (existing.exists()) {
                 decodeInbox(existing, uid).also {
-                  if (it.notification.event != event)
-                      throw error(FirebaseFirestoreException.Code.DATA_LOSS)
+                  if (it.notification.event != event) throw error(Code.DATA_LOSS)
                 }
               } else {
                 val preferences =
-                    NotificationFirestoreData.decodePreferences(
-                        transaction.get(preferenceRef(uid)).data
-                    ) ?: throw error(FirebaseFirestoreException.Code.DATA_LOSS)
+                    Schema.decodePreferences(transaction.get(preferenceRef(uid)).data)
+                        ?: throw error(Code.DATA_LOSS)
                 guard()
                 val visible = preferences.allows(event.type)
                 transaction.set(
                     ref,
-                    NotificationFirestoreData.eventData(event) +
-                        mapOf(VISIBLE to visible, IS_READ to false),
+                    Schema.eventData(event) +
+                        mapOf(Schema.VISIBLE to visible, Schema.IS_READ to false),
                 )
                 InboxEntry(OrderNotification(event), visible)
               }
@@ -136,22 +124,13 @@ class NotificationRepositoryFirestore(
         .await()
   }
 
-  private fun decodeInbox(
-      snapshot: DocumentSnapshot,
-      uid: String,
-  ): InboxEntry {
+  private fun decodeInbox(snapshot: DocumentSnapshot, uid: String): InboxEntry {
     val data = snapshot.data.orEmpty()
-    if (data.keys != NotificationFirestoreData.INBOX_FIELDS)
-        throw error(FirebaseFirestoreException.Code.DATA_LOSS)
-    val event =
-        NotificationFirestoreData.decodeEvent(
-            snapshot.id,
-            data.filterKeys { it in NotificationFirestoreData.EVENT_FIELDS },
-        ) ?: throw error(FirebaseFirestoreException.Code.DATA_LOSS)
-    val read = data[IS_READ] as? Boolean ?: throw error(FirebaseFirestoreException.Code.DATA_LOSS)
-    val visible =
-        data[VISIBLE] as? Boolean ?: throw error(FirebaseFirestoreException.Code.DATA_LOSS)
-    if (event.recipientId != uid) throw error(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    if (!data.keys.containsAll(Schema.INBOX_FIELDS)) throw error(Code.DATA_LOSS)
+    val event = Schema.decodeEvent(snapshot.id, data) ?: throw error(Code.NOT_FOUND)
+    val read = data[Schema.IS_READ] as? Boolean ?: throw error(Code.DATA_LOSS)
+    val visible = data[Schema.VISIBLE] as? Boolean ?: throw error(Code.DATA_LOSS)
+    if (event.recipientId != uid) throw error(Code.PERMISSION_DENIED)
     return InboxEntry(OrderNotification(event, read), visible)
   }
 
@@ -159,10 +138,7 @@ class NotificationRepositoryFirestore(
   private data class InboxEntry(val notification: OrderNotification, val visible: Boolean)
 
   private fun preferenceRef(uid: String) =
-      firestore
-          .notificationUser(uid)
-          .collection(NotificationFirestoreData.PREFERENCES)
-          .document(NotificationFirestoreData.SETTINGS)
+      firestore.notificationUser(uid).collection(Schema.PREFERENCES).document(Schema.SETTINGS)
 
   private suspend fun <T> session(action: suspend (String, () -> Unit) -> T): OrderResult<T> {
     val context = currentCoroutineContext()
@@ -172,9 +148,7 @@ class NotificationRepositoryFirestore(
             ?: return OrderResult.Error(OrderError.NotAuthenticated)
     val guard = {
       context.ensureActive()
-      if (!sameSession(uid)) {
-        throw error(FirebaseFirestoreException.Code.UNAUTHENTICATED)
-      }
+      if (!sameSession(uid)) throw error(Code.UNAUTHENTICATED)
     }
     return try {
       guard()
@@ -193,6 +167,5 @@ class NotificationRepositoryFirestore(
   private fun sameSession(uid: String) =
       currentUserId() == uid && FirebaseAuth.getInstance(firestore.app).currentUser?.uid == uid
 
-  private fun error(code: FirebaseFirestoreException.Code) =
-      FirebaseFirestoreException("Notification operation failed", code)
+  private fun error(code: Code) = FirebaseFirestoreException("Notification operation failed", code)
 }

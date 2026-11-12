@@ -1,5 +1,6 @@
 package com.android.sample.ui.trips
 
+// AI assistance: Claude Code.
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -26,11 +27,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
+import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.HANDOFF_RADIUS_METERS
 import com.android.sample.model.Location
 import com.android.sample.model.Trip
+import com.android.sample.model.TripSearchCriteria
 import com.android.sample.ui.navigation.NavigationTestTags
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -48,6 +52,13 @@ object AvailableTripsScreenTestTags {
   const val LOCATION_FIELD = "availableTripsLocationField"
   const val CLEAR_LOCATION = "availableTripsClearLocation"
   const val NO_MATCHES = "availableTripsNoMatches"
+  const val LOADING = "availableTripsLoading"
+  const val EMPTY = "availableTripsEmpty"
+  const val ERROR = "availableTripsError"
+  const val RETRY = "availableTripsRetry"
+  const val INVALID_CRITERIA = "availableTripsInvalidCriteria"
+
+  fun tripCard(tripId: String) = "availableTripsTripCard_$tripId"
 }
 
 @Composable
@@ -60,6 +71,9 @@ fun AvailableTripsScreen(
     points: List<Location> = emptyList(),
     onSelectPoint: (Location) -> Unit = {},
     onClearPoint: () -> Unit = {},
+    criteria: TripSearchCriteria? = null,
+    onCriteriaChange: (TripSearchCriteria) -> Unit = {},
+    onClearCriteria: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
   AvailableTripsScreen(
@@ -72,9 +86,16 @@ fun AvailableTripsScreen(
       points,
       onSelectPoint,
       onClearPoint,
+      criteria,
+      onCriteriaChange,
+      onClearCriteria,
   )
 }
 
+/**
+ * Stateless available-trips list. Search controls are shown only when [criteria] is non-null; the
+ * owner keeps the criteria (session-scoped) and applies [onCriteriaChange] / [onClearCriteria].
+ */
 @Composable
 fun AvailableTripsScreen(
     state: AvailableTripsUiState,
@@ -86,6 +107,10 @@ fun AvailableTripsScreen(
     points: List<Location> = emptyList(),
     onSelectPoint: (Location) -> Unit = {},
     onClearPoint: () -> Unit = {},
+    criteria: TripSearchCriteria? = null,
+    onCriteriaChange: (TripSearchCriteria) -> Unit = {},
+    onClearCriteria: () -> Unit = {},
+    today: LocalDate = LocalDate.now(),
 ) {
   // One scrolling container, so every state stays reachable on small screens with large fonts.
   LazyColumn(
@@ -144,12 +169,26 @@ fun AvailableTripsScreen(
         }
       }
     }
+    criteria?.let {
+      item {
+        TripSearchControls(
+            criteria = it,
+            onCriteriaChange = onCriteriaChange,
+            onClear = onClearCriteria,
+            distanceAvailable = selectedPoint != null,
+            today = today,
+            labelColor = runsMuted,
+        )
+      }
+    }
     when (state) {
       AvailableTripsUiState.Loading ->
           item {
             val loading = stringResource(R.string.trips_loading)
             Column(
-                Modifier.semantics { contentDescription = loading },
+                Modifier.testTag(AvailableTripsScreenTestTags.LOADING).semantics {
+                  contentDescription = loading
+                },
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
               repeat(4) {
@@ -164,16 +203,35 @@ fun AvailableTripsScreen(
           }
       is AvailableTripsUiState.Content ->
           items(state.trips, key = Trip::id) { trip -> TripCard(trip) { onTripSelected(trip.id) } }
-      AvailableTripsUiState.Empty -> item { TripStatusCard(stringResource(R.string.trips_empty)) }
+      AvailableTripsUiState.Empty ->
+          item {
+            TripStatusCard(
+                stringResource(R.string.trips_empty),
+                Modifier.testTag(AvailableTripsScreenTestTags.EMPTY),
+            )
+          }
       is AvailableTripsUiState.NoMatches ->
           item {
             TripStatusCard(
-                stringResource(R.string.trips_no_matches, state.location.name),
+                noMatchesMessage(state.location),
                 modifier = Modifier.testTag(AvailableTripsScreenTestTags.NO_MATCHES),
             )
           }
+      is AvailableTripsUiState.InvalidCriteria ->
+          item {
+            TripStatusCard(
+                criteriaProblemMessage(state.problem),
+                Modifier.testTag(AvailableTripsScreenTestTags.INVALID_CRITERIA),
+            )
+          }
       is AvailableTripsUiState.Error ->
-          item { TripStatusCard(stringResource(R.string.trips_error), onRetry) }
+          item {
+            TripStatusCard(
+                stringResource(R.string.trips_error),
+                Modifier.testTag(AvailableTripsScreenTestTags.ERROR),
+                onRetry = onRetry,
+            )
+          }
     }
   }
 }
@@ -184,7 +242,7 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
   val departure = formatTripDeparture(trip.scheduledAt, locale)
   Card(
       onClick = onClick,
-      modifier = Modifier.fillMaxWidth(),
+      modifier = Modifier.fillMaxWidth().testTag(AvailableTripsScreenTestTags.tripCard(trip.id)),
       shape = RoundedCornerShape(16.dp),
       colors = CardDefaults.cardColors(containerColor = runsSurfaceContainer),
       border = BorderStroke(1.dp, runsOutlineVariant),
@@ -211,8 +269,8 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
 @Composable
 private fun TripStatusCard(
     message: String,
-    onRetry: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onRetry: (() -> Unit)? = null,
 ) {
   Card(
       modifier = modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
@@ -267,7 +325,7 @@ private fun TripStatusCard(
       if (onRetry != null) {
         Button(
             onClick = onRetry,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(AvailableTripsScreenTestTags.RETRY),
             colors =
                 ButtonDefaults.buttonColors(
                     containerColor = runsAccent,
@@ -291,3 +349,19 @@ internal fun formatTripDeparture(
         .withLocale(locale)
         .withZone(zoneId)
         .format(instant)
+
+/** No-match copy shared by list and map: names the point only when it alone filtered trips out. */
+@Composable
+internal fun noMatchesMessage(location: Location?): String =
+    location?.let { stringResource(R.string.trips_no_matches, it.name) }
+        ?: stringResource(R.string.trips_no_matches_filters)
+
+/** Copy for search criteria that cannot match any upcoming trip, shared by list and map. */
+@Composable
+internal fun criteriaProblemMessage(problem: CriteriaProblem): String =
+    stringResource(
+        when (problem) {
+          CriteriaProblem.INVALID_RANGE -> R.string.trips_range_invalid
+          CriteriaProblem.EXPIRED_RANGE -> R.string.trips_range_expired
+        }
+    )

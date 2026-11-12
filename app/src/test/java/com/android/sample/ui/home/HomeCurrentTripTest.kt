@@ -139,6 +139,6 @@ class HomeCurrentTripTest {
     compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
     compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_BUTTON).performClick()
     compose.onNodeWithTag(HomeTestTags.CURRENT_TRIP).assertDoesNotExist()
-    compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
   }
 }

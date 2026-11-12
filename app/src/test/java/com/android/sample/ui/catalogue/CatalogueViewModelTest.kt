@@ -7,6 +7,7 @@ import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.TripError
+import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Location
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
@@ -41,7 +42,13 @@ import org.junit.Test
 internal class StubProductRepository(
     var result: ProductResult<List<Product>> = ProductResult.Success(emptyList())
 ) : ProductRepository {
-  data class Request(val storeId: String, val query: String, val cursor: String?, val limit: Int)
+  data class Request(
+      val storeId: String,
+      val query: String,
+      val cursor: String?,
+      val limit: Int,
+      val category: String? = null,
+  )
 
   val requests = mutableListOf<Request>()
   var gate: CompletableDeferred<Unit>? = null
@@ -55,8 +62,9 @@ internal class StubProductRepository(
       query: String,
       cursor: String?,
       limit: Int,
+      category: String?,
   ): ProductResult<ProductPage> {
-    requests += Request(storeId, query, cursor, limit)
+    requests += Request(storeId, query, cursor, limit, category)
     thrown?.let { throw it }
     gate?.let { held -> suspendCoroutine { done -> held.invokeOnCompletion { done.resume(Unit) } } }
     val all =
@@ -69,15 +77,36 @@ internal class StubProductRepository(
           return ProductResult.Error(it)
         }
     val words = query.lowercase().split(' ').filter { it.isNotBlank() }
-    val matches = all.filter { product -> words.all { product.name.lowercase().contains(it) } }
+    val matches = all.filter { product ->
+      (category == null || product.category == category) &&
+          words.all { product.name.lowercase().contains(it) }
+    }
     val start = cursor?.let { id -> matches.indexOfFirst { it.id == id } + 1 } ?: 0
     val page = matches.drop(start).take(limit)
     return ProductResult.Success(ProductPage(page, page.takeIf { it.size == limit }?.last()?.id))
   }
+
+  override suspend fun getFavouriteProducts(storeId: String) =
+      ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
+
+  var categories: ProductResult<List<String>> = ProductResult.Success(emptyList())
+  val categoryRequests = mutableListOf<String>()
+
+  override suspend fun getCategories(storeId: String): ProductResult<List<String>> {
+    categoryRequests += storeId
+    return categories
+  }
+
+  override suspend fun setFavourite(storeId: String, productId: String, favourite: Boolean) =
+      ProductResult.Success(Unit)
 }
 
 internal fun migrosProducts(range: IntRange) = range.map {
   Product("migros:%03d".format(it), "migros", "Product $it", 100)
+}
+
+internal fun coopProducts(range: IntRange) = range.map {
+  Product("coop:%03d".format(it), "coop", "Coop $it", 150)
 }
 
 internal fun catalogueTrip(id: String, store: String) =
@@ -151,6 +180,55 @@ class CatalogueViewModelTest {
     advanceUntilIdle()
     assertEquals(listOf(request(store = "coop")), products.requests)
     assertEquals(listOf(coopMilk), loaded(vm))
+  }
+
+  @Test
+  fun coopSearchAndPagesStayOnCoopAndDropProductsOfAnotherChain() = runTest {
+    // A Migros product inside a Coop page uses up the limit but is never shown.
+    products.result =
+        ProductResult.Success(coopProducts(0..48) + migrosProducts(0..0) + coopProducts(49..50))
+    val vm = viewModel(coopTrip.id)
+    advanceUntilIdle()
+    assertEquals(coopProducts(0..48), loaded(vm))
+
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(
+        listOf(request(store = "coop"), request(cursor = "migros:000", store = "coop")),
+        products.requests,
+    )
+    assertEquals(coopProducts(0..50), loaded(vm))
+    assertNull(content(vm).nextCursor)
+
+    vm.onQueryChange("Coop 50")
+    advanceUntilIdle()
+    assertEquals(request("Coop 50", store = "coop"), products.requests.last())
+    assertEquals(coopProducts(50..50), loaded(vm))
+  }
+
+  @Test
+  fun switchingFromAMigrosPageInFlightToCoopShowsOnlyCoopProducts() = runTest {
+    products.result = ProductResult.Success(coopProducts(0..1) + migrosProducts(0..59))
+    val draft = OrderDraftState(migrosTrip.id)
+    val migros = viewModel(draft = draft)
+    advanceUntilIdle()
+    migros.add("migros:001")
+    val late = CompletableDeferred<Unit>()
+    products.gate = late
+    migros.loadMore() // Still pending when the requester opens the Coop trip.
+    runCurrent()
+
+    products.gate = null
+    val coop = viewModel(coopTrip.id, draft)
+    advanceUntilIdle()
+    late.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(coopProducts(0..1), loaded(coop))
+    assertTrue(coop.uiState.value.items.isEmpty())
+    coop.add("coop:001")
+    coop.increment("coop:001")
+    assertEquals(coopTrip.id, draft.draft.value.tripId)
+    assertEquals(listOf(OrderItem("coop:001", "Coop 1", 150, 2)), draft.draft.value.items)
   }
 
   @Test

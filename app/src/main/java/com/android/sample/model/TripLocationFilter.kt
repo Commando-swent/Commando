@@ -46,28 +46,25 @@ fun filterTripsServing(
   }
 }
 
-/** Finite latitude in -90..90 and longitude in -180..180; the name is not checked. */
-fun Location.hasValidCoordinates(): Boolean =
-    latitude.isFinite() &&
-        latitude in -90.0..90.0 &&
-        longitude.isFinite() &&
-        longitude in -180.0..180.0
+/** Latitude in -90..90 and longitude in -180..180; NaN and infinities fail both ranges. */
+internal fun isValidCoordinate(latitude: Double, longitude: Double): Boolean =
+    latitude in -90.0..90.0 && longitude in -180.0..180.0
+
+/** Whether this location has valid geographic coordinates; its name is not checked. */
+fun Location.hasValidCoordinates(): Boolean = isValidCoordinate(latitude, longitude)
 
 /** Shared filtered-feed outcomes for the requester list and map. */
 sealed interface TripFeed {
   data object Empty : TripFeed
 
-  data class NoMatches(val location: Location) : TripFeed
+  /**
+   * The source has trips but none match. [location] names the selected point when it is the only
+   * active filter, and is null when store or departure criteria also narrowed the results.
+   */
+  data class NoMatches(val location: Location?) : TripFeed
 
   data class Matches(val trips: List<Trip>) : TripFeed
-}
 
-/**
- * Distinguishes an empty source from zero filter matches, preserving repository eligibility/order.
- */
-fun classifyTrips(trips: List<Trip>, point: Location?): TripFeed {
-  if (trips.isEmpty()) return TripFeed.Empty
-  val matches = filterTripsServing(trips, point)
-  return if (point != null && matches.isEmpty()) TripFeed.NoMatches(point)
-  else TripFeed.Matches(matches)
+  /** The search criteria cannot match any upcoming trip; see [CriteriaProblem]. */
+  data class InvalidCriteria(val problem: CriteriaProblem) : TripFeed
 }

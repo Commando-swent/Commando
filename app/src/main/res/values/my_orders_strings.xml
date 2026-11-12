@@ -10,8 +10,10 @@
     <string name="my_orders_retry">Retry</string>
     <string name="my_orders_handoff">Handoff: %1$s</string>
     <string name="my_orders_trip_unavailable">Trip unavailable</string>
+    <string name="my_orders_total">Total: %1$s</string>
+    <string name="my_orders_price_breakdown">Products: %1$s · Commission: %2$s</string>
     <plurals name="my_orders_items">
-        <item quantity="one">%1$d item · %2$s</item>
-        <item quantity="other">%1$d items · %2$s</item>
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
     </plurals>
 </resources>

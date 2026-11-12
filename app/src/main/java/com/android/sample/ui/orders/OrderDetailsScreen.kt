@@ -1,6 +1,7 @@
 package com.android.sample.ui.orders
 
-// AI assistance: Claude Code for sharing the status badge (#147).
+// AI assistance: Claude Code (#147); OpenAI Codex (cancellation dialog and KDoc).
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -10,12 +11,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -31,7 +38,36 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
 import java.time.Instant
 
-/** Shared presentation; the caller owns loading, authorization and navigation. */
+/** Stable action selectors, independent of the presentation language. */
+object OrderDetailsTestTags {
+  const val ACCEPT = "order_details_accept"
+  const val REJECT = "order_details_reject"
+  const val CANCEL = "order_details_cancel"
+  const val EDIT = "order_details_edit"
+  const val CONFIRM_CANCEL = "order_details_confirm_cancel"
+  const val KEEP_ORDER = "order_details_keep_order"
+  const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
+  const val CONFIRM_RECEIPT = "order_details_confirm_receipt"
+}
+
+/**
+ * Displays an authorized order and the status actions eligible in [state].
+ *
+ * The caller owns loading, authorization, persistence and navigation. All mutation actions are
+ * disabled while saving; the displayed status always comes from the supplied persisted order.
+ * Cancellation first opens a confirmation dialog, and dismissing it performs no mutation.
+ *
+ * @param state Loading, error or confirmed content supplied by the shared ViewModel.
+ * @param onBack Returns to the existing caller-owned destination.
+ * @param onRetry Reloads content after a recoverable loading failure.
+ * @param modifier Layout modifier applied to the screen root.
+ * @param onDecision Requests an eligible owner's Accept/Reject decision.
+ * @param onMarkReadyForHandoff Requests an eligible owner's handoff-readiness transition.
+ * @param onEdit Opens the requester editing flow when the persisted order and trip are eligible.
+ * @param onCancel Requests cancellation only after the requester confirms the dialog.
+ * @param notice Optional contextual feedback rendered below the safe header in the scroll area.
+ * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
+ */
 @Composable
 fun OrderDetailsScreen(
     state: OrderDetailsUiState,
@@ -39,6 +75,11 @@ fun OrderDetailsScreen(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
     onDecision: (OrderDecision) -> Unit = {},
+    onMarkReadyForHandoff: () -> Unit = {},
+    onCancel: () -> Unit = {},
+    onEdit: (() -> Unit)? = null,
+    notice: String? = null,
+    onConfirmReceipt: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -93,10 +134,20 @@ fun OrderDetailsScreen(
             .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+      notice?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
-          OrderDecisionActions(state, onDecision)
+          if (state.canEdit && onEdit != null) {
+            OutlinedButton(
+                onClick = onEdit,
+                enabled = !state.isSaving,
+                modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.EDIT),
+            ) {
+              Text(stringResource(R.string.order_edit))
+            }
+          }
+          OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel, onConfirmReceipt)
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
@@ -128,15 +179,21 @@ fun OrderDetailsScreen(
 }
 
 @Composable
-private fun OrderDecisionActions(
+private fun OrderStatusActions(
     state: OrderDetailsUiState.Content,
     onDecision: (OrderDecision) -> Unit,
+    onMarkReadyForHandoff: () -> Unit,
+    onCancel: () -> Unit,
+    onConfirmReceipt: () -> Unit,
 ) {
+  var confirmCancellation by
+      rememberSaveable(state.order.id, state.viewerId, state.canCancel) { mutableStateOf(false) }
   val message =
-      when {
-        state.decisionSaved -> R.string.order_decision_saved
-        state.decisionError is OrderError.AlreadyDecided -> R.string.order_decision_conflict
-        state.decisionError != null -> R.string.order_decision_error
+      when (val mutation = state.mutation) {
+        OrderMutationState.Saved -> R.string.order_decision_saved
+        is OrderMutationState.Failed ->
+            if (mutation.error is OrderError.AlreadyDecided) R.string.order_status_conflict
+            else R.string.order_status_error
         else -> null
       }
   if (message != null)
@@ -146,25 +203,80 @@ private fun OrderDecisionActions(
       OutlinedButton(
           onClick = { onDecision(OrderDecision.REJECT) },
           enabled = !state.isSaving,
-          modifier = Modifier.weight(1f),
+          modifier = Modifier.weight(1f).testTag(OrderDetailsTestTags.REJECT),
       ) {
         Text(stringResource(R.string.order_decision_reject))
       }
       Button(
           onClick = { onDecision(OrderDecision.ACCEPT) },
           enabled = !state.isSaving,
-          modifier = Modifier.weight(1f),
+          modifier = Modifier.weight(1f).testTag(OrderDetailsTestTags.ACCEPT),
       ) {
         Text(stringResource(R.string.order_decision_accept))
       }
     }
-    if (state.isSaving) {
-      LinearProgressIndicator(Modifier.fillMaxWidth())
-      Text(
-          stringResource(R.string.order_decision_saving),
-          Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-      )
+  }
+  if (state.canCancel) {
+    OutlinedButton(
+        onClick = { confirmCancellation = true },
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.CANCEL),
+        colors =
+            ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+    ) {
+      Text(stringResource(R.string.order_cancel_action))
     }
+  }
+  if (state.canMarkReadyForHandoff) {
+    Button(
+        onClick = onMarkReadyForHandoff,
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF),
+    ) {
+      Text(stringResource(R.string.order_mark_ready_for_handoff))
+    }
+  }
+  if (state.canConfirmReceipt) {
+    Button(
+        onClick = onConfirmReceipt,
+        enabled = !state.isSaving,
+        modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.CONFIRM_RECEIPT),
+    ) {
+      Text(stringResource(R.string.order_confirm_receipt))
+    }
+  }
+  if (state.isSaving) {
+    LinearProgressIndicator(Modifier.fillMaxWidth())
+    Text(
+        stringResource(R.string.order_status_saving),
+        Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+  }
+  if (confirmCancellation && state.canCancel && !state.isSaving) {
+    AlertDialog(
+        onDismissRequest = { confirmCancellation = false },
+        title = { Text(stringResource(R.string.order_cancel_dialog_title)) },
+        text = { Text(stringResource(R.string.order_cancel_dialog_message)) },
+        confirmButton = {
+          Button(
+              onClick = {
+                confirmCancellation = false
+                onCancel()
+              },
+              modifier = Modifier.testTag(OrderDetailsTestTags.CONFIRM_CANCEL),
+          ) {
+            Text(stringResource(R.string.order_cancel_confirm))
+          }
+        },
+        dismissButton = {
+          TextButton(
+              onClick = { confirmCancellation = false },
+              modifier = Modifier.testTag(OrderDetailsTestTags.KEEP_ORDER),
+          ) {
+            Text(stringResource(R.string.order_cancel_keep))
+          }
+        },
+    )
   }
 }
 
@@ -251,21 +363,31 @@ private fun OrderDetailsSection(label: String) {
   )
 }
 
-/** Localized order [status] with a distinct color per status; shared with incoming orders. */
+/** String resource for the persisted [status], shared by all order screens. */
+@StringRes
+internal fun orderStatusLabel(status: OrderStatus): Int =
+    when (status) {
+      OrderStatus.PENDING -> R.string.order_details_pending
+      OrderStatus.ACCEPTED -> R.string.order_details_accepted
+      OrderStatus.REJECTED -> R.string.order_details_rejected
+      OrderStatus.READY_FOR_HANDOFF -> R.string.order_details_ready_for_handoff
+      OrderStatus.CANCELLED -> R.string.order_details_cancelled
+      OrderStatus.DELIVERED -> R.string.order_details_delivered
+    }
+
+/** Localized order [status] with status-based colors; shared with incoming orders. */
 @Composable
 internal fun OrderStatusBadge(status: OrderStatus) {
-  val label =
-      when (status) {
-        OrderStatus.PENDING -> R.string.order_details_pending
-        OrderStatus.ACCEPTED -> R.string.order_details_accepted
-        OrderStatus.REJECTED -> R.string.order_details_rejected
-      }
+  val label = orderStatusLabel(status)
   val colors = MaterialTheme.colorScheme
   val (container, foreground) =
       when (status) {
         OrderStatus.PENDING -> colors.secondaryContainer to colors.onSecondaryContainer
         OrderStatus.ACCEPTED -> colors.primaryContainer to colors.onPrimaryContainer
         OrderStatus.REJECTED -> colors.errorContainer to colors.onErrorContainer
+        OrderStatus.READY_FOR_HANDOFF -> colors.tertiaryContainer to colors.onTertiaryContainer
+        OrderStatus.CANCELLED -> colors.surfaceVariant to colors.onSurfaceVariant
+        OrderStatus.DELIVERED -> colors.primaryContainer to colors.onPrimaryContainer
       }
   Surface(
       shape = CircleShape,
@@ -428,7 +550,10 @@ private fun OrderDetailsSkeleton() {
 
 @Preview(name = "Order details · Content", widthDp = 412, heightDp = 917)
 @Composable
-private fun OrderDetailsContentPreview() {
+private fun OrderDetailsContentPreview(
+    status: OrderStatus = OrderStatus.PENDING,
+    requester: Boolean = false,
+) {
   val time = Instant.parse("2026-10-13T16:30:00Z")
   val trip =
       Trip(
@@ -447,9 +572,20 @@ private fun OrderDetailsContentPreview() {
           OrderItem("bread", "Bread", 180, 1),
           OrderItem("bananas", "Bananas", 60, 3),
       )
-  val order = Order("preview-order", trip.id, "requester", items, 450, OrderStatus.PENDING, time)
-  OrderDetailsPreview(OrderDetailsUiState.Content(order, trip))
+  val order = Order("preview-order", trip.id, "requester", items, 450, status, time)
+  val viewerId = order.requesterId.takeIf { requester }
+  OrderDetailsPreview(OrderDetailsUiState.Content(order, trip, viewerId))
 }
+
+/** Local preview; confirm the real dialog to update only the fixture. */
+@Preview(name = "Cancellation · Pending requester", widthDp = 412, heightDp = 917)
+@Composable
+internal fun OrderCancellationPendingPreview() = OrderDetailsContentPreview(requester = true)
+
+@Preview(name = "Cancellation · Cancelled requester", widthDp = 412, heightDp = 917)
+@Composable
+internal fun OrderCancellationConfirmedPreview() =
+    OrderDetailsContentPreview(OrderStatus.CANCELLED, requester = true)
 
 @Preview(name = "Order details · Loading", widthDp = 412, heightDp = 917)
 @Composable
@@ -466,5 +602,21 @@ private fun OrderDetailsErrorPreview() =
 
 @Composable
 private fun OrderDetailsPreview(state: OrderDetailsUiState) {
-  SampleAppTheme { OrderDetailsScreen(state = state, onBack = {}, onRetry = {}) }
+  var current by remember(state) { mutableStateOf(state) }
+  SampleAppTheme {
+    OrderDetailsScreen(
+        state = current,
+        onBack = {},
+        onRetry = {},
+        onCancel = {
+          (current as? OrderDetailsUiState.Content)?.let {
+            current =
+                it.copy(
+                    order = it.order.copy(status = OrderStatus.CANCELLED),
+                    mutation = OrderMutationState.Saved,
+                )
+          }
+        },
+    )
+  }
 }

@@ -1,7 +1,8 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
-// Claude Code contributed the shared resume refresh, incoming orders (#147) and checklist (#193).
+// Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
+// and the trip owner's close and complete actions (#233).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -15,8 +16,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -55,19 +59,24 @@ import com.android.sample.ui.auth.AuthRoute
 import com.android.sample.ui.auth.AuthViewModel
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
+import com.android.sample.ui.auth.WelcomeScreen
 import com.android.sample.ui.catalogue.CatalogueRoute
 import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.map.MapLocationHost
 import com.android.sample.ui.map.TripMapScreen
+import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
 import com.android.sample.ui.orders.MyOrdersViewModel
 import com.android.sample.ui.orders.OrderDetailsScreen
+import com.android.sample.ui.orders.OrderDetailsUiState
 import com.android.sample.ui.orders.OrderDetailsViewModel
+import com.android.sample.ui.orders.OrderFlowDraft
 import com.android.sample.ui.orders.ReviewOrderRoute
 import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
@@ -77,11 +86,11 @@ import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileHelpScreen
 import com.android.sample.ui.profile.ProfileLanguageScreen
-import com.android.sample.ui.profile.ProfilePhotoActions
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
+import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
@@ -125,13 +134,28 @@ fun CommandoApp(
     val navController = rememberNavController()
     val user = sessionUiState.user
     val signedIn = user != null
+    var initialAuthMode by rememberSaveable { mutableStateOf(AuthMode.LOGIN) }
     NavHost(
         navController = navController,
-        startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Auth.name,
+        startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Welcome.name,
     ) {
       if (!signedIn) {
+        composable(route = CommandoScreens.Welcome.name) {
+          WelcomeScreen(
+              onLogIn = {
+                initialAuthMode = AuthMode.LOGIN
+                navController.navigate(CommandoScreens.Auth.name) { launchSingleTop = true }
+              },
+              onCreateAccount = {
+                initialAuthMode = AuthMode.SIGN_UP
+                navController.navigate(CommandoScreens.Auth.name) { launchSingleTop = true }
+              },
+          )
+        }
         composable(route = CommandoScreens.Auth.name) {
-          val authViewModel: AuthViewModel = viewModel { AuthViewModel(repository) }
+          val authViewModel: AuthViewModel = viewModel {
+            AuthViewModel(repository, initialAuthMode)
+          }
           val authUiState by authViewModel.uiState.collectAsState()
           Box(
               Modifier.fillMaxSize()
@@ -152,7 +176,7 @@ fun CommandoApp(
                 },
                 // Session observation changes the graph after authentication succeeds.
                 onAuthenticated = {},
-                onBack = { activity?.finish() },
+                onBack = { navController.popBackStack() },
             )
           }
         }
@@ -228,6 +252,8 @@ private fun AuthenticatedApp(
   val photoSnackbarHost = remember { SnackbarHostState() }
   val navController = rememberNavController()
   val backStackEntry by navController.currentBackStackEntryAsState()
+  val editingOrderId = backStackEntry?.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
+  DiscardAbandonedEdit(orders, editingOrderId)
   val currentScreen =
       CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
@@ -321,16 +347,21 @@ private fun AuthenticatedApp(
                   tripRepository,
                   locationFilter.selected,
                   loadImmediately = false,
+                  criteria = locationFilter.criteria,
               )
             }
         RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
         val selectedPoint by locationFilter.selected.collectAsState()
+        val criteria by locationFilter.criteria.collectAsState()
         AvailableTripsScreen(
             viewModel = availableTripsViewModel,
             selectedPoint = selectedPoint,
             points = TripLocations.handoffPoints,
             onSelectPoint = locationFilter::select,
             onClearPoint = locationFilter::clear,
+            criteria = criteria,
+            onCriteriaChange = locationFilter::setCriteria,
+            onClearCriteria = locationFilter::clearCriteria,
             onTripSelected = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },
@@ -343,6 +374,8 @@ private fun AuthenticatedApp(
         // The authenticated graph is keyed by account, so this list never outlives its owner.
         val myTripsViewModel: MyTripsViewModel =
             viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
+        // Coming back from Trip Details shows a status the owner just changed there.
+        RefreshOnResume(myTripsViewModel, myTripsViewModel::retry)
         MyTripsScreen(
             viewModel = myTripsViewModel,
             onTripSelected = { tripId ->
@@ -384,6 +417,7 @@ private fun AuthenticatedApp(
                     }
                   }
                 } else null,
+            showOwnerActions = appUiState.mode == AppMode.Commando && ownsTrip,
         )
       }
       composable(
@@ -434,37 +468,42 @@ private fun AuthenticatedApp(
       }
       composable(
           route = CommandoScreens.Catalogue.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+          arguments = orderFlowArguments(),
       ) { entry ->
         val tripId =
             requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
               "Catalogue requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
             }
-        // This entry stays on the back stack behind Review, so returning keeps the selection.
-        val catalogueViewModel: CatalogueViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              CatalogueViewModel(
-                  tripId,
-                  tripRepository,
-                  productRepository ?: ProductRepositoryFirestore(),
-                  orders.draftFor(tripId),
-              )
-            }
-        CatalogueRoute(
-            viewModel = catalogueViewModel,
-            onBack = { navController.popBackStack() },
-            onContinue = { trip ->
-              navController.navigate(CommandoScreens.reviewOrderRoute(trip.id)) {
-                launchSingleTop = true
+        val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
+        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
+            draft ->
+          // This entry stays on the back stack behind Review, so returning keeps the selection.
+          val catalogueViewModel: CatalogueViewModel =
+              viewModel(viewModelStoreOwner = entry) {
+                CatalogueViewModel(
+                    tripId,
+                    tripRepository,
+                    productRepository ?: ProductRepositoryFirestore(),
+                    draft,
+                )
               }
-            },
-        )
+          CatalogueRoute(
+              viewModel = catalogueViewModel,
+              onBack = {
+                editId?.let(orders::finishEdit)
+                navController.popBackStack()
+              },
+              onContinue = { trip ->
+                navController.navigate(CommandoScreens.reviewOrderRoute(trip.id, editId)) {
+                  launchSingleTop = true
+                }
+              },
+          )
+        }
       }
       composable(
           route = CommandoScreens.ReviewOrder.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
+          arguments = orderFlowArguments(),
       ) { entry ->
         val tripId =
             requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
@@ -475,42 +514,44 @@ private fun AuthenticatedApp(
         val tripViewModel: TripDetailsViewModel =
             viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
         val tripState by tripViewModel.uiState.collectAsState()
-        // The same draft holder as the Catalogue entry; there is no second editable cart.
-        val reviewOrderViewModel: ReviewOrderViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              ReviewOrderViewModel(orders.repository, orders.draftFor(tripId))
-            }
-        val openOrders = {
-          navController.navigate(CommandoScreens.MyOrders.name) {
-            popUpTo(CommandoScreens.Home.name)
-            launchSingleTop = true
+        val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
+        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
+            draft ->
+          // The same draft holder as the Catalogue entry; there is no second editable cart.
+          val reviewOrderViewModel: ReviewOrderViewModel =
+              viewModel(viewModelStoreOwner = entry) {
+                ReviewOrderViewModel(orders.repository, draft, editId)
+              }
+          val openOrders = {
+            editId?.let(orders::finishEdit)
+            navController.openSavedOrder(editId)
           }
-        }
-        val locale = LocalConfiguration.current.locales[0]
-        when (val state = tripState) {
-          // Before submission, Back and Add Products return to the retained Catalogue.
-          is TripDetailsUiState.Content ->
-              ReviewOrderRoute(
-                  viewModel = reviewOrderViewModel,
-                  trip = state.trip,
-                  onBack = {
-                    if (reviewOrderViewModel.uiState.value.order != null) openOrders()
-                    else navController.popBackStack()
-                  },
-                  onAddProducts = { navController.popBackStack() },
-                  // Both exits from confirmation discard the submitted draft's screens.
-                  onViewOrders = { openOrders() },
-                  tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
-                  isDemo = orders.isDemo,
-              )
-          // Reuse Trip Details for the loading and failure states of the same lookup.
-          else ->
-              TripDetailsScreen(
-                  state = state,
-                  onRetry = tripViewModel::retry,
-                  onBack = { navController.popBackStack() },
-                  onAddItems = null,
-              )
+          val locale = LocalConfiguration.current.locales[0]
+          when (val state = tripState) {
+            // Before submission, Back and Add Products return to the retained Catalogue.
+            is TripDetailsUiState.Content ->
+                ReviewOrderRoute(
+                    viewModel = reviewOrderViewModel,
+                    trip = state.trip,
+                    onBack = {
+                      if (reviewOrderViewModel.uiState.value.order != null) openOrders()
+                      else navController.popBackStack()
+                    },
+                    onAddProducts = { navController.popBackStack() },
+                    // Both exits from confirmation discard the submitted draft's screens.
+                    onViewOrders = { openOrders() },
+                    tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
+                    isDemo = orders.isDemo,
+                )
+            // Reuse Trip Details for the loading and failure states of the same lookup.
+            else ->
+                TripDetailsScreen(
+                    state = state,
+                    onRetry = tripViewModel::retry,
+                    onBack = { navController.popBackStack() },
+                    onAddItems = null,
+                )
+          }
         }
       }
       composable(route = CommandoScreens.TripMap.name) { entry ->
@@ -521,21 +562,26 @@ private fun AuthenticatedApp(
                   locationFilter.selected,
                   orders::currentUserId,
                   orders.sessionChanges,
+                  criteria = locationFilter.criteria,
               )
             }
         RefreshOnResume(map, map::refresh)
         val state by map.uiState.collectAsState()
         val selectedPoint by locationFilter.selected.collectAsState()
-        TripMapScreen(
-            state,
-            map::refresh,
-            map::selectTrip,
-            map::clearSelection,
-            onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
-            onBack = { navController.popBackStack() },
-            selectedPoint = selectedPoint,
-            onClearPoint = locationFilter::clear,
-        )
+        MapLocationHost(state == TripMapUiState.SessionEnded) { locationState, locate ->
+          TripMapScreen(
+              state,
+              map::refresh,
+              map::selectTrip,
+              map::clearSelection,
+              onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
+              onBack = { navController.popBackStack() },
+              selectedPoint = selectedPoint,
+              onClearPoint = locationFilter::clear,
+              locationState = locationState,
+              onLocate = locate,
+          )
+        }
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->
         val model: MyOrdersViewModel =
@@ -580,11 +626,25 @@ private fun AuthenticatedApp(
             onBack = { navController.popBackStack() },
             onRetry = model::retry,
             onDecision = model::decide,
+            onMarkReadyForHandoff = model::markReadyForHandoff,
+            onCancel = model::cancel,
+            onConfirmReceipt = model::confirmReceipt,
+            onEdit = {
+              (model.uiState.value as? OrderDetailsUiState.Content)
+                  ?.takeIf { it.canEdit }
+                  ?.let {
+                    navController.navigate(
+                        CommandoScreens.catalogueRoute(it.order.tripId, orderId)
+                    ) {
+                      launchSingleTop = true
+                    }
+                  }
+            },
         )
       }
       composable(route = CommandoScreens.Profile.name) {
         val profileUiState by profileViewModel.uiState.collectAsState()
-        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
+        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
@@ -628,7 +688,7 @@ private fun AuthenticatedApp(
           Unit
         }
         BackHandler { onCancel() }
-        val (photo, onPhotoClick) = ProfilePhotoActions(profileViewModel, photoSnackbarHost)
+        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
         draft?.let {
           EditProfileScreen(
               it,
@@ -671,3 +731,33 @@ private fun NavHostController.openScreen(screen: CommandoScreens) {
     navigate(screen.name) { launchSingleTop = true }
   }
 }
+
+/** Replaces a saved edit's details entry while preserving its caller, including My Orders. */
+private fun NavHostController.openSavedOrder(editId: String?) {
+  val target = editId?.let(CommandoScreens::orderDetailsRoute) ?: CommandoScreens.MyOrders.name
+  navigate(target) {
+    if (editId != null) popUpTo(target) { inclusive = true } else popUpTo(CommandoScreens.Home.name)
+    launchSingleTop = true
+  }
+}
+
+/** Clears the previous edit cart when navigation leaves its flow; rotation retains the cart. */
+@Composable
+private fun DiscardAbandonedEdit(orders: SessionOrderViewModel, editingOrderId: String?) {
+  var previousEditId by remember { mutableStateOf<String?>(null) }
+  LaunchedEffect(editingOrderId) {
+    if (previousEditId != editingOrderId) previousEditId?.let(orders::finishEdit)
+    previousEditId = editingOrderId
+  }
+}
+
+/** Catalogue and Review carry the same trip and optional persisted edit identity. */
+private fun orderFlowArguments() =
+    listOf(
+        navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType },
+        navArgument(CommandoScreens.EDIT_ORDER_ARGUMENT) {
+          type = NavType.StringType
+          nullable = true
+          defaultValue = null
+        },
+    )

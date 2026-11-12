@@ -18,6 +18,7 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.TripTransition
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -91,6 +92,113 @@ class OrderDetailsViewModelTest {
   }
 
   private fun viewModel() = OrderDetailsViewModel(order.id, orders, trips)
+
+  @Test
+  fun cancellationKeepsConfirmedContentWhileSavingThenDisplaysPersistedSuccess() = runTest {
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.decision = { gate.await() }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+    advanceUntilIdle()
+    val initial = vm.uiState.value as OrderDetailsUiState.Content
+    assertTrue(initial.canCancel)
+    vm.cancel()
+    runCurrent()
+    val saving = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(order, saving.order)
+    assertEquals(OrderMutationState.Saving, saving.mutation)
+    assertTrue(saving.isSaving)
+    val persisted = order.copy(status = OrderStatus.CANCELLED)
+    gate.complete(OrderResult.Success(persisted))
+    advanceUntilIdle()
+    val saved = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(persisted, saved.order)
+    assertEquals(initial.trip, saved.trip)
+    assertEquals(OrderMutationState.Saved, saved.mutation)
+    assertTrue(!saved.canCancel && !saved.isSaving)
+    vm.cancel()
+    advanceUntilIdle()
+    assertEquals(1, orders.cancellations)
+    assertEquals(listOf(order.id), orders.ids)
+  }
+
+  @Test
+  fun cancellationFailurePreservesPendingOrderAndAnotherCancelRetriesSuccessfully() = runTest {
+    for (throws in listOf(false, true)) {
+      orders.cancellations = 0
+      orders.decision = {
+        if (throws) throw IllegalStateException("offline")
+        OrderResult.Error(OrderError.Unknown)
+      }
+      val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+      advanceUntilIdle()
+      vm.cancel()
+      advanceUntilIdle()
+      val failed = vm.uiState.value as OrderDetailsUiState.Content
+      assertEquals(order, failed.order)
+      assertEquals(OrderMutationState.Failed(OrderError.Unknown), failed.mutation)
+      assertTrue(failed.canCancel && !failed.isSaving)
+      val persisted = order.copy(status = OrderStatus.CANCELLED)
+      orders.decision = { OrderResult.Success(persisted) }
+      vm.cancel()
+      advanceUntilIdle()
+      val recovered = vm.uiState.value as OrderDetailsUiState.Content
+      assertEquals(persisted, recovered.order)
+      assertEquals(OrderMutationState.Saved, recovered.mutation)
+      assertTrue(!recovered.canCancel && !recovered.isSaving)
+      assertEquals(2, orders.cancellations)
+    }
+  }
+
+  @Test
+  fun accountChangeDuringCancellationDiscardsLateSuccessAndPreventsRetry() = runTest {
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.decision = { gate.await() }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { session.value }, session)
+    advanceUntilIdle()
+    vm.cancel()
+    runCurrent()
+    session.value = "another-requester"
+    runCurrent()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    gate.complete(OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)))
+    advanceUntilIdle()
+    vm.cancel()
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    assertEquals(1, orders.cancellations)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun cancellationPreventsDuplicateSubmissionAndShowsPersistedConflict() = runTest {
+    for (status in listOf(OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
+      orders.cancellations = 0
+      orders.ids.clear()
+      val gate = CompletableDeferred<OrderResult<Order>>()
+      orders.decision = { gate.await() }
+      val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+      advanceUntilIdle()
+      vm.cancel()
+      vm.cancel()
+      runCurrent()
+      assertEquals(1, orders.cancellations)
+      assertTrue((vm.uiState.value as OrderDetailsUiState.Content).isSaving)
+      val persisted = order.copy(status = status)
+      gate.complete(OrderResult.Error(OrderError.AlreadyDecided(persisted)))
+      advanceUntilIdle()
+      val content = vm.uiState.value as OrderDetailsUiState.Content
+      assertEquals(persisted, content.order)
+      assertEquals(
+          OrderMutationState.Failed(OrderError.AlreadyDecided(persisted)),
+          content.mutation,
+      )
+      assertEquals(listOf(order.id), orders.ids)
+      assertTrue(!content.canCancel)
+      assertTrue(!content.isSaving)
+    }
+  }
 
   @Test
   fun automaticallyLoadsExactIdsInSequenceAndPreservesBothOriginalObjects() = runTest {
@@ -443,6 +551,21 @@ class OrderDetailsViewModelTest {
   }
 
   @Test
+  fun staleDecisionShowsChangedContentAndTheNextAttemptUsesItsRevision() = runTest {
+    val edited = order.copy(commissionCents = 8000, revision = 1)
+    orders.decision = { OrderResult.Error(OrderError.AlreadyDecided(edited)) }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { trip.ownerId })
+    advanceUntilIdle()
+    vm.decide(OrderDecision.ACCEPT)
+    advanceUntilIdle()
+    assertEquals(edited, (vm.uiState.value as OrderDetailsUiState.Content).order)
+    orders.decision = { OrderResult.Success(edited.copy(status = OrderStatus.ACCEPTED)) }
+    vm.decide(OrderDecision.ACCEPT)
+    advanceUntilIdle()
+    assertEquals(listOf(0, 1), orders.revisions)
+  }
+
+  @Test
   fun bothDecisionsUsePersistedResultAndBlockRepeatedTapsAndRetryWhileSaving() = runTest {
     for ((decision, status) in
         listOf(
@@ -468,7 +591,9 @@ class OrderDetailsViewModelTest {
       advanceUntilIdle()
       val content = vm.uiState.value as OrderDetailsUiState.Content
       assertEquals(persisted, content.order)
-      assertTrue(content.decisionSaved && !content.canDecide && !content.isSaving)
+      assertTrue(
+          content.mutation == OrderMutationState.Saved && !content.canDecide && !content.isSaving
+      )
       vm.decide(decision)
       advanceUntilIdle()
       assertEquals(1, orders.decisions.size)
@@ -485,7 +610,7 @@ class OrderDetailsViewModelTest {
     advanceUntilIdle()
     val content = vm.uiState.value as OrderDetailsUiState.Content
     assertEquals(persisted, content.order)
-    assertTrue(content.decisionError is OrderError.AlreadyDecided)
+    assertEquals(OrderMutationState.Failed(OrderError.AlreadyDecided(persisted)), content.mutation)
     assertTrue(!content.canDecide && !content.isSaving)
     assertEquals(1, orders.ids.size)
   }
@@ -508,12 +633,15 @@ class OrderDetailsViewModelTest {
         OrderError.NotFound -> assertEquals(OrderDetailsUiState.NotFound, vm.uiState.value)
         OrderError.Unknown -> {
           val content = vm.uiState.value as OrderDetailsUiState.Content
-          assertEquals(error, content.decisionError)
+          assertEquals(OrderMutationState.Failed(error), content.mutation)
           assertTrue(content.canDecide && !content.isSaving)
           orders.decision = { OrderResult.Success(order.copy(status = OrderStatus.REJECTED)) }
           vm.decide(OrderDecision.REJECT)
           advanceUntilIdle()
-          assertTrue((vm.uiState.value as OrderDetailsUiState.Content).decisionSaved)
+          assertEquals(
+              OrderMutationState.Saved,
+              (vm.uiState.value as OrderDetailsUiState.Content).mutation,
+          )
         }
         else -> assertEquals(OrderDetailsUiState.Error.OrderFailure(error), vm.uiState.value)
       }
@@ -583,7 +711,7 @@ class OrderDetailsViewModelTest {
     vm.decide(OrderDecision.ACCEPT)
     advanceUntilIdle()
     val content = vm.uiState.value as OrderDetailsUiState.Content
-    assertEquals(OrderError.Unknown, content.decisionError)
+    assertEquals(OrderMutationState.Failed(OrderError.Unknown), content.mutation)
     assertTrue(content.canDecide && !content.isSaving)
     val gate = LateResult<OrderResult<Order>>()
     orders.decision = { gate.await() }
@@ -610,6 +738,195 @@ class OrderDetailsViewModelTest {
     assertTrue(orders.decisions.isEmpty())
   }
 
+  @Test
+  fun readinessEligibilitySavingRecoveryAndSessionLossUseConfirmedContent() = runTest {
+    val accepted = order.copy(status = OrderStatus.ACCEPTED)
+    for (status in OrderStatus.entries) for (viewer in
+        listOf(trip.ownerId, "requester", "stranger", null)) {
+      val content = OrderDetailsUiState.Content(order.copy(status = status), trip, viewer)
+      assertEquals(
+          viewer == trip.ownerId && status == OrderStatus.ACCEPTED,
+          content.canMarkReadyForHandoff,
+      )
+    }
+    orders.lookup = { OrderResult.Success(accepted) }
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(trip.ownerId)
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { session.value }, session)
+    advanceUntilIdle()
+    for (error in
+        listOf(
+            OrderError.Unknown,
+            OrderError.AlreadyDecided(accepted.copy(status = OrderStatus.REJECTED)),
+        )) {
+      orders.decision = { OrderResult.Error(error) }
+      vm.markReadyForHandoff()
+      advanceUntilIdle()
+      val confirmed = if (error is OrderError.AlreadyDecided) error.persistedOrder else accepted
+      assertEquals(
+          OrderDetailsUiState.Content(
+              confirmed,
+              trip,
+              trip.ownerId,
+              OrderMutationState.Failed(error),
+          ),
+          vm.uiState.value,
+      )
+    }
+    vm.retry()
+    advanceUntilIdle()
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.decision = { gate.await() }
+    vm.markReadyForHandoff()
+    val saving = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(OrderMutationState.Saving, saving.mutation)
+    assertEquals(accepted, saving.order)
+    repeat(3) {
+      vm.markReadyForHandoff()
+      vm.decide(OrderDecision.REJECT)
+      vm.retry()
+    }
+    runCurrent()
+    assertEquals(listOf(order.id, order.id, order.id), orders.readyIds)
+    assertTrue(orders.decisions.isEmpty())
+    val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    gate.complete(OrderResult.Success(ready))
+    advanceUntilIdle()
+    assertEquals(
+        OrderDetailsUiState.Content(ready, trip, trip.ownerId, OrderMutationState.Saved),
+        vm.uiState.value,
+    )
+    vm.markReadyForHandoff()
+    assertEquals(3, orders.readyIds.size)
+    for (error in listOf(OrderError.NotAuthenticated, OrderError.PermissionDenied)) {
+      vm.retry()
+      advanceUntilIdle()
+      orders.decision = { OrderResult.Error(error) }
+      vm.markReadyForHandoff()
+      advanceUntilIdle()
+      assertEquals(OrderDetailsUiState.Error.OrderFailure(error), vm.uiState.value)
+    }
+    orders.lookup = { OrderResult.Success(accepted) }
+    vm.retry()
+    advanceUntilIdle()
+    val late = CompletableDeferred<OrderResult<Order>>()
+    orders.decision = { late.await() }
+    vm.markReadyForHandoff()
+    runCurrent()
+    session.value = "another-owner"
+    runCurrent()
+    late.complete(OrderResult.Success(ready))
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun receiptEligibilityRejectsWrongViewerStatusAndTrip() = runTest {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    assertTrue(OrderDetailsUiState.Content(ready, trip, order.requesterId).canConfirmReceipt)
+    for (content in
+        listOf(
+            OrderDetailsUiState.Content(ready, trip, trip.ownerId),
+            OrderDetailsUiState.Content(ready, trip, "stranger"),
+            OrderDetailsUiState.Content(ready, trip),
+            OrderDetailsUiState.Content(ready, trip.copy(id = "wrong"), order.requesterId),
+        ) +
+            listOf(
+                    OrderStatus.PENDING,
+                    OrderStatus.ACCEPTED,
+                    OrderStatus.REJECTED,
+                    OrderStatus.DELIVERED,
+                )
+                .map {
+                  OrderDetailsUiState.Content(order.copy(status = it), trip, order.requesterId)
+                }) assertTrue(!content.canConfirmReceipt)
+    orders.lookup = { OrderResult.Success(ready) }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { trip.ownerId })
+    advanceUntilIdle()
+    vm.confirmReceipt()
+    advanceUntilIdle()
+    assertTrue(orders.receiptIds.isEmpty())
+  }
+
+  @Test
+  fun receiptRetriesFailuresBlocksDuplicateSubmissionsAndUsesConfirmedResults() = runTest {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    orders.lookup = { OrderResult.Success(ready) }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+    advanceUntilIdle()
+    orders.decision = { OrderResult.Error(OrderError.Unknown) }
+    vm.confirmReceipt()
+    advanceUntilIdle()
+    assertEquals(
+        OrderDetailsUiState.Content(
+            ready,
+            trip,
+            order.requesterId,
+            OrderMutationState.Failed(OrderError.Unknown),
+        ),
+        vm.uiState.value,
+    )
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.decision = { gate.await() }
+    vm.confirmReceipt()
+    repeat(3) {
+      vm.confirmReceipt()
+      vm.retry()
+      vm.markReadyForHandoff()
+    }
+    runCurrent()
+    assertEquals(2, orders.receiptIds.size)
+    assertEquals(
+        OrderDetailsUiState.Content(ready, trip, order.requesterId, OrderMutationState.Saving),
+        vm.uiState.value,
+    )
+    val delivered = ready.copy(status = OrderStatus.DELIVERED)
+    gate.complete(OrderResult.Success(delivered))
+    advanceUntilIdle()
+    assertEquals(
+        OrderDetailsUiState.Content(delivered, trip, order.requesterId, OrderMutationState.Saved),
+        vm.uiState.value,
+    )
+    vm.confirmReceipt()
+    assertEquals(2, orders.receiptIds.size)
+  }
+
+  @Test
+  fun receiptConflictsAndSessionChangesCannotLeaveStaleActionsOrResults() = runTest {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val delivered = ready.copy(status = OrderStatus.DELIVERED)
+    orders.lookup = { OrderResult.Success(ready) }
+    orders.decision = { OrderResult.Error(OrderError.AlreadyDecided(delivered)) }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+    advanceUntilIdle()
+    vm.confirmReceipt()
+    advanceUntilIdle()
+    assertEquals(
+        OrderDetailsUiState.Content(
+            delivered,
+            trip,
+            order.requesterId,
+            OrderMutationState.Failed(OrderError.AlreadyDecided(delivered)),
+        ),
+        vm.uiState.value,
+    )
+    for (nextUser in listOf(null, "another-requester")) {
+      val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+      val late = CompletableDeferred<OrderResult<Order>>()
+      orders.decision = { late.await() }
+      val pending = OrderDetailsViewModel(order.id, orders, trips, { session.value }, session)
+      advanceUntilIdle()
+      pending.confirmReceipt()
+      runCurrent()
+      session.value = nextUser
+      runCurrent()
+      late.complete(OrderResult.Success(delivered))
+      advanceUntilIdle()
+      assertEquals(OrderDetailsUiState.SessionEnded, pending.uiState.value)
+      pending.viewModelScope.cancel()
+    }
+  }
+
   /** suspendCoroutine deliberately delivers a result even after the calling job is cancelled. */
   private class LateResult<T> {
     private val gate = CompletableDeferred<T>()
@@ -631,8 +948,24 @@ class OrderDetailsViewModelTest {
   }
 
   private inner class RecordingOrders : OrderRepository {
+    override suspend fun editOrder(
+        orderId: String,
+        draft: OrderDraft,
+        expectedRevision: Int,
+    ): OrderResult<Order> = error("Not used")
+
+    var cancellations = 0
+
+    override suspend fun confirmReceipt(orderId: String): OrderResult<Order> {
+      receiptIds += orderId
+      return decision()
+    }
+
     val ids = mutableListOf<String>()
+    val receiptIds = mutableListOf<String>()
     val decisions = mutableListOf<Pair<String, OrderDecision>>()
+    val revisions = mutableListOf<Int>()
+    val readyIds = mutableListOf<String>()
     var decision: suspend () -> OrderResult<Order> = { error("Not configured") }
     var lookup: suspend () -> OrderResult<Order> = { OrderResult.Success(order) }
 
@@ -643,9 +976,24 @@ class OrderDetailsViewModelTest {
 
     override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = error("Not used")
 
-    override suspend fun decideOrder(orderId: String, decision: OrderDecision): OrderResult<Order> {
+    override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> {
+      readyIds += orderId
+      return decision()
+    }
+
+    override suspend fun decideOrder(
+        orderId: String,
+        decision: OrderDecision,
+        expectedRevision: Int,
+    ): OrderResult<Order> {
       decisions += orderId to decision
+      revisions += expectedRevision
       return this.decision()
+    }
+
+    override suspend fun cancelOrder(orderId: String): OrderResult<Order> {
+      cancellations++
+      return decision()
     }
 
     override suspend fun getMyOrders(): OrderResult<List<Order>> = error("Not used")
@@ -668,5 +1016,10 @@ class OrderDetailsViewModelTest {
     override suspend fun getUpcomingTrips(): TripResult<List<Trip>> = error("Not used")
 
     override suspend fun getMyTrips(): TripResult<List<Trip>> = error("Not used")
+
+    override suspend fun transitionTrip(
+        tripId: String,
+        transition: TripTransition,
+    ): TripResult<Trip> = error("Not used")
   }
 }

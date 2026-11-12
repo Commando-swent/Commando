@@ -13,6 +13,7 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
+import com.android.sample.model.TripStatus
 import com.android.sample.ui.session.SessionGuard
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -23,6 +24,17 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
+/** Mutually exclusive feedback for the latest order-status operation. */
+sealed interface OrderMutationState {
+  data object Idle : OrderMutationState
+
+  data object Saving : OrderMutationState
+
+  data object Saved : OrderMutationState
+
+  data class Failed(val error: OrderError) : OrderMutationState
+}
+
 sealed class OrderDetailsUiState {
   data object Loading : OrderDetailsUiState()
 
@@ -30,17 +42,47 @@ sealed class OrderDetailsUiState {
       val order: Order,
       val trip: Trip,
       val viewerId: String? = null,
-      val isSaving: Boolean = false,
-      val decisionError: OrderError? = null,
-      val decisionSaved: Boolean = false,
+      val mutation: OrderMutationState = OrderMutationState.Idle,
   ) : OrderDetailsUiState() {
-    val canDecide: Boolean
+    private val isEligibleOwner: Boolean
       get() =
           viewerId != null &&
               viewerId == trip.ownerId &&
               order.tripId == trip.id &&
-              order.requesterId != trip.ownerId &&
+              order.requesterId != trip.ownerId
+
+    val canDecide: Boolean
+      get() = isEligibleOwner && order.status == OrderStatus.PENDING
+
+    val canMarkReadyForHandoff: Boolean
+      get() = isEligibleOwner && order.status == OrderStatus.ACCEPTED
+
+    /**
+     * Presentation eligibility; the repository independently authorizes the persisted requester.
+     */
+    val canConfirmReceipt: Boolean
+      get() =
+          !viewerId.isNullOrBlank() &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.status == OrderStatus.READY_FOR_HANDOFF
+
+    val isSaving: Boolean
+      get() = mutation == OrderMutationState.Saving
+
+    /**
+     * Presentation eligibility only; [OrderRepository.cancelOrder] enforces persisted ownership.
+     */
+    val canCancel: Boolean
+      get() =
+          viewerId != null &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
               order.status == OrderStatus.PENDING
+
+    /** Editing is requester-only and additionally requires an open trip. */
+    val canEdit: Boolean
+      get() = canCancel && trip.status == TripStatus.PUBLISHED && viewerId != trip.ownerId
   }
 
   data object NotFound : OrderDetailsUiState()
@@ -98,51 +140,88 @@ class OrderDetailsViewModel(
         val state = fetchOrder()
         // A repository may return even after the destination's coroutine was cancelled.
         currentCoroutineContext().ensureActive()
-        if (sessionIsValid()) mutableState.value = state
+        if (!endSessionIfChanged()) mutableState.value = state
       } finally {
         isLoading = false
       }
     }
   }
 
-  private fun sessionIsValid(): Boolean {
+  private fun endSessionIfChanged(): Boolean {
     if (session.hasEnded()) {
       mutableState.value = OrderDetailsUiState.SessionEnded
-      return false
+      return true
     }
-    return true
+    return false
   }
 
-  fun decide(decision: OrderDecision) {
-    if (!sessionIsValid()) return
+  /** Saves an eligible owner's decision; concurrent taps are ignored until it finishes. */
+  fun decide(decision: OrderDecision) =
+      saveOrder(isAllowed = { it.canDecide }) {
+        orderRepository.decideOrder(orderId, decision, it.order.revision)
+      }
+
+  /** Marks an accepted order ready, displaying only repository-confirmed status and feedback. */
+  fun markReadyForHandoff() =
+      saveOrder(isAllowed = { it.canMarkReadyForHandoff }) {
+        orderRepository.markReadyForHandoff(orderId)
+      }
+
+  /**
+   * Submits a confirmed cancellation for the currently eligible requester.
+   *
+   * The screen asks for confirmation before calling this action. Repeated taps while saving are
+   * ignored. Only the repository result updates the displayed order; a recoverable failure keeps
+   * the last confirmed content for retry, and a conflict displays the persisted winner. Results
+   * arriving after the session ends are discarded.
+   */
+  fun cancel() = saveOrder(isAllowed = { it.canCancel }) { orderRepository.cancelOrder(orderId) }
+
+  /** Confirms requester receipt, displaying only repository-confirmed status and feedback. */
+  fun confirmReceipt() =
+      saveOrder(isAllowed = { it.canConfirmReceipt }) { orderRepository.confirmReceipt(orderId) }
+
+  private fun saveOrder(
+      isAllowed: (OrderDetailsUiState.Content) -> Boolean,
+      save: suspend (OrderDetailsUiState.Content) -> OrderResult<Order>,
+  ) {
+    if (endSessionIfChanged()) return
     val content = mutableState.value as? OrderDetailsUiState.Content ?: return
-    if (!content.canDecide || content.isSaving || isLoading) return
-    mutableState.value = content.copy(isSaving = true, decisionError = null, decisionSaved = false)
+    if (!isAllowed(content) || content.isSaving || isLoading) return
+    mutableState.value = content.copy(mutation = OrderMutationState.Saving)
     viewModelScope.launch {
       val result =
           try {
-            orderRepository.decideOrder(orderId, decision)
+            save(content)
           } catch (_: Exception) {
             currentCoroutineContext().ensureActive()
             OrderResult.Error(OrderError.Unknown)
           }
       currentCoroutineContext().ensureActive()
-      if (!sessionIsValid()) return@launch
-      mutableState.value =
-          when (result) {
-            is OrderResult.Success -> content.copy(order = result.data, decisionSaved = true)
-            is OrderResult.Error ->
-                when (val error = result.error) {
-                  OrderError.NotFound -> OrderDetailsUiState.NotFound
-                  OrderError.NotAuthenticated,
-                  OrderError.PermissionDenied -> OrderDetailsUiState.Error.OrderFailure(error)
-                  is OrderError.AlreadyDecided ->
-                      content.copy(order = error.persistedOrder, decisionError = error)
-                  else -> content.copy(decisionError = error)
-                }
-          }
+      if (!endSessionIfChanged()) mutableState.value = mutationResult(content, result)
     }
   }
+
+  private fun mutationResult(
+      content: OrderDetailsUiState.Content,
+      result: OrderResult<Order>,
+  ): OrderDetailsUiState =
+      when (result) {
+        is OrderResult.Success ->
+            content.copy(order = result.data, mutation = OrderMutationState.Saved)
+        is OrderResult.Error ->
+            when (val error = result.error) {
+              OrderError.NotFound -> OrderDetailsUiState.NotFound
+              OrderError.NotAuthenticated,
+              OrderError.PermissionDenied -> OrderDetailsUiState.Error.OrderFailure(error)
+              is OrderError.AlreadyDecided ->
+                  content.copy(
+                      order = error.persistedOrder,
+                      mutation = OrderMutationState.Failed(error),
+                  )
+              else -> content.copy(mutation = OrderMutationState.Failed(error))
+            }
+      }
 
   private suspend fun fetchOrder(): OrderDetailsUiState {
     val result =

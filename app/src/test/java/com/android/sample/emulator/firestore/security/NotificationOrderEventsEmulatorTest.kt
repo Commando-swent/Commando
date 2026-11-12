@@ -31,17 +31,70 @@ class NotificationOrderEventsEmulatorTest {
         assertEquals(order.createdAt, placed.event.occurredAt)
         assertTrue(inbox(requester).none { it.event.orderId == order.id })
         repeat(2) {
-          assertTrue(orders(owner).decideOrder(order.id, decision) is OrderResult.Success)
+          assertTrue(
+              orders(owner).decideOrder(order.id, decision, order.revision) is OrderResult.Success
+          )
         }
         val notification = inbox(requester).single { it.event.orderId == order.id }
         assertEquals("ORDER_${decision.targetStatus().name}", notification.event.type.name)
         assertEquals(requester.auth.currentUser!!.uid, notification.event.recipientId)
         assertTrue(inbox(other).isEmpty())
         // A fresh repository retries read-only; it neither recreates nor overwrites the event.
-        val again = orders(owner).decideOrder(order.id, decision)
+        val again = orders(owner).decideOrder(order.id, decision, order.revision)
         assertTrue(again is OrderResult.Success)
         assertEquals(notification, inbox(requester).single { it.event.orderId == order.id })
       }
+    }
+  }
+
+  @Test
+  fun handoffAndReceiptPreserveExistingEventsWithoutPublishingAnotherNotification() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = place(owner, requester)
+      assertTrue(
+          orders(owner).decideOrder(order.id, OrderDecision.ACCEPT, order.revision)
+              is OrderResult.Success
+      )
+      val before = inbox(requester).single()
+      assertEquals(NotificationEventType.ORDER_ACCEPTED, before.event.type)
+      repeat(2) {
+        val ready = orders(owner).markReadyForHandoff(order.id)
+        assertTrue(ready is OrderResult.Success)
+        assertEquals(OrderStatus.READY_FOR_HANDOFF, (ready as OrderResult.Success).data.status)
+      }
+      assertEquals(listOf(before), inbox(requester))
+      assertEquals(NotificationEventType.ORDER_PLACED, inbox(owner).single().event.type)
+      val placedInbox = inbox(owner)
+      val placedEvents = rawEvents(owner)
+      val acceptedEvents = rawEvents(requester)
+      assertEquals(setOf("${order.id}_ORDER_PLACED"), placedEvents.keys)
+      assertEquals(setOf("${order.id}_ORDER_ACCEPTED"), acceptedEvents.keys)
+      val delivered = OrderResult.Success(order.copy(status = OrderStatus.DELIVERED))
+      val requesterOrders = orders(requester)
+      assertEquals(delivered, requesterOrders.confirmReceipt(order.id))
+      assertEquals(delivered, orders(requester).confirmReceipt(order.id))
+      assertEquals(delivered, orders(requester).getOrderById(order.id))
+      assertEquals(placedEvents, rawEvents(owner))
+      assertEquals(acceptedEvents, rawEvents(requester))
+      assertEquals(placedInbox, inbox(owner))
+      assertEquals(listOf(before), inbox(requester))
+    }
+  }
+
+  @Test
+  fun cancellationPreservesPlacementNotificationWithoutPublishingAnotherEvent() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = place(owner, requester)
+      val placed = inbox(owner).single()
+      assertEquals(NotificationEventType.ORDER_PLACED, placed.event.type)
+      repeat(2) {
+        assertEquals(
+            OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)),
+            orders(requester).cancelOrder(order.id),
+        )
+      }
+      assertEquals(listOf(placed), inbox(owner))
+      assertTrue(inbox(requester).isEmpty())
     }
   }
 
@@ -50,7 +103,9 @@ class NotificationOrderEventsEmulatorTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = place(owner, requester)
       OrderDecision.entries
-          .map { decision -> async { orders(owner).decideOrder(order.id, decision) } }
+          .map { decision ->
+            async { orders(owner).decideOrder(order.id, decision, order.revision) }
+          }
           .awaitAll()
       val stored = (orders(requester).getOrderById(order.id) as OrderResult.Success).data
       val notifications = inbox(requester)
@@ -152,10 +207,10 @@ class NotificationOrderEventsEmulatorTest {
   fun preferencesFilterRealOrderEventsAndReadStatePersists() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val repo = notifications(owner)
-      repo.updatePreferences(NotificationPreferences(newOrders = false))
+      repo.updatePreferences(newOrders = false)
       val muted = place(owner, requester)
       assertTrue(inbox(owner).isEmpty())
-      repo.updatePreferences(NotificationPreferences())
+      repo.updatePreferences(newOrders = true, orderDecisions = true)
       assertTrue(inbox(owner).isEmpty())
       val visible = place(owner, requester)
       val notification = inbox(owner).single()
@@ -174,6 +229,16 @@ class NotificationOrderEventsEmulatorTest {
 
   private suspend fun inbox(client: EmulatorClient) =
       (notifications(client).getNotifications() as OrderResult.Success).data
+
+  // Inspect raw documents too: the inbox decoder skips unsupported event types.
+  private suspend fun rawEvents(client: EmulatorClient) =
+      client.firestore
+          .collection("orderEvents")
+          .whereEqualTo("recipientId", client.auth.currentUser!!.uid)
+          .get(Source.SERVER)
+          .await()
+          .documents
+          .associate { it.id to it.data.orEmpty() }
 
   private suspend fun place(owner: EmulatorClient, requester: EmulatorClient): Order {
     val id = UUID.randomUUID().toString()

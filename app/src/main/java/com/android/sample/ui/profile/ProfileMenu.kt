@@ -77,10 +77,15 @@ internal fun ProfileMenuRow(
   }
 }
 
-/** Keeps the Figma glyph at its native size inside the shared settings icon container. */
+/** Keeps the glyph at its native size; [tint] optionally overrides its original colors. */
 @Composable
-internal fun ProfileMenuIcon(@DrawableRes icon: Int, tint: Color? = null) {
+internal fun ProfileMenuIcon(
+    @DrawableRes icon: Int,
+    tint: Color? = null,
+    modifier: Modifier = Modifier,
+) {
   Surface(
+      modifier = modifier,
       shape = RoundedCornerShape(9.dp),
       color = MaterialTheme.colorScheme.surfaceContainerHigh,
   ) {

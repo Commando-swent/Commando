@@ -27,6 +27,7 @@
     <string name="notifications_mark_read">Mark as read</string>
     <string name="notifications_saving">Saving…</string>
     <string name="notifications_save_error">The update could not be saved. The previous values are kept. Please retry.</string>
+    <string name="notifications_refresh_error">Saved values are shown, but the latest updates could not be loaded. Please retry.</string>
     <string name="notifications_retry">Retry</string>
     <plurals name="notifications_unread">
         <item quantity="one">%1$d unread update</item>

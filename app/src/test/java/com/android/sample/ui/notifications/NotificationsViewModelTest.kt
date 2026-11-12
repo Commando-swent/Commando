@@ -353,6 +353,52 @@ class NotificationsViewModelTest {
   }
 
   @Test
+  fun failedReloadAfterSaveKeepsConfirmedSettingsAndRetryOnlyReads() = runTest {
+    val vm = model()
+    vm.refreshPreferences()
+    advanceUntilIdle()
+    val reload = CompletableDeferred<OrderResult<NotificationPreferences>>()
+    repository.loadPreferences = { reload.await() }
+    val changed = NotificationPreferences(newOrders = false)
+    vm.updatePreferences(changed)
+    runCurrent()
+    // The confirmed switches stay on screen while the background reload is pending.
+    assertEquals(NotificationPageState.Content(changed), vm.preferences.value)
+    reload.complete(OrderResult.Error(OrderError.Unknown))
+    advanceUntilIdle()
+    assertEquals(
+        NotificationPageState.Content(changed, refreshError = OrderError.Unknown),
+        vm.preferences.value,
+    )
+    val latest = NotificationPreferences(false, false)
+    repository.loadPreferences = { OrderResult.Success(latest) }
+    vm.retryPreferenceUpdate()
+    advanceUntilIdle()
+    assertEquals(NotificationPageState.Content(latest), vm.preferences.value)
+    assertEquals(listOf(changed), repository.savedSettings)
+  }
+
+  @Test
+  fun aNewPreferenceSaveRejectsTheOlderBackgroundReload() = runTest {
+    val vm = model()
+    vm.refreshPreferences()
+    advanceUntilIdle()
+    val stale = CompletableDeferred<OrderResult<NotificationPreferences>>()
+    repository.loadPreferences = { withContext(NonCancellable) { stale.await() } }
+    val first = NotificationPreferences(newOrders = false)
+    vm.updatePreferences(first)
+    runCurrent()
+    repository.loadPreferences = { OrderResult.Success(repository.settings) }
+    val latest = NotificationPreferences(false, false)
+    vm.updatePreferences(latest)
+    runCurrent()
+    stale.complete(OrderResult.Success(first))
+    advanceUntilIdle()
+    assertEquals(NotificationPageState.Content(latest), vm.preferences.value)
+    assertEquals(listOf(first, latest), repository.savedSettings)
+  }
+
+  @Test
   fun missingSessionDoesNotLoadAnyProtectedData() = runTest {
     identity.value = null
     val vm = model()

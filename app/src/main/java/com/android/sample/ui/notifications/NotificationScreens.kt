@@ -99,7 +99,12 @@ fun NotificationInboxScreen(
               pluralStringResource(R.plurals.notifications_unread, unread, unread),
               style = MaterialTheme.typography.titleSmall,
           )
-          SaveFeedback(state.isSaving, state.saveError != null, onRetrySave)
+          SaveFeedback(
+              state.isSaving,
+              state.saveError != null,
+              onRetrySave,
+              state.refreshError != null,
+          )
         }
         items(state.value, key = { it.event.id }) { notification ->
           NotificationCard(notification, !state.isSaving, onMarkRead, onOrder)
@@ -165,7 +170,12 @@ fun NotificationPreferencesScreen(
           }
         }
       }
-      SaveFeedback(content.isSaving, content.saveError != null, onRetrySave)
+      SaveFeedback(
+          content.isSaving,
+          content.saveError != null,
+          onRetrySave,
+          content.refreshError != null,
+      )
       Text(
           stringResource(R.string.notifications_preferences_scope),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -361,18 +371,27 @@ private fun PreferenceRow(
 }
 
 @Composable
-private fun SaveFeedback(saving: Boolean, failed: Boolean, onRetry: () -> Unit) {
-  if (saving || failed) {
+private fun SaveFeedback(
+    saving: Boolean,
+    failed: Boolean,
+    onRetry: () -> Unit,
+    refreshFailed: Boolean,
+) {
+  if (saving || failed || refreshFailed) {
     Text(
         stringResource(
-            if (saving) R.string.notifications_saving else R.string.notifications_save_error
+            when {
+              saving -> R.string.notifications_saving
+              failed -> R.string.notifications_save_error
+              else -> R.string.notifications_refresh_error
+            }
         ),
         Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         color =
-            if (failed) MaterialTheme.colorScheme.error
+            if (failed || refreshFailed) MaterialTheme.colorScheme.error
             else MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    if (failed) RetryButton(onRetry, NotificationTestTags.SAVE_RETRY)
+    if (failed || refreshFailed) RetryButton(onRetry, NotificationTestTags.SAVE_RETRY)
   }
 }
 

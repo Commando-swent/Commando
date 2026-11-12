@@ -141,5 +141,21 @@ class NotificationScreensTest {
       state = NotificationPageState.Content(NotificationPreferences(), isSaving = true)
     }
     node(NotificationTestTags.DECISIONS).performScrollTo().assertIsNotEnabled()
+    compose.runOnIdle {
+      state =
+          NotificationPageState.Content(
+              NotificationPreferences(),
+              refreshError = OrderError.Unknown,
+          )
+    }
+    node(NotificationTestTags.DECISIONS).assertIsEnabled()
+    compose
+        .onNodeWithText(
+            compose.activity.getString(com.android.sample.R.string.notifications_refresh_error)
+        )
+        .performScrollTo()
+        .assertIsDisplayed()
+    node(NotificationTestTags.SAVE_RETRY).performScrollTo().performClick()
+    compose.runOnIdle { assertEquals(2, retries) }
   }
 }

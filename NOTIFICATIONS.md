@@ -64,4 +64,9 @@ Other pages remain usable. Further writes on the saving page are ignored, rather
 Preference saves send only changed toggles, then reload authoritative settings from all devices.
 Failed saves preserve confirmed data and their retry action. A refresh requested during a save is
 retained after failure and runs after a successful retry, or when an explicit refresh dismisses it.
-Screens and navigation remain separate S5 increments.
+The S5 screen increment renders these states with EN/FR resources and disables page mutation
+controls during saves. Profile opens the inbox and preferences; order links forward the full ID
+to the existing Order Details route. The authenticated graph owns the repository and page models.
+After a successful save, a background reload keeps confirmed content visible. A failed reload
+has its own retry feedback; retrying it reads again without repeating the successful write.
+New lifecycle-event types listed in #236 remain outside these screen/navigation increments.

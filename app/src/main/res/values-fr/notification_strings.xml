@@ -27,6 +27,7 @@
     <string name="notifications_mark_read">Marquer comme lue</string>
     <string name="notifications_saving">Enregistrement…</string>
     <string name="notifications_save_error">La modification n’a pas pu être enregistrée. Les valeurs précédentes sont conservées. Veuillez réessayer.</string>
+    <string name="notifications_refresh_error">Les valeurs enregistrées sont affichées, mais les dernières mises à jour n’ont pas pu être chargées. Veuillez réessayer.</string>
     <string name="notifications_retry">Réessayer</string>
     <plurals name="notifications_unread">
         <item quantity="one">%1$d notification non lue</item>

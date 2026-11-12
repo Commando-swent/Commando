@@ -32,10 +32,9 @@ fun HomeScreen(
     tripState: HomeTripUiState = HomeTripUiState.Empty,
     onRetry: () -> Unit = {},
     onManageTrip: ((String) -> Unit)? = null,
-    sharingControl: @Composable () -> Unit = {},
 ) {
   if (mode == AppMode.Commando && tripState != HomeTripUiState.Empty) {
-    HomeCurrentTrip(tripState, onRetry, onManageTrip, onPublishTrip, modifier, sharingControl)
+    HomeCurrentTrip(tripState, onRetry, onManageTrip, onPublishTrip, modifier)
     return
   }
   val requester = mode == AppMode.Requester
@@ -70,7 +69,6 @@ fun HomeScreen(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         textAlign = TextAlign.Center,
     )
-    if (!requester) sharingControl()
     val action = if (requester) onFindTrip else onPublishTrip
     Button(
         onClick = { action?.invoke() },

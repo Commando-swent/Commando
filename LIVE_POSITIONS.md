@@ -39,16 +39,3 @@ external logout cannot guarantee immediate remote erasure; reader expiry is the 
 Run `./gradlew ktfmtCheck check assembleDebug` and the Firebase emulator security suite.
 Versioned rules are not deployed automatically. Emulator/injected coordinates do not establish
 production-rule deployment or physical-device location acquisition.
-
-## Foreground sharing controls (#271 / #274)
-
-The reusable controls require explicit permission/consent, retain consent on rotation and
-invalidate late permission results after background/role exit. Shutdown belongs to the
-ViewModel, so disposing the host starts cleanup without a composition-bound coroutine.
-The publisher prioritizes IN_PROGRESS trips and rechecks eligibility each cycle; failures
-stop publication until explicit retry. The interval is 10 seconds plus acquisition/network time.
-Normal sign-out callers must await deletion and keep failures retryable.
-
-This PR supplies the publisher, permission/lifecycle host and Home content slots. It does
-not wire them into CommandoApp or implement requester tracking. That integration is #292.
-The screenshot shows these controls in the integration harness; app wiring is a separate PR.

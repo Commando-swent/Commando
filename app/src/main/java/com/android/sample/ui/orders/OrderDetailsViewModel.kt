@@ -14,6 +14,7 @@ import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
+import com.android.sample.model.isActiveForTracking
 import com.android.sample.ui.session.SessionGuard
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -50,6 +51,14 @@ sealed class OrderDetailsUiState {
               viewerId == trip.ownerId &&
               order.tripId == trip.id &&
               order.requesterId != trip.ownerId
+
+    /** Requester-only entry point; the tracking repository independently checks access. */
+    val canTrack: Boolean
+      get() =
+          viewerId != null &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.status.isActiveForTracking()
 
     val canDecide: Boolean
       get() = isEligibleOwner && order.status == OrderStatus.PENDING

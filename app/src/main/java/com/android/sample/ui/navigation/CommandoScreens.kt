@@ -28,6 +28,7 @@ enum class CommandoScreens(
   TripMap(title = R.string.trip_map_title, showModeSelector = true, showBottomBar = true),
   MyOrders(title = R.string.my_orders_title, showBottomBar = true),
   OrderDetails(title = R.string.order_details_title),
+  OrderTracking(title = R.string.order_tracking_title),
   /** Orders placed on one of the owner's trips; reached from that trip's details. */
   IncomingOrders(title = R.string.incoming_orders_title),
   /** Products to buy for one of the owner's trips; reached from its incoming orders. */
@@ -45,7 +46,8 @@ enum class CommandoScreens(
           ShoppingChecklist -> "$name/{$TRIP_ID_ARGUMENT}"
           Catalogue,
           ReviewOrder -> "$name/{$TRIP_ID_ARGUMENT}?$EDIT_ORDER_ARGUMENT={$EDIT_ORDER_ARGUMENT}"
-          OrderDetails -> "$name/{$ORDER_ID_ARGUMENT}"
+          OrderDetails,
+          OrderTracking -> "$name/{$ORDER_ID_ARGUMENT}"
           else -> name
         }
 
@@ -77,6 +79,9 @@ enum class CommandoScreens(
     /** Opens the shopping checklist of the owner's trip, preserving its opaque ID. */
     fun shoppingChecklistRoute(tripId: String): String =
         "${ShoppingChecklist.name}/${Uri.encode(tripId)}"
+
+    /** Opens the selected order tracking map without carrying client-supplied owner IDs. */
+    fun orderTrackingRoute(orderId: String): String = "${OrderTracking.name}/${Uri.encode(orderId)}"
 
     /** Encodes the opaque order ID once; consumers use Navigation's decoded string argument. */
     fun orderDetailsRoute(orderId: String): String = "${OrderDetails.name}/${Uri.encode(orderId)}"

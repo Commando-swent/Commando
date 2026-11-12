@@ -1,13 +1,20 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
+import android.Manifest
+import android.app.Application
 import android.content.Context
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
+import androidx.test.core.app.ApplicationProvider
+import com.android.sample.data.location.DeviceLocationProvider
+import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
@@ -15,18 +22,24 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.OrderTrackingTestTags
+import com.android.sample.ui.map.PositionSharingTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -80,10 +93,21 @@ class OrderNavigationTest {
 
   private lateinit var content: @Composable () -> Unit
 
-  private fun show(tripRepository: TripRepository = trips) {
+  private fun show(
+      tripRepository: TripRepository = trips,
+      positions: CommandoPositionRepository? = null,
+      source: DeviceLocationProvider? = null,
+  ) {
     content = {
       SampleAppTheme {
-        CommandoApp(auth, tripRepository, credentials, orderRepositoryFactory = factory)
+        CommandoApp(
+            auth,
+            tripRepository,
+            credentials,
+            orderRepositoryFactory = factory,
+            positionRepositoryFactory = positions?.let { { _ -> it } },
+            locationProvider = source,
+        )
       }
     }
     compose.setContent(content)
@@ -96,6 +120,92 @@ class OrderNavigationTest {
   }
 
   private fun card() = compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id)
+
+  @Test
+  fun failedCleanupBlocksSignOutAndRoleExitRequiresFreshSharingConsent() {
+    shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        .grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)
+    val storage = MutableStateFlow<Map<String, CommandoPosition>>(emptyMap())
+    val transport = FakeCommandoPositionRepository(MutableStateFlow("alice"), positions = storage)
+    var failDelete = true
+    val positions =
+        object : CommandoPositionRepository by transport {
+          override suspend fun stopSharing() {
+            check(!failDelete)
+            transport.stopSharing()
+          }
+        }
+    val owned = FakeTripRepository("alice", initialTrips = listOf(trip.copy(id = "sharing-trip")))
+    val source = DeviceLocationProvider {
+      DeviceLocationResult.Available(
+          DeviceLocation(46.521, 6.566, 20f, SystemClock.elapsedRealtime())
+      )
+    }
+    show(owned, positions, source)
+    click(AppTestTags.COMMANDO_MODE)
+    compose.onNodeWithTag(PositionSharingTestTags.SHARING_TOGGLE).performScrollTo().performClick()
+    compose.waitUntil(5_000) { storage.value.isNotEmpty() }
+    click(AppTestTags.PROFILE_BUTTON)
+    click(NavigationTestTags.SIGN_OUT_BUTTON)
+    compose.waitForIdle()
+    assertNotNull(auth.currentUser)
+    assertTrue(storage.value.isNotEmpty())
+    compose.runOnIdle { failDelete = false }
+    click(AppTestTags.REQUESTER_MODE)
+    compose.waitUntil(5_000) { storage.value.isEmpty() }
+    click(AppTestTags.COMMANDO_MODE)
+    click(AppTestTags.HOME_BUTTON)
+    compose
+        .onNodeWithTag(PositionSharingTestTags.SHARING_TOGGLE)
+        .performScrollTo()
+        .assertIsOff()
+        .performClick()
+    compose.waitUntil(5_000) { storage.value.isNotEmpty() }
+    click(AppTestTags.PROFILE_BUTTON)
+    // The previous cleanup-error snackbar can overlap this button; activate its accessible action.
+    compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_BUTTON).performSemanticsAction(
+        SemanticsActions.OnClick
+    ) {
+      it()
+    }
+    compose.waitUntil(5_000) { auth.currentUser == null }
+    assertTrue(storage.value.isEmpty())
+  }
+
+  @Test
+  fun selectedOrderOpensItsCommandoAndMarkerDisappearsWhenSharingStops() {
+    val fixes =
+        MutableStateFlow<CommandoPosition?>(CommandoPosition(46.521, 6.566, 30.0, Instant.now()))
+    var witness: Pair<String, String?>? = null
+    val positions =
+        object : CommandoPositionRepository {
+          override suspend fun publish(tripId: String, position: CommandoPosition) = Unit
+
+          override suspend fun stopSharing() = Unit
+
+          override fun observe(ownerId: String, orderId: String?) = flow {
+            witness = ownerId to orderId
+            emitAll(fixes)
+          }
+        }
+    show(
+        object : TripRepository by trips {
+          override suspend fun getTripById(tripId: String) =
+              TripResult.Success(trip.copy(ownerId = "commando"))
+        },
+        positions,
+    )
+    click(AppTestTags.ORDERS_BUTTON)
+    card().performClick()
+    click(OrderDetailsTestTags.TRACK)
+    compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertExists()
+    assertEquals("commando" to order.id, witness)
+    compose.runOnIdle { fixes.value = null }
+    compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertDoesNotExist()
+    back()
+    compose.onNodeWithTag(OrderDetailsTestTags.TRACK).assertExists()
+    compose.runOnIdle { assertEquals(0, fixes.subscriptionCount.value) }
+  }
 
   @Test
   fun ordersOpenExactOpaqueIdAndBothBackActionsReturnToTheListWithoutDuplicates() {

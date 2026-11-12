@@ -43,3 +43,29 @@ external logout cannot guarantee immediate remote erasure; reader expiry is the 
 Run `./gradlew ktfmtCheck check assembleDebug` and the Firebase emulator security suite.
 Versioned rules are not deployed automatically. Emulator/injected coordinates do not establish
 production-rule deployment or physical-device location acquisition.
+
+## Foreground and selected-order integration (#292)
+
+Sharing controls are hosted by the authenticated app, so navigating away from Home does not
+stop foreground sharing. Backgrounding, role exit and root disposal start ViewModel-owned
+shutdown; rotation retains consent. Normal sign-out awaits cleanup and failed deletion remains
+retryable. Returning from background requires a new explicit opt-in.
+
+The publisher checks owned trips each cycle and prioritizes IN_PROGRESS over future PUBLISHED.
+It waits 10 seconds between acquisition/publication cycles; network and acquisition time add to
+the interval. A fetch failure stops sharing until explicit retry, rather than treating cached or
+unknown eligibility as authorization. Rules independently reject ineligible publication.
+
+Order Details exposes tracking only to the selected active order's requester. The tracking
+ViewModel resolves its persisted order/trip, then observes that owner with the order witness.
+The map renders one distinct marker, auto-centers the first fix, and supports recentering,
+pan/zoom, missing/out-of-campus feedback and explicit retry. Leaving/backgrounding clears
+coordinates and cancels the observation. Permission is needed to publish, not to view a
+commando's authorized shared position. Existing trip discovery remains unchanged.
+
+The sharing components are #271 / #274; this PR wires them into the application.
+
+The S6 work in #270/#272 (temporarily closed) retains automatic discovery, automatic mode
+switching, multi-commando grouping and summaries. #273/#275 are closed; this implementation
+does not depend on them. Deployed rules, actual physical acquisition, Figma alignment and a
+production two-user demonstration remain checks to perform separately from injected tests.

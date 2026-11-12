@@ -40,6 +40,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
+import com.android.sample.data.location.AndroidDeviceLocationProvider
+import com.android.sample.data.location.DeviceLocationProvider
+import com.android.sample.data.repository.CommandoPositionRepository
+import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
 import com.android.sample.data.repository.NotificationRepository
 import com.android.sample.data.repository.NotificationRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
@@ -70,9 +74,14 @@ import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.map.MapLocationHost
+import com.android.sample.ui.map.OrderTrackingHost
+import com.android.sample.ui.map.OrderTrackingViewModel
+import com.android.sample.ui.map.PositionSharingCard
+import com.android.sample.ui.map.PositionSharingViewModel
 import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
+import com.android.sample.ui.map.rememberPositionSharingControl
 import com.android.sample.ui.notifications.*
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
@@ -124,6 +133,8 @@ fun CommandoApp(
     checklistRepositoryFactory: ((() -> String?) -> ShoppingChecklistRepository)? = null,
     savedSearchRepositoryFactory: ((() -> String?) -> SavedTripSearchRepository)? = null,
     onLanguageSelected: (AppLanguage) -> Unit = {},
+    positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)? = null,
+    locationProvider: DeviceLocationProvider? = null,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
 ) {
   val context = LocalContext.current
@@ -238,6 +249,8 @@ fun CommandoApp(
               },
               signOutError = sessionUiState.signOutError,
               onLanguageSelected = onLanguageSelected,
+              positionRepositoryFactory = positionRepositoryFactory,
+              locationProvider = locationProvider,
           )
         }
       }
@@ -260,6 +273,8 @@ private fun AuthenticatedApp(
     onSignOut: () -> Unit,
     signOutError: AuthException?,
     onLanguageSelected: (AppLanguage) -> Unit,
+    positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)?,
+    locationProvider: DeviceLocationProvider?,
 ) {
   // Lazily constructed so isolated previews and unrelated routes need no Firebase instance.
   val notifications =
@@ -288,6 +303,29 @@ private fun AuthenticatedApp(
       CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
 
+  val context = LocalContext.current
+  val positions: SessionPositionRepository = viewModel {
+    SessionPositionRepository {
+      positionRepositoryFactory?.invoke(orders::currentUserId)
+          ?: CommandoPositionRepositoryFirestore(orders::currentUserId)
+    }
+  }
+  val source =
+      locationProvider
+          ?: remember(context) { AndroidDeviceLocationProvider(context.applicationContext) }
+  val sharing: PositionSharingViewModel = viewModel {
+    PositionSharingViewModel(
+        { positions.repository },
+        tripRepository,
+        source,
+        orders::currentUserId,
+        orders.sessionChanges,
+    )
+  }
+  val (sharingState, toggleSharing) =
+      rememberPositionSharingControl(sharing, enabled = appUiState.mode == AppMode.Commando)
+  val signOutAfterCleanup =
+      rememberSharingSignOut(sharing, appUiState.mode, onSignOut, photoSnackbarHost)
   AppScaffold(
       currentScreen = currentScreen,
       mode = appUiState.mode,
@@ -346,6 +384,7 @@ private fun AuthenticatedApp(
             mode = appUiState.mode,
             tripState = tripState,
             onRetry = onRetry,
+            sharingControl = { PositionSharingCard(sharingState, toggleSharing) },
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
             onManageTrip = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId)) {
@@ -670,6 +709,11 @@ private fun AuthenticatedApp(
             onMarkReadyForHandoff = model::markReadyForHandoff,
             onCancel = model::cancel,
             onConfirmReceipt = model::confirmReceipt,
+            onTrack = {
+              navController.navigate(CommandoScreens.orderTrackingRoute(orderId)) {
+                launchSingleTop = true
+              }
+            },
             onEdit = {
               (model.uiState.value as? OrderDetailsUiState.Content)
                   ?.takeIf { it.canEdit }
@@ -683,13 +727,32 @@ private fun AuthenticatedApp(
             },
         )
       }
+      composable(
+          route = CommandoScreens.OrderTracking.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+        val model: OrderTrackingViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              OrderTrackingViewModel(
+                  orderId,
+                  orders.repository,
+                  tripRepository,
+                  positions.repository,
+                  orders::currentUserId,
+                  orders.sessionChanges,
+              )
+            }
+        OrderTrackingHost(model, onBack = { navController.popBackStack() })
+      }
       composable(route = CommandoScreens.Profile.name) {
         val profileUiState by profileViewModel.uiState.collectAsState()
         val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
         ProfileScreen(
             uiState = profileUiState,
             onBack = { navController.popBackStack() },
-            onSignOut = onSignOut,
+            onSignOut = signOutAfterCleanup,
             signOutError = signOutError,
             photo = photo,
             onPhotoClick = onPhotoClick,
@@ -840,3 +903,30 @@ private fun orderFlowArguments() =
           defaultValue = null
         },
     )
+
+/** Stops sharing on role exit and returns a sign-out action that awaits confirmed cleanup. */
+@Composable
+private fun rememberSharingSignOut(
+    sharing: PositionSharingViewModel,
+    mode: AppMode,
+    onSignOut: () -> Unit,
+    snackbar: SnackbarHostState,
+): () -> Unit {
+  val sharingScope = rememberCoroutineScope()
+  val stopError = stringResource(R.string.position_sharing_stop)
+  val signOutAfterCleanup = {
+    sharingScope.launch {
+      if (sharing.stop().await()) onSignOut() else snackbar.showSnackbar(stopError)
+    }
+    Unit
+  }
+  LaunchedEffect(mode) {
+    if (mode == AppMode.Requester && !sharing.stop().await()) snackbar.showSnackbar(stopError)
+  }
+  return signOutAfterCleanup
+}
+
+/** Retains a lazy position transport for the authenticated session, including rotation. */
+private class SessionPositionRepository(create: () -> CommandoPositionRepository) : ViewModel() {
+  val repository by lazy(create)
+}

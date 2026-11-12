@@ -25,4 +25,21 @@
     <string name="nav_trip_list">Back to trip list</string>
     <string name="mock_map_details_unavailable">Sample trip · details unavailable</string>
     <string name="nav_orders_demo">Demo orders · stored only for this session</string>
+    <string name="position_sharing_title">Share my live position</string>
+    <string name="position_sharing_off">Position sharing is off</string>
+    <string name="position_sharing_starting">Connecting to position sharing…</string>
+    <string name="position_sharing_live">Sharing while the app is in the foreground</string>
+    <string name="position_sharing_stopping">Stopping and removing your position…</string>
+    <string name="position_sharing_permission">Location permission is required. Enable sharing to retry.</string>
+    <string name="position_sharing_location">Position unavailable. Enable sharing to retry.</string>
+    <string name="position_sharing_publish">Sharing failed. Enable sharing to retry.</string>
+    <string name="position_sharing_stop">Your position could not be removed. Turn sharing off to retry.</string>
+    <string name="position_sharing_no_trip">No available or ongoing trip to share</string>
+    <string name="order_tracking_title">Track commando</string>
+    <string name="order_tracking_loading">Loading commando position…</string>
+    <string name="order_tracking_error">Tracking unavailable. Tap refresh to retry.</string>
+    <string name="order_tracking_unavailable">The commando is not sharing a fresh position.</string>
+    <string name="order_tracking_off_map">The commando is outside the campus map.</string>
+    <string name="order_tracking_live">Live commando position</string>
+    <string name="order_tracking_recenter">Center on commando</string>
 </resources>

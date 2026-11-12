@@ -167,7 +167,7 @@ class AppJourneyTest {
     click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.HOME_BUTTON)
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
-    click(HomeTestTags.TRIP_ACTION)
+    compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performScrollTo().performClick()
     publishTrip()
     compose.waitUntil(timeoutMillis = 15_000) {
       compose.onAllNodesWithTag(HomeTestTags.CURRENT_TRIP).fetchSemanticsNodes().isNotEmpty()

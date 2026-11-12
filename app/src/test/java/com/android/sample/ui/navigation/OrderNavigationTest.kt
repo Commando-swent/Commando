@@ -15,16 +15,12 @@ import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.MockMapTestTags
-import com.android.sample.ui.map.OrderTrackingTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Rule
@@ -84,19 +80,10 @@ class OrderNavigationTest {
 
   private lateinit var content: @Composable () -> Unit
 
-  private fun show(
-      tripRepository: TripRepository = trips,
-      positions: CommandoPositionRepository? = null,
-  ) {
+  private fun show(tripRepository: TripRepository = trips) {
     content = {
       SampleAppTheme {
-        CommandoApp(
-            auth,
-            tripRepository,
-            credentials,
-            orderRepositoryFactory = factory,
-            positionRepositoryFactory = positions?.let { { _ -> it } },
-        )
+        CommandoApp(auth, tripRepository, credentials, orderRepositoryFactory = factory)
       }
     }
     compose.setContent(content)
@@ -109,41 +96,6 @@ class OrderNavigationTest {
   }
 
   private fun card() = compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id)
-
-  @Test
-  fun selectedOrderOpensItsCommandoAndMarkerDisappearsWhenSharingStops() {
-    val fixes =
-        MutableStateFlow<CommandoPosition?>(CommandoPosition(46.521, 6.566, 30.0, Instant.now()))
-    var witness: Pair<String, String?>? = null
-    val positions =
-        object : CommandoPositionRepository {
-          override suspend fun publish(tripId: String, position: CommandoPosition) = Unit
-
-          override suspend fun stopSharing() = Unit
-
-          override fun observe(ownerId: String, orderId: String?) = flow {
-            witness = ownerId to orderId
-            emitAll(fixes)
-          }
-        }
-    show(
-        object : TripRepository by trips {
-          override suspend fun getTripById(tripId: String) =
-              TripResult.Success(trip.copy(ownerId = "commando"))
-        },
-        positions,
-    )
-    click(AppTestTags.ORDERS_BUTTON)
-    card().performClick()
-    click(OrderDetailsTestTags.TRACK)
-    compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertExists()
-    assertEquals("commando" to order.id, witness)
-    compose.runOnIdle { fixes.value = null }
-    compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertDoesNotExist()
-    back()
-    compose.onNodeWithTag(OrderDetailsTestTags.TRACK).assertExists()
-    compose.runOnIdle { assertEquals(0, fixes.subscriptionCount.value) }
-  }
 
   @Test
   fun ordersOpenExactOpaqueIdAndBothBackActionsReturnToTheListWithoutDuplicates() {

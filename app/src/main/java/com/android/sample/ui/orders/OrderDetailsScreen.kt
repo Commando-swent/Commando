@@ -40,7 +40,6 @@ import java.time.Instant
 
 /** Stable action selectors, independent of the presentation language. */
 object OrderDetailsTestTags {
-  const val TRACK = "order_details_track"
   const val ACCEPT = "order_details_accept"
   const val REJECT = "order_details_reject"
   const val CANCEL = "order_details_cancel"
@@ -68,7 +67,6 @@ object OrderDetailsTestTags {
  * @param onCancel Requests cancellation only after the requester confirms the dialog.
  * @param notice Optional contextual feedback rendered below the safe header in the scroll area.
  * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
- * @param onTrack Opens the selected active order's commando map for its requester.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -82,7 +80,6 @@ fun OrderDetailsScreen(
     onEdit: (() -> Unit)? = null,
     notice: String? = null,
     onConfirmReceipt: () -> Unit = {},
-    onTrack: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -137,11 +134,6 @@ fun OrderDetailsScreen(
             .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-      if (state is OrderDetailsUiState.Content && state.canTrack) {
-        OutlinedButton(onTrack, Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.TRACK)) {
-          Text(stringResource(R.string.order_tracking_title))
-        }
-      }
       notice?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
       when (state) {
         is OrderDetailsUiState.Content -> {

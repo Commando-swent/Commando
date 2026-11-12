@@ -31,6 +31,7 @@
     <string name="notifications_retry">Réessayer</string>
     <plurals name="notifications_unread">
         <item quantity="one">%1$d notification non lue</item>
+        <item quantity="many">%1$d notifications non lues</item>
         <item quantity="other">%1$d notifications non lues</item>
     </plurals>
 </resources>

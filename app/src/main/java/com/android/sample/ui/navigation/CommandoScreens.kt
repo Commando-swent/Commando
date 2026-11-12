@@ -78,10 +78,10 @@ enum class CommandoScreens(
     fun shoppingChecklistRoute(tripId: String): String =
         "${ShoppingChecklist.name}/${Uri.encode(tripId)}"
 
-    /** Encodes the opaque order ID once; consumers use Navigation's decoded string argument. */
     /** Opens the selected order tracking map without carrying client-supplied owner IDs. */
     fun orderTrackingRoute(orderId: String): String = "${OrderTracking.name}/${Uri.encode(orderId)}"
 
+    /** Encodes the opaque order ID once; consumers use Navigation's decoded string argument. */
     fun orderDetailsRoute(orderId: String): String = "${OrderDetails.name}/${Uri.encode(orderId)}"
   }
 }

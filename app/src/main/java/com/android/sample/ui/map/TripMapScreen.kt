@@ -305,7 +305,6 @@ fun TripMapScreen(
   }
 }
 
-/** Header subtitle shared by the loading, error and location-aware discovery states. */
 /** Centers only the first tracking fix; later updates preserve the user's camera. */
 @Composable
 private fun CenterTrackingPosition(fix: CommandoPosition?, onCenter: (MapPosition) -> Unit) {
@@ -339,6 +338,7 @@ private fun trackingSubtitle(state: OrderTrackingState?): String? {
   )
 }
 
+/** Header subtitle shared by the loading, error and location-aware discovery states. */
 @Composable
 private fun mapSubtitle(
     state: TripMapUiState,

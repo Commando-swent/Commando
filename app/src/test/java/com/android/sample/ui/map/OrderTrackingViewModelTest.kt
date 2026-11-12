@@ -44,6 +44,7 @@ class OrderTrackingViewModelTest {
   private val fixes = MutableStateFlow<CommandoPosition?>(null)
   private val fix = CommandoPosition(46.521, 6.566, 20.0, now)
   private var failure = false
+  private var closeStream = false
   private val witnesses = mutableListOf<Pair<String, String?>>()
   private val positions =
       object : CommandoPositionRepository {
@@ -54,7 +55,7 @@ class OrderTrackingViewModelTest {
         override fun observe(ownerId: String, orderId: String?) = flow {
           witnesses += ownerId to orderId
           check(!failure)
-          emitAll(fixes)
+          if (closeStream) emit(fix) else emitAll(fixes)
         }
       }
 
@@ -149,6 +150,30 @@ class OrderTrackingViewModelTest {
         assertEquals(OrderTrackingState.Unavailable, model.uiState.value)
       }
       assertTrue(witnesses.isEmpty())
+    }
+  }
+
+  @Test
+  fun mismatchedBlankOrSelfOwnedTripNeverStartsPositionObservation() = runTest {
+    withModel { model ->
+      for (invalid in
+          listOf(trip.copy(id = "wrong"), trip.copy(ownerId = ""), trip.copy(ownerId = "viewer"))) {
+        tripResult = TripResult.Success(invalid)
+        model.start()
+        runCurrent()
+        assertEquals(OrderTrackingState.Unavailable, model.uiState.value)
+      }
+      assertTrue(witnesses.isEmpty())
+    }
+  }
+
+  @Test
+  fun closingThePositionStreamClearsItsLastFix() = runTest {
+    closeStream = true
+    withModel { model ->
+      model.start()
+      runCurrent()
+      assertEquals(OrderTrackingState.Unavailable, model.uiState.value)
     }
   }
 

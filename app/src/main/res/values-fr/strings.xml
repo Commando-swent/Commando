@@ -406,6 +406,15 @@
     <string name="trips_filters_active">Filtres : %1$s</string>
     <string name="trips_filters_expanded">Développé</string>
     <string name="trips_filters_collapsed">Réduit</string>
+    <string name="trips_presets_label">Recherches enregistrées</string>
+    <string name="trips_presets_empty">Aucune recherche enregistrée.</string>
+    <string name="trips_presets_save">Enregistrer cette recherche</string>
+    <string name="trips_presets_save_title">Enregistrer la recherche</string>
+    <string name="trips_presets_rename">Renommer</string>
+    <string name="trips_presets_rename_title">Renommer la recherche</string>
+    <string name="trips_presets_delete">Supprimer</string>
+    <string name="trips_presets_name_label">Nom (40 caractères max.)</string>
+    <string name="trips_presets_error">Les recherches enregistrées n’ont pas pu être mises à jour.</string>
     <string name="profile_faq_expanded">Développé</string>
     <string name="profile_faq_collapsed">Réduit</string>
     <string name="order_product_limit">Nombre maximal de produits différents par commande : %1$d. Retirez un produit pour continuer.</string>

@@ -12,6 +12,7 @@ import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
+import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
@@ -56,9 +57,14 @@ class NotificationNavigationTest {
           override suspend fun getPreferences() = OrderResult.Success(settings)
 
           override suspend fun updatePreferences(
-              preferences: NotificationPreferences
+              newOrders: Boolean?,
+              orderDecisions: Boolean?,
           ): OrderResult<Unit> {
-            settings = preferences
+            settings =
+                settings.copy(
+                    newOrders = newOrders ?: settings.newOrders,
+                    orderDecisions = orderDecisions ?: settings.orderDecisions,
+                )
             return OrderResult.Success(Unit)
           }
         }
@@ -101,7 +107,7 @@ class NotificationNavigationTest {
     node(NotificationTestTags.ORDER + notice.event.id).performScrollTo().performClick()
     compose.runOnIdle { assertEquals(listOf(notice.event.orderId), requestedOrders) }
     compose.runOnIdle { auth.signOut() }
-    node(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
+    node(WelcomeTestTags.SCREEN).assertIsDisplayed()
     node(NotificationTestTags.ROW + notice.event.id).assertDoesNotExist()
   }
 }

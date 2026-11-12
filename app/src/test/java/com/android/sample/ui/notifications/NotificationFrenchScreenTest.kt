@@ -7,6 +7,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import com.android.sample.R
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File
@@ -54,12 +55,20 @@ class NotificationFrenchScreenTest {
         }
       }
     }
-    compose.onNodeWithText("Nouvelle commande reçue").assertIsDisplayed()
+    org.junit.Assert.assertEquals(
+        "fr",
+        compose.activity.resources.configuration.locales[0].language,
+    )
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.notifications_placed))
+        .assertIsDisplayed()
     capture("inbox-fr")
     compose
         .onNodeWithTag(NotificationTestTags.ROW + notifications.last().event.id)
         .performScrollTo()
-    compose.onNodeWithText("Commande refusée").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.notifications_rejected))
+        .assertIsDisplayed()
     compose
         .onNodeWithTag(NotificationTestTags.READ + notifications.last().event.id)
         .assertDoesNotExist()
@@ -81,7 +90,9 @@ class NotificationFrenchScreenTest {
       }
     }
     compose.onNodeWithTag(NotificationTestTags.NEW_ORDERS).assertIsOn()
-    compose.onNodeWithText("Réponses aux commandes").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.notifications_decisions))
+        .assertIsDisplayed()
     capture("preferences-fr")
   }
 

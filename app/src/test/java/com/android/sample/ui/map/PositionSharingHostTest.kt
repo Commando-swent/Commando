@@ -36,6 +36,7 @@ class PositionSharingHostTest {
           get() = registry
       }
   private val attached = mutableStateOf(true)
+  private val eligibleRole = mutableStateOf(true)
   private var request = 0
   private val registry =
       object : ActivityResultRegistry() {
@@ -66,7 +67,7 @@ class PositionSharingHostTest {
           LocalActivityResultRegistryOwner provides permissionOwner,
       ) {
         if (attached.value) {
-          val (state, toggle) = rememberPositionSharingControl(model)
+          val (state, toggle) = rememberPositionSharingControl(model, enabled = eligibleRole.value)
           PositionSharingCard(state, toggle)
         }
       }
@@ -74,6 +75,16 @@ class PositionSharingHostTest {
   }
 
   @After fun clear() = unmockkAll()
+
+  @Test
+  fun latePermissionAfterRoleExitCannotStartSharing() {
+    compose.onNodeWithTag(PositionSharingTestTags.SHARING_TOGGLE).performClick()
+    compose.runOnIdle { eligibleRole.value = false }
+    compose.waitForIdle()
+    compose.runOnIdle { registry.dispatchResult(request, true) }
+    compose.waitForIdle()
+    verify(exactly = 0) { model.start(any()) }
+  }
 
   @Test
   fun disposingTheHostStartsViewModelOwnedCleanup() {

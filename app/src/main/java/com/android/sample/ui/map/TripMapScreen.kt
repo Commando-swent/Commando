@@ -128,9 +128,13 @@ fun TripMapScreen(
     val locate: @Composable () -> Unit = {
       MapRoundAction(
           R.drawable.map_locate,
-          R.string.trip_map_locate,
+          if (tracking == null) R.string.trip_map_locate else R.string.order_tracking_recenter,
           {
-            if (onLocate != null) onLocate()
+            if (tracking != null) {
+              trackedFix
+                  ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
+                  ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+            } else if (onLocate != null) onLocate()
             else scope.launch { snackbar.showSnackbar(locationMessage) }
           },
           Modifier.testTag(TripMapTestTags.LOCATE),

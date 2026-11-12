@@ -467,4 +467,5 @@
     <string name="order_tracking_unavailable">Le commando ne partage pas de position récente.</string>
     <string name="order_tracking_off_map">Le commando est en dehors du plan du campus.</string>
     <string name="order_tracking_live">Position du commando en direct</string>
+    <string name="order_tracking_recenter">Centrer sur le commando</string>
 </resources>

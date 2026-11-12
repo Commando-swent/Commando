@@ -308,7 +308,8 @@ private fun AuthenticatedApp(
         orders.sessionChanges,
     )
   }
-  val (sharingState, toggleSharing) = rememberPositionSharingControl(sharing)
+  val (sharingState, toggleSharing) =
+      rememberPositionSharingControl(sharing, enabled = appUiState.mode == AppMode.Commando)
   val signOutAfterCleanup =
       rememberSharingSignOut(sharing, appUiState.mode, onSignOut, photoSnackbarHost)
   AppScaffold(

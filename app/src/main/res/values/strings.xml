@@ -41,4 +41,5 @@
     <string name="order_tracking_unavailable">The commando is not sharing a fresh position.</string>
     <string name="order_tracking_off_map">The commando is outside the campus map.</string>
     <string name="order_tracking_live">Live commando position</string>
+    <string name="order_tracking_recenter">Center on commando</string>
 </resources>

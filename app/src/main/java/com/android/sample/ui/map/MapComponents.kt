@@ -173,12 +173,15 @@ internal fun MapDiscoveryHeader(
                   .testTag(NavigationTestTags.MAP_LIST),
               contentAlignment = Alignment.Center,
           ) {
-            Image(
+            Icon(
                 painterResource(
                     if (tracking) R.drawable.ic_trip_arrow_left else R.drawable.map_list
                 ),
                 stringResource(if (tracking) R.string.nav_back else R.string.nav_trip_list),
                 Modifier.size(20.dp),
+                tint =
+                    if (tracking) MaterialTheme.colorScheme.onSurface
+                    else androidx.compose.ui.graphics.Color.Unspecified,
             )
           }
           Box(

@@ -283,6 +283,24 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Private product references; product details remain canonical under stores/{storeId}/products.
+    match /users/{userId}/favourites/{productId} {
+      allow read, delete: if isAuthenticated() && request.auth.uid == userId;
+      allow create, update: if isAuthenticated() && request.auth.uid == userId
+        && request.resource.data.keys().hasAll(["productId", "storeId"])
+        && request.resource.data.keys().hasOnly(["productId", "storeId"])
+        && request.resource.data.productId == productId
+        && request.resource.data.storeId in ["migros", "coop"]
+        // As in ProductRepositoryFirestore: the part after the prefix is a product document ID.
+        && productId.matches(request.resource.data.storeId + ':[^\\s/]([^/]*[^\\s/])?')
+        && !(productId in [request.resource.data.storeId + ':.', request.resource.data.storeId + ':..']);
+    }
+
+    // Importer-written store metadata, such as its sorted product categories.
+    match /stores/{storeId} {
+      allow get: if isAuthenticated();
+    }
+
     match /stores/{storeId}/products/{productId} {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated()

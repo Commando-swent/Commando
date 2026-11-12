@@ -352,12 +352,16 @@ private fun AuthenticatedApp(
             }
         RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
         val selectedPoint by locationFilter.selected.collectAsState()
+        val criteria by locationFilter.criteria.collectAsState()
         AvailableTripsScreen(
             viewModel = availableTripsViewModel,
             selectedPoint = selectedPoint,
             points = TripLocations.handoffPoints,
             onSelectPoint = locationFilter::select,
             onClearPoint = locationFilter::clear,
+            criteria = criteria,
+            onCriteriaChange = locationFilter::setCriteria,
+            onClearCriteria = locationFilter::clearCriteria,
             onTripSelected = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
             },

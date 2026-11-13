@@ -135,5 +135,22 @@ to run with the checked-in rules. HTTP is allowed only for local emulator hosts 
 The test saves `cache/persistent-order.png` in the target app for visual inspection.
 See `ORDERS_FIRESTORE.md` for schema, error semantics and production deployment prerequisites.
 
+### Complete order lifecycle Android check
+
+`OrderLifecycleJourneyTest` drives two email/password accounts through the production app:
+commando login → publish trip → requester login → catalogue search/quantities → submit →
+owner accept → purchase checklist → ready for handoff → requester receipt → DELIVERED after
+navigation and a fresh server client. Both accounts re-read the final order and unchanged trip;
+role/state-specific controls and rejected repository/forged SDK transitions are checked.
+Auth, trips, products and orders use the Auth/Firestore emulators and checked-in rules. Only
+accounts and a unique importer-owned product are seeded; every trip/order mutation uses the UI.
+Selectors reuse test tags and localized resources; saved IDs, item prices and quantities come
+from the fixture and persisted snapshots. No production credentials or deployment are needed.
+
+Run the command above with the class replaced by
+`com.android.sample.ui.navigation.OrderLifecycleJourneyTest`. CI's existing `connectedCheck`
+automatically includes it when `firebaseEmulatorHost` is provided. The test skips without that
+argument. This does not validate Google OAuth, physical location or deployed production rules.
+
 The instrumentation configuration excludes legacy `protobuf-lite` from Espresso-contrib, which
 otherwise shadows Firestore's runtime ([Android Test issue #999](https://github.com/android/android-test/issues/999)).

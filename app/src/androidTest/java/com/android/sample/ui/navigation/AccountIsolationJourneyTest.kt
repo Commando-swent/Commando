@@ -9,6 +9,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.credentials.Credential
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
@@ -28,6 +29,7 @@ import com.android.sample.ui.trips.CreateTripScreenTestTags
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.Assert.assertEquals
@@ -51,10 +53,14 @@ class AccountIsolationJourneyTest {
   private val store = TripLocations.stores.first { storeIdFor(it.name) != null }
   private val handoff = TripLocations.handoffPoints.first()
 
-  /** Returning no credential is what a dismissed account picker does. */
+  /** Counts credential requests; returning none is what a dismissed account picker does. */
+  private val googleRequests = AtomicInteger()
   private val dismissedGoogle =
       object : GoogleCredentialClient {
-        override suspend fun request(context: Context) = null
+        override suspend fun request(context: Context): Credential? {
+          googleRequests.incrementAndGet()
+          return null
+        }
 
         override suspend fun clearSession() = Unit
       }
@@ -116,7 +122,12 @@ class AccountIsolationJourneyTest {
       click(AuthTestTags.SUBMIT)
       awaitText(R.string.auth_invalid_credentials)
       awaitEnabled(AuthTestTags.SUBMIT)
+      val googleRequestsBefore = googleRequests.get()
       click(AuthTestTags.GOOGLE)
+      // The picker was really asked for a credential, then dismissed.
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+        googleRequests.get() == googleRequestsBefore + 1
+      }
       awaitEnabled(AuthTestTags.GOOGLE)
       awaitEnabled(AuthTestTags.SUBMIT)
       compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
@@ -208,7 +219,9 @@ class AccountIsolationJourneyTest {
     compose.onNodeWithTag(AvailableTripsScreenTestTags.CLEAR_LOCATION).assertDoesNotExist()
     openCatalogue(tripId)
     awaitTag(CatalogueTestTags.add(product.id))
-    compose.onNodeWithTag(CatalogueTestTags.quantity(product.id)).assertDoesNotExist()
+    compose
+        .onNodeWithTag(CatalogueTestTags.quantity(product.id), useUnmergedTree = true)
+        .assertDoesNotExist()
     compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsNotEnabled()
   }
 
@@ -307,7 +320,8 @@ class AccountIsolationJourneyTest {
   /** The basket quantity on the product's row, or 0 while it is not in the basket. */
   private fun quantityShown(product: Product): Int =
       compose
-          .onAllNodesWithTag(CatalogueTestTags.quantity(product.id))
+          // The quantity sits inside the row's merged semantics, so read the unmerged tree.
+          .onAllNodesWithTag(CatalogueTestTags.quantity(product.id), useUnmergedTree = true)
           .fetchSemanticsNodes()
           .firstOrNull()
           ?.config

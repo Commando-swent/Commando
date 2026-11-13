@@ -46,7 +46,11 @@ object WelcomeTestTags {
 fun WelcomeScreen(onLogIn: () -> Unit, onCreateAccount: () -> Unit, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme
   BoxWithConstraints(
-      modifier.fillMaxSize().background(colors.background).testTag(WelcomeTestTags.SCREEN),
+      modifier
+          .fillMaxSize()
+          .background(colors.background)
+          .safeDrawingPadding()
+          .testTag(WelcomeTestTags.SCREEN),
       contentAlignment = Alignment.TopCenter,
   ) {
     // Match the 915dp Figma canvas while keeping the actions visible on shorter displays.

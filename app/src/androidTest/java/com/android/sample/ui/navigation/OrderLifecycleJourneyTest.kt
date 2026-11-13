@@ -264,7 +264,12 @@ class OrderLifecycleJourneyTest {
         )
     for (tag in actions) {
       val node = compose.onNodeWithTag(tag)
-      if (tag in allowed) node.assertIsEnabled() else node.assertDoesNotExist()
+      if (tag in allowed) {
+        compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+          compose.onAllNodes(hasTestTag(tag) and isEnabled()).fetchSemanticsNodes().isNotEmpty()
+        }
+        node.assertIsEnabled()
+      } else node.assertDoesNotExist()
     }
   }
 

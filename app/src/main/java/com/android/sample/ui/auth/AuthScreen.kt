@@ -27,6 +27,20 @@ import com.android.sample.R
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.ui.theme.SampleAppTheme
 
+/** Stable selectors for the authentication form. */
+object AuthTestTags {
+  const val BACK = "auth_back"
+  const val TAB_LOGIN = "auth_tab_login"
+  const val TAB_SIGNUP = "auth_tab_signup"
+  const val FULL_NAME = "auth_full_name"
+  const val EMAIL = "auth_email"
+  const val PASSWORD = "auth_password"
+  const val CONFIRMATION = "auth_confirmation"
+  const val SUBMIT = "auth_submit"
+  const val GOOGLE = "auth_google"
+  const val SWITCH = "auth_switch"
+}
+
 /** The navigation owner supplies the ViewModel, Google account picker and destination callbacks. */
 @Composable
 fun AuthRoute(
@@ -107,7 +121,7 @@ private fun AuthHeader(signup: Boolean, enabled: Boolean, onBack: () -> Unit) {
   TextButton(
       onClick = onBack,
       enabled = enabled,
-      modifier = Modifier.testTag("auth_back"),
+      modifier = Modifier.testTag(AuthTestTags.BACK),
       contentPadding = PaddingValues(0.dp),
   ) {
     Text(
@@ -151,7 +165,9 @@ private fun AuthModeTabs(mode: AuthMode, enabled: Boolean, onModeChange: (AuthMo
                   role = Role.Tab,
                   onClick = { onModeChange(option) },
               )
-              .testTag(if (option == AuthMode.LOGIN) "auth_tab_login" else "auth_tab_signup"),
+              .testTag(
+                  if (option == AuthMode.LOGIN) AuthTestTags.TAB_LOGIN else AuthTestTags.TAB_SIGNUP
+              ),
           contentAlignment = Alignment.Center,
       ) {
         Text(
@@ -180,7 +196,7 @@ private fun AuthForm(
             actions.onFullNameChange,
             R.string.auth_full_name,
             R.string.auth_full_name_hint,
-            "auth_full_name",
+            AuthTestTags.FULL_NAME,
             state.fullNameError,
             enabled,
             password = false,
@@ -197,7 +213,7 @@ private fun AuthForm(
         actions.onEmailChange,
         R.string.auth_email,
         R.string.auth_email_hint,
-        "auth_email",
+        AuthTestTags.EMAIL,
         state.emailError,
         enabled,
         password = false,
@@ -209,7 +225,7 @@ private fun AuthForm(
         actions.onPasswordChange,
         R.string.auth_password,
         R.string.auth_password_hint,
-        "auth_password",
+        AuthTestTags.PASSWORD,
         state.passwordError,
         enabled,
         password = true,
@@ -222,7 +238,7 @@ private fun AuthForm(
             actions.onConfirmationChange,
             R.string.auth_confirmation,
             R.string.auth_confirmation_hint,
-            "auth_confirmation",
+            AuthTestTags.CONFIRMATION,
             state.confirmationError,
             enabled,
             password = true,
@@ -233,7 +249,7 @@ private fun AuthForm(
     Button(
         onClick = submit,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(56.dp).testTag("auth_submit"),
+        modifier = Modifier.fillMaxWidth().height(56.dp).testTag(AuthTestTags.SUBMIT),
     ) {
       if (state.isLoading) {
         CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
@@ -267,7 +283,7 @@ private fun AuthAlternativeActions(signup: Boolean, enabled: Boolean, actions: A
   OutlinedButton(
       onClick = actions.onGoogle,
       enabled = enabled,
-      modifier = Modifier.fillMaxWidth().height(56.dp).testTag("auth_google"),
+      modifier = Modifier.fillMaxWidth().height(56.dp).testTag(AuthTestTags.GOOGLE),
       colors =
           ButtonDefaults.outlinedButtonColors(
               containerColor = colors.surface,
@@ -283,7 +299,7 @@ private fun AuthAlternativeActions(signup: Boolean, enabled: Boolean, actions: A
       onClick = { actions.onModeChange(if (signup) AuthMode.LOGIN else AuthMode.SIGN_UP) },
       enabled = enabled,
       contentPadding = PaddingValues(0.dp),
-      modifier = Modifier.testTag("auth_switch"),
+      modifier = Modifier.testTag(AuthTestTags.SWITCH),
   ) {
     Text(
         stringResource(if (signup) R.string.auth_login_footer else R.string.auth_signup_footer),

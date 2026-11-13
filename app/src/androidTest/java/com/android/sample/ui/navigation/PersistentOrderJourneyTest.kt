@@ -105,11 +105,12 @@ class PersistentOrderJourneyTest {
         }
       }
       compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).performClick()
-      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
-        compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty()
-      }
       val tripCard = hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id))
-      compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard)
+      // The list appears before the trips load, so scroll again until the new trip is listed.
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+        runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard) }
+            .isSuccess
+      }
       compose.onNode(tripCard).performClick()
       awaitText(instrumentation.targetContext.getString(R.string.trip_details_add_items))
       compose

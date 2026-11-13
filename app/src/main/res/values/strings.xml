@@ -37,9 +37,16 @@
     <string name="position_sharing_no_trip">No available or ongoing trip to share</string>
     <string name="order_tracking_title">Track commando</string>
     <string name="order_tracking_loading">Loading commando position…</string>
-    <string name="order_tracking_error">Tracking unavailable. Tap refresh to retry.</string>
+    <string name="order_tracking_error">Tracking unavailable. Try again.</string>
     <string name="order_tracking_unavailable">The commando is not sharing a fresh position.</string>
     <string name="order_tracking_off_map">The commando is outside the campus map.</string>
     <string name="order_tracking_live">Live commando position</string>
     <string name="order_tracking_recenter">Center on commando</string>
+    <string name="order_tracking_context">Tracking your selected order</string>
+    <string name="order_tracking_accuracy">Estimated accuracy: ±%1$d m</string>
+    <plurals name="order_tracking_age">
+        <item quantity="one">Position captured %1$d second ago</item>
+        <item quantity="other">Position captured %1$d seconds ago</item>
+    </plurals>
+    <string name="order_tracking_retry">Retry tracking</string>
 </resources>

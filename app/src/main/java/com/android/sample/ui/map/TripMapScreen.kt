@@ -55,6 +55,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** Geographic extent shared by the bundled drawing and the marker projection. */
@@ -63,6 +64,7 @@ internal val CAMPUS_MAP_PROJECTION = CampusMapProjection(46.516, 46.526, 6.559, 
 private val DEVICE_POSITION_DIAMETER = 24.dp
 private val DEVICE_POSITION_INSET = 5.dp
 private const val DEVICE_POSITION_HALO_ALPHA = 0.25f
+private const val TRACKING_FEEDBACK_INTERVAL_MILLIS = 1_000L
 
 /** Full-viewport map with the Figma header, list/map switch and floating trip/state cards. */
 @Composable
@@ -81,7 +83,8 @@ fun TripMapScreen(
     tracking: OrderTrackingState? = null,
     mapSurface: @Composable (Modifier) -> Unit = { CampusMapBackground(it) },
 ) {
-  val trackedFix = (tracking as? OrderTrackingState.Position)?.fix
+  val trackingPresentation = rememberTrackingPresentation(tracking)
+  val trackedFix = trackingPresentation?.fix
   val content = state as? TripMapUiState.Content
   val groups = remember(content?.trips) { content?.markerGroups.orEmpty() }
   val snackbar = remember { SnackbarHostState() }
@@ -142,7 +145,7 @@ fun TripMapScreen(
         camera,
         { dx, dy, zoom -> camera = camera.moved(dx, dy, zoom) },
         onViewportBounds = { viewportBounds = it },
-        trackedPosition = (tracking as? OrderTrackingState.Position)?.fix,
+        trackedPosition = trackedFix,
     ) { id, bounds ->
       markerBounds[id] = bounds
     }
@@ -158,7 +161,9 @@ fun TripMapScreen(
                 )
             )
     )
-    val subtitle = trackingSubtitle(tracking) ?: mapSubtitle(state, fix, nearby.size)
+    val subtitle =
+        trackingPresentation?.let { stringResource(R.string.order_tracking_context) }
+            ?: mapSubtitle(state, fix, nearby.size)
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
           controlsBounds = it.boundsInRoot()
@@ -295,7 +300,21 @@ fun TripMapScreen(
         )
       }
     }
-    if (content?.selectedTrip == null) {
+    if (trackingPresentation != null) {
+      OrderTrackingStatusCard(
+          trackingPresentation,
+          onRecenter = {
+            trackedFix
+                ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
+                ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+          },
+          onRetry = onRefresh,
+          modifier =
+              Modifier.align(Alignment.BottomCenter)
+                  .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)
+                  .heightIn(max = (maxHeight - controlsHeight - 56.dp).coerceAtLeast(0.dp)),
+      )
+    } else if (content?.selectedTrip == null) {
       Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
     }
     SnackbarHost(
@@ -319,23 +338,18 @@ private fun CenterTrackingPosition(fix: CommandoPosition?, onCenter: (MapPositio
   }
 }
 
+/** Tick only while tracking is composed; the original fix expires without another event. */
 @Composable
-private fun trackingSubtitle(state: OrderTrackingState?): String? {
+private fun rememberTrackingPresentation(state: OrderTrackingState?): OrderTrackingPresentation? {
   if (state == null) return null
-  return stringResource(
-      when (state) {
-        OrderTrackingState.Loading -> R.string.order_tracking_loading
-        OrderTrackingState.Unavailable -> R.string.order_tracking_error
-        is OrderTrackingState.Position ->
-            when {
-              state.fix == null -> R.string.order_tracking_unavailable
-              CAMPUS_MAP_PROJECTION.project(
-                  Location("", state.fix.latitude, state.fix.longitude)
-              ) == null -> R.string.order_tracking_off_map
-              else -> R.string.order_tracking_live
-            }
+  val now by
+      produceState(Instant.now(), state) {
+        while (true) {
+          value = Instant.now()
+          delay(TRACKING_FEEDBACK_INTERVAL_MILLIS)
+        }
       }
-  )
+  return orderTrackingPresentation(state, now)
 }
 
 /** Header subtitle shared by the loading, error and location-aware discovery states. */

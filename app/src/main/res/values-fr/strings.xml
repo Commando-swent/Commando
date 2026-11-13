@@ -329,14 +329,12 @@
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
     <string name="nav_login">Connexion</string>
-    <string name="nav_sign_up">Inscription</string>
     <string name="nav_home">Accueil</string>
     <string name="nav_orders">Commandes</string>
     <string name="nav_profile">Profil</string>
     <string name="nav_back">Retour</string>
     <string name="nav_sign_out">Se déconnecter</string>
     <string name="nav_sign_out_error">Déconnexion impossible. Réessayez.</string>
-    <string name="nav_screen_pending">Cet écran n’est pas encore disponible.</string>
     <string name="home_requester">Demandeur</string>
     <string name="home_commando">Commando</string>
     <string name="home_requester_title">Besoin de quelques courses ?</string>
@@ -346,7 +344,6 @@
     <string name="home_find_trip">Trouver un trajet</string>
     <string name="home_publish_trip">Publier un trajet</string>
     <string name="home_trips">Trajets</string>
-    <string name="home_map">Carte</string>
     <string name="nav_mock_map">Carte fictive · trajets de démonstration</string>
     <string name="nav_trip_list">Retour à la liste des trajets</string>
     <string name="mock_map_details_unavailable">Trajet fictif · détails indisponibles</string>
@@ -462,9 +459,17 @@
     <string name="position_sharing_no_trip">Aucun trajet disponible ou en cours à partager</string>
     <string name="order_tracking_title">Suivre le commando</string>
     <string name="order_tracking_loading">Chargement de la position du commando…</string>
-    <string name="order_tracking_error">Suivi indisponible. Actualisez pour réessayer.</string>
+    <string name="order_tracking_error">Suivi indisponible. Réessayez.</string>
     <string name="order_tracking_unavailable">Le commando ne partage pas de position récente.</string>
     <string name="order_tracking_off_map">Le commando est en dehors du plan du campus.</string>
     <string name="order_tracking_live">Position du commando en direct</string>
     <string name="order_tracking_recenter">Centrer sur le commando</string>
+    <string name="order_tracking_context">Suivi de votre commande sélectionnée</string>
+    <string name="order_tracking_accuracy">Précision estimée : ±%1$d m</string>
+    <plurals name="order_tracking_age">
+        <item quantity="one">Position relevée il y a %1$d seconde</item>
+        <item quantity="many">Position relevée il y a %1$d secondes</item>
+        <item quantity="other">Position relevée il y a %1$d secondes</item>
+    </plurals>
+    <string name="order_tracking_retry">Réessayer le suivi</string>
 </resources>

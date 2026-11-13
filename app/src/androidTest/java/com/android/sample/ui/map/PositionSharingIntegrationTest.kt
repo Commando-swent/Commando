@@ -134,10 +134,14 @@ class PositionSharingIntegrationTest {
     compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id).performClick()
     compose.onNodeWithTag(OrderDetailsTestTags.TRACK).performClick()
     compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertIsDisplayed()
+    compose.onNodeWithTag(OrderTrackingStatusTags.CARD).assertIsDisplayed()
+    compose.onNodeWithTag(OrderTrackingStatusTags.AGE).assertIsDisplayed()
     screenshot("selected-order-tracking.png")
     runBlocking { owner.stopSharing() }
     compose.waitForIdle()
     compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertDoesNotExist()
+    compose.onNodeWithTag(OrderTrackingStatusTags.AGE).assertDoesNotExist()
+    compose.onNodeWithTag(OrderTrackingStatusTags.RETRY).assertIsDisplayed()
     assertTrue(storage.value.isEmpty())
   }
 

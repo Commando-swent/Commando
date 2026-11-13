@@ -105,11 +105,18 @@ class PersistentOrderJourneyTest {
         }
       }
       compose.onNodeWithTag(AppTestTags.TRIPS_BUTTON).performClick()
-      val tripCard = hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id))
-      // The list appears before the trips load, so scroll again until the new trip is listed.
       compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
-        runCatching { compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard) }
-            .isSuccess
+        compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty()
+      }
+      val tripCard = hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id))
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+        // Wait for the authenticated feed, rather than the initially scrollable guest list.
+        try {
+          compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard)
+          compose.onNode(tripCard).isDisplayed()
+        } catch (_: AssertionError) {
+          false
+        }
       }
       compose.onNode(tripCard).performClick()
       awaitText(instrumentation.targetContext.getString(R.string.trip_details_add_items))

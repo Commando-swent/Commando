@@ -3,14 +3,12 @@
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
     <string name="nav_login">Login</string>
-    <string name="nav_sign_up">Sign up</string>
     <string name="nav_home">Home</string>
     <string name="nav_orders">Orders</string>
     <string name="nav_profile">Profile</string>
     <string name="nav_back">Back</string>
     <string name="nav_sign_out">Sign out</string>
     <string name="nav_sign_out_error">Unable to sign out. Please try again.</string>
-    <string name="nav_screen_pending">This screen is not available yet.</string>
     <string name="home_requester">Requester</string>
     <string name="home_commando">Commando</string>
     <string name="home_requester_title">Need a few things?</string>
@@ -20,7 +18,6 @@
     <string name="home_find_trip">Find a trip</string>
     <string name="home_publish_trip">Publish a trip</string>
     <string name="home_trips">Trips</string>
-    <string name="home_map">Map</string>
     <string name="nav_mock_map">Mock map · sample trips</string>
     <string name="nav_trip_list">Back to trip list</string>
     <string name="mock_map_details_unavailable">Sample trip · details unavailable</string>
@@ -37,9 +34,16 @@
     <string name="position_sharing_no_trip">No available or ongoing trip to share</string>
     <string name="order_tracking_title">Track commando</string>
     <string name="order_tracking_loading">Loading commando position…</string>
-    <string name="order_tracking_error">Tracking unavailable. Tap refresh to retry.</string>
+    <string name="order_tracking_error">Tracking unavailable. Try again.</string>
     <string name="order_tracking_unavailable">The commando is not sharing a fresh position.</string>
     <string name="order_tracking_off_map">The commando is outside the campus map.</string>
     <string name="order_tracking_live">Live commando position</string>
     <string name="order_tracking_recenter">Center on commando</string>
+    <string name="order_tracking_context">Tracking your selected order</string>
+    <string name="order_tracking_accuracy">Estimated accuracy: ±%1$d m</string>
+    <plurals name="order_tracking_age">
+        <item quantity="one">Position captured %1$d second ago</item>
+        <item quantity="other">Position captured %1$d seconds ago</item>
+    </plurals>
+    <string name="order_tracking_retry">Retry tracking</string>
 </resources>

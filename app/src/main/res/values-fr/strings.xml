@@ -459,9 +459,17 @@
     <string name="position_sharing_no_trip">Aucun trajet disponible ou en cours à partager</string>
     <string name="order_tracking_title">Suivre le commando</string>
     <string name="order_tracking_loading">Chargement de la position du commando…</string>
-    <string name="order_tracking_error">Suivi indisponible. Actualisez pour réessayer.</string>
+    <string name="order_tracking_error">Suivi indisponible. Réessayez.</string>
     <string name="order_tracking_unavailable">Le commando ne partage pas de position récente.</string>
     <string name="order_tracking_off_map">Le commando est en dehors du plan du campus.</string>
     <string name="order_tracking_live">Position du commando en direct</string>
     <string name="order_tracking_recenter">Centrer sur le commando</string>
+    <string name="order_tracking_context">Suivi de votre commande sélectionnée</string>
+    <string name="order_tracking_accuracy">Précision estimée : ±%1$d m</string>
+    <plurals name="order_tracking_age">
+        <item quantity="one">Position relevée il y a %1$d seconde</item>
+        <item quantity="many">Position relevée il y a %1$d secondes</item>
+        <item quantity="other">Position relevée il y a %1$d secondes</item>
+    </plurals>
+    <string name="order_tracking_retry">Réessayer le suivi</string>
 </resources>

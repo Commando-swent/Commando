@@ -174,6 +174,7 @@ class OrderLifecycleJourneyTest {
       val incoming = IncomingOrdersTestTags.ORDER_CARD_PREFIX + pending.id
       awaitTag(incoming)
       click(incoming)
+      awaitTag(OrderDetailsTestTags.ACCEPT)
       assertActions(OrderDetailsTestTags.ACCEPT, OrderDetailsTestTags.REJECT)
       assertEquals(
           OrderResult.Error(OrderError.AlreadyDecided(pending)),

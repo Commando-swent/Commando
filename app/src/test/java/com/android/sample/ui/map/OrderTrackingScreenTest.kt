@@ -53,7 +53,10 @@ class OrderTrackingScreenTest {
     for ((next, message) in cases) {
       compose.runOnIdle { state = next }
       compose.onAllNodesWithText(context.getString(message)).onFirst().assertExists()
-      compose.onNodeWithTag(TripMapTestTags.LOCATE).performClick()
+      compose.onNodeWithTag(OrderTrackingStatusTags.CARD).assertExists()
+      if (next == OrderTrackingState.Position(fix))
+          compose.onNodeWithTag(TripMapTestTags.LOCATE).performClick()
+      else compose.onNodeWithTag(TripMapTestTags.LOCATE).assertDoesNotExist()
       if (next == OrderTrackingState.Position(fix))
           compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertExists()
       else compose.onNodeWithTag(OrderTrackingTestTags.MARKER).assertDoesNotExist()

@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.os.LocaleListCompat
+import androidx.core.view.WindowCompat
 import com.android.sample.data.repository.ProfilePhotoRepositoryFirestore
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
@@ -41,6 +42,8 @@ import java.time.ZoneId
 class MainActivity : AppCompatActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    // AI assistance: OpenAI Codex. Compose draws behind transparent system bars.
+    WindowCompat.enableEdgeToEdge(window)
     setContent {
       SampleAppTheme {
         // A surface container using the 'background' color from the theme

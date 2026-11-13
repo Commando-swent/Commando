@@ -10,6 +10,7 @@ import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.ui.auth.AuthTestTags
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.home.HomeTestTags
@@ -105,9 +106,9 @@ class AppJourneyTest {
         .performScrollTo()
         .performClick()
     compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
-    compose.onNodeWithTag("auth_email").performTextInput("alice@epfl.ch")
-    compose.onNodeWithTag("auth_password").performTextInput("demo-password")
-    compose.onNodeWithTag("auth_submit").performScrollTo().performClick()
+    compose.onNodeWithTag(AuthTestTags.EMAIL).performTextInput("alice@epfl.ch")
+    compose.onNodeWithTag(AuthTestTags.PASSWORD).performTextInput("demo-password")
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertIsDisplayed()
     click(AppTestTags.TRIPS_BUTTON)
     // From the handoff (46.52, 6.56): SV building is about 240 m away, Rolex about 660 m.

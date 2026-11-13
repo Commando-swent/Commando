@@ -22,14 +22,11 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
-import java.net.HttpURLConnection
-import java.net.URL
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
-import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -376,68 +373,7 @@ class OrderLifecycleJourneyTest {
     compose.waitForIdle()
   }
 
-  /** Admin access is restricted to importer fixtures on the explicitly opted-in demo emulator. */
-  private fun catalogueFixture(host: String, storeId: String, id: String, product: Product?) {
-    val url =
-        URL(
-            "http://$host:$ORDER_JOURNEY_FIRESTORE_PORT/v1/projects/$ORDER_JOURNEY_PROJECT/databases/(default)/documents/stores/$storeId/products/$id"
-        )
-    val connection = url.openConnection() as HttpURLConnection
-    try {
-      connection.requestMethod = if (product == null) "DELETE" else "PATCH"
-      connection.setRequestProperty("Authorization", "Bearer owner")
-      connection.connectTimeout = ORDER_JOURNEY_WAIT_MILLIS.toInt()
-      connection.readTimeout = ORDER_JOURNEY_WAIT_MILLIS.toInt()
-      if (product != null) {
-        connection.doOutput = true
-        connection.setRequestProperty("Content-Type", "application/json")
-        val fields =
-            JSONObject()
-                .put("id", JSONObject().put("stringValue", product.id))
-                .put("name", JSONObject().put("stringValue", product.name))
-                .put(
-                    "price",
-                    JSONObject()
-                        .put(
-                            "doubleValue",
-                            product.priceCents
-                                .toBigDecimal()
-                                .movePointLeft(CURRENCY_SCALE)
-                                .toDouble(),
-                        ),
-                )
-                .put("removed_at", JSONObject().put("nullValue", JSONObject.NULL))
-                .put(
-                    "search_prefixes",
-                    JSONObject()
-                        .put(
-                            "mapValue",
-                            JSONObject()
-                                .put(
-                                    "fields",
-                                    JSONObject().apply {
-                                      requireNotNull(productSearchTerms(product.name)).forEach {
-                                        put(it, JSONObject().put("booleanValue", true))
-                                      }
-                                    },
-                                ),
-                        ),
-                )
-        connection.outputStream.use {
-          it.write(JSONObject().put("fields", fields).toString().toByteArray())
-        }
-      }
-      assertTrue(
-          "Catalogue fixture request failed: ${connection.responseCode}",
-          connection.responseCode in 200..299,
-      )
-    } finally {
-      connection.disconnect()
-    }
-  }
-
   private companion object {
-    const val CURRENCY_SCALE = 2
     const val PRODUCT_PRICE_CENTS = 225
     const val ORDER_QUANTITY = 2
     const val TRIP_DAYS_AHEAD = 2L

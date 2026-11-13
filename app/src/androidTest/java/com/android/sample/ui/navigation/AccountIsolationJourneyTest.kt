@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.StringRes
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -277,15 +279,41 @@ class AccountIsolationJourneyTest {
     clickText(R.string.trip_details_add_items)
   }
 
+  /**
+   * Taps until the basket shows [quantity]. On a slow device a tap can land while the search
+   * results replace the row, so each step taps again only while the previous count is shown.
+   */
   private fun addToBasket(product: Product, quantity: Int) {
     awaitTag(CatalogueTestTags.SEARCH)
     compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement(product.name)
-    click(CatalogueTestTags.add(product.id))
-    repeat(quantity - 1) { click(CatalogueTestTags.increase(product.id)) }
-    compose
-        .onNodeWithTag(CatalogueTestTags.quantity(product.id))
-        .assertTextEquals(quantity.toString())
+    (1..quantity).forEach { target ->
+      val button =
+          if (target == 1) CatalogueTestTags.add(product.id)
+          else CatalogueTestTags.increase(product.id)
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+        if (quantityShown(product) == target - 1) {
+          runCatching {
+            val node = compose.onNodeWithTag(button)
+            if (!node.isDisplayed()) node.performScrollTo()
+            node.performClick()
+          }
+          compose.waitForIdle()
+        }
+        quantityShown(product) == target
+      }
+    }
   }
+
+  /** The basket quantity on the product's row, or 0 while it is not in the basket. */
+  private fun quantityShown(product: Product): Int =
+      compose
+          .onAllNodesWithTag(CatalogueTestTags.quantity(product.id))
+          .fetchSemanticsNodes()
+          .firstOrNull()
+          ?.config
+          ?.getOrNull(SemanticsProperties.Text)
+          ?.joinToString("") { it.text }
+          ?.toIntOrNull() ?: 0
 
   private fun awaitTag(tag: String) =
       compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
@@ -332,9 +360,7 @@ class AccountIsolationJourneyTest {
 
   private fun hasTestTagPrefix(prefix: String) =
       SemanticsMatcher("Test tag starts with $prefix") {
-        it.config
-            .getOrElse(androidx.compose.ui.semantics.SemanticsProperties.TestTag) { "" }
-            .startsWith(prefix)
+        it.config.getOrElse(SemanticsProperties.TestTag) { "" }.startsWith(prefix)
       }
 
   private companion object {

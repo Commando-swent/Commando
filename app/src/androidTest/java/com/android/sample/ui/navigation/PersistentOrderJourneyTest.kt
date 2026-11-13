@@ -109,15 +109,7 @@ class PersistentOrderJourneyTest {
         compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty()
       }
       val tripCard = hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id))
-      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
-        // Wait for the authenticated feed, rather than the initially scrollable guest list.
-        try {
-          compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard)
-          compose.onNode(tripCard).isDisplayed()
-        } catch (_: AssertionError) {
-          false
-        }
-      }
+      compose.onNode(hasScrollToIndexAction()).performScrollToNode(tripCard)
       compose.onNode(tripCard).performClick()
       awaitText(instrumentation.targetContext.getString(R.string.trip_details_add_items))
       compose

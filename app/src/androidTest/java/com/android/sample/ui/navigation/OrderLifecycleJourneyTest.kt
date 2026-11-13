@@ -110,30 +110,11 @@ class OrderLifecycleJourneyTest {
       compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
         compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty()
       }
-      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
-        // The signed-in feed can replace the guest list after it first becomes scrollable.
-        try {
-          compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag(tripCard))
-          compose.onNode(hasTestTag(tripCard)).isDisplayed()
-        } catch (_: AssertionError) {
-          false
-        }
-      }
+      compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag(tripCard))
       click(tripCard)
       clickText(R.string.trip_details_add_items)
       awaitTag(CatalogueTestTags.SEARCH)
       compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement(product.name)
-      // Old rows stay visible during debounce; wait for the result of this exact query.
-      val results =
-          context.resources.getQuantityString(
-              R.plurals.catalogue_results,
-              1,
-              1,
-              product.name.uppercase(),
-          )
-      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
-        compose.onAllNodesWithText(results).fetchSemanticsNodes().isNotEmpty()
-      }
       click(CatalogueTestTags.add(product.id))
       repeat(ORDER_QUANTITY - 1) { click(CatalogueTestTags.increase(product.id)) }
       click(CatalogueTestTags.CONTINUE)
@@ -281,13 +262,6 @@ class OrderLifecycleJourneyTest {
             OrderDetailsTestTags.MARK_READY_FOR_HANDOFF,
             OrderDetailsTestTags.CONFIRM_RECEIPT,
         )
-    // Opening details and observing a status write both load asynchronously from Firestore.
-    compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
-      actions.all { tag ->
-        val exists = compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
-        exists == (tag in allowed)
-      }
-    }
     for (tag in actions) {
       val node = compose.onNodeWithTag(tag)
       if (tag in allowed) node.assertIsEnabled() else node.assertDoesNotExist()

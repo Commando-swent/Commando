@@ -43,6 +43,11 @@ Previously loaded trips, active requests, product lists, and order details will 
 
 Actions performed without connectivity will be marked as pending and synchronized once the device reconnects.
 
+## Android backup
+
+Android backup and Android-to-Android transfer do not carry Command'o's app-managed files
+to a restored installation. See the [storage policy and restore checks](docs/android-backup.md).
+
 ## Firebase emulator tests
 
 See [Firestore ratings](docs/ratings.md) for the rating schema, security policy and retry behavior.

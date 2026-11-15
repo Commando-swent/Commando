@@ -133,6 +133,9 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+      - name: Test CI discovery and coverage checks
+        run: python3 scripts/ci/test_ci_checks.py
+
       - name: Run Firebase emulator tests
         run: bash scripts/ci/run-firebase-emulator-tests.sh
 
@@ -163,20 +166,10 @@ jobs:
           ./gradlew jacocoTestReport
 
       - name: Validate Coverage Report
-        run: |
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-
-          report = ET.parse("app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml").getroot()
-          valid = report.tag == "report" and any(
-              any(cls.get("name", "").startswith("com/android/sample/") for cls in package.findall("class"))
-              and any(int(counter.get("covered", "0")) > 0
-                      for counter in package.findall("sourcefile/counter[@type='LINE']"))
-              for package in report.findall("package")
-          )
-          if not valid:
-              raise SystemExit("Coverage XML must contain application classes and covered source lines")
-          PY
+        run: >-
+          python3 scripts/ci/validate-jacoco-report.py
+          app/build/reports/jacoco/jacocoTestReport/jacocoTestReport.xml
+          app/src/main/java
 
       # Upload the various reports to sonar
       - name: Upload report to SonarCloud

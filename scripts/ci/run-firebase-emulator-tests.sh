@@ -6,10 +6,7 @@ readonly REPOSITORY_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPOSITORY_ROOT}"
 
 readonly TEST_ROOT="app/src/test"
-readonly EMULATOR_ROOT="${TEST_ROOT}/java/com/android/sample/emulator"
-readonly AUTH_ROOT="${EMULATOR_ROOT}/auth"
-readonly FIRESTORE_ADAPTER_ROOT="${EMULATOR_ROOT}/firestore/adapter"
-readonly FIRESTORE_SECURITY_ROOT="${EMULATOR_ROOT}/firestore/security"
+readonly TEST_JAVA_ROOT="${TEST_ROOT}/java"
 readonly OPEN_FIRESTORE_CONFIG="firebase.firestore-open-test.json"
 readonly PRODUCTION_FIRESTORE_RULES="firestore.rules"
 readonly SHARED_FIREBASE_CONFIG="firebase.json"
@@ -54,50 +51,34 @@ run_gradle_profile() {
   cp "${UNIT_TEST_COVERAGE_FILE}" "${EMULATOR_COVERAGE_DIR}/${profile}.exec"
 }
 
-validate_package() {
-  local test_file="$1"
-  local package_pattern="$2"
-  grep -Eq "^[[:space:]]*package[[:space:]]+${package_pattern}([.][A-Za-z_][A-Za-z0-9_]*)*[[:space:]]*$" \
-    "${test_file}" || fail "${test_file} must declare a package matching its emulator profile"
-}
-
-profile_has_tests() {
-  local profile_root="$1"
-  [[ -d "${profile_root}" ]] &&
-    [[ -n "$(find "${profile_root}" -type f -name '*EmulatorTest.kt' -print -quit)" ]]
-}
-
-validate_test_locations() {
-  local test_file
+# AI assistance: OpenAI Codex. Infer the namespace from each test's source directory.
+discover_profiles() {
+  local test_file relative_path expected_package declared_package profile
   while IFS= read -r -d '' test_file; do
-    case "${test_file}" in
-      "${AUTH_ROOT}"/*)
-        validate_package "${test_file}" 'com[.]android[.]sample[.]emulator[.]auth'
-        ;;
-      "${FIRESTORE_ADAPTER_ROOT}"/*)
-        validate_package "${test_file}" 'com[.]android[.]sample[.]emulator[.]firestore[.]adapter'
-        ;;
-      "${FIRESTORE_SECURITY_ROOT}"/*)
-        validate_package "${test_file}" 'com[.]android[.]sample[.]emulator[.]firestore[.]security'
-        ;;
-      *) fail "${test_file} is outside an approved emulator profile" ;;
+    relative_path="${test_file#"${TEST_JAVA_ROOT}/"}"
+    case "${relative_path}" in
+      */emulator/auth/*) profile="auth" ;;
+      */emulator/firestore/adapter/*) profile="firestoreAdapter" ;;
+      */emulator/firestore/security/*) profile="firestoreSecurity" ;;
+      */emulator/* | *EmulatorTest.kt) fail "${test_file} is outside an approved emulator profile" ;;
+      *) continue ;;
     esac
-  done < <(find "${TEST_ROOT}" -type f -name '*EmulatorTest.kt' -print0)
 
-  while IFS= read -r -d '' test_file; do
-    case "${test_file}" in
-      "${FIRESTORE_SECURITY_ROOT}"/*) ;;
-      *) fail "${test_file} must be in the firestore/security profile" ;;
-    esac
-  done < <(find "${TEST_ROOT}" -type f -name '*SecurityRulesEmulatorTest.kt' -print0)
-
-  if [[ -d "${EMULATOR_ROOT}" ]]; then
-    while IFS= read -r -d '' test_file; do
+    [[ "${test_file}" == "${TEST_JAVA_ROOT}/"* ]] ||
+      fail "${test_file} is outside the Java test source root"
+    [[ "${test_file}" == *EmulatorTest.kt ]] ||
       fail "${test_file} is in an emulator profile but is not named *EmulatorTest.kt"
-    done < <(
-      find "${EMULATOR_ROOT}" -type f -name '*Test.kt' ! -name '*EmulatorTest.kt' -print0
-    )
-  fi
+    if [[ "${test_file}" == *SecurityRulesEmulatorTest.kt && "${profile}" != "firestoreSecurity" ]]; then
+      fail "${test_file} must be in the firestore/security profile"
+    fi
+
+    expected_package="${relative_path%/*}"
+    expected_package="${expected_package//\//.}"
+    declared_package="$(awk '/^[[:space:]]*package[[:space:]]+/ { print $2; exit }' "${test_file}")"
+    [[ "${declared_package}" == "${expected_package}" ]] ||
+      fail "${test_file} must declare package ${expected_package}"
+    printf '%s\n' "${profile}"
+  done < <(find "${TEST_ROOT}" -type f -name '*Test.kt' -print0)
 }
 
 validate_security_rules_config() {
@@ -127,11 +108,10 @@ NODE
 
 run_profile() {
   local profile="$1"
-  local profile_root="$2"
-  local config="$3"
-  local emulators="$4"
+  local config="$2"
+  local emulators="$3"
 
-  profile_has_tests "${profile_root}" || return 0
+  grep -Fxq "${profile}" <<< "${profiles}" || return 0
   [[ -f "${config}" ]] || fail "missing Firebase configuration for ${profile}: ${config}"
 
   echo "Running Firebase emulator profile: ${profile}"
@@ -157,30 +137,16 @@ fi
 # Coverage from a previous run must never be reported as part of this one.
 rm -rf "${EMULATOR_COVERAGE_DIR}"
 
-validate_test_locations
-
-if ! find "${TEST_ROOT}" -type f -name '*EmulatorTest.kt' -print -quit | grep -q .; then
+profiles="$(discover_profiles)"
+if [[ -z "${profiles}" ]]; then
   echo "No Firebase emulator tests detected."
   exit 0
 fi
 
-run_profile \
-  "auth" \
-  "${AUTH_ROOT}" \
-  "${SHARED_FIREBASE_CONFIG}" \
-  "auth"
+run_profile "auth" "${SHARED_FIREBASE_CONFIG}" "auth"
+run_profile "firestoreAdapter" "${OPEN_FIRESTORE_CONFIG}" "firestore"
 
-run_profile \
-  "firestoreAdapter" \
-  "${FIRESTORE_ADAPTER_ROOT}" \
-  "${OPEN_FIRESTORE_CONFIG}" \
-  "firestore"
-
-if profile_has_tests "${FIRESTORE_SECURITY_ROOT}"; then
+if grep -Fxq "firestoreSecurity" <<< "${profiles}"; then
   validate_security_rules_config
 fi
-run_profile \
-  "firestoreSecurity" \
-  "${FIRESTORE_SECURITY_ROOT}" \
-  "${SHARED_FIREBASE_CONFIG}" \
-  "firestore,auth"
+run_profile "firestoreSecurity" "${SHARED_FIREBASE_CONFIG}" "firestore,auth"

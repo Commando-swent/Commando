@@ -263,6 +263,74 @@ class CatalogueFavouritesViewModelTest {
   }
 
   @Test
+  fun aFailureDuringAShownRemovalWaitsInsteadOfInterruptingIt() = runTest {
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk, apple), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    vm.toggleFavourite(apple.id)
+    advanceUntilIdle()
+    val removed = FavouriteNotice.Removed(apple.id)
+    assertEquals(removed, vm.uiState.value.favouriteNotice)
+
+    products.favouriteResults[milk.id] = ProductResult.Error(ProductError.NetworkError)
+    vm.toggleFavourite(milk.id) // Fails while the Undo snackbar is still showing.
+    advanceUntilIdle()
+    assertEquals(removed, vm.uiState.value.favouriteNotice)
+    vm.dismissFavouriteNotice(removed)
+    assertEquals(FavouriteNotice.Failed(milk.id), vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun aQueuedUndoSurvivesALaterAddConfirmation() = runTest {
+    val bread = Product("migros:3", "migros", "Bread", 250)
+    products.result = ProductResult.Success(listOf(milk, apple, bread))
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.favouriteResults[apple.id] = ProductResult.Error(ProductError.NetworkError)
+    vm.toggleFavourite(apple.id) // The error stays on screen for the next two changes.
+    vm.toggleFavourite(milk.id)
+    vm.toggleFavourite(bread.id)
+    advanceUntilIdle()
+    val failed = FavouriteNotice.Failed(apple.id)
+    assertEquals(failed, vm.uiState.value.favouriteNotice)
+
+    vm.dismissFavouriteNotice(failed)
+    val removed = FavouriteNotice.Removed(milk.id)
+    assertEquals(removed, vm.uiState.value.favouriteNotice)
+    vm.undoFavourite(removed)
+    advanceUntilIdle()
+    assertEquals(listOf(milk, bread), vm.favourites().products)
+    assertEquals(FavouriteNotice.Added(bread.id), vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun undoWhileTheSameProductIsBeingReAddedDoesNotWriteTwice() = runTest {
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    vm.toggleFavourite(milk.id)
+    advanceUntilIdle()
+    val removed = FavouriteNotice.Removed(milk.id)
+    products.favouriteGate = CompletableDeferred()
+
+    vm.toggleFavourite(milk.id) // Re-added from Catalogue; still saving.
+    vm.undoFavourite(removed)
+    runCurrent()
+    assertEquals(
+        listOf(Triple("migros", milk.id, false), Triple("migros", milk.id, true)),
+        products.favouriteChanges,
+    )
+    assertEquals(setOf(milk.id), vm.uiState.value.pendingFavourites)
+
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(emptySet<String>(), vm.uiState.value.pendingFavourites)
+    assertEquals(listOf(milk), vm.favourites().products)
+    assertEquals(FavouriteNotice.Added(milk.id), vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
   fun addingFromEachTabUsesThePriceThatTabShows() = runTest {
     val favouriteMilk = milk.copy(priceCents = 220)
     val catalogueMilk = milk.copy(priceCents = 300)

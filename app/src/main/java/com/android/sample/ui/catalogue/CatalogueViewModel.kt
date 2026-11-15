@@ -115,7 +115,7 @@ data class CatalogueUiState(
     val favourites: FavouritesContent = FavouritesContent.Loading,
     /** Product IDs whose optimistic favourite change is still being saved. */
     val pendingFavourites: Set<String> = emptySet(),
-    /** Feedback still to show, in order: at most one failure, then the latest success. */
+    /** Feedback still to show, in order: the latest failure and add, and each pending Undo. */
     val favouriteNotices: List<FavouriteNotice> = emptyList(),
 ) {
   /** The notice the snackbar shows now; the next one waits until it is dismissed. */
@@ -233,11 +233,16 @@ class CatalogueViewModel(
     changeFavourite(productId, favourite = !favourites.contains(productId), entry)
   }
 
-  /** Restores the removal represented by [notice], if it is still the current feedback. */
+  /**
+   * Restores the removal represented by [notice], if it is still the current feedback. The notice
+   * is consumed either way; a write already in flight for the product is never duplicated.
+   */
   fun undoFavourite(notice: FavouriteNotice) {
-    if (notice !is FavouriteNotice.Removed || mutableState.value.favouriteNotice != notice) return
-    val entry = removedFavourites[notice.productId] ?: return
+    val state = mutableState.value
+    if (notice !is FavouriteNotice.Removed || state.favouriteNotice != notice) return
     dismissFavouriteNotice(notice)
+    if (notice.productId in state.pendingFavourites) return
+    val entry = removedFavourites[notice.productId] ?: return
     changeFavourite(notice.productId, favourite = true, entry, reportSuccess = false)
   }
 
@@ -522,14 +527,18 @@ class CatalogueViewModel(
   }
 
   /**
-   * Failures go first and successes wait behind them, so neither is lost; a newer notice replaces
-   * an older one of the same kind.
+   * A newer failure or add confirmation replaces the older one of its type in place; any other
+   * notice waits behind the queue. Each removal keeps its Undo until shown, unless a newer saved
+   * change to that product makes it stale.
    */
   private fun List<FavouriteNotice>.queue(notice: FavouriteNotice): List<FavouriteNotice> {
-    val failure = filterIsInstance<FavouriteNotice.Failed>().firstOrNull()
-    val success = filterNot { it is FavouriteNotice.Failed }.firstOrNull()
-    return if (notice is FavouriteNotice.Failed) listOfNotNull(notice, success)
-    else listOfNotNull(failure, notice)
+    val current =
+        if (notice is FavouriteNotice.Failed) this
+        else filterNot { it !is FavouriteNotice.Failed && it.productId == notice.productId }
+    val index =
+        if (notice is FavouriteNotice.Removed) -1
+        else current.indexOfFirst { it::class == notice::class }
+    return if (index < 0) current + notice else current.toMutableList().apply { set(index, notice) }
   }
 
   private fun FavouritesContent.withFavourite(

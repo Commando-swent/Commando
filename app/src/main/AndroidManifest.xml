@@ -19,11 +19,6 @@
         android:theme="@style/Theme.SampleApp"
         tools:targetApi="33">
         <activity
-            android:name=".SecondActivity"
-            android:exported="false"
-            android:label="@string/title_activity_second"
-            android:theme="@style/Theme.SampleApp" />
-        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.SampleApp.NoActionBar">

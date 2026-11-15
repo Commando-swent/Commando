@@ -318,7 +318,15 @@ class OrderDetailsViewModel(
       when (val existing = ratingRepository.getRatingForOrder(orderId)) {
         is RatingResult.Error -> return existing
         is RatingResult.Success ->
-            if (existing.data != null) return RatingResult.Success(existing.data)
+            existing.data?.let { saved ->
+              return if (
+                  saved.orderId == input.orderId &&
+                      saved.score == input.score &&
+                      saved.comment == input.comment?.takeUnless(String::isBlank)
+              )
+                  RatingResult.Success(saved)
+              else RatingResult.Error(RatingError.AlreadyRated)
+            }
       }
       currentCoroutineContext().ensureActive()
       if (endSessionIfChanged()) return RatingResult.Error(RatingError.NotAuthenticated)

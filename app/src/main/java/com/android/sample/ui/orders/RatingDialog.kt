@@ -176,7 +176,9 @@ private fun RatingDialogFeedback(state: RatingDialogState) {
           RatingError.PermissionDenied -> R.string.order_details_permission_denied
           RatingError.AlreadyRated -> R.string.rating_already
           RatingError.Unknown -> R.string.rating_failure
-          else -> R.string.rating_unavailable
+          RatingError.NotFound,
+          RatingError.OrderNotDelivered,
+          RatingError.InvalidData -> R.string.rating_unavailable
         }
     Text(
         stringResource(message),

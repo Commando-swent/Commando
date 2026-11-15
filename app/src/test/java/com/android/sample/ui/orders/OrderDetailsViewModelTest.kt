@@ -1039,9 +1039,71 @@ class OrderDetailsViewModelTest {
       assertEquals(1, ratings.reads)
       assertEquals(if (existing == RatingResult.Success(null)) 2 else 1, ratings.inputs.size)
       assertEquals(existing is RatingResult.Error, vm.ratingState.value.visible)
+      assertEquals(existing == RatingResult.Success(ratings.saved), vm.ratingState.value.submitted)
+      if (existing == RatingResult.Success(null))
+          assertEquals(RatingError.AlreadyRated, vm.ratingState.value.error)
       vm.dismissRating()
       vm.submitRating()
       assertTrue(!vm.ratingState.value.visible)
+      vm.viewModelScope.cancel()
+    }
+  }
+
+  @Test
+  fun uncertainRatingReconcilesMatchingScoreAndNormalizedCommentWithoutAnotherWrite() = runTest {
+    for (comment in listOf("", " \t\n", " ".repeat(251), " exact ")) {
+      val ratings = TestRatings()
+      val vm = ratingVm(ratings)
+      advanceUntilIdle()
+      vm.confirmReceipt()
+      advanceUntilIdle()
+      vm.selectScore(4)
+      vm.updateComment(comment)
+      ratings.save = { RatingResult.Error(RatingError.Unknown) }
+      vm.submitRating()
+      advanceUntilIdle()
+      ratings.read = {
+        RatingResult.Success(ratings.saved.copy(comment = comment.takeUnless(String::isBlank)))
+      }
+      vm.submitRating()
+      advanceUntilIdle()
+      assertTrue(vm.ratingState.value.submitted)
+      assertTrue(!vm.ratingState.value.visible)
+      assertEquals(null, vm.ratingState.value.error)
+      assertEquals(1, ratings.reads)
+      assertEquals(1, ratings.inputs.size)
+      vm.viewModelScope.cancel()
+    }
+  }
+
+  @Test
+  fun uncertainRatingRejectsMismatchedOrderScoreOrCommentWithoutAnotherWrite() = runTest {
+    val expected = TestRatings().saved.copy(comment = " exact ")
+    for (saved in
+        listOf(
+            expected.copy(orderId = "other"),
+            expected.copy(score = 1),
+            expected.copy(comment = "other"),
+            expected.copy(comment = "exact"),
+            expected.copy(comment = null),
+        )) {
+      val ratings = TestRatings()
+      val vm = ratingVm(ratings)
+      advanceUntilIdle()
+      vm.confirmReceipt()
+      advanceUntilIdle()
+      vm.selectScore(expected.score)
+      vm.updateComment(expected.comment!!)
+      ratings.save = { RatingResult.Error(RatingError.Unknown) }
+      vm.submitRating()
+      advanceUntilIdle()
+      ratings.read = { RatingResult.Success(saved) }
+      vm.submitRating()
+      advanceUntilIdle()
+      assertEquals(RatingError.AlreadyRated, vm.ratingState.value.error)
+      assertTrue(!vm.ratingState.value.submitted && !vm.ratingState.value.visible)
+      assertEquals(1, ratings.reads)
+      assertEquals(1, ratings.inputs.size)
       vm.viewModelScope.cancel()
     }
   }

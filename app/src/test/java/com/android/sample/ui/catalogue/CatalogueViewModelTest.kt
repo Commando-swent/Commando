@@ -89,6 +89,8 @@ internal class StubProductRepository(
   var favourites: ProductResult<FavouriteProducts> =
       ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
   var favouriteResult: ProductResult<Unit> = ProductResult.Success(Unit)
+  /** Per-product write results, for overlapping writes that end differently. */
+  val favouriteResults = mutableMapOf<String, ProductResult<Unit>>()
   var favouriteGate: CompletableDeferred<Unit>? = null
   val favouriteRequests = mutableListOf<String>()
   val favouriteChanges = mutableListOf<Triple<String, String, Boolean>>()
@@ -117,7 +119,7 @@ internal class StubProductRepository(
     favouriteChanges += Triple(storeId, productId, favourite)
     favouriteGate?.await()
     favouriteThrown?.let { throw it }
-    return favouriteResult
+    return favouriteResults[productId] ?: favouriteResult
   }
 }
 

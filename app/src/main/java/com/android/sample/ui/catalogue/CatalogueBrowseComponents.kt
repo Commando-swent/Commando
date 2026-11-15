@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +49,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import java.text.Collator
@@ -290,9 +292,14 @@ private fun CategoryChip(
   }
 }
 
-/** A compact heart badge with a full 48 dp target beside the product photo. */
+private val HeartBadgeSize = 26.dp
+private val HeartTouchTarget = 48.dp
+/** Badge centre measured from the photo's top-end corner (Figma product row). */
+private val HeartCentreFromPhotoCorner = DpOffset((-7).dp, 4.dp)
+
+/** A compact heart badge on the photo's top-end corner, centred in a full 48 dp target. */
 @Composable
-internal fun FavouriteHeart(
+internal fun BoxScope.FavouriteHeart(
     productId: String,
     productName: String,
     favourite: Boolean,
@@ -308,15 +315,20 @@ internal fun FavouriteHeart(
       )
   Box(
       modifier
-          .offset(30.dp, (-24).dp)
-          .size(48.dp)
+          .align(Alignment.TopEnd)
+          // Moves the target's centre onto the badge centre, so badge and target stay together.
+          .offset(
+              HeartCentreFromPhotoCorner.x + HeartTouchTarget / 2,
+              HeartCentreFromPhotoCorner.y - HeartTouchTarget / 2,
+          )
+          .size(HeartTouchTarget)
           .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
           .semantics { contentDescription = description }
           .testTag(CatalogueTestTags.favourite(productId)),
+      contentAlignment = Alignment.Center,
   ) {
     Box(
-        Modifier.offset(6.dp, 15.dp)
-            .size(26.dp)
+        Modifier.size(HeartBadgeSize)
             .alpha(if (enabled) 1f else 0.6f)
             .background(c.background, CircleShape)
             .border(1.dp, c.outlineVariant, CircleShape),

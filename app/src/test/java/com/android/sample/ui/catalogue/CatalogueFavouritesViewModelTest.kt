@@ -1,6 +1,7 @@
 package com.android.sample.ui.catalogue
 
 import androidx.lifecycle.viewModelScope
+import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
@@ -8,21 +9,16 @@ import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
 import com.android.sample.ui.orders.OrderDraftState
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -37,15 +33,7 @@ class CatalogueFavouritesViewModelTest {
       FakeTripRepository("owner", initialTrips = listOf(migrosTrip, coopTrip, volgTrip))
   private val products = StubProductRepository(ProductResult.Success(listOf(milk, apple, coopMilk)))
 
-  @Before
-  fun setUp() {
-    Dispatchers.setMain(StandardTestDispatcher())
-  }
-
-  @After
-  fun tearDown() {
-    Dispatchers.resetMain()
-  }
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   private fun viewModel(
       tripId: String = migrosTrip.id,
@@ -228,6 +216,52 @@ class CatalogueFavouritesViewModelTest {
     advanceUntilIdle()
     assertEquals(listOf(milk), vm.favourites().products)
     assertEquals(FavouriteNotice.Failed(apple.id), vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun aFailedRemovalKeepsItsNoticeWhenAnOverlappingAddSucceeds() = runTest {
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.favouriteGate = CompletableDeferred()
+    products.favouriteResults[milk.id] = ProductResult.Error(ProductError.NetworkError)
+
+    vm.toggleFavourite(milk.id) // Removal: fails.
+    vm.toggleFavourite(apple.id) // Add: succeeds after the failure, before the UI shows it.
+    runCurrent()
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf(milk, apple), vm.favourites().products)
+    val failed = FavouriteNotice.Failed(milk.id)
+    assertEquals(failed, vm.uiState.value.favouriteNotice)
+
+    products.favouriteGate = null
+    vm.toggleFavourite(apple.id) // A later change still keeps the unshown failure.
+    advanceUntilIdle()
+    assertEquals(failed, vm.uiState.value.favouriteNotice)
+    vm.dismissFavouriteNotice(failed)
+    assertNull(vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun addingFromEachTabUsesThePriceThatTabShows() = runTest {
+    val favouriteMilk = milk.copy(priceCents = 220)
+    val catalogueMilk = milk.copy(priceCents = 300)
+    products.result = ProductResult.Success(listOf(catalogueMilk))
+    products.favourites =
+        ProductResult.Success(FavouriteProducts(listOf(favouriteMilk), emptyList()))
+    val draft = OrderDraftState(migrosTrip.id)
+    val vm = viewModel(draft = draft)
+    advanceUntilIdle()
+
+    vm.selectTab(CatalogueTab.FAVOURITES)
+    vm.add(milk.id)
+    assertEquals(220, draft.draft.value.items.single().unitPriceCents)
+
+    vm.decrement(milk.id)
+    vm.selectTab(CatalogueTab.CATALOGUE)
+    vm.add(milk.id)
+    assertEquals(300, draft.draft.value.items.single().unitPriceCents)
   }
 
   @Test

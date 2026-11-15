@@ -299,8 +299,12 @@ class CatalogueViewModel(
     if (!ownsDraft()) return
     if (quantityInDraft(productId) > 0) return increment(productId)
     val state = mutableState.value
-    val favouriteProducts = (state.favourites as? FavouritesContent.Loaded)?.products.orEmpty()
-    val product = (state.products + favouriteProducts).find { it.id == productId } ?: return
+    // Add from the list the row was drawn from, so the draft keeps the price that was shown.
+    val shown =
+        if (state.tab == CatalogueTab.FAVOURITES)
+            (state.favourites as? FavouritesContent.Loaded)?.products.orEmpty()
+        else state.products
+    val product = shown.find { it.id == productId } ?: return
     draft.addItem(OrderItem(product.id, product.name, product.priceCents, quantity = 1))
   }
 
@@ -464,7 +468,7 @@ class CatalogueViewModel(
       it.copy(
           favourites = it.favourites.withFavourite(productId, favourite, entry),
           pendingFavourites = it.pendingFavourites + productId,
-          favouriteNotice = null,
+          favouriteNotice = it.unshownFailure(),
       )
     }
     viewModelScope.launch {
@@ -506,13 +510,16 @@ class CatalogueViewModel(
           favouriteNotice =
               when {
                 !saved -> FavouriteNotice.Failed(productId)
-                !reportSuccess -> null
+                it.unshownFailure() != null || !reportSuccess -> it.unshownFailure()
                 favourite -> FavouriteNotice.Added(productId)
                 else -> FavouriteNotice.Removed(productId)
               },
       )
     }
   }
+
+  /** A failure stays until the UI dismisses it; later changes never replace it with success. */
+  private fun CatalogueUiState.unshownFailure() = favouriteNotice as? FavouriteNotice.Failed
 
   private fun FavouritesContent.withFavourite(
       productId: String,

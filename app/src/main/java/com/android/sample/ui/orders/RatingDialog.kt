@@ -125,30 +125,7 @@ fun RatingDialog(
                     })
                 else null,
         )
-        if (state.submitting) {
-          LinearProgressIndicator(Modifier.fillMaxWidth())
-          Text(
-              stringResource(R.string.rating_submitting),
-              style = MaterialTheme.typography.bodySmall,
-              modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-          )
-        }
-        state.error?.let {
-          val message =
-              when (it) {
-                RatingError.NotAuthenticated -> R.string.order_details_authentication_required
-                RatingError.PermissionDenied -> R.string.order_details_permission_denied
-                RatingError.AlreadyRated -> R.string.rating_already
-                RatingError.Unknown -> R.string.rating_failure
-                else -> R.string.rating_unavailable
-              }
-          Text(
-              stringResource(message),
-              color = colors.error,
-              style = MaterialTheme.typography.bodySmall,
-              modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-          )
-        }
+        RatingDialogFeedback(state)
         if (!state.terminalError)
             Button(
                 onClick = onSubmit,
@@ -178,5 +155,34 @@ fun RatingDialog(
         }
       }
     }
+  }
+}
+
+/** Emits feedback directly into the dialog column, preserving its spacing and live regions. */
+@Composable
+private fun RatingDialogFeedback(state: RatingDialogState) {
+  if (state.submitting) {
+    LinearProgressIndicator(Modifier.fillMaxWidth())
+    Text(
+        stringResource(R.string.rating_submitting),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
+  }
+  state.error?.let {
+    val message =
+        when (it) {
+          RatingError.NotAuthenticated -> R.string.order_details_authentication_required
+          RatingError.PermissionDenied -> R.string.order_details_permission_denied
+          RatingError.AlreadyRated -> R.string.rating_already
+          RatingError.Unknown -> R.string.rating_failure
+          else -> R.string.rating_unavailable
+        }
+    Text(
+        stringResource(message),
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+    )
   }
 }

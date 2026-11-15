@@ -42,7 +42,7 @@ Rules are not deployed by tests. Deployment and CI/SonarCloud review remain sepa
 
 Order Details offers the dialog once after an eligible requester's successful receipt confirmation.
 Dismissal creates no rating; neither dismissal nor submission failure reverses delivery.
-Failures preserve input for retry. After an uncertain write, retry reads existing feedback before writing again.
+Unknown failures preserve input for retry, reading existing feedback before another write; other errors offer Close.
 Success and AlreadyRated close the dialog and prevent another submission in that flow.
 Session changes clear dialog state and invalidate its repository identity; late results are discarded.
 Historical rating loading and display belong to #328, not this receipt-triggered flow.

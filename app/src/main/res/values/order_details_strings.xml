@@ -9,6 +9,10 @@
     <string name="rating_comment_hint">Add a short comment…</string>
     <string name="rating_comment_limit">Your comment exceeds the %1$d-character limit.</string>
     <string name="rating_submit">Submit rating</string>
+    <string name="rating_retry">Retry</string>
+    <string name="rating_cancel">Cancel</string>
+    <string name="rating_close">Close</string>
+    <string name="rating_unavailable">This order cannot be rated. You can close this dialog.</string>
     <string name="rating_submitting">Submitting rating…</string>
     <string name="rating_failure">Could not submit your rating. Try again.</string>
     <string name="rating_success">Rating submitted.</string>

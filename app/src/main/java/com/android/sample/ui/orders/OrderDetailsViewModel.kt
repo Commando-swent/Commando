@@ -55,10 +55,16 @@ data class RatingDialogState(
     val submitted: Boolean = false,
 ) {
   /** Matches repository normalization: blank comments are absent before length validation. */
+  val commentTooLong: Boolean
+    get() = comment.isNotBlank() && comment.length > MAX_RATING_COMMENT_LENGTH
+
+  /** Only unexpected failures can be retried within this receipt flow. */
+  val terminalError: Boolean
+    get() = error != null && error != RatingError.Unknown
+
+  /** Input validity is independent of submission progress and repository errors. */
   val valid: Boolean
-    get() =
-        score in RATING_SCORE_RANGE &&
-            (comment.isBlank() || comment.length <= MAX_RATING_COMMENT_LENGTH)
+    get() = score in RATING_SCORE_RANGE && !commentTooLong
 }
 
 sealed class OrderDetailsUiState {
@@ -100,6 +106,15 @@ sealed class OrderDetailsUiState {
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status == OrderStatus.READY_FOR_HANDOFF
+
+    /** Presentation eligibility; session validity and the one-time offer are checked separately. */
+    val canRate: Boolean
+      get() =
+          !viewerId.isNullOrBlank() &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.requesterId != trip.ownerId &&
+              order.status == OrderStatus.DELIVERED
 
     val isSaving: Boolean
       get() = mutation == OrderMutationState.Saving
@@ -176,6 +191,7 @@ class OrderDetailsViewModel(
   }
 
   private fun load() {
+    // Preserve modal input during reloads; the independent session observer still clears it.
     if (
         isLoading ||
             mutableRating.value.visible ||
@@ -238,15 +254,7 @@ class OrderDetailsViewModel(
           isAllowed = { it.canConfirmReceipt },
           onSuccess = { order ->
             val content = mutableState.value as? OrderDetailsUiState.Content
-            if (
-                !ratingOffered &&
-                    content != null &&
-                    order.id == orderId &&
-                    order.status == OrderStatus.DELIVERED &&
-                    order.requesterId == session.initialUserId &&
-                    order.tripId == content.trip.id &&
-                    order.requesterId != content.trip.ownerId
-            ) {
+            if (!ratingOffered && order.id == orderId && content?.canRate == true) {
               ratingOffered = true
               mutableRating.value = RatingDialogState(visible = true)
             }
@@ -255,15 +263,20 @@ class OrderDetailsViewModel(
         orderRepository.confirmReceipt(orderId)
       }
 
-  /** Updates editable input; invalid scores are ignored and comment validation preserves text. */
-  fun updateRating(
-      score: Int = mutableRating.value.score,
-      comment: String = mutableRating.value.comment,
-  ) {
+  /** Selects an editable score in 1..5; invalid scores cannot clear the current selection. */
+  fun selectScore(score: Int) {
     if (endSessionIfChanged()) return
     val state = mutableRating.value
-    if (state.visible && !state.submitting && (score == 0 || score in RATING_SCORE_RANGE))
-        mutableRating.value = state.copy(score = score, comment = comment, error = null)
+    if (state.visible && !state.submitting && !state.terminalError && score in RATING_SCORE_RANGE)
+        mutableRating.value = state.copy(score = score, error = null)
+  }
+
+  /** Preserves editable comment text verbatim; validation follows repository normalization. */
+  fun updateComment(comment: String) {
+    if (endSessionIfChanged()) return
+    val state = mutableRating.value
+    if (state.visible && !state.submitting && !state.terminalError)
+        mutableRating.value = state.copy(comment = comment, error = null)
   }
 
   /** Dismisses an idle dialog without changing the already confirmed delivery. */
@@ -273,11 +286,13 @@ class OrderDetailsViewModel(
         mutableRating.value = mutableRating.value.copy(visible = false)
   }
 
-  /** Submits once; an uncertain earlier write is reconciled before any retry can write again. */
+  /**
+   * Retries only Unknown failures, reconciling uncertain writes before attempting another write.
+   */
   fun submitRating() {
     if (endSessionIfChanged()) return
     val state = mutableRating.value
-    if (!state.visible || state.submitting || !state.valid) return
+    if (!state.visible || state.submitting || !state.valid || state.terminalError) return
     mutableRating.value = state.copy(submitting = true, error = null)
     viewModelScope.launch {
       val result =

@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
+import com.android.sample.data.repository.RatingError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
@@ -38,10 +39,10 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-rUS")
 class OrderDetailsScreenTest {
-  @Test
-  fun ratingDialogValidatesInputDisablesSavingAndPreservesFailedValuesUntilDismissal() {
-    val rating = mutableStateOf(RatingDialogState(visible = true))
-    var submissions = 0
+  private val rating = mutableStateOf(RatingDialogState(visible = true))
+  private var submissions = 0
+
+  private fun showRating() {
     compose.setContent {
       SampleAppTheme {
         OrderDetailsScreen(
@@ -59,6 +60,11 @@ class OrderDetailsScreenTest {
         )
       }
     }
+  }
+
+  @Test
+  fun ratingDialogValidatesScoreAndCommentBeforeSubmission() {
+    showRating()
     val submit = compose.onNodeWithTag(RatingDialogTestTags.SUBMIT)
     val comment = compose.onNodeWithTag(RatingDialogTestTags.COMMENT)
     submit.assertIsNotEnabled()
@@ -66,6 +72,15 @@ class OrderDetailsScreenTest {
     comment.performTextInput("x".repeat(251))
     submit.assertIsNotEnabled()
     comment.performTextReplacement("Friendly delivery")
+    submit.assertIsEnabled()
+  }
+
+  @Test
+  fun ratingSubmissionDisablesInputsAndRetryPreservesValuesUntilDismissal() {
+    rating.value = rating.value.copy(score = 4, comment = "Friendly delivery")
+    showRating()
+    val submit = compose.onNodeWithTag(RatingDialogTestTags.SUBMIT)
+    val comment = compose.onNodeWithTag(RatingDialogTestTags.COMMENT)
     submit.performScrollTo().assertIsEnabled().performClick()
     submit.assertIsNotEnabled().performClick()
     comment.assertIsNotEnabled()
@@ -76,18 +91,48 @@ class OrderDetailsScreenTest {
       rating.value =
           rating.value.copy(
               submitting = false,
-              error = com.android.sample.data.repository.RatingError.Unknown,
+              error = RatingError.Unknown,
           )
     }
     comment.assertTextContains("Friendly delivery")
     val failureMessage =
         ApplicationProvider.getApplicationContext<Context>().getString(R.string.rating_failure)
     compose.onNodeWithText(failureMessage).assertExists()
+    compose.onNodeWithText(string(R.string.rating_retry)).assertExists()
     submit.assertIsEnabled()
     compose.onNodeWithTag(RatingDialogTestTags.CANCEL).performScrollTo().performClick()
     compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
     compose.onNodeWithText("DELIVERED").assertIsDisplayed()
   }
+
+  @Test
+  fun terminalRatingErrorOffersOnlyCloseAndKeepsDeliveryConfirmed() {
+    rating.value = rating.value.copy(score = 4, error = RatingError.InvalidData)
+    showRating()
+    compose.onNodeWithText(string(R.string.rating_unavailable)).assertExists()
+    compose.onNodeWithTag(RatingDialogTestTags.SUBMIT).assertDoesNotExist()
+    compose.onNodeWithTag(RatingDialogTestTags.COMMENT).assertIsNotEnabled()
+    compose.onNodeWithText(string(R.string.rating_close)).performScrollTo().performClick()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+    assertEquals(0, submissions)
+  }
+
+  @Test
+  fun completedRatingMessagesUseTheirCorrespondingResourcesWithoutReopeningDialog() {
+    showRating()
+    for ((feedback, message) in
+        listOf(
+            RatingDialogState(submitted = true) to R.string.rating_success,
+            RatingDialogState(error = RatingError.AlreadyRated) to R.string.rating_already,
+        )) {
+      compose.runOnIdle { rating.value = feedback }
+      compose.onNodeWithText(string(message)).performScrollTo().assertIsDisplayed()
+      compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    }
+  }
+
+  private fun string(id: Int) = ApplicationProvider.getApplicationContext<Context>().getString(id)
 
   @Test
   fun editingIsOnlyOfferedToTheRequesterOnAPendingOpenTrip() {

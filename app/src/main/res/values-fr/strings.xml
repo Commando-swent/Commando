@@ -481,6 +481,10 @@
     <string name="rating_comment_hint">Ajoutez un court commentaire…</string>
     <string name="rating_comment_limit">Votre commentaire dépasse la limite de %1$d caractères.</string>
     <string name="rating_submit">Envoyer la note</string>
+    <string name="rating_retry">Réessayer</string>
+    <string name="rating_cancel">Annuler</string>
+    <string name="rating_close">Fermer</string>
+    <string name="rating_unavailable">Cette commande ne peut pas être évaluée. Vous pouvez fermer cette fenêtre.</string>
     <string name="rating_submitting">Envoi de la note…</string>
     <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
     <string name="rating_success">Note envoyée.</string>

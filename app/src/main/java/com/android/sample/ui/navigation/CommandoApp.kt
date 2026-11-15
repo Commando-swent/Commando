@@ -708,11 +708,12 @@ private fun AuthenticatedApp(
               )
             }
         val state by model.uiState.collectAsState()
+        val ratingState by model.ratingState.collectAsState()
         OrderDetailsScreen(
             state = state,
-            ratingState = model.ratingState.collectAsState().value,
-            onRatingScore = { model.updateRating(score = it) },
-            onRatingComment = { model.updateRating(comment = it) },
+            ratingState = ratingState,
+            onRatingScore = model::selectScore,
+            onRatingComment = model::updateComment,
             onRatingSubmit = model::submitRating,
             onRatingDismiss = model::dismissRating,
             onBack = { navController.popBackStack() },

@@ -86,7 +86,7 @@ fun RatingDialog(
                     .testTag(RatingDialogTestTags.STAR_PREFIX + score)
                     .selectable(
                         selected = state.score == score,
-                        enabled = !state.submitting,
+                        enabled = !state.submitting && !state.terminalError,
                         role = Role.RadioButton,
                         onClick = { onScore(score) },
                     )
@@ -108,20 +108,18 @@ fun RatingDialog(
             style = MaterialTheme.typography.bodySmall,
             color = colors.onSurfaceVariant,
         )
-        val invalidComment =
-            !state.comment.isBlank() && state.comment.length > MAX_RATING_COMMENT_LENGTH
         OutlinedTextField(
             value = state.comment,
             onValueChange = onComment,
-            enabled = !state.submitting,
+            enabled = !state.submitting && !state.terminalError,
             modifier = Modifier.fillMaxWidth().testTag(RatingDialogTestTags.COMMENT),
             label = { Text(stringResource(R.string.rating_comment)) },
             placeholder = { Text(stringResource(R.string.rating_comment_hint)) },
-            isError = invalidComment,
+            isError = state.commentTooLong,
             minLines = 2,
             shape = RoundedCornerShape(10.dp),
             supportingText =
-                if (invalidComment)
+                if (state.commentTooLong)
                     ({
                       Text(stringResource(R.string.rating_comment_limit, MAX_RATING_COMMENT_LENGTH))
                     })
@@ -140,7 +138,9 @@ fun RatingDialog(
               when (it) {
                 RatingError.NotAuthenticated -> R.string.order_details_authentication_required
                 RatingError.PermissionDenied -> R.string.order_details_permission_denied
-                else -> R.string.rating_failure
+                RatingError.AlreadyRated -> R.string.rating_already
+                RatingError.Unknown -> R.string.rating_failure
+                else -> R.string.rating_unavailable
               }
           Text(
               stringResource(message),
@@ -149,25 +149,32 @@ fun RatingDialog(
               modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
           )
         }
-        Button(
-            onClick = onSubmit,
-            enabled = state.valid && !state.submitting,
-            modifier =
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(RatingDialogTestTags.SUBMIT),
-        ) {
-          Text(
-              stringResource(
-                  if (state.error == null) R.string.rating_submit else R.string.catalogue_retry
+        if (!state.terminalError)
+            Button(
+                onClick = onSubmit,
+                enabled = state.valid && !state.submitting,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .testTag(RatingDialogTestTags.SUBMIT),
+            ) {
+              Text(
+                  stringResource(
+                      if (state.error == null) R.string.rating_submit else R.string.rating_retry
+                  )
               )
-          )
-        }
+            }
         OutlinedButton(
             onClick = onDismiss,
             enabled = !state.submitting,
             modifier =
                 Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(RatingDialogTestTags.CANCEL),
         ) {
-          Text(stringResource(R.string.create_trip_dialog_cancel))
+          Text(
+              stringResource(
+                  if (state.terminalError) R.string.rating_close else R.string.rating_cancel
+              )
+          )
         }
       }
     }

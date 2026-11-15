@@ -941,6 +941,8 @@ class OrderDetailsViewModelTest {
             OrderResult.Error(OrderError.Unknown),
             OrderResult.Error(OrderError.AlreadyDecided(delivered)),
             OrderResult.Success(delivered.copy(id = "wrong")),
+            OrderResult.Success(delivered.copy(tripId = "wrong")),
+            OrderResult.Success(delivered.copy(requesterId = trip.ownerId)),
             OrderResult.Success(order),
             OrderResult.Success(delivered),
         )) {
@@ -972,27 +974,32 @@ class OrderDetailsViewModelTest {
     vm.confirmReceipt()
     advanceUntilIdle()
     for ((score, comment) in listOf(0 to "", 1 to "x".repeat(251), 5 to "😀".repeat(126))) {
-      vm.updateRating(score, comment)
+      vm.selectScore(score)
+      vm.updateComment(comment)
       vm.submitRating()
       advanceUntilIdle()
       assertTrue(ratings.inputs.isEmpty())
     }
     for (comment in listOf("", " ".repeat(251), "x".repeat(250), "😀".repeat(125))) {
-      vm.updateRating(1, comment)
+      vm.selectScore(1)
+      vm.updateComment(comment)
       assertTrue(vm.ratingState.value.valid)
     }
-    vm.updateRating(5, " preserved ")
+    vm.selectScore(5)
+    for (invalid in listOf(-1, 0, 6)) vm.selectScore(invalid)
+    vm.updateComment(" preserved ")
     val gate = CompletableDeferred<RatingResult<Rating>>()
     ratings.save = { gate.await() }
     vm.submitRating()
     vm.submitRating()
     vm.dismissRating()
-    vm.updateRating(1, "lost")
+    vm.selectScore(1)
+    vm.updateComment("lost")
     vm.retry()
     runCurrent()
     assertEquals(listOf(NewRating(order.id, 5, " preserved ")), ratings.inputs)
     assertTrue(vm.ratingState.value.submitting)
-    gate.complete(RatingResult.Error(RatingError.PermissionDenied))
+    gate.complete(RatingResult.Error(RatingError.Unknown))
     advanceUntilIdle()
     assertEquals(" preserved ", vm.ratingState.value.comment)
     assertTrue(vm.ratingState.value.visible && !vm.ratingState.value.submitting)
@@ -1021,7 +1028,7 @@ class OrderDetailsViewModelTest {
       advanceUntilIdle()
       vm.confirmReceipt()
       advanceUntilIdle()
-      vm.updateRating(4)
+      vm.selectScore(4)
       ratings.save = { RatingResult.Error(RatingError.Unknown) }
       vm.submitRating()
       advanceUntilIdle()
@@ -1048,7 +1055,7 @@ class OrderDetailsViewModelTest {
       advanceUntilIdle()
       vm.confirmReceipt()
       advanceUntilIdle()
-      vm.updateRating(4)
+      vm.selectScore(4)
       val late = LateResult<RatingResult<Rating>>()
       ratings.save = { if (duringRead) RatingResult.Error(RatingError.Unknown) else late.await() }
       vm.submitRating()
@@ -1068,6 +1075,36 @@ class OrderDetailsViewModelTest {
       advanceUntilIdle()
       assertEquals(RatingDialogState(), vm.ratingState.value)
       assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+      vm.viewModelScope.cancel()
+    }
+  }
+
+  @Test
+  fun terminalRatingErrorsBlockEditsAndResubmissionButAllowDismissal() = runTest {
+    for (error in
+        listOf(
+            RatingError.PermissionDenied,
+            RatingError.NotFound,
+            RatingError.OrderNotDelivered,
+            RatingError.InvalidData,
+            RatingError.AlreadyRated,
+        )) {
+      val ratings = TestRatings().apply { save = { RatingResult.Error(error) } }
+      val vm = ratingVm(ratings)
+      advanceUntilIdle()
+      vm.confirmReceipt()
+      advanceUntilIdle()
+      vm.selectScore(4)
+      vm.submitRating()
+      advanceUntilIdle()
+      val failed = vm.ratingState.value
+      vm.selectScore(1)
+      vm.updateComment("ignored")
+      vm.submitRating()
+      assertEquals(failed, vm.ratingState.value)
+      assertEquals(1, ratings.inputs.size)
+      vm.dismissRating()
+      assertTrue(!vm.ratingState.value.visible)
       vm.viewModelScope.cancel()
     }
   }

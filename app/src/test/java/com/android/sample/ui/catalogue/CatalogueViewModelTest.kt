@@ -86,8 +86,22 @@ internal class StubProductRepository(
     return ProductResult.Success(ProductPage(page, page.takeIf { it.size == limit }?.last()?.id))
   }
 
-  override suspend fun getFavouriteProducts(storeId: String) =
+  var favourites: ProductResult<FavouriteProducts> =
       ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
+  var favouriteResult: ProductResult<Unit> = ProductResult.Success(Unit)
+  /** Per-product write results, for overlapping writes that end differently. */
+  val favouriteResults = mutableMapOf<String, ProductResult<Unit>>()
+  var favouriteGate: CompletableDeferred<Unit>? = null
+  val favouriteRequests = mutableListOf<String>()
+  val favouriteChanges = mutableListOf<Triple<String, String, Boolean>>()
+  var favouriteThrown: Exception? = null
+
+  override suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts> {
+    favouriteRequests += storeId
+    favouriteGate?.await()
+    favouriteThrown?.let { throw it }
+    return favourites
+  }
 
   var categories: ProductResult<List<String>> = ProductResult.Success(emptyList())
   val categoryRequests = mutableListOf<String>()
@@ -97,8 +111,16 @@ internal class StubProductRepository(
     return categories
   }
 
-  override suspend fun setFavourite(storeId: String, productId: String, favourite: Boolean) =
-      ProductResult.Success(Unit)
+  override suspend fun setFavourite(
+      storeId: String,
+      productId: String,
+      favourite: Boolean,
+  ): ProductResult<Unit> {
+    favouriteChanges += Triple(storeId, productId, favourite)
+    favouriteGate?.await()
+    favouriteThrown?.let { throw it }
+    return favouriteResults[productId] ?: favouriteResult
+  }
 }
 
 internal fun migrosProducts(range: IntRange) = range.map {

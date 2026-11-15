@@ -1,0 +1,190 @@
+package com.android.sample.ui.catalogue
+
+import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.ProductError
+import com.android.sample.data.repository.ProductResult
+import com.android.sample.model.FavouriteProducts
+import com.android.sample.model.Product
+import com.android.sample.ui.orders.OrderDraftState
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class CatalogueFavouritesViewModelTest {
+  private val migrosTrip = catalogueTrip("trip-migros", "Migros EPFL")
+  private val coopTrip = catalogueTrip("trip-coop", "Coop Lausanne")
+  private val volgTrip = catalogueTrip("trip-volg", "Volg Ecublens")
+  private val milk = Product("migros:1", "migros", "Oat drink", 220)
+  private val apple = Product("migros:2", "migros", "Apples", 300)
+  private val coopMilk = Product("coop:1", "coop", "Coop milk", 180)
+  private val trips =
+      FakeTripRepository("owner", initialTrips = listOf(migrosTrip, coopTrip, volgTrip))
+  private val products = StubProductRepository(ProductResult.Success(listOf(milk, apple, coopMilk)))
+
+  @Before
+  fun setUp() {
+    Dispatchers.setMain(StandardTestDispatcher())
+  }
+
+  @After
+  fun tearDown() {
+    Dispatchers.resetMain()
+  }
+
+  private fun viewModel(
+      tripId: String = migrosTrip.id,
+      draft: OrderDraftState = OrderDraftState(tripId),
+  ) = CatalogueViewModel(tripId, trips, products, draft, searchDebounceMillis = 0)
+
+  private fun CatalogueViewModel.favourites() = uiState.value.favourites as FavouritesContent.Loaded
+
+  @Test
+  fun favouritesLoadForTheTripsStoreAndUnsupportedStoresHideTheTab() = runTest {
+    products.favourites =
+        ProductResult.Success(
+            FavouriteProducts(
+                listOf(milk, coopMilk),
+                listOf("migros:missing", "coop:missing"),
+            )
+        )
+    val migros = viewModel()
+    advanceUntilIdle()
+    assertEquals(listOf(milk), migros.favourites().products)
+    assertEquals(listOf("migros:missing"), migros.favourites().unavailableProductIds)
+    assertEquals(listOf("migros"), products.favouriteRequests)
+
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(coopMilk), emptyList()))
+    val coop = viewModel(coopTrip.id)
+    advanceUntilIdle()
+    assertEquals(listOf(coopMilk), coop.favourites().products)
+    assertEquals(listOf("migros", "coop"), products.favouriteRequests)
+
+    val volg = viewModel(volgTrip.id)
+    advanceUntilIdle()
+    assertEquals(FavouritesContent.Unsupported, volg.uiState.value.favourites)
+    assertFalse(volg.uiState.value.showsFavourites)
+    assertEquals(2, products.favouriteRequests.size)
+  }
+
+  @Test
+  fun aFailedFavouriteLoadCanBeRetriedOnce() = runTest {
+    products.favourites = ProductResult.Error(ProductError.NetworkError)
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(FavouritesContent.Failed(ProductError.NetworkError), vm.uiState.value.favourites)
+
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    vm.retryFavourites()
+    vm.retryFavourites()
+    advanceUntilIdle()
+    assertEquals(listOf(milk), vm.favourites().products)
+    assertEquals(listOf("migros", "migros"), products.favouriteRequests)
+  }
+
+  @Test
+  fun optimisticChangesIgnoreRepeatedTapsAndSaveDifferentProductsIndependently() = runTest {
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.favouriteGate = CompletableDeferred()
+
+    vm.toggleFavourite(apple.id)
+    vm.toggleFavourite(apple.id)
+    vm.toggleFavourite(milk.id)
+    assertEquals(setOf(apple.id, milk.id), vm.uiState.value.pendingFavourites)
+    assertEquals(listOf(milk, apple), vm.favourites().products)
+    runCurrent()
+    assertEquals(
+        listOf(Triple("migros", apple.id, true), Triple("migros", milk.id, true)),
+        products.favouriteChanges,
+    )
+
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(emptySet<String>(), vm.uiState.value.pendingFavourites)
+    assertEquals(listOf(milk, apple), vm.favourites().products)
+  }
+
+  @Test
+  fun failedAddsAndRemovalsRollBackAndOnlyReportFailure() = runTest {
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.favouriteResult = ProductResult.Error(ProductError.NetworkError)
+
+    vm.toggleFavourite(milk.id)
+    advanceUntilIdle()
+    assertEquals(listOf(milk), vm.favourites().products)
+    assertEquals(FavouriteNotice.Failed(milk.id), vm.uiState.value.favouriteNotice)
+
+    vm.toggleFavourite(apple.id)
+    advanceUntilIdle()
+    assertEquals(listOf(milk), vm.favourites().products)
+    assertEquals(FavouriteNotice.Failed(apple.id), vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun successfulRemovalsCanUndoAvailableAndUnavailableFavourites() = runTest {
+    products.favourites =
+        ProductResult.Success(FavouriteProducts(listOf(milk), listOf("migros:missing")))
+    val vm = viewModel()
+    advanceUntilIdle()
+
+    vm.toggleFavourite(milk.id)
+    advanceUntilIdle()
+    val milkNotice = vm.uiState.value.favouriteNotice!!
+    vm.undoFavourite(milkNotice)
+    advanceUntilIdle()
+    assertEquals(listOf(milk), vm.favourites().products)
+    assertNull(vm.uiState.value.favouriteNotice)
+
+    vm.toggleFavourite("migros:missing")
+    advanceUntilIdle()
+    val missingNotice = vm.uiState.value.favouriteNotice!!
+    vm.undoFavourite(missingNotice)
+    advanceUntilIdle()
+    assertEquals(listOf("migros:missing"), vm.favourites().unavailableProductIds)
+    assertEquals(
+        listOf(
+            Triple("migros", milk.id, false),
+            Triple("migros", milk.id, true),
+            Triple("migros", "migros:missing", false),
+            Triple("migros", "migros:missing", true),
+        ),
+        products.favouriteChanges,
+    )
+  }
+
+  @Test
+  fun favouritesUseTheSharedBasketAcrossTabsAndCatalogueFilters() = runTest {
+    val yoghurt = Product("migros:9", "migros", "Yoghurt", 95)
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(yoghurt), emptyList()))
+    val draft = OrderDraftState(migrosTrip.id)
+    val vm = viewModel(draft = draft)
+    advanceUntilIdle()
+
+    vm.selectTab(CatalogueTab.FAVOURITES)
+    vm.add(yoghurt.id)
+    vm.increment(yoghurt.id)
+    vm.selectTab(CatalogueTab.CATALOGUE)
+    vm.selectCategory("Dairy")
+    advanceUntilIdle()
+
+    assertTrue(vm.uiState.value.isFavourite(yoghurt.id))
+    assertEquals(2, vm.uiState.value.quantityOf(yoghurt.id))
+    assertEquals(2, draft.draft.value.items.single().quantity)
+  }
+}

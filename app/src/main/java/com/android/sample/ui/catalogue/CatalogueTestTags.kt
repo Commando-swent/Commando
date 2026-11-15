@@ -12,10 +12,17 @@ object CatalogueTestTags {
   const val IMAGE_PREVIEW_CLOSE = "catalogue_image_preview_close"
   const val SUMMARY = "catalogue_summary"
   const val CONTINUE = "catalogue_continue"
+  const val TAB_CATALOGUE = "catalogue_tab_catalogue"
+  const val TAB_FAVOURITES = "catalogue_tab_favourites"
   const val CATEGORY_CHIPS = "catalogue_category_chips"
   const val CATEGORY_ALL = "catalogue_category_all"
+  const val SNACKBAR = "catalogue_snackbar"
 
   fun category(value: String) = "catalogue_category_$value"
+
+  fun favourite(productId: String) = "catalogue_favourite_$productId"
+
+  fun unavailable(productId: String) = "catalogue_unavailable_$productId"
 
   fun row(productId: String) = "catalogue_row_$productId"
 

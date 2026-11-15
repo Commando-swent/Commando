@@ -477,24 +477,40 @@ class CatalogueViewModel(
             ProductResult.Error(ProductError.Unknown)
           }
       ensureActive()
-      val saved = result is ProductResult.Success
-      if (saved && favourite) removedFavourites.remove(productId)
-      if (saved && !favourite) removedFavourites[productId] = entry
-      mutableState.update {
-        it.copy(
-            favourites =
-                if (saved) it.favourites
-                else it.favourites.withFavourite(productId, !favourite, entry),
-            pendingFavourites = it.pendingFavourites - productId,
-            favouriteNotice =
-                when {
-                  !saved -> FavouriteNotice.Failed(productId)
-                  !reportSuccess -> null
-                  favourite -> FavouriteNotice.Added(productId)
-                  else -> FavouriteNotice.Removed(productId)
-                },
-        )
-      }
+      finishFavouriteChange(
+          productId,
+          favourite,
+          entry,
+          result is ProductResult.Success,
+          reportSuccess,
+      )
+    }
+  }
+
+  /** Keeps a saved change, or rolls a failed one back, and reports the outcome. */
+  private fun finishFavouriteChange(
+      productId: String,
+      favourite: Boolean,
+      entry: FavouriteEntry,
+      saved: Boolean,
+      reportSuccess: Boolean,
+  ) {
+    if (saved && favourite) removedFavourites.remove(productId)
+    if (saved && !favourite) removedFavourites[productId] = entry
+    mutableState.update {
+      it.copy(
+          favourites =
+              if (saved) it.favourites
+              else it.favourites.withFavourite(productId, !favourite, entry),
+          pendingFavourites = it.pendingFavourites - productId,
+          favouriteNotice =
+              when {
+                !saved -> FavouriteNotice.Failed(productId)
+                !reportSuccess -> null
+                favourite -> FavouriteNotice.Added(productId)
+                else -> FavouriteNotice.Removed(productId)
+              },
+      )
     }
   }
 

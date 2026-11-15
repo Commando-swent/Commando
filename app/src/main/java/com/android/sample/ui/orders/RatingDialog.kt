@@ -96,7 +96,10 @@ fun RatingDialog(
               Text(
                   if (score <= state.score) "★" else "☆",
                   fontSize = 34.sp,
-                  color = RatingAmber.copy(alpha = if (state.submitting) 0.55f else 1f),
+                  color =
+                      RatingAmber.copy(
+                          alpha = if (state.submitting || state.terminalError) 0.55f else 1f
+                      ),
                   modifier = Modifier.clearAndSetSemantics {},
               )
             }

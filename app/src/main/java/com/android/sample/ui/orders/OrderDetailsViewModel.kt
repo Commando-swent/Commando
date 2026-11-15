@@ -21,6 +21,7 @@ import com.android.sample.model.Rating
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.isActiveForTracking
+import com.android.sample.model.normalizeRatingComment
 import com.android.sample.ui.session.SessionGuard
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -56,7 +57,7 @@ data class RatingDialogState(
 ) {
   /** Matches repository normalization: blank comments are absent before length validation. */
   val commentTooLong: Boolean
-    get() = comment.isNotBlank() && comment.length > MAX_RATING_COMMENT_LENGTH
+    get() = (normalizeRatingComment(comment)?.length ?: 0) > MAX_RATING_COMMENT_LENGTH
 
   /** Only unexpected failures can be retried within this receipt flow. */
   val terminalError: Boolean
@@ -322,7 +323,7 @@ class OrderDetailsViewModel(
               return if (
                   saved.orderId == input.orderId &&
                       saved.score == input.score &&
-                      saved.comment == input.comment?.takeUnless(String::isBlank)
+                      saved.comment == normalizeRatingComment(input.comment)
               )
                   RatingResult.Success(saved)
               else RatingResult.Error(RatingError.AlreadyRated)
@@ -331,6 +332,7 @@ class OrderDetailsViewModel(
       currentCoroutineContext().ensureActive()
       if (endSessionIfChanged()) return RatingResult.Error(RatingError.NotAuthenticated)
     }
+    // An exception may arrive after the server commits, so assume uncertainty before submitting.
     ratingUncertain = true
     return ratingRepository.submitRating(input).also {
       ratingUncertain = it == RatingResult.Error(RatingError.Unknown)

@@ -6,16 +6,22 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
+import com.android.sample.data.repository.RatingError
+import com.android.sample.data.repository.RatingRepository
+import com.android.sample.data.repository.RatingResult
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.Location
+import com.android.sample.model.NewRating
 import com.android.sample.model.NewTrip
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
+import com.android.sample.model.Rating
+import com.android.sample.model.RatingSummary
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.TripTransition
@@ -925,6 +931,184 @@ class OrderDetailsViewModelTest {
       assertEquals(OrderDetailsUiState.SessionEnded, pending.uiState.value)
       pending.viewModelScope.cancel()
     }
+  }
+
+  @Test
+  fun ratingOnlyFollowsSuccessfulMatchingReceiptAndDismissalCannotReopenIt() = runTest {
+    val delivered = order.copy(status = OrderStatus.DELIVERED)
+    for (result in
+        listOf(
+            OrderResult.Error(OrderError.Unknown),
+            OrderResult.Error(OrderError.AlreadyDecided(delivered)),
+            OrderResult.Success(delivered.copy(id = "wrong")),
+            OrderResult.Success(order),
+            OrderResult.Success(delivered),
+        )) {
+      val vm = ratingVm(TestRatings())
+      advanceUntilIdle()
+      assertTrue(!vm.ratingState.value.visible)
+      orders.decision = { result }
+      vm.confirmReceipt()
+      advanceUntilIdle()
+      assertEquals(result == OrderResult.Success(delivered), vm.ratingState.value.visible)
+      vm.dismissRating()
+      vm.confirmReceipt()
+      vm.retry()
+      advanceUntilIdle()
+      assertTrue(!vm.ratingState.value.visible)
+      vm.viewModelScope.cancel()
+    }
+    orders.lookup = { OrderResult.Success(delivered) }
+    val initial = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId })
+    advanceUntilIdle()
+    assertTrue(!initial.ratingState.value.visible)
+  }
+
+  @Test
+  fun ratingValidationLoadingAndRetryPreserveInputAndPreventDuplicateClicks() = runTest {
+    val ratings = TestRatings()
+    val vm = ratingVm(ratings)
+    advanceUntilIdle()
+    vm.confirmReceipt()
+    advanceUntilIdle()
+    for ((score, comment) in listOf(0 to "", 1 to "x".repeat(251), 5 to "😀".repeat(126))) {
+      vm.updateRating(score, comment)
+      vm.submitRating()
+      advanceUntilIdle()
+      assertTrue(ratings.inputs.isEmpty())
+    }
+    for (comment in listOf("", " ".repeat(251), "x".repeat(250), "😀".repeat(125))) {
+      vm.updateRating(1, comment)
+      assertTrue(vm.ratingState.value.valid)
+    }
+    vm.updateRating(5, " preserved ")
+    val gate = CompletableDeferred<RatingResult<Rating>>()
+    ratings.save = { gate.await() }
+    vm.submitRating()
+    vm.submitRating()
+    vm.dismissRating()
+    vm.updateRating(1, "lost")
+    vm.retry()
+    runCurrent()
+    assertEquals(listOf(NewRating(order.id, 5, " preserved ")), ratings.inputs)
+    assertTrue(vm.ratingState.value.submitting)
+    gate.complete(RatingResult.Error(RatingError.PermissionDenied))
+    advanceUntilIdle()
+    assertEquals(" preserved ", vm.ratingState.value.comment)
+    assertTrue(vm.ratingState.value.visible && !vm.ratingState.value.submitting)
+    ratings.save = { RatingResult.Success(ratings.saved) }
+    vm.submitRating()
+    advanceUntilIdle()
+    assertTrue(vm.ratingState.value.submitted && !vm.ratingState.value.visible)
+    vm.submitRating()
+    assertEquals(2, ratings.inputs.size)
+    assertEquals(
+        OrderStatus.DELIVERED,
+        (vm.uiState.value as OrderDetailsUiState.Content).order.status,
+    )
+  }
+
+  @Test
+  fun uncertainWritesReconcileAbsenceExistingFeedbackAndReadFailuresBeforeRetry() = runTest {
+    for (existing in
+        listOf(
+            RatingResult.Success(null),
+            RatingResult.Success(TestRatings().saved),
+            RatingResult.Error(RatingError.Unknown),
+        )) {
+      val ratings = TestRatings()
+      val vm = ratingVm(ratings)
+      advanceUntilIdle()
+      vm.confirmReceipt()
+      advanceUntilIdle()
+      vm.updateRating(4)
+      ratings.save = { RatingResult.Error(RatingError.Unknown) }
+      vm.submitRating()
+      advanceUntilIdle()
+      ratings.read = { existing }
+      ratings.save = { RatingResult.Error(RatingError.AlreadyRated) }
+      vm.submitRating()
+      advanceUntilIdle()
+      assertEquals(1, ratings.reads)
+      assertEquals(if (existing == RatingResult.Success(null)) 2 else 1, ratings.inputs.size)
+      assertEquals(existing is RatingResult.Error, vm.ratingState.value.visible)
+      vm.dismissRating()
+      vm.submitRating()
+      assertTrue(!vm.ratingState.value.visible)
+      vm.viewModelScope.cancel()
+    }
+  }
+
+  @Test
+  fun ratingSessionIdentityAndLateResponsesStayInvalidAfterOriginalAccountReturns() = runTest {
+    for (duringRead in listOf(false, true)) {
+      val ratings = TestRatings()
+      val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+      val vm = ratingVm(ratings, session)
+      advanceUntilIdle()
+      vm.confirmReceipt()
+      advanceUntilIdle()
+      vm.updateRating(4)
+      val late = LateResult<RatingResult<Rating>>()
+      ratings.save = { if (duringRead) RatingResult.Error(RatingError.Unknown) else late.await() }
+      vm.submitRating()
+      runCurrent()
+      if (duringRead) {
+        ratings.read = { late.await() }
+        vm.submitRating()
+        runCurrent()
+      }
+      assertEquals(order.requesterId, ratings.identity())
+      session.value = null
+      runCurrent()
+      session.value = order.requesterId
+      runCurrent()
+      assertEquals(null, ratings.identity())
+      late.complete(RatingResult.Success(ratings.saved))
+      advanceUntilIdle()
+      assertEquals(RatingDialogState(), vm.ratingState.value)
+      assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+      vm.viewModelScope.cancel()
+    }
+  }
+
+  private fun ratingVm(
+      ratings: TestRatings,
+      session: kotlinx.coroutines.flow.MutableStateFlow<String?> =
+          kotlinx.coroutines.flow.MutableStateFlow(order.requesterId),
+  ): OrderDetailsViewModel {
+    orders.lookup = { OrderResult.Success(order.copy(status = OrderStatus.READY_FOR_HANDOFF)) }
+    orders.decision = { OrderResult.Success(order.copy(status = OrderStatus.DELIVERED)) }
+    return OrderDetailsViewModel(
+        order.id,
+        orders,
+        trips,
+        { session.value },
+        session,
+        { identity -> ratings.also { it.identity = identity } },
+    )
+  }
+
+  private inner class TestRatings : RatingRepository {
+    val saved = Rating(order.id, trip.id, order.requesterId, trip.ownerId, 4, null, now)
+    val inputs = mutableListOf<NewRating>()
+    var identity: () -> String? = { null }
+    var reads = 0
+    var save: suspend () -> RatingResult<Rating> = { RatingResult.Success(saved) }
+    var read: suspend () -> RatingResult<Rating?> = { RatingResult.Success(null) }
+
+    override suspend fun submitRating(input: NewRating): RatingResult<Rating> {
+      inputs += input
+      return save()
+    }
+
+    override suspend fun getRatingForOrder(orderId: String): RatingResult<Rating?> {
+      reads++
+      return read()
+    }
+
+    override suspend fun getRatingSummary(commandoId: String): RatingResult<RatingSummary> =
+        error("Unused")
   }
 
   /** suspendCoroutine deliberately delivers a result even after the calling job is cancelled. */

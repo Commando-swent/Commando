@@ -51,6 +51,8 @@ import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
+import com.android.sample.data.repository.RatingRepository
+import com.android.sample.data.repository.RatingRepositoryFirestore
 import com.android.sample.data.repository.SavedTripSearchRepository
 import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.ShoppingChecklistRepository
@@ -136,6 +138,7 @@ fun CommandoApp(
     positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)? = null,
     locationProvider: DeviceLocationProvider? = null,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
+    ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -232,6 +235,8 @@ fun CommandoApp(
               tripRepository = trips,
               productRepository = productRepository,
               orders = orders,
+              ratingRepositoryFactory =
+                  ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
               notificationRepositoryFactory = notificationRepositoryFactory,
               checklists = checklists,
               savedSearches = savedSearches,
@@ -266,6 +271,7 @@ private fun AuthenticatedApp(
     tripRepository: TripRepository,
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
+    ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)?,
     checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
@@ -698,11 +704,17 @@ private fun AuthenticatedApp(
                   tripRepository,
                   orders::currentUserId,
                   orders.sessionChanges,
+                  ratingRepositoryFactory = ratingRepositoryFactory,
               )
             }
         val state by model.uiState.collectAsState()
         OrderDetailsScreen(
             state = state,
+            ratingState = model.ratingState.collectAsState().value,
+            onRatingScore = { model.updateRating(score = it) },
+            onRatingComment = { model.updateRating(comment = it) },
+            onRatingSubmit = model::submitRating,
+            onRatingDismiss = model::dismissRating,
             onBack = { navController.popBackStack() },
             onRetry = model::retry,
             onDecision = model::decide,

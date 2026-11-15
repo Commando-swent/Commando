@@ -217,6 +217,7 @@ class OrderLifecycleJourneyTest {
       assertActions(OrderDetailsTestTags.CONFIRM_RECEIPT)
       assertEquals(OrderResult.Success(ready), orders.getOrderById(pending.id))
       click(OrderDetailsTestTags.CONFIRM_RECEIPT)
+      click(com.android.sample.ui.orders.RatingDialogTestTags.CANCEL)
       assertStatus(OrderStatus.DELIVERED)
       back()
       openRequesterOrder(pending.id)

@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
+import com.android.sample.data.repository.RatingError
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
@@ -69,6 +70,9 @@ object OrderDetailsTestTags {
  * @param notice Optional contextual feedback rendered below the safe header in the scroll area.
  * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
  * @param onTrack Opens the selected active order's commando map for its requester.
+ * @param ratingState Transient receipt rating input and submission feedback.
+ * @param onRatingScore Selects stars; [onRatingComment] edits the optional comment.
+ * @param onRatingSubmit Submits or retries; [onRatingDismiss] closes idle feedback.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -83,6 +87,11 @@ fun OrderDetailsScreen(
     notice: String? = null,
     onConfirmReceipt: () -> Unit = {},
     onTrack: () -> Unit = {},
+    ratingState: RatingDialogState = RatingDialogState(),
+    onRatingScore: (Int) -> Unit = {},
+    onRatingComment: (String) -> Unit = {},
+    onRatingSubmit: () -> Unit = {},
+    onRatingDismiss: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -146,6 +155,14 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
+          if (ratingState.submitted || ratingState.error == RatingError.AlreadyRated) {
+            Text(
+                stringResource(
+                    if (ratingState.submitted) R.string.rating_success else R.string.rating_already
+                ),
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+          }
           if (state.canEdit && onEdit != null) {
             OutlinedButton(
                 onClick = onEdit,
@@ -184,6 +201,8 @@ fun OrderDetailsScreen(
       }
     }
   }
+  if (state is OrderDetailsUiState.Content && ratingState.visible)
+      RatingDialog(ratingState, onRatingScore, onRatingComment, onRatingSubmit, onRatingDismiss)
 }
 
 @Composable

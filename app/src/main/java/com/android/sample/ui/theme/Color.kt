@@ -30,3 +30,6 @@ val SurfaceContainerLowest = Color(0xFF10140D)
 
 // Product image placeholder tint from the catalogue Figma components.
 val IllustrationCream = Color(0xFFEDE6D0)
+
+// Star tint from the rating dialog masters.
+val RatingAmber = Color(0xFFE3A552)

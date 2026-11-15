@@ -2,6 +2,7 @@ package com.android.sample.ui.orders
 
 // AI assistance: OpenAI Codex.
 
+import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.*
@@ -35,6 +38,57 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-rUS")
 class OrderDetailsScreenTest {
+  @Test
+  fun ratingDialogValidatesInputDisablesSavingAndPreservesFailedValuesUntilDismissal() {
+    val rating = mutableStateOf(RatingDialogState(visible = true))
+    var submissions = 0
+    compose.setContent {
+      SampleAppTheme {
+        OrderDetailsScreen(
+            OrderDetailsUiState.Content(order.copy(status = OrderStatus.DELIVERED), trip),
+            {},
+            {},
+            ratingState = rating.value,
+            onRatingScore = { rating.value = rating.value.copy(score = it) },
+            onRatingComment = { rating.value = rating.value.copy(comment = it) },
+            onRatingSubmit = {
+              submissions++
+              rating.value = rating.value.copy(submitting = true)
+            },
+            onRatingDismiss = { rating.value = rating.value.copy(visible = false) },
+        )
+      }
+    }
+    val submit = compose.onNodeWithTag(RatingDialogTestTags.SUBMIT)
+    val comment = compose.onNodeWithTag(RatingDialogTestTags.COMMENT)
+    submit.assertIsNotEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.STAR_PREFIX + 4).performClick().assertIsSelected()
+    comment.performTextInput("x".repeat(251))
+    submit.assertIsNotEnabled()
+    comment.performTextReplacement("Friendly delivery")
+    submit.performScrollTo().assertIsEnabled().performClick()
+    submit.assertIsNotEnabled().performClick()
+    comment.assertIsNotEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.STAR_PREFIX + 1).assertIsNotEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.CANCEL).assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, submissions)
+      rating.value =
+          rating.value.copy(
+              submitting = false,
+              error = com.android.sample.data.repository.RatingError.Unknown,
+          )
+    }
+    comment.assertTextContains("Friendly delivery")
+    val failureMessage =
+        ApplicationProvider.getApplicationContext<Context>().getString(R.string.rating_failure)
+    compose.onNodeWithText(failureMessage).assertExists()
+    submit.assertIsEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+  }
+
   @Test
   fun editingIsOnlyOfferedToTheRequesterOnAPendingOpenTrip() {
     var edits = 0

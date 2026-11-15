@@ -115,8 +115,13 @@ data class CatalogueUiState(
     val favourites: FavouritesContent = FavouritesContent.Loading,
     /** Product IDs whose optimistic favourite change is still being saved. */
     val pendingFavourites: Set<String> = emptySet(),
-    val favouriteNotice: FavouriteNotice? = null,
+    /** Feedback still to show, in order: at most one failure, then the latest success. */
+    val favouriteNotices: List<FavouriteNotice> = emptyList(),
 ) {
+  /** The notice the snackbar shows now; the next one waits until it is dismissed. */
+  val favouriteNotice: FavouriteNotice?
+    get() = favouriteNotices.firstOrNull()
+
   val products: List<Product>
     get() = (content as? CatalogueContent.Loaded)?.products.orEmpty()
 
@@ -232,14 +237,13 @@ class CatalogueViewModel(
   fun undoFavourite(notice: FavouriteNotice) {
     if (notice !is FavouriteNotice.Removed || mutableState.value.favouriteNotice != notice) return
     val entry = removedFavourites[notice.productId] ?: return
-    mutableState.update { it.copy(favouriteNotice = null) }
+    dismissFavouriteNotice(notice)
     changeFavourite(notice.productId, favourite = true, entry, reportSuccess = false)
   }
 
+  /** Drops [notice] once shown, so the next pending notice, if any, is shown. */
   fun dismissFavouriteNotice(notice: FavouriteNotice) {
-    mutableState.update { state ->
-      if (state.favouriteNotice == notice) state.copy(favouriteNotice = null) else state
-    }
+    mutableState.update { it.copy(favouriteNotices = it.favouriteNotices - notice) }
   }
 
   /**
@@ -468,7 +472,6 @@ class CatalogueViewModel(
       it.copy(
           favourites = it.favourites.withFavourite(productId, favourite, entry),
           pendingFavourites = it.pendingFavourites + productId,
-          favouriteNotice = it.unshownFailure(),
       )
     }
     viewModelScope.launch {
@@ -507,19 +510,27 @@ class CatalogueViewModel(
               if (saved) it.favourites
               else it.favourites.withFavourite(productId, !favourite, entry),
           pendingFavourites = it.pendingFavourites - productId,
-          favouriteNotice =
+          favouriteNotices =
               when {
-                !saved -> FavouriteNotice.Failed(productId)
-                it.unshownFailure() != null || !reportSuccess -> it.unshownFailure()
-                favourite -> FavouriteNotice.Added(productId)
-                else -> FavouriteNotice.Removed(productId)
+                !saved -> it.favouriteNotices.queue(FavouriteNotice.Failed(productId))
+                !reportSuccess -> it.favouriteNotices
+                favourite -> it.favouriteNotices.queue(FavouriteNotice.Added(productId))
+                else -> it.favouriteNotices.queue(FavouriteNotice.Removed(productId))
               },
       )
     }
   }
 
-  /** A failure stays until the UI dismisses it; later changes never replace it with success. */
-  private fun CatalogueUiState.unshownFailure() = favouriteNotice as? FavouriteNotice.Failed
+  /**
+   * Failures go first and successes wait behind them, so neither is lost; a newer notice replaces
+   * an older one of the same kind.
+   */
+  private fun List<FavouriteNotice>.queue(notice: FavouriteNotice): List<FavouriteNotice> {
+    val failure = filterIsInstance<FavouriteNotice.Failed>().firstOrNull()
+    val success = filterNot { it is FavouriteNotice.Failed }.firstOrNull()
+    return if (notice is FavouriteNotice.Failed) listOfNotNull(notice, success)
+    else listOfNotNull(failure, notice)
+  }
 
   private fun FavouritesContent.withFavourite(
       productId: String,

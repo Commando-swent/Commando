@@ -234,12 +234,31 @@ class CatalogueFavouritesViewModelTest {
     assertEquals(listOf(milk, apple), vm.favourites().products)
     val failed = FavouriteNotice.Failed(milk.id)
     assertEquals(failed, vm.uiState.value.favouriteNotice)
+    vm.dismissFavouriteNotice(failed)
+    assertEquals(FavouriteNotice.Added(apple.id), vm.uiState.value.favouriteNotice)
+  }
 
-    products.favouriteGate = null
-    vm.toggleFavourite(apple.id) // A later change still keeps the unshown failure.
+  @Test
+  fun aRemovalThatSucceedsWhileAFailureShowsKeepsItsUndo() = runTest {
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk, apple), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.favouriteResults[milk.id] = ProductResult.Error(ProductError.NetworkError)
+    vm.toggleFavourite(milk.id)
+    advanceUntilIdle()
+    val failed = FavouriteNotice.Failed(milk.id)
+    assertEquals(failed, vm.uiState.value.favouriteNotice)
+
+    vm.toggleFavourite(apple.id) // Removal succeeds while the failure is still showing.
     advanceUntilIdle()
     assertEquals(failed, vm.uiState.value.favouriteNotice)
     vm.dismissFavouriteNotice(failed)
+    val removed = FavouriteNotice.Removed(apple.id)
+    assertEquals(removed, vm.uiState.value.favouriteNotice)
+
+    vm.undoFavourite(removed)
+    advanceUntilIdle()
+    assertEquals(listOf(milk, apple), vm.favourites().products)
     assertNull(vm.uiState.value.favouriteNotice)
   }
 

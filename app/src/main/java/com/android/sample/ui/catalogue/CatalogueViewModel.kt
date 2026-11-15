@@ -431,7 +431,6 @@ class CatalogueViewModel(
             ProductResult.Error(ProductError.Unknown)
           }
       ensureActive()
-      if (mutableState.value.storeId != storeId) return@launch
       val content =
           when (result) {
             is ProductResult.Success ->
@@ -478,7 +477,6 @@ class CatalogueViewModel(
             ProductResult.Error(ProductError.Unknown)
           }
       ensureActive()
-      if (mutableState.value.storeId != storeId) return@launch
       val saved = result is ProductResult.Success
       if (saved && favourite) removedFavourites.remove(productId)
       if (saved && !favourite) removedFavourites[productId] = entry

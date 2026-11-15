@@ -1,5 +1,6 @@
 package com.android.sample.ui.catalogue
 
+import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
@@ -9,6 +10,7 @@ import com.android.sample.ui.orders.OrderDraftState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -93,6 +95,98 @@ class CatalogueFavouritesViewModelTest {
     advanceUntilIdle()
     assertEquals(listOf(milk), vm.favourites().products)
     assertEquals(listOf("migros", "migros"), products.favouriteRequests)
+  }
+
+  @Test
+  fun thrownRepositoryErrorsFailTheLoadAndRollBackChanges() = runTest {
+    products.favouriteThrown = IllegalStateException("offline")
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(FavouritesContent.Failed(ProductError.Unknown), vm.uiState.value.favourites)
+    vm.add(milk.id) // The basket still works from the catalogue.
+    runCurrent()
+    assertEquals(1, vm.uiState.value.quantityOf(milk.id))
+
+    products.favouriteThrown = null
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    vm.retryFavourites()
+    advanceUntilIdle()
+    vm.retryFavourites() // Loaded: nothing to retry.
+    assertEquals(listOf("migros", "migros"), products.favouriteRequests)
+
+    products.favouriteThrown = IllegalStateException("offline")
+    vm.toggleFavourite(milk.id)
+    advanceUntilIdle()
+    assertEquals(listOf(milk), vm.favourites().products)
+    assertEquals(FavouriteNotice.Failed(milk.id), vm.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun cancelledFavouriteReadsAndWritesAreNotReportedAsFailures() = runTest {
+    products.favouriteGate = CompletableDeferred()
+    val loading = viewModel()
+    runCurrent()
+    loading.viewModelScope.cancel()
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(FavouritesContent.Loading, loading.uiState.value.favourites)
+
+    products.favouriteGate = null
+    val saving = viewModel()
+    advanceUntilIdle()
+    products.favouriteGate = CompletableDeferred()
+    saving.toggleFavourite(milk.id)
+    runCurrent()
+    saving.viewModelScope.cancel()
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertNull(saving.uiState.value.favouriteNotice)
+    assertEquals(setOf(milk.id), saving.uiState.value.pendingFavourites)
+  }
+
+  @Test
+  fun aStoreRejectedByTheFavouritesReadHidesTheTabAndIgnoresHearts() = runTest {
+    products.favourites = ProductResult.Error(ProductError.InvalidStore)
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(FavouritesContent.Unsupported, vm.uiState.value.favourites)
+
+    vm.selectTab(CatalogueTab.FAVOURITES)
+    vm.toggleFavourite(milk.id)
+    vm.retryFavourites()
+    advanceUntilIdle()
+    assertEquals(CatalogueTab.CATALOGUE, vm.uiState.value.tab)
+    assertEquals(emptyList<Triple<String, String, Boolean>>(), products.favouriteChanges)
+    assertEquals(listOf("migros"), products.favouriteRequests)
+  }
+
+  @Test
+  fun undoIgnoresStaleNoticesAndRollsBackWhenItFails() = runTest {
+    products.favourites = ProductResult.Success(FavouriteProducts(listOf(milk), emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    vm.toggleFavourite("migros:unknown") // Neither loaded nor favourite: nothing to save.
+    vm.toggleFavourite(milk.id)
+    advanceUntilIdle()
+    val removed = FavouriteNotice.Removed(milk.id)
+    assertEquals(removed, vm.uiState.value.favouriteNotice)
+
+    vm.undoFavourite(FavouriteNotice.Added(milk.id))
+    vm.undoFavourite(FavouriteNotice.Removed(apple.id))
+    advanceUntilIdle()
+    assertEquals(listOf(Triple("migros", milk.id, false)), products.favouriteChanges)
+
+    products.favouriteResult = ProductResult.Error(ProductError.NetworkError)
+    vm.undoFavourite(removed)
+    advanceUntilIdle()
+    assertEquals(emptyList<Product>(), vm.favourites().products)
+    val failed = FavouriteNotice.Failed(milk.id)
+    assertEquals(failed, vm.uiState.value.favouriteNotice)
+
+    vm.dismissFavouriteNotice(removed)
+    assertEquals(failed, vm.uiState.value.favouriteNotice)
+    vm.dismissFavouriteNotice(failed)
+    assertNull(vm.uiState.value.favouriteNotice)
   }
 
   @Test

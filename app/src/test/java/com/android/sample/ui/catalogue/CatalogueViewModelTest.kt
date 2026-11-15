@@ -92,9 +92,12 @@ internal class StubProductRepository(
   var favouriteGate: CompletableDeferred<Unit>? = null
   val favouriteRequests = mutableListOf<String>()
   val favouriteChanges = mutableListOf<Triple<String, String, Boolean>>()
+  var favouriteThrown: Exception? = null
 
   override suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts> {
     favouriteRequests += storeId
+    favouriteGate?.await()
+    favouriteThrown?.let { throw it }
     return favourites
   }
 
@@ -113,6 +116,7 @@ internal class StubProductRepository(
   ): ProductResult<Unit> {
     favouriteChanges += Triple(storeId, productId, favourite)
     favouriteGate?.await()
+    favouriteThrown?.let { throw it }
     return favouriteResult
   }
 }

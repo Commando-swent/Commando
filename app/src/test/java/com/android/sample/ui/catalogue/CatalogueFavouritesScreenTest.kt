@@ -1,7 +1,11 @@
 package com.android.sample.ui.catalogue
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsEqualTo
@@ -20,6 +24,7 @@ import com.android.sample.model.Trip
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -74,6 +79,66 @@ class CatalogueFavouritesScreenTest {
         products.favouriteChanges,
     )
     compose.onNodeWithContentDescription("Remove Apples from favourites").assertIsDisplayed()
+  }
+
+  @Test
+  fun unansweredFeedbackIsDismissedWhenTheSnackbarTimesOut() {
+    show()
+    compose.onNodeWithContentDescription("Add Apples to favourites").performClick()
+    compose.onNodeWithText("Added to favourites").assertIsDisplayed()
+
+    compose.mainClock.advanceTimeBy(10_000)
+    compose.waitForIdle()
+    compose.onNodeWithText("Added to favourites").assertDoesNotExist()
+    assertNull(viewModel.uiState.value.favouriteNotice)
+  }
+
+  @Test
+  fun favouritesTabShowsLoadingPermissionErrorsAndUnavailableOnlyLists() {
+    val coop = catalogueTrip("trip-coop", "Coop Lausanne")
+    var state by
+        mutableStateOf(
+            CatalogueUiState(
+                trip = coop,
+                tab = CatalogueTab.FAVOURITES,
+                favourites = FavouritesContent.Loading,
+            )
+        )
+    compose.setContent {
+      SampleAppTheme {
+        CatalogueScreen(
+            state = state,
+            onBack = {},
+            onQueryChange = {},
+            onClearSearch = {},
+            onAdd = {},
+            onIncrease = {},
+            onDecrease = {},
+            onRetry = {},
+            onLoadMore = {},
+            onContinue = {},
+        )
+      }
+    }
+    compose.onNodeWithText("LOADING PRODUCTS…").assertIsDisplayed()
+
+    state = state.copy(favourites = FavouritesContent.Failed(ProductError.PermissionDenied))
+    compose
+        .onNodeWithText("You don’t have access to this catalogue. Sign in again, then retry.")
+        .assertIsDisplayed()
+
+    // A Coop list with only an unlisted product, whose removal is still being saved.
+    state =
+        state.copy(
+            favourites = FavouritesContent.Loaded(emptyList(), listOf("coop:gone")),
+            pendingFavourites = setOf("coop:gone"),
+        )
+    compose
+        .onNodeWithText("Migros favourites appear on Migros trips.", substring = true)
+        .assertIsDisplayed()
+    compose.onNodeWithText("FAVOURITES ·", substring = true).assertDoesNotExist()
+    compose.onNodeWithText("NOT AVAILABLE · 1").assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.favourite("coop:gone")).assertIsNotEnabled()
   }
 
   @Test

@@ -78,7 +78,7 @@ discover_profiles() {
     [[ "${declared_package}" == "${expected_package}" ]] ||
       fail "${test_file} must declare package ${expected_package}"
     printf '%s\n' "${profile}"
-  done < <(find "${TEST_ROOT}" -type f -name '*Test.kt' -print0)
+  done
 }
 
 validate_security_rules_config() {
@@ -137,7 +137,7 @@ fi
 # Coverage from a previous run must never be reported as part of this one.
 rm -rf "${EMULATOR_COVERAGE_DIR}"
 
-profiles="$(discover_profiles)"
+profiles="$(find "${TEST_ROOT}" -type f -name '*Test.kt' -print0 | discover_profiles)"
 if [[ -z "${profiles}" ]]; then
   echo "No Firebase emulator tests detected."
   exit 0

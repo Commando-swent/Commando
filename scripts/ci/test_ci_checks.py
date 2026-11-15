@@ -62,6 +62,11 @@ class CiChecksTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("must declare package com.commando.app.emulator.auth", result.stderr)
 
+    def test_missing_test_root_fails_discovery(self):
+        result = self.run_emulator_discovery()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("app/src/test", result.stderr)
+
     def test_coverage_requires_covered_main_source_under_the_reported_package(self):
         sources = self.root / "src"
         report = self.write("report.xml", """<report name="app">

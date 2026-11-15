@@ -206,7 +206,7 @@ tasks.withType<Test> {
   }
 
   if (firebaseEmulatorProfile == null) {
-    filter { excludeTestsMatching("*.emulator.*") }
+    filter { firebaseEmulatorTestPatterns.values.forEach { excludeTestsMatching(it) } }
   } else if (name == "testDebugUnitTest") {
     filter {
       val testPattern =

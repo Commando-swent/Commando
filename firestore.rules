@@ -245,6 +245,32 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.status == "PUBLISHED"
         && get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data.scheduledAt > request.time;
       allow delete: if false;
+
+      // Order chat (#352): immutable text, bounded live queries, persisted participants only.
+      match /messages/{messageId} {
+        function chatOrder() {
+          return get(/databases/$(database)/documents/orders/$(orderId)).data;
+        }
+        function chatParticipant() {
+          let order = chatOrder();
+          return isAuthenticated() && order.status != "PENDING"
+            && (order.requesterId == request.auth.uid || ownsOrderTrip(order));
+        }
+        allow get: if chatParticipant();
+        allow list: if chatParticipant() && request.query.limit <= 100;
+        allow create: if chatParticipant()
+          && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status
+            in ["ACCEPTED", "READY_FOR_HANDOFF"]
+          && request.resource.data.keys().hasAll(["senderId", "text", "createdAt"])
+          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt"])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.text is string
+          && request.resource.data.text.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
+          // Firestore counts code points; count supplementary characters twice like String.length.
+          && request.resource.data.text.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000;
+        allow update, delete: if false;
+      }
     }
 
     // Ratings (#261): each immutable feedback and its exact summary increment commit together.

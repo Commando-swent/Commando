@@ -203,11 +203,9 @@ private fun ReviewOrderState.actionTitle(): Int =
       order != null -> R.string.order_view
       draft.items.isEmpty() -> R.string.order_add
       saving -> R.string.order_saving
-      else ->
-          when (error) {
-            null -> if (editing) R.string.order_save_changes else R.string.order_submit
-            else -> R.string.order_retry
-          }
+      error != null -> R.string.order_retry
+      editing -> R.string.order_save_changes
+      else -> R.string.order_submit
     }
 
 /** Submits the draft or opens the persisted order, keeping the existing action enablement. */

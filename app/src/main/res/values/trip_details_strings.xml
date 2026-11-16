@@ -1,4 +1,15 @@
 <resources>
+    <string name="trip_details_created_by">Trip created by</string>
+    <string name="trip_details_commando_member">Commando member</string>
+    <string name="trip_details_rating_loading">Loading ratings…</string>
+    <string name="trip_details_rating_empty">No ratings yet</string>
+    <string name="trip_details_rating_error">Ratings unavailable. Try again.</string>
+    <string name="trip_details_rating_value">%1$s / 5 · %2$s</string>
+    <string name="trip_details_rating_description">%1$s out of 5 stars, %2$s</string>
+    <plurals name="trip_details_rating_count">
+        <item quantity="one">%d rating</item>
+        <item quantity="other">%d ratings</item>
+    </plurals>
     <string name="trip_details_back">Back</string>
     <string name="trip_details_loading">Loading trip details</string>
     <string name="trip_details_shopping_time">Shopping time</string>

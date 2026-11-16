@@ -364,6 +364,17 @@
     <string name="nav_trip_list">Retour à la liste des trajets</string>
     <string name="mock_map_details_unavailable">Trajet fictif · détails indisponibles</string>
     <string name="nav_orders_demo">Commandes de démonstration · conservées pendant cette session</string>
+    <string name="trip_details_created_by">Trajet créé par</string>
+    <string name="trip_details_commando_member">Membre Commando</string>
+    <string name="trip_details_rating_loading">Chargement des évaluations…</string>
+    <string name="trip_details_rating_empty">Aucune évaluation pour le moment</string>
+    <string name="trip_details_rating_error">Évaluations indisponibles. Réessayez.</string>
+    <string name="trip_details_rating_value">%1$s / 5 · %2$s</string>
+    <string name="trip_details_rating_description">%1$s sur 5 étoiles, %2$s</string>
+    <plurals name="trip_details_rating_count">
+        <item quantity="one">%d évaluation</item>
+        <item quantity="other">%d évaluations</item>
+    </plurals>
     <string name="trip_details_back">Retour</string>
     <string name="trip_details_loading">Chargement des détails du trajet</string>
     <string name="trip_details_shopping_time">Heure des courses</string>

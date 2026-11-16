@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.CommandoPosition
+import com.commando.app.model.CommandoPosition
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId

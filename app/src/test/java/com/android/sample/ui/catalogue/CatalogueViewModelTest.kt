@@ -8,14 +8,14 @@ import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.FavouriteProducts
-import com.android.sample.model.Location
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
 import com.android.sample.model.ProductPage
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.orders.ReviewOrderViewModel
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine

@@ -20,6 +20,7 @@ import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.*
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.runTest

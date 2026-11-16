@@ -21,6 +21,9 @@ import com.android.sample.data.repository.RatingError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

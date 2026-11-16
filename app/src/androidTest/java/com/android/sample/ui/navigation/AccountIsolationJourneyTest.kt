@@ -26,6 +26,8 @@ import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
+import com.commando.app.model.NewTrip
+import com.commando.app.model.TripLocations
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID

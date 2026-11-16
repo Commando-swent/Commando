@@ -1,7 +1,7 @@
 package com.android.sample.data.location
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.DeviceLocation
+import com.commando.app.model.DeviceLocation
 
 /** Injectable foreground, single-fix source. Cancellation must release any platform request. */
 fun interface DeviceLocationProvider {

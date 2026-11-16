@@ -13,6 +13,9 @@ import com.android.sample.model.*
 import com.android.sample.model.authentication.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.io.File
 import java.time.Instant
 import org.junit.Rule

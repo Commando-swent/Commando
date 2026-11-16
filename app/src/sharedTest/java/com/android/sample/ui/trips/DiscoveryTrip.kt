@@ -1,9 +1,9 @@
 package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 
 /** Published trip fixture shared by the JVM and device trip discovery tests. */

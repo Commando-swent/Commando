@@ -1,6 +1,11 @@
 package com.android.sample.model
 
 // AI assistance: Claude Code.
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripFeed
+import com.commando.app.model.distanceMeters
+import com.commando.app.model.filterTripsServing
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId

@@ -4,11 +4,11 @@ package com.android.sample.emulator.firestore.security
 
 import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.data.repository.successData
-import com.android.sample.model.Location
-import com.android.sample.model.NewTrip
-import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.TripStatus
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import java.time.Instant

@@ -5,9 +5,9 @@ package com.android.sample.ui.trips
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.Location
 import com.android.sample.model.StoreFilter
 import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.Location
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

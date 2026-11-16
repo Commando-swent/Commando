@@ -3,15 +3,15 @@ package com.android.sample.data.repository
 // AI assistance: Claude Code for trip transition tests (#233).
 
 import com.android.sample.data.repository.TripError.*
-import com.android.sample.model.Location
-import com.android.sample.model.NewTrip
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
-import com.android.sample.model.TripStatus.*
-import com.android.sample.model.TripTransition
-import com.android.sample.model.TripTransition.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
+import com.commando.app.model.TripStatus.*
+import com.commando.app.model.TripTransition
+import com.commando.app.model.TripTransition.*
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code

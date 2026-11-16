@@ -12,12 +12,12 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.*
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.test.runTest

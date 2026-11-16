@@ -18,11 +18,11 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Rating
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
 import com.android.sample.model.isActiveForTracking
 import com.android.sample.model.normalizeRatingComment
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow

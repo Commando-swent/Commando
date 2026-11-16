@@ -16,6 +16,9 @@ import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*

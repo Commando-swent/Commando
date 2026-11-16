@@ -2,7 +2,7 @@ package com.android.sample.ui.home
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*

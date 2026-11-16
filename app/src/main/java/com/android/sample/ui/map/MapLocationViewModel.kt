@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationResult
-import com.android.sample.model.DeviceLocation
+import com.commando.app.model.DeviceLocation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext

@@ -20,9 +20,9 @@ import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.model.FavouriteProducts
 import com.android.sample.model.Product
-import com.android.sample.model.Trip
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.Trip
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule

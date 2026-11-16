@@ -1,13 +1,13 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code for the trip transition (#233).
-import com.android.sample.model.Location
-import com.android.sample.model.NewTrip
 import com.android.sample.model.OrderStatus
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
-import com.android.sample.model.TripTransition
-import com.android.sample.model.blocksTripCompletion
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
+import com.commando.app.model.TripTransition
+import com.commando.app.model.blocksTripCompletion
 import java.time.Instant
 import java.util.UUID
 

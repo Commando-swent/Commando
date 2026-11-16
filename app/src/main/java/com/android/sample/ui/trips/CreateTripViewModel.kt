@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Location
-import com.android.sample.model.NewTrip
-import com.android.sample.model.Trip
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.Trip
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate

@@ -20,6 +20,7 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.*
+import com.commando.app.model.TripLocations
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import java.time.LocalDate

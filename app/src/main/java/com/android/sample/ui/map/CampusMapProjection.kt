@@ -1,8 +1,8 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.Location
-import com.android.sample.model.hasValidCoordinates
+import com.commando.app.model.Location
+import com.commando.app.model.hasValidCoordinates
 
 /** Fractional map position: (0, 0) is the northwest corner, (1, 1) the southeast corner. */
 data class MapPosition(val x: Double, val y: Double)

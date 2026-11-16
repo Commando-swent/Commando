@@ -10,12 +10,9 @@ import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeShoppingChecklistRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderRepository
-import com.android.sample.model.Location
 import com.android.sample.model.Order
 import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -23,6 +20,9 @@ import com.android.sample.ui.orders.IncomingOrdersTestTags
 import com.android.sample.ui.orders.ShoppingChecklistTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals

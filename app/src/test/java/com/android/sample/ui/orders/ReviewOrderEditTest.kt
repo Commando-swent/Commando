@@ -97,7 +97,7 @@ class ReviewOrderEditTest {
     compose.waitUntil { !model.uiState.value.saving }
     assertEquals(3, shared.draft.value.items.single().quantity)
     compose.onNodeWithTag(ReviewOrderTags.ERROR).assertIsDisplayed()
-    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertTextContains("Retry saving").performClick()
     compose.waitUntil { model.uiState.value.order != null }
     val expected = order.copy(items = order.items.map { it.copy(quantity = 3) }, revision = 4)
     assertEquals(expected, model.uiState.value.order)

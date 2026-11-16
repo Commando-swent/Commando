@@ -11,6 +11,8 @@ interface OrderChatRepository {
    * failure emits Error and ends collection; collect again to retry. Collect only during the
    * foreground screen/session lifetime; cancellation removes listeners. Account changes end the
    * stream with NotAuthenticated, and the caller must clear its previous screen state.
+   * Cache-only/offline snapshots emit nothing: the UI must bound its initial loading wait and offer
+   * retry (PR 2), rather than infer an empty conversation or enable offline sending.
    */
   fun observeChat(orderId: String): Flow<OrderResult<OrderChat>>
 

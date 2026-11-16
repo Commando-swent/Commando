@@ -41,30 +41,13 @@ class OrderChatRepositoryFirestore(
     ) {
       if (!orderId.isDocumentId() || !messageId.isDocumentId() || !text.isValidChatText())
           throw failure(Code.INVALID_ARGUMENT)
-      val ref = order(orderId).collection("messages").document(messageId)
+      val orderRef = order(orderId)
+      val messageRef = orderRef.collection("messages").document(messageId)
       firestore
           .runTransaction { transaction ->
             context.ensureActive()
             guard(uid)
-            val storedOrder = transaction.get(order(orderId))
-            if (!storedOrder.exists()) throw failure(Code.NOT_FOUND)
-            val previous = transaction.get(ref)
-            if (previous.exists()) {
-              if (previous.getString("senderId") != uid || previous.getString("text") != text)
-                  throw failure(Code.INVALID_ARGUMENT)
-            } else {
-              val status = OrderStatus.valueOf(storedOrder.getString("status").orEmpty())
-              if (!status.canSendChat) throw failure(Code.PERMISSION_DENIED)
-              guard(uid)
-              transaction.set(
-                  ref,
-                  mapOf(
-                      "senderId" to uid,
-                      "text" to text,
-                      "createdAt" to FieldValue.serverTimestamp(),
-                  ),
-              )
-            }
+            writeOnce(transaction, orderRef, messageRef, uid, text)
             Unit
           }
           .await()
@@ -74,21 +57,51 @@ class OrderChatRepositoryFirestore(
     }
   }
 
+  /** Reads the latest status before creating; committed retries never write again. */
+  private fun writeOnce(
+      transaction: Transaction,
+      orderRef: DocumentReference,
+      messageRef: DocumentReference,
+      uid: String,
+      text: String,
+  ) {
+    val storedOrder = transaction.get(orderRef)
+    if (!storedOrder.exists()) throw failure(Code.NOT_FOUND)
+    val previous = transaction.get(messageRef)
+    if (previous.exists()) {
+      if (previous.getString("senderId") != uid || previous.getString("text") != text)
+          throw failure(Code.INVALID_ARGUMENT)
+    } else {
+      val status = OrderStatus.valueOf(storedOrder.getString("status").orEmpty())
+      if (!status.canSendChat) throw failure(Code.PERMISSION_DENIED)
+      guard(uid)
+      transaction.set(
+          messageRef,
+          mapOf(
+              "senderId" to uid,
+              "text" to text,
+              "createdAt" to FieldValue.serverTimestamp(),
+          ),
+      )
+    }
+  }
+
   override fun observeChat(orderId: String): Flow<OrderResult<OrderChat>> =
       flow<OrderResult<OrderChat>> {
             val uid =
                 currentUserId()?.takeIf { it.isDocumentId() } ?: throw failure(Code.UNAUTHENTICATED)
             if (!orderId.isDocumentId()) throw failure(Code.INVALID_ARGUMENT)
             guard(uid)
-            val ref = order(orderId)
-            val orders =
+            val orderRef = order(orderId)
+            val orderSnapshots =
                 watch<DocumentSnapshot>(uid) { callback ->
-                      ref.addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE, callback)
+                      orderRef.addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE, callback)
                     }
                     .filter { !it.metadata.isFromCache && !it.metadata.hasPendingWrites() }
             val messages =
                 watch<QuerySnapshot>(uid) { callback ->
-                      ref.collection("messages")
+                      orderRef
+                          .collection("messages")
                           .orderBy("createdAt", Query.Direction.DESCENDING)
                           .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
                           .limit(CHAT_WINDOW_SIZE)
@@ -96,7 +109,7 @@ class OrderChatRepositoryFirestore(
                     }
                     .filter { !it.metadata.isFromCache && !it.metadata.hasPendingWrites() }
             emitAll(
-                orders.combine(messages) { snapshot, history ->
+                orderSnapshots.combine(messages) { snapshot, history ->
                   guard(uid)
                   if (!snapshot.exists()) throw failure(Code.NOT_FOUND)
                   val status = OrderStatus.valueOf(snapshot.getString("status").orEmpty())

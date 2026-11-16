@@ -12,7 +12,13 @@ data class FakeChatOrder(val requesterId: String, val ownerId: String, val statu
 
 /** Share one store between participants; updating orders also updates live send eligibility. */
 class FakeOrderChatStore(val orders: StateFlow<Map<String, FakeChatOrder>>) {
-  internal val messages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
+  private val _messages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
+  internal val messages = _messages.asStateFlow()
+
+  internal fun append(orderId: String, message: ChatMessage) {
+    _messages.value = _messages.value + (orderId to (_messages.value[orderId].orEmpty() + message))
+  }
+
   internal val mutex = Mutex()
 }
 
@@ -33,8 +39,8 @@ class FakeOrderChatRepository(
                 ?: return OrderResult.Error(OrderError.NotAuthenticated)
         if (!orderId.isDocumentId() || !messageId.isDocumentId() || !text.isValidChatText())
             return OrderResult.Error(OrderError.InvalidData)
-        val access = access(orderId, uid)
-        if (access != null) return OrderResult.Error(access)
+        val accessError = access(orderId, uid)
+        if (accessError != null) return OrderResult.Error(accessError)
         val messages = store.messages.value[orderId].orEmpty()
         val previous = messages.find { it.id == messageId }
         when {
@@ -44,9 +50,7 @@ class FakeOrderChatRepository(
           !store.orders.value.getValue(orderId).status.canSendChat ->
               OrderResult.Error(OrderError.PermissionDenied)
           else -> {
-            store.messages.value =
-                store.messages.value +
-                    (orderId to (messages + ChatMessage(messageId, uid, text, clock.instant())))
+            store.append(orderId, ChatMessage(messageId, uid, text, clock.instant()))
             OrderResult.Success(Unit)
           }
         }
@@ -55,10 +59,10 @@ class FakeOrderChatRepository(
   override fun observeChat(orderId: String): Flow<OrderResult<OrderChat>> = flow {
     val uid = currentUserId.value?.takeIf { it.isDocumentId() }
     emitAll(
-        combine(store.orders, store.messages, currentUserId) { orders, messages, session ->
+        combine(store.orders, store.messages, currentUserId) { orders, messages, sessionUid ->
               val error =
                   when {
-                    uid == null || session != uid -> OrderError.NotAuthenticated
+                    uid == null || sessionUid != uid -> OrderError.NotAuthenticated
                     !orderId.isDocumentId() -> OrderError.InvalidData
                     else -> access(orderId, uid)
                   }

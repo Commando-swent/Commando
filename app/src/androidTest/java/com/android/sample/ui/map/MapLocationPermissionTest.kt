@@ -35,12 +35,12 @@ class MapLocationPermissionTest {
   fun permissionIsRequestedOnlyOnLocateAndPositionAppearsAfterGrant() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val permissionWasGranted =
+    fun hasLocationPermission() =
         ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.ACCESS_COARSE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
-    if (!permissionWasGranted) {
+    if (!hasLocationPermission()) {
       // A previous denied run must not make Android suppress the permission dialog forever.
       instrumentation.uiAutomation
           .executeShellCommand(
@@ -50,6 +50,7 @@ class MapLocationPermissionTest {
             java.io.FileInputStream(descriptor.fileDescriptor).use { it.readBytes() }
           }
     }
+    val device = UiDevice.getInstance(instrumentation)
     var reads = 0
     val now = Instant.now()
     val point = TripLocations.handoffPoints.first { it.name == "CM building" }
@@ -88,12 +89,17 @@ class MapLocationPermissionTest {
     }
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
     assertEquals(0, reads)
+    // A resumed activity can still be waiting for the previous window to release focus.
     compose.waitUntil(DEVICE_WAIT_MILLIS) {
-      compose.activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+      compose.runOnUiThread {
+        val activity = compose.activity
+        activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
+            activity.hasWindowFocus()
+      }
     }
+    val permissionWasGranted = hasLocationPermission()
     val locate = compose.onNodeWithTag(TripMapTestTags.LOCATE).assertIsDisplayed()
     locate.performSemanticsAction(SemanticsActions.OnClick) { it() }
-    val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
     if (!permissionWasGranted) {
       val button =
           device.wait(
@@ -102,15 +108,13 @@ class MapLocationPermissionTest {
           )
       if (button != null) button.click()
       else
-          assertEquals(
-              PackageManager.PERMISSION_GRANTED,
-              ContextCompat.checkSelfPermission(
-                  context,
-                  Manifest.permission.ACCESS_COARSE_LOCATION,
-              ),
+          assertTrue(
+              "Locate did not open the Android location permission dialog",
+              hasLocationPermission(),
           )
     }
     compose.waitUntil(DEVICE_WAIT_MILLIS) { reads == 1 }
+    assertTrue("Android did not grant approximate location", hasLocationPermission())
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertIsDisplayed()
   }
 

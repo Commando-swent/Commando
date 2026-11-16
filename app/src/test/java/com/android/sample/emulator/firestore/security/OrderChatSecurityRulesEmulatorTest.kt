@@ -121,7 +121,9 @@ class OrderChatSecurityRulesEmulatorTest {
         val messages = client.firestore.collection("orders").document(id).collection("messages")
         assertPermissionDenied { messages.limit(CHAT_WINDOW_SIZE).get(Source.SERVER).await() }
         assertPermissionDenied { messages.document("forged").set(data).await() }
-        assertTrue(repo(client).observeChat(id).first() is OrderResult.Error)
+        val expectedError =
+            if (client == outsider) OrderError.PermissionDenied else OrderError.NotAuthenticated
+        assertFailure(expectedError, repo(client).observeChat(id).first())
       }
       for (invalid in
           listOf(

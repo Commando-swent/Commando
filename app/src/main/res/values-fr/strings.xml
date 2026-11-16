@@ -96,6 +96,8 @@
     <string name="catalogue_unsupported_title">Magasin non pris en charge</string>
     <string name="catalogue_unsupported_body">Aucun catalogue de produits n’est encore disponible pour « %1$s ».</string>
     <string name="catalogue_retry">Réessayer</string>
+    <string name="catalogue_tab_catalogue">Catalogue</string>
+    <string name="catalogue_tab_favourites">Favoris</string>
     <string name="catalogue_category_all">Tout</string>
     <string name="catalogue_category_products">%1$s · %2$d</string>
     <string name="catalogue_category_products_more">%1$s · %2$d+</string>
@@ -105,6 +107,21 @@
     <string name="catalogue_category_empty_title">Aucun produit dans « %1$s »</string>
     <string name="catalogue_category_empty_body">Cette catégorie ne contient aucun produit pour le moment. Vos articles sélectionnés sont conservés.</string>
     <string name="catalogue_search_all_categories">Chercher partout</string>
+    <string name="catalogue_favourite_add">Ajouter %1$s aux favoris</string>
+    <string name="catalogue_favourite_remove">Retirer %1$s des favoris</string>
+    <string name="catalogue_favourite_added">Ajouté aux favoris</string>
+    <string name="catalogue_favourite_removed">Retiré des favoris</string>
+    <string name="catalogue_favourite_failed">Impossible de modifier vos favoris. Réessayez.</string>
+    <string name="catalogue_undo">Annuler</string>
+    <string name="catalogue_favourites_hint">Vos favoris chez %1$s. Les favoris %2$s apparaissent sur les trajets %2$s.</string>
+    <string name="catalogue_favourites_count">FAVORIS · %1$d</string>
+    <string name="catalogue_favourites_unavailable_count">INDISPONIBLES · %1$d</string>
+    <string name="catalogue_favourite_no_longer_available">N’est plus disponible chez %1$s</string>
+    <string name="catalogue_favourite_unknown_product">Produit retiré du catalogue</string>
+    <string name="catalogue_favourites_empty_title">Pas encore de favoris chez %1$s</string>
+    <string name="catalogue_favourites_empty_body">Touchez le cœur sur la photo d’un produit pour l’enregistrer ici. Les favoris sont conservés par magasin.</string>
+    <string name="catalogue_favourites_browse">Parcourir le catalogue</string>
+    <string name="catalogue_favourites_error_title">Impossible de charger vos favoris</string>
     <string name="category_fruit_veg">Fruits &amp; légumes</string>
     <string name="category_dairy_eggs">Laitages &amp; œufs</string>
     <string name="category_meat_fish">Viande &amp; poisson</string>
@@ -471,4 +488,21 @@
         <item quantity="other">Position relevée il y a %1$d secondes</item>
     </plurals>
     <string name="order_tracking_retry">Réessayer le suivi</string>
+    <string name="rating_title">Évaluer votre commande</string>
+    <string name="rating_prompt">Comment était votre expérience avec ce commando ?</string>
+    <string name="rating_select">Choisissez une note de 1 à 5</string>
+    <string name="rating_star">%1$d sur %2$d étoiles</string>
+    <string name="rating_value">%1$d / %2$d</string>
+    <string name="rating_comment">Commentaire (facultatif)</string>
+    <string name="rating_comment_hint">Ajoutez un court commentaire…</string>
+    <string name="rating_comment_limit">Votre commentaire dépasse la limite de %1$d caractères.</string>
+    <string name="rating_submit">Envoyer la note</string>
+    <string name="rating_retry">Réessayer</string>
+    <string name="rating_cancel">Annuler</string>
+    <string name="rating_close">Fermer</string>
+    <string name="rating_unavailable">Cette commande ne peut pas être évaluée. Vous pouvez fermer cette fenêtre.</string>
+    <string name="rating_submitting">Envoi de la note…</string>
+    <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
+    <string name="rating_success">Note envoyée.</string>
+    <string name="rating_already">Cette commande a déjà été évaluée.</string>
 </resources>

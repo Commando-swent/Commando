@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -21,11 +22,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -86,9 +93,27 @@ fun CatalogueRoute(
       onLoadMore = viewModel::loadMore,
       onContinue = { if (state.canContinue) state.trip?.let(onContinue) },
       modifier = modifier,
-      onSelectCategory = viewModel::selectCategory,
+      browseActions =
+          CatalogueBrowseActions(
+              onSelectCategory = viewModel::selectCategory,
+              onSelectTab = viewModel::selectTab,
+              onToggleFavourite = viewModel::toggleFavourite,
+              onRetryFavourites = viewModel::retryFavourites,
+              onUndoFavourite = viewModel::undoFavourite,
+              onDismissFavouriteNotice = viewModel::dismissFavouriteNotice,
+          ),
   )
 }
+
+/** Category and favourite callbacks, grouped to keep the screen's public API readable. */
+data class CatalogueBrowseActions(
+    val onSelectCategory: (String?) -> Unit = {},
+    val onSelectTab: (CatalogueTab) -> Unit = {},
+    val onToggleFavourite: (String) -> Unit = {},
+    val onRetryFavourites: () -> Unit = {},
+    val onUndoFavourite: (FavouriteNotice) -> Unit = {},
+    val onDismissFavouriteNotice: (FavouriteNotice) -> Unit = {},
+)
 
 @Composable
 fun CatalogueScreen(
@@ -103,13 +128,18 @@ fun CatalogueScreen(
     onLoadMore: () -> Unit,
     onContinue: () -> Unit,
     modifier: Modifier = Modifier,
-    onSelectCategory: (String?) -> Unit = {},
+    browseActions: CatalogueBrowseActions = CatalogueBrowseActions(),
 ) {
   val c = MaterialTheme.colorScheme
   val listState = rememberLazyListState()
   val loaded = state.content as? CatalogueContent.Loaded
   // A failed page waits for its Retry button instead of being requested again on every scroll.
-  val canAutoLoad = loaded?.canLoadMore == true && loaded.loadMoreError == null
+  val canAutoLoad =
+      state.tab == CatalogueTab.CATALOGUE &&
+          loaded?.canLoadMore == true &&
+          loaded.loadMoreError == null
+  val snackbar = remember { SnackbarHostState() }
+  FavouriteNoticeEffect(state.favouriteNotice, snackbar, browseActions)
   val currentOnLoadMore by rememberUpdatedState(onLoadMore)
   // Restarts after each page, as loading clears canAutoLoad, so one request is sent per page.
   LaunchedEffect(listState, canAutoLoad) {
@@ -131,22 +161,62 @@ fun CatalogueScreen(
           .imePadding()
   ) {
     CatalogueTopBar(onBack)
-    // Summary, search and products scroll together so short screens keep the list reachable.
-    LazyColumn(
-        Modifier.weight(1f).fillMaxWidth().testTag(CatalogueTestTags.PRODUCT_LIST),
-        state = listState,
-        contentPadding = PaddingValues(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      item(key = "header") { CatalogueHeader(state, onQueryChange, onSelectCategory) }
-      val content = state.content
-      if (content is CatalogueContent.Loaded && content.products.isNotEmpty()) {
-        catalogueProducts(state, content, onAdd, onIncrease, onDecrease, onLoadMore)
-      } else {
-        catalogueStatus(content, onClearSearch, onRetry) { onSelectCategory(null) }
+    Box(Modifier.weight(1f).fillMaxWidth()) {
+      // Summary, search and products scroll together so short screens keep the list reachable.
+      LazyColumn(
+          Modifier.fillMaxSize().testTag(CatalogueTestTags.PRODUCT_LIST),
+          state = listState,
+          contentPadding = PaddingValues(bottom = 16.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        item(key = "header") { CatalogueHeader(state, onQueryChange, browseActions) }
+        val rowActions =
+            ProductRowActions(onAdd, onIncrease, onDecrease, browseActions.onToggleFavourite)
+        if (state.tab == CatalogueTab.FAVOURITES) {
+          favouritesBody(state, rowActions, browseActions)
+        } else {
+          val content = state.content
+          if (content is CatalogueContent.Loaded && content.products.isNotEmpty()) {
+            catalogueProducts(state, content, rowActions, onLoadMore)
+          } else {
+            catalogueStatus(content, onClearSearch, onRetry) {
+              browseActions.onSelectCategory(null)
+            }
+          }
+        }
+      }
+      SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(horizontal = 16.dp)) {
+        Snackbar(it, Modifier.testTag(CatalogueTestTags.SNACKBAR))
       }
     }
     CatalogueBottomBar(state, onContinue)
+  }
+}
+
+/** Shows feedback once; only successful removals expose Undo. */
+@Composable
+private fun FavouriteNoticeEffect(
+    notice: FavouriteNotice?,
+    snackbar: SnackbarHostState,
+    actions: CatalogueBrowseActions,
+) {
+  val added = stringResource(R.string.catalogue_favourite_added)
+  val removed = stringResource(R.string.catalogue_favourite_removed)
+  val failed = stringResource(R.string.catalogue_favourite_failed)
+  val undo = stringResource(R.string.catalogue_undo)
+  val currentActions by rememberUpdatedState(actions)
+  LaunchedEffect(notice) {
+    if (notice == null) return@LaunchedEffect
+    val message =
+        when (notice) {
+          is FavouriteNotice.Added -> added
+          is FavouriteNotice.Removed -> removed
+          is FavouriteNotice.Failed -> failed
+        }
+    val action = if (notice is FavouriteNotice.Removed) undo else null
+    val result = snackbar.showSnackbar(message, action, duration = SnackbarDuration.Short)
+    if (result == SnackbarResult.ActionPerformed) currentActions.onUndoFavourite(notice)
+    else currentActions.onDismissFavouriteNotice(notice)
   }
 }
 
@@ -154,10 +224,19 @@ fun CatalogueScreen(
 private fun CatalogueHeader(
     state: CatalogueUiState,
     onQueryChange: (String) -> Unit,
-    onSelectCategory: (String?) -> Unit,
+    actions: CatalogueBrowseActions,
 ) {
   Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
     state.trip?.let { TripSummary(it) }
+    if (state.showsFavourites) {
+      CatalogueTabs(
+          state.tab,
+          (state.favourites as? FavouritesContent.Loaded)?.count,
+          actions.onSelectTab,
+          Modifier.padding(horizontal = 24.dp),
+      )
+    }
+    if (state.tab == CatalogueTab.FAVOURITES) return@Column
     CatalogueSearchField(
         query = state.query,
         onQueryChange = onQueryChange,
@@ -166,7 +245,7 @@ private fun CatalogueHeader(
     )
     // A store imported before category metadata simply has no chips.
     if (state.canSearch && state.categories.isNotEmpty()) {
-      CategoryChips(state.categories, state.category, onSelectCategory)
+      CategoryChips(state.categories, state.category, actions.onSelectCategory)
     }
   }
 }
@@ -234,6 +313,14 @@ private val ListItemPadding = Modifier.padding(horizontal = 20.dp)
 /** The next page is requested once one of the last [AUTO_LOAD_DISTANCE] list items is visible. */
 private const val AUTO_LOAD_DISTANCE = 3
 
+/** Basket and favourite callbacks shared by catalogue and favourite product rows. */
+private class ProductRowActions(
+    val onAdd: (String) -> Unit,
+    val onIncrease: (String) -> Unit,
+    val onDecrease: (String) -> Unit,
+    val onToggleFavourite: (String) -> Unit,
+)
+
 /** Loading skeleton, or the message for every state without products to list. */
 private fun LazyListScope.catalogueStatus(
     content: CatalogueContent,
@@ -255,9 +342,7 @@ private fun LazyListScope.catalogueStatus(
 private fun LazyListScope.catalogueProducts(
     state: CatalogueUiState,
     content: CatalogueContent.Loaded,
-    onAdd: (String) -> Unit,
-    onIncrease: (String) -> Unit,
-    onDecrease: (String) -> Unit,
+    rows: ProductRowActions,
     onLoadMore: () -> Unit,
 ) {
   val loaded = content.products
@@ -272,16 +357,7 @@ private fun LazyListScope.catalogueProducts(
       )
     }
   }
-  items(loaded, key = { it.id }) { product ->
-    CatalogueProductRow(
-        product = product,
-        quantity = state.quantityOf(product.id),
-        onAdd = { onAdd(product.id) },
-        onIncrease = { onIncrease(product.id) },
-        onDecrease = { onDecrease(product.id) },
-        modifier = ListItemPadding,
-    )
-  }
+  productRows(loaded, state, rows)
   // Scrolling near the end requests the next page; only a failed page needs a button.
   if (content.isLoadingMore) {
     // Screen readers hear one polite announcement; the rows themselves are only placeholders.
@@ -317,6 +393,124 @@ private fun LazyListScope.catalogueProducts(
           )
         }
       }
+}
+
+private fun LazyListScope.productRows(
+    products: List<Product>,
+    state: CatalogueUiState,
+    rows: ProductRowActions,
+) {
+  items(products, key = { it.id }) { product ->
+    CatalogueProductRow(
+        product = product,
+        quantity = state.quantityOf(product.id),
+        onAdd = { rows.onAdd(product.id) },
+        onIncrease = { rows.onIncrease(product.id) },
+        onDecrease = { rows.onDecrease(product.id) },
+        modifier = ListItemPadding,
+        favourite =
+            if (state.favourites is FavouritesContent.Loaded) state.isFavourite(product.id)
+            else null,
+        favouriteEnabled = product.id !in state.pendingFavourites,
+        onToggleFavourite = { rows.onToggleFavourite(product.id) },
+    )
+  }
+}
+
+private fun LazyListScope.favouritesBody(
+    state: CatalogueUiState,
+    rows: ProductRowActions,
+    actions: CatalogueBrowseActions,
+) {
+  when (val favourites = state.favourites) {
+    FavouritesContent.Loading,
+    FavouritesContent.Unsupported -> {
+      item(key = "favourites_loading") { SectionLabel(stringResource(R.string.catalogue_loading)) }
+      items(3) { SkeletonProductRow(ListItemPadding) }
+    }
+    is FavouritesContent.Failed -> favouritesFailure(favourites.error, actions.onRetryFavourites)
+    is FavouritesContent.Loaded -> favouritesLoaded(state, favourites, rows, actions)
+  }
+}
+
+private fun LazyListScope.favouritesFailure(error: ProductError, onRetry: () -> Unit) {
+  item(key = "favourites_error") {
+    CatalogueMessage(
+        R.drawable.ic_trip_alert_circle,
+        stringResource(R.string.catalogue_favourites_error_title),
+        stringResource(
+            when (error) {
+              ProductError.PermissionDenied -> R.string.catalogue_error_permission
+              ProductError.NetworkError -> R.string.catalogue_error_network
+              else -> R.string.catalogue_error_unknown
+            }
+        ),
+        accentIcon = true,
+        action = stringResource(R.string.catalogue_retry),
+        primaryAction = true,
+        onAction = onRetry,
+        modifier = ListItemPadding.padding(top = 4.dp),
+    )
+  }
+}
+
+private fun LazyListScope.favouritesLoaded(
+    state: CatalogueUiState,
+    favourites: FavouritesContent.Loaded,
+    rows: ProductRowActions,
+    actions: CatalogueBrowseActions,
+) {
+  val storeId = state.storeId ?: return
+  if (favourites.count == 0) {
+    item(key = "favourites_empty") {
+      CatalogueMessage(
+          R.drawable.ic_catalogue_heart,
+          stringResource(R.string.catalogue_favourites_empty_title, chainName(storeId)),
+          stringResource(R.string.catalogue_favourites_empty_body),
+          accentIcon = false,
+          action = stringResource(R.string.catalogue_favourites_browse),
+          onAction = { actions.onSelectTab(CatalogueTab.CATALOGUE) },
+          modifier = ListItemPadding.padding(top = 4.dp),
+      )
+    }
+    return
+  }
+  item(key = "favourites_hint") {
+    Text(
+        stringResource(
+            R.string.catalogue_favourites_hint,
+            chainName(storeId),
+            otherChainName(storeId),
+        ),
+        ListItemPadding,
+        style = catalogueText(12),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+  }
+  if (favourites.products.isNotEmpty()) {
+    item(key = "favourites_label") {
+      SectionLabel(stringResource(R.string.catalogue_favourites_count, favourites.products.size))
+    }
+    productRows(favourites.products, state, rows)
+  }
+  if (favourites.unavailableProductIds.isEmpty()) return
+  item(key = "unavailable_label") {
+    SectionLabel(
+        stringResource(
+            R.string.catalogue_favourites_unavailable_count,
+            favourites.unavailableProductIds.size,
+        )
+    )
+  }
+  items(favourites.unavailableProductIds, key = { "unavailable_$it" }) { productId ->
+    UnavailableFavouriteRow(
+        productId,
+        storeId,
+        pending = productId in state.pendingFavourites,
+        onRemove = { actions.onToggleFavourite(productId) },
+        modifier = ListItemPadding,
+    )
+  }
 }
 
 /** Only loaded pages are counted; "+" marks that the store has more matching products. */

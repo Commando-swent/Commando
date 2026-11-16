@@ -8,6 +8,7 @@ import com.android.sample.model.OrderStatus
 import com.android.sample.model.Rating
 import com.android.sample.model.RatingSummary
 import com.android.sample.model.Trip
+import com.android.sample.model.normalizeRatingComment
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -44,7 +45,7 @@ class FakeRatingRepository(
    * validation. Authorized duplicates fail without changing the original feedback or timestamp.
    */
   override suspend fun submitRating(input: NewRating): RatingResult<Rating> = withSession { uid ->
-    val comment = input.comment?.takeUnless { it.isBlank() }
+    val comment = normalizeRatingComment(input.comment)
     if (input.score !in 1..5 || (comment != null && comment.length > MAX_RATING_COMMENT_LENGTH)) {
       return@withSession RatingResult.Error(RatingError.InvalidData)
     }

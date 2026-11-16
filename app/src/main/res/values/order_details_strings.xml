@@ -1,4 +1,22 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="rating_title">Rate your order</string>
+    <string name="rating_prompt">How was your experience with this commando?</string>
+    <string name="rating_select">Select a rating from 1 to 5</string>
+    <!-- Stars describes the fixed five-star scale, not the selected score. -->
+    <string name="rating_star" tools:ignore="PluralsCandidate">%1$d out of %2$d stars</string>
+    <string name="rating_value">%1$d / %2$d</string>
+    <string name="rating_comment">Comment (optional)</string>
+    <string name="rating_comment_hint">Add a short comment…</string>
+    <string name="rating_comment_limit">Your comment exceeds the %1$d-character limit.</string>
+    <string name="rating_submit">Submit rating</string>
+    <string name="rating_retry">Retry</string>
+    <string name="rating_cancel">Cancel</string>
+    <string name="rating_close">Close</string>
+    <string name="rating_unavailable">This order cannot be rated. You can close this dialog.</string>
+    <string name="rating_submitting">Submitting rating…</string>
+    <string name="rating_failure">Could not submit your rating. Try again.</string>
+    <string name="rating_success">Rating submitted.</string>
+    <string name="rating_already">This order has already been rated.</string>
     <string name="order_confirm_receipt">Confirm receipt</string>
     <string name="order_details_delivered">DELIVERED</string>
     <string name="order_details_title">Order details</string>

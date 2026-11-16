@@ -65,6 +65,42 @@ sealed interface CatalogueContent {
   data class ProductsFailed(val error: ProductError) : CatalogueContent
 }
 
+enum class CatalogueTab {
+  CATALOGUE,
+  FAVOURITES,
+}
+
+sealed interface FavouritesContent {
+  data object Loading : FavouritesContent
+
+  /** The trip's store does not have a supported catalogue. */
+  data object Unsupported : FavouritesContent
+
+  data class Loaded(
+      val products: List<Product>,
+      val unavailableProductIds: List<String> = emptyList(),
+  ) : FavouritesContent {
+    val count: Int
+      get() = products.size + unavailableProductIds.size
+
+    fun contains(productId: String): Boolean =
+        products.any { it.id == productId } || productId in unavailableProductIds
+  }
+
+  data class Failed(val error: ProductError) : FavouritesContent
+}
+
+/** One-shot feedback after a favourite change. Only a successful removal can be undone. */
+sealed interface FavouriteNotice {
+  val productId: String
+
+  data class Added(override val productId: String) : FavouriteNotice
+
+  data class Removed(override val productId: String) : FavouriteNotice
+
+  data class Failed(override val productId: String) : FavouriteNotice
+}
+
 data class CatalogueUiState(
     val trip: Trip? = null,
     val content: CatalogueContent = CatalogueContent.Loading,
@@ -75,9 +111,28 @@ data class CatalogueUiState(
     val categories: List<String> = emptyList(),
     /** Exact stored value the catalogue is filtered on; null shows every category. */
     val category: String? = null,
+    val tab: CatalogueTab = CatalogueTab.CATALOGUE,
+    val favourites: FavouritesContent = FavouritesContent.Loading,
+    /** Product IDs whose optimistic favourite change is still being saved. */
+    val pendingFavourites: Set<String> = emptySet(),
+    /** Feedback still to show, in order: the latest failure and add, and each pending Undo. */
+    val favouriteNotices: List<FavouriteNotice> = emptyList(),
 ) {
+  /** The notice the snackbar shows now; the next one waits until it is dismissed. */
+  val favouriteNotice: FavouriteNotice?
+    get() = favouriteNotices.firstOrNull()
+
   val products: List<Product>
     get() = (content as? CatalogueContent.Loaded)?.products.orEmpty()
+
+  val storeId: String?
+    get() = trip?.let { storeIdFor(it.store.name) }
+
+  val showsFavourites: Boolean
+    get() = storeId != null && favourites !is FavouritesContent.Unsupported
+
+  fun isFavourite(productId: String): Boolean =
+      (favourites as? FavouritesContent.Loaded)?.contains(productId) == true
 
   /** Searching needs the trip's chain; it stays possible after a failed search. */
   val canSearch: Boolean
@@ -122,7 +177,9 @@ class CatalogueViewModel(
   private var searchJob: Job? = null
   private var pageJob: Job? = null
   private var categoriesJob: Job? = null
+  private var favouritesJob: Job? = null
   private var categoriesFailed = false
+  private val removedFavourites = mutableMapOf<String, FavouriteEntry>()
 
   init {
     require(tripId.isNotBlank())
@@ -150,6 +207,48 @@ class CatalogueViewModel(
     if (category == mutableState.value.category) return
     mutableState.update { it.copy(category = category) }
     search(debounce = false)
+  }
+
+  fun selectTab(tab: CatalogueTab) {
+    if (tab == CatalogueTab.FAVOURITES && !mutableState.value.showsFavourites) return
+    mutableState.update { it.copy(tab = tab) }
+  }
+
+  /** Retries a failed favourite load without issuing duplicate reads. */
+  fun retryFavourites() {
+    val state = mutableState.value
+    if (state.favourites !is FavouritesContent.Failed || favouritesJob?.isActive == true) return
+    state.storeId?.let(::loadFavourites)
+  }
+
+  /** Optimistically toggles one product; repeated taps wait for the current write to finish. */
+  fun toggleFavourite(productId: String) {
+    val state = mutableState.value
+    val favourites = state.favourites as? FavouritesContent.Loaded ?: return
+    if (productId in state.pendingFavourites) return
+    val entry =
+        favourites.products.find { it.id == productId }?.let(::FavouriteEntry)
+            ?: if (productId in favourites.unavailableProductIds) FavouriteEntry(null)
+            else state.products.find { it.id == productId }?.let(::FavouriteEntry) ?: return
+    changeFavourite(productId, favourite = !favourites.contains(productId), entry)
+  }
+
+  /**
+   * Restores the removal represented by [notice], if it is still the current feedback. The notice
+   * is consumed either way; a write already in flight for the product is never duplicated.
+   */
+  fun undoFavourite(notice: FavouriteNotice) {
+    val state = mutableState.value
+    if (notice !is FavouriteNotice.Removed || state.favouriteNotice != notice) return
+    dismissFavouriteNotice(notice)
+    if (notice.productId in state.pendingFavourites) return
+    val entry = removedFavourites[notice.productId] ?: return
+    changeFavourite(notice.productId, favourite = true, entry, reportSuccess = false)
+  }
+
+  /** Drops [notice] once shown, so the next pending notice, if any, is shown. */
+  fun dismissFavouriteNotice(notice: FavouriteNotice) {
+    mutableState.update { it.copy(favouriteNotices = it.favouriteNotices - notice) }
   }
 
   /**
@@ -208,7 +307,13 @@ class CatalogueViewModel(
   fun add(productId: String) {
     if (!ownsDraft()) return
     if (quantityInDraft(productId) > 0) return increment(productId)
-    val product = mutableState.value.products.find { it.id == productId } ?: return
+    val state = mutableState.value
+    // Add from the list the row was drawn from, so the draft keeps the price that was shown.
+    val shown =
+        if (state.tab == CatalogueTab.FAVOURITES)
+            (state.favourites as? FavouritesContent.Loaded)?.products.orEmpty()
+        else state.products
+    val product = shown.find { it.id == productId } ?: return
     draft.addItem(OrderItem(product.id, product.name, product.priceCents, quantity = 1))
   }
 
@@ -250,7 +355,7 @@ class CatalogueViewModel(
       ensureActive()
       mutableState.update { it.copy(content = content) }
       // The store is reachable again: read categories that failed beside an earlier request.
-      val storeId = mutableState.value.trip?.let { storeIdFor(it.store.name) }
+      val storeId = mutableState.value.storeId
       if (content is CatalogueContent.Loaded && categoriesFailed && storeId != null) {
         loadCategories(storeId)
       }
@@ -293,10 +398,19 @@ class CatalogueViewModel(
     }
   }
 
-  /** Loads category metadata once beside the first catalogue page for a supported trip. */
+  /** Loads category and favourite metadata once beside the first page for a supported trip. */
   private fun onTripLoaded(trip: Trip) {
-    mutableState.update { it.copy(trip = trip) }
-    storeIdFor(trip.store.name)?.let(::loadCategories)
+    val storeId = storeIdFor(trip.store.name)
+    mutableState.update {
+      it.copy(
+          trip = trip,
+          favourites =
+              if (storeId == null) FavouritesContent.Unsupported else FavouritesContent.Loading,
+      )
+    }
+    if (storeId == null) return
+    loadCategories(storeId)
+    loadFavourites(storeId)
   }
 
   /** Without categories there are no chips; a failed read is retried after a later search loads. */
@@ -317,6 +431,135 @@ class CatalogueViewModel(
     }
   }
 
+  private fun loadFavourites(storeId: String) {
+    if (favouritesJob?.isActive == true) return
+    mutableState.update { it.copy(favourites = FavouritesContent.Loading) }
+    favouritesJob = viewModelScope.launch {
+      val result =
+          try {
+            productRepository.getFavouriteProducts(storeId)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            ProductResult.Error(ProductError.Unknown)
+          }
+      ensureActive()
+      val content =
+          when (result) {
+            is ProductResult.Success ->
+                FavouritesContent.Loaded(
+                    result.data.products.filter { it.belongsTo(storeId) }.distinctBy { it.id },
+                    result.data.unavailableProductIds
+                        .filter { it.startsWith("$storeId:") }
+                        .distinct(),
+                )
+            is ProductResult.Error ->
+                if (result.error == ProductError.InvalidStore) FavouritesContent.Unsupported
+                else FavouritesContent.Failed(result.error)
+          }
+      mutableState.update {
+        it.copy(
+            favourites = content,
+            tab = if (content is FavouritesContent.Unsupported) CatalogueTab.CATALOGUE else it.tab,
+        )
+      }
+    }
+  }
+
+  private fun changeFavourite(
+      productId: String,
+      favourite: Boolean,
+      entry: FavouriteEntry,
+      reportSuccess: Boolean = true,
+  ) {
+    val storeId = mutableState.value.storeId ?: return
+    mutableState.update {
+      it.copy(
+          favourites = it.favourites.withFavourite(productId, favourite, entry),
+          pendingFavourites = it.pendingFavourites + productId,
+      )
+    }
+    viewModelScope.launch {
+      val result =
+          try {
+            productRepository.setFavourite(storeId, productId, favourite)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            ProductResult.Error(ProductError.Unknown)
+          }
+      ensureActive()
+      finishFavouriteChange(
+          productId,
+          favourite,
+          entry,
+          result is ProductResult.Success,
+          reportSuccess,
+      )
+    }
+  }
+
+  /** Keeps a saved change, or rolls a failed one back, and reports the outcome. */
+  private fun finishFavouriteChange(
+      productId: String,
+      favourite: Boolean,
+      entry: FavouriteEntry,
+      saved: Boolean,
+      reportSuccess: Boolean,
+  ) {
+    if (saved && favourite) removedFavourites.remove(productId)
+    if (saved && !favourite) removedFavourites[productId] = entry
+    mutableState.update {
+      it.copy(
+          favourites =
+              if (saved) it.favourites
+              else it.favourites.withFavourite(productId, !favourite, entry),
+          pendingFavourites = it.pendingFavourites - productId,
+          favouriteNotices =
+              when {
+                !saved -> it.favouriteNotices.queue(FavouriteNotice.Failed(productId))
+                !reportSuccess -> it.favouriteNotices
+                favourite -> it.favouriteNotices.queue(FavouriteNotice.Added(productId))
+                else -> it.favouriteNotices.queue(FavouriteNotice.Removed(productId))
+              },
+      )
+    }
+  }
+
+  /**
+   * A newer failure or add confirmation replaces the older one of its type in place; any other
+   * notice waits behind the queue. Each removal keeps its Undo until shown, unless a newer saved
+   * change to that product makes it stale.
+   */
+  private fun List<FavouriteNotice>.queue(notice: FavouriteNotice): List<FavouriteNotice> {
+    val current =
+        if (notice is FavouriteNotice.Failed) this
+        else filterNot { it !is FavouriteNotice.Failed && it.productId == notice.productId }
+    val index =
+        if (notice is FavouriteNotice.Removed) -1
+        else current.indexOfFirst { it::class == notice::class }
+    return if (index < 0) current + notice else current.toMutableList().apply { set(index, notice) }
+  }
+
+  private fun FavouritesContent.withFavourite(
+      productId: String,
+      favourite: Boolean,
+      entry: FavouriteEntry,
+  ): FavouritesContent {
+    val loaded = this as? FavouritesContent.Loaded ?: return this
+    if (!favourite) {
+      return loaded.copy(
+          products = loaded.products.filterNot { it.id == productId },
+          unavailableProductIds = loaded.unavailableProductIds - productId,
+      )
+    }
+    if (loaded.contains(productId)) return loaded
+    val product = entry.product
+    return if (product != null)
+        loaded.copy(products = (loaded.products + product).sortedBy { it.id })
+    else loaded.copy(unavailableProductIds = (loaded.unavailableProductIds + productId).sorted())
+  }
+
   private fun setLoaded(edit: (CatalogueContent.Loaded) -> CatalogueContent.Loaded) {
     mutableState.update { state ->
       (state.content as? CatalogueContent.Loaded)?.let { state.copy(content = edit(it)) } ?: state
@@ -333,4 +576,6 @@ class CatalogueViewModel(
 
   private fun quantityInDraft(productId: String) =
       itemsOf(draft.draft.value).find { it.productId == productId }?.quantity ?: 0
+
+  private data class FavouriteEntry(val product: Product?)
 }

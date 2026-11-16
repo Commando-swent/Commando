@@ -316,6 +316,10 @@ internal fun CatalogueProductRow(
     onIncrease: () -> Unit,
     onDecrease: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Null hides the heart while favourites are unavailable or still loading. */
+    favourite: Boolean? = null,
+    favouriteEnabled: Boolean = true,
+    onToggleFavourite: () -> Unit = {},
 ) {
   val c = MaterialTheme.colorScheme
   Row(
@@ -329,7 +333,18 @@ internal fun CatalogueProductRow(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(14.dp),
   ) {
-    ProductImage(product)
+    Box {
+      ProductImage(product)
+      if (favourite != null) {
+        FavouriteHeart(
+            product.id,
+            product.name,
+            favourite,
+            favouriteEnabled,
+            onToggleFavourite,
+        )
+      }
+    }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(
           product.name,

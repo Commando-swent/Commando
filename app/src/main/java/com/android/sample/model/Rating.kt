@@ -6,6 +6,9 @@ import java.time.Instant
 /** Maximum length of a nonblank rating comment, measured by [String.length]. */
 const val MAX_RATING_COMMENT_LENGTH = 250
 
+/** Maps absent or blank comments to null; preserves nonblank text verbatim. */
+fun normalizeRatingComment(comment: String?): String? = comment?.takeUnless(String::isBlank)
+
 /**
  * Immutable feedback submitted once for a delivered order; [orderId] is its unique key.
  *

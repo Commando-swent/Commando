@@ -37,3 +37,12 @@ Run `bash scripts/ci/run-firebase-emulator-tests.sh` for production-rule securit
 plus `./gradlew check` for ordinary unit/static checks. Ordinary check excludes emulator profiles.
 Tests use Firebase anonymous-auth accounts as authenticated actors; signed-out clients have no authentication.
 Rules are not deployed by tests. Deployment and CI/SonarCloud review remain separate steps.
+
+## Receipt rating dialog (#262)
+
+Order Details offers the dialog once after an eligible requester's successful receipt confirmation.
+Dismissal creates no rating; neither dismissal nor submission failure reverses delivery.
+Unknown failures preserve input for retry, reading existing feedback before another write; other errors offer Close.
+Success and AlreadyRated close the dialog and prevent another submission in that flow.
+Session changes clear dialog state and invalidate its repository identity; late results are discarded.
+Historical rating loading and display belong to #328, not this receipt-triggered flow.

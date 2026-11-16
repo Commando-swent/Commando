@@ -4,8 +4,8 @@ import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import androidx.core.graphics.scale
-import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthRepository
+import com.commando.app.model.ProfilePhotoSource
 import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore

@@ -2,7 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex. Contract choices remain documented for teammate review.
 import com.android.sample.data.repository.NotificationFirestoreData as Schema
-import com.android.sample.model.*
+import com.commando.app.model.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import com.google.firebase.firestore.FirebaseFirestoreException.Code

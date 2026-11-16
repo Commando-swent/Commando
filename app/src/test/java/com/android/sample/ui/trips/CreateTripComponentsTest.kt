@@ -6,9 +6,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.R
-import com.android.sample.model.storeIdFor
 import com.commando.app.model.Location
 import com.commando.app.model.TripLocations
+import com.commando.app.model.storeIdFor
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

@@ -9,16 +9,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.model.authentication.*
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
-import com.commando.app.model.Location
-import com.commando.app.model.Trip
-import com.commando.app.model.TripStatus
+import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*

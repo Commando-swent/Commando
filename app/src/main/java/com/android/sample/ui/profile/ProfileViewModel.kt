@@ -3,10 +3,10 @@ package com.android.sample.ui.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.ProfilePhotoRepository
-import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
+import com.commando.app.model.ProfilePhotoSource
 import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job

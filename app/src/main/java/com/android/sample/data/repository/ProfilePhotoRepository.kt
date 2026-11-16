@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-import com.android.sample.model.ProfilePhotoSource
+import com.commando.app.model.ProfilePhotoSource
 
 interface ProfilePhotoRepository {
   suspend fun load(userId: String): ByteArray?

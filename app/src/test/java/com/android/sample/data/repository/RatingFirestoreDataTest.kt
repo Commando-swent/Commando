@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.MAX_RATING_COMMENT_LENGTH
+import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
 import com.google.firebase.Timestamp
 import org.junit.Assert.*
 import org.junit.Test

@@ -7,8 +7,8 @@ import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
 import com.android.sample.data.repository.ShoppingChecklistRepository
-import com.android.sample.model.ShoppingChecklistItem
-import com.android.sample.model.buildShoppingChecklist
+import com.commando.app.model.ShoppingChecklistItem
+import com.commando.app.model.buildShoppingChecklist
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

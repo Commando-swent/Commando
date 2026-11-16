@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
-import com.android.sample.model.MAX_ORDER_PRODUCTS
-import com.android.sample.model.OrderDraft
+import com.commando.app.model.MAX_ORDER_PRODUCTS
+import com.commando.app.model.OrderDraft
 
 internal fun String.isDocumentId() = isNotBlank() && !contains('/') && this != "." && this != ".."
 

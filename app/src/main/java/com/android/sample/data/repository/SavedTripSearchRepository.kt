@@ -1,8 +1,8 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code.
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.TripSearchCriteria
 
 /**
  * The signed-in user's saved trip-search presets. Every call acts on the current user only; without

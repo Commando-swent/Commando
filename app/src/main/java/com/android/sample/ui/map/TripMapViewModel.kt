@@ -4,11 +4,11 @@ package com.android.sample.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripRepository
-import com.android.sample.model.TripSearchCriteria
 import com.android.sample.ui.session.SessionGuard
 import com.android.sample.ui.trips.FilteredTripFeed
 import com.commando.app.model.Location
 import com.commando.app.model.TripFeed
+import com.commando.app.model.TripSearchCriteria
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow

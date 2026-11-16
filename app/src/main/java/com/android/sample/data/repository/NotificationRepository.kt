@@ -1,8 +1,8 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.NotificationPreferences
-import com.android.sample.model.OrderNotification
+import com.commando.app.model.NotificationPreferences
+import com.commando.app.model.OrderNotification
 
 /** Private inbox/preferences using session identity and existing order results/errors. */
 interface NotificationRepository {

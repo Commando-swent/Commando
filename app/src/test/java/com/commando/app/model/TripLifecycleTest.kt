@@ -2,7 +2,6 @@ package com.commando.app.model
 
 // AI assistance: Claude Code.
 
-import com.android.sample.model.OrderStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

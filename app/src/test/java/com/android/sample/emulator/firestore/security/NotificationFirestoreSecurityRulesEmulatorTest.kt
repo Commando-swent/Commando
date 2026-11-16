@@ -4,8 +4,8 @@ package com.android.sample.emulator.firestore.security
 import com.android.sample.data.repository.*
 import com.android.sample.data.repository.NotificationFirestoreData as Schema
 import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
-import com.android.sample.model.*
-import com.android.sample.model.NotificationEventType.*
+import com.commando.app.model.*
+import com.commando.app.model.NotificationEventType.*
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.*
 import io.mockk.*

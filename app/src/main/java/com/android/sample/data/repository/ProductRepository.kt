@@ -1,8 +1,8 @@
 package com.android.sample.data.repository
 
-import com.android.sample.model.FavouriteProducts
-import com.android.sample.model.Product
-import com.android.sample.model.ProductPage
+import com.commando.app.model.FavouriteProducts
+import com.commando.app.model.Product
+import com.commando.app.model.ProductPage
 
 interface ProductRepository {
   /**

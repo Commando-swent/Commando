@@ -1,7 +1,5 @@
 package com.commando.app.model
 
-import com.android.sample.model.OrderStatus
-
 // AI assistance: Claude Code.
 
 /**

@@ -1,11 +1,11 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.MAX_RATING_COMMENT_LENGTH
-import com.android.sample.model.NewRating
-import com.android.sample.model.OrderStatus
-import com.android.sample.model.Rating
-import com.android.sample.model.RatingSummary
+import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
+import com.commando.app.model.NewRating
+import com.commando.app.model.OrderStatus
+import com.commando.app.model.Rating
+import com.commando.app.model.RatingSummary
 
 /**
  * Submits immutable order feedback and provides authorized rating reads.

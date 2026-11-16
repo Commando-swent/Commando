@@ -2,14 +2,14 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query tests (#147), closed-trip creation (#233): Claude
 // Code.
-import com.android.sample.model.Order
-import com.android.sample.model.OrderDecision
-import com.android.sample.model.OrderDecision.ACCEPT
-import com.android.sample.model.OrderDecision.REJECT
-import com.android.sample.model.OrderDraft
-import com.android.sample.model.OrderItem
-import com.android.sample.model.OrderStatus
 import com.commando.app.model.Location
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDecision
+import com.commando.app.model.OrderDecision.ACCEPT
+import com.commando.app.model.OrderDecision.REJECT
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderItem
+import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import java.time.Instant

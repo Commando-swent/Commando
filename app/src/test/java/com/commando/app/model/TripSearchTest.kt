@@ -1,13 +1,6 @@
-package com.android.sample.model
+package com.commando.app.model
 
 // AI assistance: Claude Code.
-import com.commando.app.model.HANDOFF_RADIUS_METERS
-import com.commando.app.model.Location
-import com.commando.app.model.Trip
-import com.commando.app.model.TripFeed
-import com.commando.app.model.TripLocations
-import com.commando.app.model.TripStatus
-import com.commando.app.model.filterTripsServing
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate

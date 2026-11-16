@@ -1,11 +1,8 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.*
-import com.android.sample.model.OrderStatus.DELIVERED
-import com.commando.app.model.Location
-import com.commando.app.model.Trip
-import com.commando.app.model.TripStatus
+import com.commando.app.model.*
+import com.commando.app.model.OrderStatus.DELIVERED
 import com.commando.app.model.TripStatus.PUBLISHED
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds

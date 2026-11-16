@@ -2,8 +2,8 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (review regression tests).
 import com.android.sample.data.repository.NotificationFirestoreData as Schema
-import com.android.sample.model.*
-import com.android.sample.model.NotificationEventType.ORDER_PLACED
+import com.commando.app.model.*
+import com.commando.app.model.NotificationEventType.ORDER_PLACED
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.FirebaseAuth

@@ -4,14 +4,10 @@ package com.android.sample.emulator.firestore.security
 
 import com.android.sample.data.repository.*
 import com.android.sample.data.repository.TripError.*
-import com.android.sample.model.*
-import com.android.sample.model.OrderDecision.ACCEPT
-import com.android.sample.model.OrderDecision.REJECT
 import com.android.sample.model.authentication.AuthRepositoryFirebase
-import com.commando.app.model.Location
-import com.commando.app.model.NewTrip
-import com.commando.app.model.TripStatus
-import com.commando.app.model.TripTransition
+import com.commando.app.model.*
+import com.commando.app.model.OrderDecision.ACCEPT
+import com.commando.app.model.OrderDecision.REJECT
 import com.commando.app.model.TripTransition.CLOSE
 import com.commando.app.model.TripTransition.COMPLETE
 import com.google.firebase.Timestamp

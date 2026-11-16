@@ -6,8 +6,8 @@ import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.productSearchPrefixes
 import com.android.sample.data.repository.successData
-import com.android.sample.model.Product
-import com.android.sample.model.ProductPage
+import com.commando.app.model.Product
+import com.commando.app.model.ProductPage
 import com.google.firebase.firestore.FieldPath
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest

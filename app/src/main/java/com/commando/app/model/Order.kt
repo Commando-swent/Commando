@@ -1,4 +1,4 @@
-package com.android.sample.model
+package com.commando.app.model
 
 // AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude Code for the shared item count and total.

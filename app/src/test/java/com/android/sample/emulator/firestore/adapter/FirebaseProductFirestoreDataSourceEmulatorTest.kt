@@ -7,7 +7,7 @@ import com.android.sample.data.repository.ProductResult
 import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.android.sample.data.repository.productSearchPrefixes
 import com.android.sample.data.repository.successData
-import com.android.sample.model.Product
+import com.commando.app.model.Product
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp

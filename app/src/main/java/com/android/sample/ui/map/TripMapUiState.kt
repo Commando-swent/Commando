@@ -2,7 +2,7 @@ package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex; Claude Code (search criteria states).
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.CriteriaProblem
+import com.commando.app.model.CriteriaProblem
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 

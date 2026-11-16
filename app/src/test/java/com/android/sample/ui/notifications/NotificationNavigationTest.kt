@@ -8,13 +8,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.*
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Rule

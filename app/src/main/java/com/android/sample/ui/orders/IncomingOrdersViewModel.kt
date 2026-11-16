@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
-import com.android.sample.model.Order
-import com.android.sample.model.itemCount
-import com.android.sample.model.totalCents
+import com.commando.app.model.Order
+import com.commando.app.model.itemCount
+import com.commando.app.model.totalCents
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

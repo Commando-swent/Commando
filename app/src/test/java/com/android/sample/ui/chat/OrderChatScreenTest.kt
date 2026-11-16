@@ -10,9 +10,9 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.model.*
-import com.commando.app.model.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.*
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule

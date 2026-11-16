@@ -9,7 +9,6 @@ import androidx.credentials.Credential
 import com.android.sample.R
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
-import com.commando.app.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -17,6 +16,7 @@ import com.android.sample.ui.navigation.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.commando.app.model.*
 import kotlinx.coroutines.flow.*
 import org.junit.Assert.*
 import org.junit.Rule

@@ -3,6 +3,7 @@ package com.android.sample.ui.orders
 // AI assistance: OpenAI Codex (#232).
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import com.android.sample.R
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
@@ -13,6 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -94,7 +96,8 @@ class ReviewOrderEditTest {
     compose.waitUntil { !model.uiState.value.saving }
     assertEquals(3, shared.draft.value.items.single().quantity)
     compose.onNodeWithTag(ReviewOrderTags.ERROR).assertIsDisplayed()
-    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    val retryLabel = RuntimeEnvironment.getApplication().getString(R.string.order_retry)
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertTextContains(retryLabel).performClick()
     compose.waitUntil { model.uiState.value.order != null }
     val expected = order.copy(items = order.items.map { it.copy(quantity = 3) }, revision = 4)
     assertEquals(expected, model.uiState.value.order)

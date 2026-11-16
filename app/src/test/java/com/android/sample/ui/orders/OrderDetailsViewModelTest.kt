@@ -38,6 +38,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -966,31 +967,39 @@ class OrderDetailsViewModelTest {
     assertTrue(!initial.ratingState.value.visible)
   }
 
+  @Test fun ratingRequiresSelectedScore() = assertInvalidRatingInput(0, "")
+
+  @Test fun ratingRejectsCommentOver250Utf16Units() = assertInvalidRatingInput(1, "x".repeat(251))
+
+  @Test fun ratingRejects126SurrogatePairEmoji() = assertInvalidRatingInput(5, "😀".repeat(126))
+
+  @Test fun ratingAcceptsEmptyComment() = assertValidRatingComment("")
+
+  @Test fun ratingAcceptsLongBlankComment() = assertValidRatingComment(" ".repeat(251))
+
+  @Test fun ratingAccepts250CharacterComment() = assertValidRatingComment("x".repeat(250))
+
+  @Test fun ratingAccepts125SurrogatePairEmoji() = assertValidRatingComment("😀".repeat(125))
+
   @Test
-  fun ratingValidationLoadingAndRetryPreserveInputAndPreventDuplicateClicks() = runTest {
-    val ratings = TestRatings()
-    val vm = ratingVm(ratings)
-    advanceUntilIdle()
-    vm.confirmReceipt()
-    advanceUntilIdle()
-    for ((score, comment) in listOf(0 to "", 1 to "x".repeat(251), 5 to "😀".repeat(126))) {
-      vm.selectScore(score)
-      vm.updateComment(comment)
-      vm.submitRating()
-      advanceUntilIdle()
-      assertTrue(ratings.inputs.isEmpty())
-    }
-    for (comment in listOf("", " ".repeat(251), "x".repeat(250), "😀".repeat(125))) {
-      vm.selectScore(1)
-      vm.updateComment(comment)
-      assertTrue(vm.ratingState.value.valid)
-    }
+  fun ratingScoreSelectionIgnoresOutOfRangeValues() = runTest {
+    val vm = confirmedRatingVm(TestRatings())
     vm.selectScore(5)
-    for (invalid in listOf(-1, 0, 6)) vm.selectScore(invalid)
+    for (invalid in listOf(-1, 0, 6)) {
+      vm.selectScore(invalid)
+      assertEquals("Invalid score: $invalid", 5, vm.ratingState.value.score)
+    }
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun ratingSubmissionRetainsInputAcrossPendingFailure() = runTest {
+    val ratings = TestRatings()
+    val vm = confirmedRatingVm(ratings)
+    vm.selectScore(5)
     vm.updateComment(" preserved ")
     val gate = CompletableDeferred<RatingResult<Rating>>()
     ratings.save = { gate.await() }
-    vm.submitRating()
     vm.submitRating()
     vm.dismissRating()
     vm.selectScore(1)
@@ -999,7 +1008,41 @@ class OrderDetailsViewModelTest {
     runCurrent()
     assertEquals(listOf(NewRating(order.id, 5, " preserved ")), ratings.inputs)
     assertTrue(vm.ratingState.value.submitting)
+    assertEquals(" preserved ", vm.ratingState.value.comment)
+    assertEquals(5, vm.ratingState.value.score)
     gate.complete(RatingResult.Error(RatingError.Unknown))
+    advanceUntilIdle()
+    assertEquals(" preserved ", vm.ratingState.value.comment)
+    assertTrue(vm.ratingState.value.visible && !vm.ratingState.value.submitting)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun ratingSubmissionIgnoresDuplicateClicksWhilePending() = runTest {
+    val ratings = TestRatings()
+    val vm = confirmedRatingVm(ratings)
+    vm.selectScore(5)
+    vm.updateComment(" preserved ")
+    val gate = CompletableDeferred<RatingResult<Rating>>()
+    ratings.save = { gate.await() }
+    vm.submitRating()
+    vm.submitRating()
+    runCurrent()
+    assertEquals(listOf(NewRating(order.id, 5, " preserved ")), ratings.inputs)
+    assertTrue(vm.ratingState.value.submitting)
+    gate.complete(RatingResult.Success(ratings.saved))
+    advanceUntilIdle()
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun ratingRetryRetainsFailedInputAndClosesAfterSuccess() = runTest {
+    val ratings = TestRatings()
+    val vm = confirmedRatingVm(ratings)
+    vm.selectScore(5)
+    vm.updateComment(" preserved ")
+    ratings.save = { RatingResult.Error(RatingError.Unknown) }
+    vm.submitRating()
     advanceUntilIdle()
     assertEquals(" preserved ", vm.ratingState.value.comment)
     assertTrue(vm.ratingState.value.visible && !vm.ratingState.value.submitting)
@@ -1013,6 +1056,7 @@ class OrderDetailsViewModelTest {
         OrderStatus.DELIVERED,
         (vm.uiState.value as OrderDetailsUiState.Content).order.status,
     )
+    vm.viewModelScope.cancel()
   }
 
   @Test
@@ -1049,97 +1093,69 @@ class OrderDetailsViewModelTest {
     }
   }
 
+  @Test fun uncertainRatingReconcilesEmptyComment() = assertMatchingRatingReconciles("", null)
+
   @Test
-  fun uncertainRatingReconcilesMatchingScoreAndNormalizedCommentWithoutAnotherWrite() = runTest {
-    for (comment in listOf("", " \t\n", " ".repeat(251), " exact ")) {
-      val ratings = TestRatings()
-      val vm = ratingVm(ratings)
-      advanceUntilIdle()
-      vm.confirmReceipt()
-      advanceUntilIdle()
-      vm.selectScore(4)
-      vm.updateComment(comment)
-      ratings.save = { RatingResult.Error(RatingError.Unknown) }
-      vm.submitRating()
-      advanceUntilIdle()
-      ratings.read = {
-        RatingResult.Success(ratings.saved.copy(comment = comment.takeUnless(String::isBlank)))
-      }
-      vm.submitRating()
-      advanceUntilIdle()
-      assertTrue(vm.ratingState.value.submitted)
-      assertTrue(!vm.ratingState.value.visible)
-      assertEquals(null, vm.ratingState.value.error)
-      assertEquals(1, ratings.reads)
-      assertEquals(1, ratings.inputs.size)
-      vm.viewModelScope.cancel()
-    }
+  fun uncertainRatingReconcilesWhitespaceOnlyComment() =
+      assertMatchingRatingReconciles(" \t\n", null)
+
+  @Test
+  fun uncertainRatingReconcilesLongBlankComment() =
+      assertMatchingRatingReconciles(" ".repeat(251), null)
+
+  @Test
+  fun uncertainRatingReconcilesVerbatimNonblankComment() =
+      assertMatchingRatingReconciles(" exact ", " exact ")
+
+  @Test
+  fun uncertainRatingRejectsDifferentOrder() = assertMismatchedRatingRejected {
+    it.copy(orderId = "other")
   }
 
   @Test
-  fun uncertainRatingRejectsMismatchedOrderScoreOrCommentWithoutAnotherWrite() = runTest {
-    val expected = TestRatings().saved.copy(comment = " exact ")
-    for (saved in
-        listOf(
-            expected.copy(orderId = "other"),
-            expected.copy(score = 1),
-            expected.copy(comment = "other"),
-            expected.copy(comment = "exact"),
-            expected.copy(comment = null),
-        )) {
-      val ratings = TestRatings()
-      val vm = ratingVm(ratings)
-      advanceUntilIdle()
-      vm.confirmReceipt()
-      advanceUntilIdle()
-      vm.selectScore(expected.score)
-      vm.updateComment(expected.comment!!)
-      ratings.save = { RatingResult.Error(RatingError.Unknown) }
-      vm.submitRating()
-      advanceUntilIdle()
-      ratings.read = { RatingResult.Success(saved) }
-      vm.submitRating()
-      advanceUntilIdle()
-      assertEquals(RatingError.AlreadyRated, vm.ratingState.value.error)
-      assertTrue(!vm.ratingState.value.submitted && !vm.ratingState.value.visible)
-      assertEquals(1, ratings.reads)
-      assertEquals(1, ratings.inputs.size)
-      vm.viewModelScope.cancel()
-    }
+  fun uncertainRatingRejectsDifferentScore() = assertMismatchedRatingRejected { it.copy(score = 1) }
+
+  @Test
+  fun uncertainRatingRejectsDifferentComment() = assertMismatchedRatingRejected {
+    it.copy(comment = "other")
   }
 
   @Test
-  fun ratingSessionIdentityAndLateResponsesStayInvalidAfterOriginalAccountReturns() = runTest {
-    for (duringRead in listOf(false, true)) {
-      val ratings = TestRatings()
-      val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
-      val vm = ratingVm(ratings, session)
-      advanceUntilIdle()
-      vm.confirmReceipt()
-      advanceUntilIdle()
-      vm.selectScore(4)
-      val late = LateResult<RatingResult<Rating>>()
-      ratings.save = { if (duringRead) RatingResult.Error(RatingError.Unknown) else late.await() }
-      vm.submitRating()
-      runCurrent()
-      if (duringRead) {
-        ratings.read = { late.await() }
-        vm.submitRating()
-        runCurrent()
-      }
-      assertEquals(order.requesterId, ratings.identity())
-      session.value = null
-      runCurrent()
-      session.value = order.requesterId
-      runCurrent()
-      assertEquals(null, ratings.identity())
-      late.complete(RatingResult.Success(ratings.saved))
-      advanceUntilIdle()
-      assertEquals(RatingDialogState(), vm.ratingState.value)
-      assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
-      vm.viewModelScope.cancel()
-    }
+  fun uncertainRatingRejectsTrimmedComment() = assertMismatchedRatingRejected {
+    it.copy(comment = "exact")
   }
+
+  @Test
+  fun uncertainRatingRejectsMissingComment() = assertMismatchedRatingRejected {
+    it.copy(comment = null)
+  }
+
+  @Test
+  fun ratingIdentityStaysInvalidAfterOriginalAccountReturns() = runTest {
+    val ratings = TestRatings()
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+    val vm = confirmedRatingVm(ratings, session)
+    vm.selectScore(4)
+    vm.submitRating()
+    advanceUntilIdle()
+    assertEquals(order.requesterId, ratings.identity())
+    session.value = null
+    runCurrent()
+    session.value = order.requesterId
+    runCurrent()
+    assertEquals(null, ratings.identity())
+    assertEquals(RatingDialogState(), vm.ratingState.value)
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun lateRatingSubmissionCannotRestoreStateAfterOriginalAccountReturns() =
+      assertLateRatingResultIgnored(duringRead = false)
+
+  @Test
+  fun lateRatingReconciliationCannotRestoreStateAfterOriginalAccountReturns() =
+      assertLateRatingResultIgnored(duringRead = true)
 
   @Test
   fun terminalRatingErrorsBlockEditsAndResubmissionButAllowDismissal() = runTest {
@@ -1169,6 +1185,102 @@ class OrderDetailsViewModelTest {
       assertTrue(!vm.ratingState.value.visible)
       vm.viewModelScope.cancel()
     }
+  }
+
+  private fun TestScope.confirmedRatingVm(
+      ratings: TestRatings,
+      session: kotlinx.coroutines.flow.MutableStateFlow<String?> =
+          kotlinx.coroutines.flow.MutableStateFlow(order.requesterId),
+  ): OrderDetailsViewModel {
+    val vm = ratingVm(ratings, session)
+    advanceUntilIdle()
+    vm.confirmReceipt()
+    advanceUntilIdle()
+    return vm
+  }
+
+  private fun assertInvalidRatingInput(score: Int, comment: String) = runTest {
+    val ratings = TestRatings()
+    val vm = confirmedRatingVm(ratings)
+    vm.selectScore(score)
+    vm.updateComment(comment)
+    vm.submitRating()
+    advanceUntilIdle()
+    assertTrue(ratings.inputs.isEmpty())
+    vm.viewModelScope.cancel()
+  }
+
+  private fun assertValidRatingComment(comment: String) = runTest {
+    val vm = confirmedRatingVm(TestRatings())
+    vm.selectScore(1)
+    vm.updateComment(comment)
+    assertTrue(vm.ratingState.value.valid)
+    vm.viewModelScope.cancel()
+  }
+
+  private fun assertMatchingRatingReconciles(comment: String, savedComment: String?) = runTest {
+    val ratings = TestRatings()
+    val vm = confirmedRatingVm(ratings)
+    vm.selectScore(4)
+    vm.updateComment(comment)
+    ratings.save = { RatingResult.Error(RatingError.Unknown) }
+    vm.submitRating()
+    advanceUntilIdle()
+    ratings.read = { RatingResult.Success(ratings.saved.copy(comment = savedComment)) }
+    vm.submitRating()
+    advanceUntilIdle()
+    assertTrue(vm.ratingState.value.submitted)
+    assertTrue(!vm.ratingState.value.visible)
+    assertEquals(null, vm.ratingState.value.error)
+    assertEquals(1, ratings.reads)
+    assertEquals(1, ratings.inputs.size)
+    vm.viewModelScope.cancel()
+  }
+
+  private fun assertMismatchedRatingRejected(change: (Rating) -> Rating) = runTest {
+    val ratings = TestRatings()
+    val expected = ratings.saved.copy(comment = " exact ")
+    val vm = confirmedRatingVm(ratings)
+    vm.selectScore(expected.score)
+    vm.updateComment(expected.comment!!)
+    ratings.save = { RatingResult.Error(RatingError.Unknown) }
+    vm.submitRating()
+    advanceUntilIdle()
+    ratings.read = { RatingResult.Success(change(expected)) }
+    vm.submitRating()
+    advanceUntilIdle()
+    assertEquals(RatingError.AlreadyRated, vm.ratingState.value.error)
+    assertTrue(!vm.ratingState.value.submitted && !vm.ratingState.value.visible)
+    assertEquals(1, ratings.reads)
+    assertEquals(1, ratings.inputs.size)
+    vm.viewModelScope.cancel()
+  }
+
+  private fun assertLateRatingResultIgnored(duringRead: Boolean) = runTest {
+    val ratings = TestRatings()
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+    val vm = confirmedRatingVm(ratings, session)
+    vm.selectScore(4)
+    val late = LateResult<RatingResult<Rating>>()
+    ratings.save = { if (duringRead) RatingResult.Error(RatingError.Unknown) else late.await() }
+    vm.submitRating()
+    runCurrent()
+    if (duringRead) {
+      ratings.read = { late.await() }
+      vm.submitRating()
+      runCurrent()
+    }
+    assertEquals(order.requesterId, ratings.identity())
+    session.value = null
+    runCurrent()
+    session.value = order.requesterId
+    runCurrent()
+    assertEquals(null, ratings.identity())
+    late.complete(RatingResult.Success(ratings.saved))
+    advanceUntilIdle()
+    assertEquals(RatingDialogState(), vm.ratingState.value)
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    vm.viewModelScope.cancel()
   }
 
   private fun ratingVm(

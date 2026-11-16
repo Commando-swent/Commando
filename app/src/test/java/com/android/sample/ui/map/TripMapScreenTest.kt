@@ -14,9 +14,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.*
 import com.android.sample.ui.navigation.NavigationTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.*
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Rule

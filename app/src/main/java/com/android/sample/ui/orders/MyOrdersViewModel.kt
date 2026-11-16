@@ -8,9 +8,9 @@ import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Order
-import com.android.sample.model.Trip
-import com.android.sample.model.itemCount
+import com.commando.app.model.Order
+import com.commando.app.model.Trip
+import com.commando.app.model.itemCount
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

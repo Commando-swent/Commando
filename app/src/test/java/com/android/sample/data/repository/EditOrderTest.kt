@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (#232).
-import com.android.sample.model.*
+import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async

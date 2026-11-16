@@ -2,8 +2,8 @@ package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
 import java.time.LocalDate
 import java.time.LocalTime
 

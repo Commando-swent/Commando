@@ -1,8 +1,8 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.MAX_RATING_COMMENT_LENGTH
-import com.android.sample.model.NewRating
+import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
+import com.commando.app.model.NewRating
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code

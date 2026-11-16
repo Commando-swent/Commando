@@ -8,8 +8,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.R
-import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.*
 import java.io.File
 import java.time.Instant
 import org.junit.Rule

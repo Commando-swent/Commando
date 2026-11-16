@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-import com.android.sample.model.Order
+import com.commando.app.model.Order
 
 sealed class OrderError {
   data object NotAuthenticated : OrderError()

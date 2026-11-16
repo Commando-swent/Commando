@@ -5,11 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
-import com.android.sample.model.CriteriaProblem
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripFeed
-import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.CriteriaProblem
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripFeed
+import com.commando.app.model.TripSearchCriteria
 import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +36,7 @@ sealed class AvailableTripsUiState {
 
 /**
  * Shows the repository's trips that serve [selectedPoint] and match [criteria], via
- * [com.android.sample.model.classifyTripSearch]. The repository owns eligibility; [criteria] may
+ * [com.commando.app.model.classifyTripSearch]. The repository owns eligibility; [criteria] may
  * re-sort. A new selection or criteria is applied to the last loaded trips without a network call;
  * reload and retry keep both and apply them to the fresh trips.
  */

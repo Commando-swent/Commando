@@ -2,7 +2,7 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
-import com.android.sample.model.CommandoPosition
+import com.commando.app.model.CommandoPosition
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException

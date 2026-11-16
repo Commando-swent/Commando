@@ -1,7 +1,7 @@
 package com.android.sample.ui.orders
 
-import com.android.sample.model.OrderDraft
-import com.android.sample.model.OrderItem
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderItem
 import java.util.Collections
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

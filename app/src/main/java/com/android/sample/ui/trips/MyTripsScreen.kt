@@ -21,11 +21,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
 import com.android.sample.ui.components.SkeletonCard
 import com.android.sample.ui.components.StateCard
 import com.android.sample.ui.components.TripDepartureRow
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 
 object MyTripsTestTags {
   const val SCREEN = "my_trips_screen"

@@ -5,9 +5,9 @@ import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

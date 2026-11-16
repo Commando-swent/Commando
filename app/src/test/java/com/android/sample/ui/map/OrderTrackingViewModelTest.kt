@@ -4,7 +4,7 @@ package com.android.sample.ui.map
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*

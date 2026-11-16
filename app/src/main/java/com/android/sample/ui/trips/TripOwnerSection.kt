@@ -19,8 +19,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.TripStatus
-import com.android.sample.model.TripTransition
+import com.commando.app.model.TripStatus
+import com.commando.app.model.TripTransition
 
 object TripOwnerTestTags {
   const val TRANSITION = "trip_owner_transition"

@@ -4,10 +4,10 @@ package com.android.sample.ui.trips
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
-import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.Location
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.DeparturePeriod
+import com.commando.app.model.Location
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripSearchCriteria
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Holds the delivery point and the search criteria a requester filters trips by, shared by the trip
  * list (#146) and map (#150), which read [selected] and [criteria] and apply
- * [com.android.sample.model.classifyTripSearch]. One instance per authenticated session, created on
+ * [com.commando.app.model.classifyTripSearch]. One instance per authenticated session, created on
  * the outer App entry next to the other session ViewModels; signing out or switching accounts
  * discards it, so a selection never leaks between accounts. The point survives process death and is
  * saved in full, so a building, map pin or GPS position is restored.

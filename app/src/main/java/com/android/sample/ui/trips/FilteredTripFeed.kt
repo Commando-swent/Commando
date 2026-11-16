@@ -4,11 +4,11 @@ package com.android.sample.ui.trips
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripFeed
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.classifyTripSearch
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripFeed
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.classifyTripSearch
 import java.time.Clock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

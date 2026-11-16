@@ -11,7 +11,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthRepositoryFirebase
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.WelcomeTestTags
@@ -20,6 +19,7 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.*
+import com.commando.app.model.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import java.time.LocalDate

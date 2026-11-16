@@ -23,8 +23,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 
 /**
  * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);

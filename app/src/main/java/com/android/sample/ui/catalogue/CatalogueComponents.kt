@@ -77,9 +77,9 @@ import androidx.compose.ui.window.Dialog
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import com.android.sample.R
-import com.android.sample.model.Product
 import com.android.sample.ui.orders.money
 import com.android.sample.ui.theme.IllustrationCream
+import com.commando.app.model.Product
 
 @Composable
 internal fun catalogueText(size: Int, weight: FontWeight = FontWeight.Normal): TextStyle =

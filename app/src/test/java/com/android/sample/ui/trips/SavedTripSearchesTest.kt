@@ -19,9 +19,9 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripSearchCriteria
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule

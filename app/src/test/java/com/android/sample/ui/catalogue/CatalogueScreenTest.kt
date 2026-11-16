@@ -39,13 +39,13 @@ import coil3.request.SuccessResult
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
-import com.android.sample.model.MAX_ORDER_PRODUCTS
-import com.android.sample.model.OrderItem
-import com.android.sample.model.Product
-import com.android.sample.model.Trip
 import com.android.sample.ui.components.formatTripTime
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.MAX_ORDER_PRODUCTS
+import com.commando.app.model.OrderItem
+import com.commando.app.model.Product
+import com.commando.app.model.Trip
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale

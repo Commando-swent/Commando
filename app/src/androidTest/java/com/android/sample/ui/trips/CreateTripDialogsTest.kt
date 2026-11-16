@@ -6,7 +6,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.R
-import com.android.sample.model.TripLocations
+import com.commando.app.model.TripLocations
 import java.time.LocalDate
 import java.time.LocalTime
 import org.junit.Assert.assertEquals

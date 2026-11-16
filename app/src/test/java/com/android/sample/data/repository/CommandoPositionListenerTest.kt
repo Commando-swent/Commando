@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.CommandoPosition
+import com.commando.app.model.CommandoPosition
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth

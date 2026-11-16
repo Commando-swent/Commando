@@ -2,12 +2,12 @@ package com.android.sample.ui.trips
 
 // AI assistance: Claude Code.
 import androidx.lifecycle.SavedStateHandle
-import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.Location
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripLocations
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.TripSort
+import com.commando.app.model.DeparturePeriod
+import com.commando.app.model.Location
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripLocations
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripSort
 import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

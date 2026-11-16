@@ -1,9 +1,9 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.*
-import com.android.sample.model.OrderStatus.DELIVERED
-import com.android.sample.model.TripStatus.PUBLISHED
+import com.commando.app.model.*
+import com.commando.app.model.OrderStatus.DELIVERED
+import com.commando.app.model.TripStatus.PUBLISHED
 import java.time.Instant
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred

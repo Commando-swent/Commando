@@ -1,4 +1,4 @@
-package com.android.sample.model
+package com.commando.app.model
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

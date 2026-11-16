@@ -4,8 +4,8 @@ package com.android.sample.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.model.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 

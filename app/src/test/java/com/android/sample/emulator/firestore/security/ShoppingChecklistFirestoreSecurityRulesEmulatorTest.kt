@@ -5,11 +5,11 @@ import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderResult
 import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
 import com.android.sample.data.repository.documentKey
-import com.android.sample.model.Order
-import com.android.sample.model.OrderItem
-import com.android.sample.model.OrderStatus
-import com.android.sample.model.ShoppingChecklistItem
-import com.android.sample.model.buildShoppingChecklist
+import com.commando.app.model.Order
+import com.commando.app.model.OrderItem
+import com.commando.app.model.OrderStatus
+import com.commando.app.model.ShoppingChecklistItem
+import com.commando.app.model.buildShoppingChecklist
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source

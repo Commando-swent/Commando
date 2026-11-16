@@ -7,9 +7,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.data.repository.OrderError
-import com.android.sample.model.Order
-import com.android.sample.model.OrderItem
-import com.android.sample.model.OrderStatus
+import com.commando.app.model.Order
+import com.commando.app.model.OrderItem
+import com.commando.app.model.OrderStatus
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals

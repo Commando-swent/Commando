@@ -1,10 +1,10 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex and Claude Code.
-import com.android.sample.model.FavouriteProducts
-import com.android.sample.model.Product
-import com.android.sample.model.ProductPage
-import com.android.sample.model.SUPPORTED_STORE_IDS
+import com.commando.app.model.FavouriteProducts
+import com.commando.app.model.Product
+import com.commando.app.model.ProductPage
+import com.commando.app.model.SUPPORTED_STORE_IDS
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore

@@ -21,7 +21,7 @@ import androidx.lifecycle.*
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.data.location.*
-import com.android.sample.model.DeviceLocation
+import com.commando.app.model.DeviceLocation
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.*
 import org.junit.Before

@@ -59,7 +59,6 @@ import com.android.sample.data.repository.ShoppingChecklistRepository
 import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripRepositoryFirestore
-import com.android.sample.model.TripLocations
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
@@ -123,6 +122,7 @@ import com.android.sample.ui.trips.TripLocationFilterViewModel
 import com.android.sample.ui.trips.TripRatingUiState
 import com.android.sample.ui.trips.TripRatingViewModel
 import com.android.sample.ui.trips.formatTripDeparture
+import com.commando.app.model.TripLocations
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */

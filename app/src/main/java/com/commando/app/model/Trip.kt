@@ -1,4 +1,4 @@
-package com.android.sample.model
+package com.commando.app.model
 
 import java.time.Instant
 

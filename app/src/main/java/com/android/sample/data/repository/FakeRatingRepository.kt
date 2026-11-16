@@ -1,14 +1,14 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.MAX_RATING_COMMENT_LENGTH
-import com.android.sample.model.NewRating
-import com.android.sample.model.Order
-import com.android.sample.model.OrderStatus
-import com.android.sample.model.Rating
-import com.android.sample.model.RatingSummary
-import com.android.sample.model.Trip
-import com.android.sample.model.normalizeRatingComment
+import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
+import com.commando.app.model.NewRating
+import com.commando.app.model.Order
+import com.commando.app.model.OrderStatus
+import com.commando.app.model.Rating
+import com.commando.app.model.RatingSummary
+import com.commando.app.model.Trip
+import com.commando.app.model.normalizeRatingComment
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext

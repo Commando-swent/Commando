@@ -7,7 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.RatingError
 import com.android.sample.data.repository.RatingRepository
 import com.android.sample.data.repository.RatingResult
-import com.android.sample.model.RatingSummary
+import com.commando.app.model.RatingSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job

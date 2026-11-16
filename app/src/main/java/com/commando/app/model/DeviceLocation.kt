@@ -1,4 +1,4 @@
-package com.android.sample.model
+package com.commando.app.model
 
 // AI assistance: OpenAI Codex.
 /** A transient device fix. Its monotonic timestamp must never be persisted across reboots. */

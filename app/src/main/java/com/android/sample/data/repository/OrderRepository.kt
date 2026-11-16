@@ -1,10 +1,10 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code (#147); OpenAI Codex (cancellation contract and KDoc).
-import com.android.sample.model.Order
-import com.android.sample.model.OrderDecision
-import com.android.sample.model.OrderDraft
-import com.android.sample.model.OrderStatus
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDecision
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderStatus
 
 /** Inject the SAME session-scoped repository into Review, My Orders and Order Details. */
 interface OrderRepository {

@@ -4,9 +4,9 @@ package com.android.sample.ui.orders
 import androidx.lifecycle.ViewModel
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderRepository
-import com.android.sample.model.Order
-import com.android.sample.model.OrderDraft
 import com.android.sample.model.authentication.AuthRepository
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDraft
 import kotlinx.coroutines.flow.map
 
 /** Session-scoped repository and carts, retained on rotation and cleared with the App entry. */

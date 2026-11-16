@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationResult
-import com.android.sample.model.DeviceLocation
+import com.commando.app.model.DeviceLocation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi

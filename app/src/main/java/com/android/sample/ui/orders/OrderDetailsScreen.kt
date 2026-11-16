@@ -34,9 +34,9 @@ import androidx.compose.ui.unit.sp
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.RatingError
-import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
+import com.commando.app.model.*
 import java.time.Instant
 
 /** Stable action selectors, independent of the presentation language. */

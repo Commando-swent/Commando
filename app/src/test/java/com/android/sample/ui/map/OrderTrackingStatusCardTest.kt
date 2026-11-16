@@ -12,8 +12,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
-import com.android.sample.model.CommandoPosition
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.CommandoPosition
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule

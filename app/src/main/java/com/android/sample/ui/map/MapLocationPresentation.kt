@@ -2,8 +2,8 @@ package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
 import androidx.compose.runtime.saveable.listSaver
-import com.android.sample.model.DeviceLocation
-import com.android.sample.model.Location
+import com.commando.app.model.DeviceLocation
+import com.commando.app.model.Location
 
 internal const val LOCATION_CAMERA_ZOOM = 2f
 private const val MAX_CAMERA_ZOOM = 3f

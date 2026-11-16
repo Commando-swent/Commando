@@ -1,9 +1,9 @@
 package com.android.sample.data.repository
 
-import com.android.sample.model.Location
-import com.android.sample.model.NewTrip
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals

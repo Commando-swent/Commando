@@ -45,12 +45,6 @@ import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Location
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.Trip
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.AuthUser
@@ -77,6 +71,12 @@ import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.assertTripCard
 import com.android.sample.ui.trips.discoveryTrip
 import com.android.sample.ui.trips.onTripCard
+import com.commando.app.model.Location
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.Trip
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripStatus
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

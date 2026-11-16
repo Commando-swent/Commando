@@ -46,6 +46,8 @@ import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
 import com.android.sample.data.repository.NotificationRepository
 import com.android.sample.data.repository.NotificationRepositoryFirestore
+import com.android.sample.data.repository.OrderChatRepository
+import com.android.sample.data.repository.OrderChatRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
@@ -71,6 +73,8 @@ import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.auth.WelcomeScreen
 import com.android.sample.ui.catalogue.CatalogueRoute
 import com.android.sample.ui.catalogue.CatalogueViewModel
+import com.android.sample.ui.chat.OrderChatHost
+import com.android.sample.ui.chat.OrderChatViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
@@ -123,6 +127,8 @@ import com.android.sample.ui.trips.formatTripDeparture
 import com.commando.app.model.TripLocations
 import kotlinx.coroutines.launch
 
+private const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
+
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
 @Composable
 fun CommandoApp(
@@ -139,6 +145,7 @@ fun CommandoApp(
     locationProvider: DeviceLocationProvider? = null,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
+    chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
 ) {
   val context = LocalContext.current
   val activity = LocalActivity.current
@@ -238,6 +245,7 @@ fun CommandoApp(
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
               notificationRepositoryFactory = notificationRepositoryFactory,
+              chatRepositoryFactory = chatRepositoryFactory,
               checklists = checklists,
               savedSearches = savedSearches,
               userId = user.uid,
@@ -273,6 +281,7 @@ private fun AuthenticatedApp(
     orders: SessionOrderViewModel,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)?,
+    chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
     checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
     userId: String,
@@ -707,6 +716,14 @@ private fun AuthenticatedApp(
                   ratingRepositoryFactory = ratingRepositoryFactory,
               )
             }
+        val refreshAfterChat by
+            entry.savedStateHandle.getStateFlow(ORDER_REFRESH_AFTER_CHAT, false).collectAsState()
+        LaunchedEffect(refreshAfterChat) {
+          if (refreshAfterChat) {
+            entry.savedStateHandle[ORDER_REFRESH_AFTER_CHAT] = false
+            model.retry()
+          }
+        }
         val state by model.uiState.collectAsState()
         val ratingState by model.ratingState.collectAsState()
         OrderDetailsScreen(
@@ -722,6 +739,11 @@ private fun AuthenticatedApp(
             onMarkReadyForHandoff = model::markReadyForHandoff,
             onCancel = model::cancel,
             onConfirmReceipt = model::confirmReceipt,
+            onChat = {
+              navController.navigate(CommandoScreens.orderChatRoute(orderId)) {
+                launchSingleTop = true
+              }
+            },
             onTrack = {
               navController.navigate(CommandoScreens.orderTrackingRoute(orderId)) {
                 launchSingleTop = true
@@ -737,6 +759,35 @@ private fun AuthenticatedApp(
                       launchSingleTop = true
                     }
                   }
+            },
+        )
+      }
+      composable(
+          route = CommandoScreens.OrderChat.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+        val model: OrderChatViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              OrderChatViewModel(
+                  orderId,
+                  orders.repository,
+                  tripRepository,
+                  chatRepositoryFactory?.invoke(orders::currentUserId)
+                      ?: OrderChatRepositoryFirestore(orders::currentUserId),
+                  orders::currentUserId,
+                  orders.sessionChanges,
+                  entry.savedStateHandle,
+              )
+            }
+        OrderChatHost(
+            model,
+            onBack = {
+              navController.previousBackStackEntry
+                  ?.savedStateHandle
+                  ?.set(ORDER_REFRESH_AFTER_CHAT, true)
+              navController.popBackStack()
             },
         )
       }

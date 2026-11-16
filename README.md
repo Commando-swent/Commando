@@ -54,11 +54,11 @@ See [Firestore ratings](docs/ratings.md) for the rating schema, security policy 
 
 Firebase emulator tests are grouped by the environment they require:
 
-- `app/src/test/java/com/android/sample/emulator/auth/` uses the Auth emulator.
-- `app/src/test/java/com/android/sample/emulator/firestore/adapter/` uses Firestore with
-  permissive test-only rules.
-- `app/src/test/java/com/android/sample/emulator/firestore/security/` uses Firestore and Auth with
-  the production rules declared by `firebase.json`.
+Under `app/src/test/java`, put each suite in its Kotlin package directory ending in:
+
+- `emulator/auth/` for the Auth emulator.
+- `emulator/firestore/adapter/` for Firestore with permissive test-only rules.
+- `emulator/firestore/security/` for Firestore and Auth with production rules from `firebase.json`.
 
 Name each test file `*EmulatorTest.kt` and place it under the matching profile. CI discovers and
 runs the profile automatically. Security-rules tests must be named `*SecurityRulesEmulatorTest.kt`

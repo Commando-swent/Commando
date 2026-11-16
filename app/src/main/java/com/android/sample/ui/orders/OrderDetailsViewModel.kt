@@ -6,15 +6,22 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
+import com.android.sample.data.repository.RatingError
+import com.android.sample.data.repository.RatingRepository
+import com.android.sample.data.repository.RatingResult
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
+import com.android.sample.model.MAX_RATING_COMMENT_LENGTH
+import com.android.sample.model.NewRating
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderStatus
+import com.android.sample.model.Rating
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.isActiveForTracking
+import com.android.sample.model.normalizeRatingComment
 import com.android.sample.ui.session.SessionGuard
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -34,6 +41,31 @@ sealed interface OrderMutationState {
   data object Saved : OrderMutationState
 
   data class Failed(val error: OrderError) : OrderMutationState
+}
+
+internal val RATING_SCORE_RANGE = 1..5
+
+/** Transient feedback for this receipt action; never loads historical ratings on screen entry. */
+data class RatingDialogState(
+    val visible: Boolean = false,
+    /** Selected score in 1..5; 0 means no selection. */
+    val score: Int = 0,
+    val comment: String = "",
+    val submitting: Boolean = false,
+    val error: RatingError? = null,
+    val submitted: Boolean = false,
+) {
+  /** Matches repository normalization: blank comments are absent before length validation. */
+  val commentTooLong: Boolean
+    get() = (normalizeRatingComment(comment)?.length ?: 0) > MAX_RATING_COMMENT_LENGTH
+
+  /** Only unexpected failures can be retried within this receipt flow. */
+  val terminalError: Boolean
+    get() = error != null && error != RatingError.Unknown
+
+  /** Input validity is independent of submission progress and repository errors. */
+  val valid: Boolean
+    get() = score in RATING_SCORE_RANGE && !commentTooLong
 }
 
 sealed class OrderDetailsUiState {
@@ -76,6 +108,15 @@ sealed class OrderDetailsUiState {
               order.tripId == trip.id &&
               order.status == OrderStatus.READY_FOR_HANDOFF
 
+    /** Presentation eligibility; session validity and the one-time offer are checked separately. */
+    val canRate: Boolean
+      get() =
+          !viewerId.isNullOrBlank() &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.requesterId != trip.ownerId &&
+              order.status == OrderStatus.DELIVERED
+
     val isSaving: Boolean
       get() = mutation == OrderMutationState.Saving
 
@@ -105,25 +146,41 @@ sealed class OrderDetailsUiState {
   }
 }
 
-/** Loads an authorized order before its trip; repositories own all access decisions. */
+/**
+ * Loads an authorized order before its trip; repositories own all access decisions.
+ *
+ * [ratingRepositoryFactory] is invoked lazily when ratings are first needed, using an identity
+ * permanently invalidated by an observed session change. Existing order-only callers may omit it;
+ * rating operations require a configured factory, supplied by the production navigation route.
+ */
 class OrderDetailsViewModel(
     private val orderId: String,
     private val orderRepository: OrderRepository,
     private val tripRepository: TripRepository,
     private val currentUserId: () -> String? = { null },
     sessionChanges: Flow<String?> = emptyFlow(),
+    ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<OrderDetailsUiState>(OrderDetailsUiState.Loading)
   val uiState: StateFlow<OrderDetailsUiState> = mutableState.asStateFlow()
+  private val mutableRating = MutableStateFlow(RatingDialogState())
+  val ratingState: StateFlow<RatingDialogState> = mutableRating.asStateFlow()
+  private var ratingOffered = false
+  private var ratingUncertain = false
   private var isLoading = false
 
   private val session = SessionGuard(currentUserId)
+  private val ratingRepository: RatingRepository by lazy {
+    checkNotNull(ratingRepositoryFactory) { "Rating repository factory is required" }
+        .invoke { if (session.hasEnded()) null else session.initialUserId }
+  }
 
   init {
     viewModelScope.launch {
       sessionChanges.collect { userId ->
         if (session.hasEnded(userId)) {
           mutableState.value = OrderDetailsUiState.SessionEnded
+          mutableRating.value = RatingDialogState()
         }
       }
     }
@@ -135,8 +192,10 @@ class OrderDetailsViewModel(
   }
 
   private fun load() {
+    // Preserve modal input during reloads; the independent session observer still clears it.
     if (
         isLoading ||
+            mutableRating.value.visible ||
             session.ended ||
             (mutableState.value as? OrderDetailsUiState.Content)?.isSaving == true
     )
@@ -159,6 +218,7 @@ class OrderDetailsViewModel(
   private fun endSessionIfChanged(): Boolean {
     if (session.hasEnded()) {
       mutableState.value = OrderDetailsUiState.SessionEnded
+      mutableRating.value = RatingDialogState()
       return true
     }
     return false
@@ -186,12 +246,102 @@ class OrderDetailsViewModel(
    */
   fun cancel() = saveOrder(isAllowed = { it.canCancel }) { orderRepository.cancelOrder(orderId) }
 
-  /** Confirms requester receipt, displaying only repository-confirmed status and feedback. */
+  /**
+   * Confirms receipt using repository-confirmed status, offering rating once after eligible
+   * success.
+   */
   fun confirmReceipt() =
-      saveOrder(isAllowed = { it.canConfirmReceipt }) { orderRepository.confirmReceipt(orderId) }
+      saveOrder(
+          isAllowed = { it.canConfirmReceipt },
+          onSuccess = { order ->
+            val content = mutableState.value as? OrderDetailsUiState.Content
+            if (!ratingOffered && order.id == orderId && content?.canRate == true) {
+              ratingOffered = true
+              mutableRating.value = RatingDialogState(visible = true)
+            }
+          },
+      ) {
+        orderRepository.confirmReceipt(orderId)
+      }
+
+  /** Selects an editable score in 1..5; invalid scores cannot clear the current selection. */
+  fun selectScore(score: Int) {
+    if (endSessionIfChanged()) return
+    val state = mutableRating.value
+    if (state.visible && !state.submitting && !state.terminalError && score in RATING_SCORE_RANGE)
+        mutableRating.value = state.copy(score = score, error = null)
+  }
+
+  /** Preserves editable comment text verbatim; validation follows repository normalization. */
+  fun updateComment(comment: String) {
+    if (endSessionIfChanged()) return
+    val state = mutableRating.value
+    if (state.visible && !state.submitting && !state.terminalError)
+        mutableRating.value = state.copy(comment = comment, error = null)
+  }
+
+  /** Dismisses an idle dialog without changing the already confirmed delivery. */
+  fun dismissRating() {
+    if (endSessionIfChanged()) return
+    if (!mutableRating.value.submitting)
+        mutableRating.value = mutableRating.value.copy(visible = false)
+  }
+
+  /**
+   * Retries only Unknown failures, reconciling uncertain writes before attempting another write.
+   */
+  fun submitRating() {
+    if (endSessionIfChanged()) return
+    val state = mutableRating.value
+    if (!state.visible || state.submitting || !state.valid || state.terminalError) return
+    mutableRating.value = state.copy(submitting = true, error = null)
+    viewModelScope.launch {
+      val result =
+          try {
+            reconcileOrSubmit(NewRating(orderId, state.score, state.comment))
+          } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            RatingResult.Error(RatingError.Unknown)
+          }
+      currentCoroutineContext().ensureActive()
+      if (endSessionIfChanged()) return@launch
+      mutableRating.value =
+          when (result) {
+            is RatingResult.Success -> state.copy(visible = false, submitted = true, error = null)
+            is RatingResult.Error ->
+                state.copy(visible = result.error != RatingError.AlreadyRated, error = result.error)
+          }
+    }
+  }
+
+  private suspend fun reconcileOrSubmit(input: NewRating): RatingResult<Rating> {
+    if (ratingUncertain) {
+      when (val existing = ratingRepository.getRatingForOrder(orderId)) {
+        is RatingResult.Error -> return existing
+        is RatingResult.Success ->
+            existing.data?.let { saved ->
+              return if (
+                  saved.orderId == input.orderId &&
+                      saved.score == input.score &&
+                      saved.comment == normalizeRatingComment(input.comment)
+              )
+                  RatingResult.Success(saved)
+              else RatingResult.Error(RatingError.AlreadyRated)
+            }
+      }
+      currentCoroutineContext().ensureActive()
+      if (endSessionIfChanged()) return RatingResult.Error(RatingError.NotAuthenticated)
+    }
+    // An exception may arrive after the server commits, so assume uncertainty before submitting.
+    ratingUncertain = true
+    return ratingRepository.submitRating(input).also {
+      ratingUncertain = it == RatingResult.Error(RatingError.Unknown)
+    }
+  }
 
   private fun saveOrder(
       isAllowed: (OrderDetailsUiState.Content) -> Boolean,
+      onSuccess: (Order) -> Unit = {},
       save: suspend (OrderDetailsUiState.Content) -> OrderResult<Order>,
   ) {
     if (endSessionIfChanged()) return
@@ -207,7 +357,10 @@ class OrderDetailsViewModel(
             OrderResult.Error(OrderError.Unknown)
           }
       currentCoroutineContext().ensureActive()
-      if (!endSessionIfChanged()) mutableState.value = mutationResult(content, result)
+      if (!endSessionIfChanged()) {
+        mutableState.value = mutationResult(content, result)
+        if (result is OrderResult.Success) onSuccess(result.data)
+      }
     }
   }
 

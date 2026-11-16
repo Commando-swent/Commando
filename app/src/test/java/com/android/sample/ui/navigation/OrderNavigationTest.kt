@@ -10,9 +10,10 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.data.repository.*
@@ -27,6 +28,7 @@ import com.android.sample.ui.map.PositionSharingTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.OrderDetailsTestTags
+import com.android.sample.ui.orders.RatingDialogTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -105,6 +107,7 @@ class OrderNavigationTest {
             tripRepository,
             credentials,
             orderRepositoryFactory = factory,
+            ratingRepositoryFactory = { error("Order navigation must not initialize ratings") },
             positionRepositoryFactory = positions?.let { { _ -> it } },
             locationProvider = source,
         )
@@ -342,6 +345,7 @@ class OrderNavigationTest {
   }
 
   @Test
+  @Config(qualifiers = "h917dp-mdpi")
   fun receiptCallbackUsesExistingDetailsRouteAndShowsConfirmedDelivery() {
     val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
     val confirmedIds = mutableListOf<String>()
@@ -355,13 +359,22 @@ class OrderNavigationTest {
         }
       }
     }
-    show()
+    show(
+        tripRepository =
+            FakeTripRepository("owner", initialTrips = listOf(trip.copy(ownerId = "owner")))
+    )
     click(AppTestTags.ORDERS_BUTTON)
     card().performClick()
     compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).performScrollTo().performClick()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertExists()
+    Espresso.pressBack() // Dispatch Back to the foreground dialog window.
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithText("Order details").assertIsDisplayed()
     compose.onNodeWithText("DELIVERED").assertIsDisplayed()
     compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
     compose.runOnIdle { assertEquals(listOf(order.id), confirmedIds) }
+    back()
+    card().assertExists()
   }
 
   @Test

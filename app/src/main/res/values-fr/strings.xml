@@ -489,4 +489,21 @@
         <item quantity="other">Position relevée il y a %1$d secondes</item>
     </plurals>
     <string name="order_tracking_retry">Réessayer le suivi</string>
+    <string name="rating_title">Évaluer votre commande</string>
+    <string name="rating_prompt">Comment était votre expérience avec ce commando ?</string>
+    <string name="rating_select">Choisissez une note de 1 à 5</string>
+    <string name="rating_star">%1$d sur %2$d étoiles</string>
+    <string name="rating_value">%1$d / %2$d</string>
+    <string name="rating_comment">Commentaire (facultatif)</string>
+    <string name="rating_comment_hint">Ajoutez un court commentaire…</string>
+    <string name="rating_comment_limit">Votre commentaire dépasse la limite de %1$d caractères.</string>
+    <string name="rating_submit">Envoyer la note</string>
+    <string name="rating_retry">Réessayer</string>
+    <string name="rating_cancel">Annuler</string>
+    <string name="rating_close">Fermer</string>
+    <string name="rating_unavailable">Cette commande ne peut pas être évaluée. Vous pouvez fermer cette fenêtre.</string>
+    <string name="rating_submitting">Envoi de la note…</string>
+    <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
+    <string name="rating_success">Note envoyée.</string>
+    <string name="rating_already">Cette commande a déjà été évaluée.</string>
 </resources>

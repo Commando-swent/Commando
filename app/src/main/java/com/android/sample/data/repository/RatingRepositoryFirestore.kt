@@ -24,7 +24,7 @@ internal constructor(
   /** Creates feedback and increments its summary atomically; uncertain outcomes require a read. */
   override suspend fun submitRating(input: NewRating): RatingResult<Rating> =
       session { uid, guard ->
-        val comment = input.comment?.takeUnless(String::isBlank)
+        val comment = normalizeRatingComment(input.comment)
         requireRating(
             input.orderId.isDocumentId() &&
                 input.score in RATING_SCORES &&

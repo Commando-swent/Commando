@@ -3,10 +3,10 @@ package com.android.sample.data.repository
 // AI assistance: OpenAI Codex (requester cancellation and pending-order editing).
 // AI assistance: Claude Code for the trip-owner query (#147).
 // AI assistance: Claude Code for refusing orders on non-published trips (#233).
-import com.android.sample.model.Order
-import com.android.sample.model.OrderDecision
-import com.android.sample.model.OrderDraft
-import com.android.sample.model.OrderStatus
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDecision
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import java.time.Instant

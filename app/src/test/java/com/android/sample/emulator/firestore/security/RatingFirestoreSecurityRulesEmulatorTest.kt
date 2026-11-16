@@ -2,7 +2,7 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.model.*
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source
 import java.util.UUID

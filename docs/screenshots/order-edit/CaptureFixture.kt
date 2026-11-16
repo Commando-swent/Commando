@@ -9,13 +9,10 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.model.*
 import com.android.sample.model.authentication.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
-import com.commando.app.model.Location
-import com.commando.app.model.Trip
-import com.commando.app.model.TripStatus
 import java.io.File
 import java.time.Instant
 import org.junit.Rule

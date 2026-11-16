@@ -27,10 +27,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.TripSort
+import com.commando.app.model.DeparturePeriod
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripSort
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle

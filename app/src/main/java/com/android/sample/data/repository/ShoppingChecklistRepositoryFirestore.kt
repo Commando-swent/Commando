@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code.
-import com.android.sample.model.ShoppingChecklistItem
+import com.commando.app.model.ShoppingChecklistItem
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source

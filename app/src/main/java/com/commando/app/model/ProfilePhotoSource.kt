@@ -1,4 +1,4 @@
-package com.android.sample.model
+package com.commando.app.model
 
 import android.graphics.Bitmap
 import android.net.Uri

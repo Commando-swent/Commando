@@ -14,7 +14,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthRepositoryFirebase
 import com.android.sample.ui.auth.AuthTestTags
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -26,8 +25,7 @@ import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
-import com.commando.app.model.NewTrip
-import com.commando.app.model.TripLocations
+import com.commando.app.model.*
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID

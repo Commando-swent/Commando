@@ -19,7 +19,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.ProfilePhotoRepository
-import com.android.sample.model.ProfilePhotoSource
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.navigation.AppMode
@@ -27,6 +26,7 @@ import com.android.sample.ui.navigation.AppScaffold
 import com.android.sample.ui.navigation.AppTestTags
 import com.android.sample.ui.navigation.CommandoScreens
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.ProfilePhotoSource
 import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Assert.assertTrue

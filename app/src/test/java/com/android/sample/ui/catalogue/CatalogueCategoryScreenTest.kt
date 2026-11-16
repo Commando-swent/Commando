@@ -19,9 +19,9 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductResult
-import com.android.sample.model.Product
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.Product
 import com.commando.app.model.Trip
 import java.util.Locale
 import org.junit.Assert.assertEquals

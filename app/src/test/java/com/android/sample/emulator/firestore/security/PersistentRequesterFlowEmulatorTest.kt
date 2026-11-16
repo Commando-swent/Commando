@@ -4,11 +4,9 @@ package com.android.sample.emulator.firestore.security
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.data.repository.*
 import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthRepositoryFirebase
 import com.android.sample.ui.orders.*
-import com.commando.app.model.Location
-import com.commando.app.model.NewTrip
+import com.commando.app.model.*
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.*

@@ -3,20 +3,16 @@ package com.android.sample.data.repository
 // AI assistance: Claude Code.
 
 import com.android.sample.data.repository.TripError.*
-import com.android.sample.model.*
-import com.android.sample.model.OrderStatus.ACCEPTED
-import com.android.sample.model.OrderStatus.DELIVERED
-import com.android.sample.model.OrderStatus.PENDING
-import com.android.sample.model.OrderStatus.READY_FOR_HANDOFF
-import com.android.sample.model.OrderStatus.REJECTED
-import com.commando.app.model.Location
-import com.commando.app.model.Trip
-import com.commando.app.model.TripStatus
+import com.commando.app.model.*
+import com.commando.app.model.OrderStatus.ACCEPTED
+import com.commando.app.model.OrderStatus.DELIVERED
+import com.commando.app.model.OrderStatus.PENDING
+import com.commando.app.model.OrderStatus.READY_FOR_HANDOFF
+import com.commando.app.model.OrderStatus.REJECTED
 import com.commando.app.model.TripStatus.CANCELLED
 import com.commando.app.model.TripStatus.COMPLETED
 import com.commando.app.model.TripStatus.IN_PROGRESS
 import com.commando.app.model.TripStatus.PUBLISHED
-import com.commando.app.model.TripTransition
 import com.commando.app.model.TripTransition.*
 import java.time.Instant
 import kotlinx.coroutines.test.runTest

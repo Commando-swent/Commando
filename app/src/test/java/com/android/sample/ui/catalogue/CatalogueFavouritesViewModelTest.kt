@@ -5,9 +5,9 @@ import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
-import com.android.sample.model.FavouriteProducts
-import com.android.sample.model.Product
 import com.android.sample.ui.orders.OrderDraftState
+import com.commando.app.model.FavouriteProducts
+import com.commando.app.model.Product
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel

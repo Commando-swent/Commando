@@ -4,11 +4,11 @@ package com.android.sample.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.TripSort
+import com.commando.app.model.DeparturePeriod
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripSort
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.ExperimentalCoroutinesApi

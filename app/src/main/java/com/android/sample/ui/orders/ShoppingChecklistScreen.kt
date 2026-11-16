@@ -29,9 +29,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.model.ShoppingChecklistItem
 import com.android.sample.ui.components.SkeletonCard
 import com.android.sample.ui.components.StateCard
+import com.commando.app.model.ShoppingChecklistItem
 
 /** Test tags of the shopping checklist screen. */
 object ShoppingChecklistTestTags {

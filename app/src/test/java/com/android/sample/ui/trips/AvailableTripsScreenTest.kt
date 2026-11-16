@@ -14,12 +14,12 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.CriteriaProblem
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.TripSort
+import com.commando.app.model.CriteriaProblem
 import com.commando.app.model.HANDOFF_RADIUS_METERS
 import com.commando.app.model.Location
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripSort
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

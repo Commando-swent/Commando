@@ -21,9 +21,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.model.SAVED_SEARCH_NAME_MAX_LENGTH
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.normalizedSearchName
+import com.commando.app.model.SAVED_SEARCH_NAME_MAX_LENGTH
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.normalizedSearchName
 
 object SavedTripSearchTestTags {
   const val SAVE = "savedSearchSave"

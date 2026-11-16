@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code.
-import com.android.sample.model.ShoppingChecklistItem
+import com.commando.app.model.ShoppingChecklistItem
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test

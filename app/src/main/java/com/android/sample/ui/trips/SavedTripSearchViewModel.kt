@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.SavedTripSearchRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.TripSearchCriteria
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

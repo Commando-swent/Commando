@@ -3,10 +3,7 @@ package com.android.sample.ui.orders
 // AI assistance: Claude Code.
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
-import com.commando.app.model.Location
-import com.commando.app.model.Trip
-import com.commando.app.model.TripStatus
+import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi

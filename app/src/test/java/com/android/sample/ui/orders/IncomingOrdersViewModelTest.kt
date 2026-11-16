@@ -6,10 +6,10 @@ import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
-import com.android.sample.model.Order
-import com.android.sample.model.OrderItem
-import com.android.sample.model.OrderStatus
 import com.commando.app.model.Location
+import com.commando.app.model.Order
+import com.commando.app.model.OrderItem
+import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import java.time.Instant

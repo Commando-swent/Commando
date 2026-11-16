@@ -7,7 +7,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.AuthTestTags
@@ -25,8 +24,7 @@ import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
 import com.android.sample.ui.trips.discoveryTrip
-import com.commando.app.model.Location
-import com.commando.app.model.TripLocations
+import com.commando.app.model.*
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter

@@ -6,9 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.NotificationRepository
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderResult
-import com.android.sample.model.NotificationPreferences
-import com.android.sample.model.OrderNotification
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.model.NotificationPreferences
+import com.commando.app.model.OrderNotification
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext

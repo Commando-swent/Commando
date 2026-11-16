@@ -7,11 +7,11 @@ import com.android.sample.data.repository.SavedTripSearchRepository
 import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.SavedTripSearch
-import com.android.sample.model.StoreFilter
-import com.android.sample.model.TripSearchCriteria
-import com.android.sample.model.TripSort
+import com.commando.app.model.DeparturePeriod
+import com.commando.app.model.SavedTripSearch
+import com.commando.app.model.StoreFilter
+import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripSort
 import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.test.advanceUntilIdle

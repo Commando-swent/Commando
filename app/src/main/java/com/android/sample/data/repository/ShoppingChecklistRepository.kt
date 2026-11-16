@@ -1,7 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code.
-import com.android.sample.model.ShoppingChecklistItem
+import com.commando.app.model.ShoppingChecklistItem
 
 /**
  * Persists the purchase progress of a trip's shopping checklist. Products and quantities are not

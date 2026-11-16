@@ -2,7 +2,6 @@ package com.commando.app.model
 
 // AI assistance: Claude Code; OpenAI Codex (shared feed classification).
 
-import com.android.sample.model.CriteriaProblem
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.min

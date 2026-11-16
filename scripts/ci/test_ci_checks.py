@@ -54,6 +54,20 @@ class CiChecksTest(unittest.TestCase):
         for profile in ("auth", "firestoreAdapter", "firestoreSecurity"):
             self.assertIn(f"--run-gradle-profile {profile}", result.stdout)
 
+    def test_discovers_packages_with_crlf_and_optional_semicolon(self):
+        fixture = self.write(
+            "app/src/test/java/com/commando/app/emulator/auth/AuthEmulatorTest.kt", ""
+        )
+        for suffix in ("\r\n", ";\n", ";\r\n"):
+            with self.subTest(suffix=suffix):
+                fixture.write_bytes(
+                    f"package com.commando.app.emulator.auth{suffix}".encode("ascii")
+                )
+
+                result = self.run_emulator_discovery()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("--run-gradle-profile auth", result.stdout)
+
     def test_rejects_a_package_that_does_not_match_its_path(self):
         self.write("app/src/test/java/com/commando/app/emulator/auth/AuthEmulatorTest.kt",
                    "package com.android.sample.emulator.auth\n")

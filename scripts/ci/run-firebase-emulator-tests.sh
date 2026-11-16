@@ -74,7 +74,11 @@ discover_profiles() {
 
     expected_package="${relative_path%/*}"
     expected_package="${expected_package//\//.}"
-    declared_package="$(awk '/^[[:space:]]*package[[:space:]]+/ { print $2; exit }' "${test_file}")"
+    declared_package="$(awk '/^[[:space:]]*package[[:space:]]+/ {
+      sub(/;?\r?$/, "", $2)
+      print $2
+      exit
+    }' "${test_file}")"
     [[ "${declared_package}" == "${expected_package}" ]] ||
       fail "${test_file} must declare package ${expected_package}"
     printf '%s\n' "${profile}"

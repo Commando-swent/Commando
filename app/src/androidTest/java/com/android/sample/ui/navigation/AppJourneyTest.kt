@@ -95,6 +95,9 @@ class AppJourneyTest {
             trips,
             google,
             productRepository = products,
+            ratingRepositoryFactory = {
+              FakeRatingRepository(it, FakeOrderRepository(it), FakeTripRepository("rating-owner"))
+            },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
         )
       }

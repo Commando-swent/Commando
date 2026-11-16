@@ -14,8 +14,10 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.android.sample.data.repository.RatingError
 import com.android.sample.data.repository.TripError
 import com.android.sample.model.Location
+import com.android.sample.model.RatingSummary
 import com.android.sample.model.Trip
 import com.android.sample.model.TripStatus
 import com.android.sample.model.TripTransition
@@ -73,6 +75,8 @@ class TripDetailsScreenTest {
       largeText: Boolean = false,
       onViewOrders: ((String) -> Unit)? = null,
       ownerControls: TripOwnerControls? = null,
+      ratingState: TripRatingUiState? = null,
+      onRetryRating: () -> Unit = {},
   ) {
     compose.setContent {
       val density = LocalDensity.current
@@ -87,9 +91,62 @@ class TripDetailsScreenTest {
               onAddItems = onAddItems,
               onViewOrders = onViewOrders,
               ownerControls = ownerControls,
+              ratingState = ratingState,
+              onRetryRating = onRetryRating,
           )
         }
       }
+    }
+  }
+
+  @Test
+  fun ratingContentEmptyAndLoadingRenderWithoutInventingAZeroAverage() {
+    val state = mutableStateOf<TripRatingUiState>(TripRatingUiState.Loading)
+    compose.setContent { MaterialTheme { TripRatingSummary(state.value, {}, null) } }
+    compose.onNodeWithText("Loading ratings", substring = true).assertIsDisplayed()
+    compose.runOnIdle { state.value = TripRatingUiState.Empty }
+    compose.onNodeWithText("No ratings yet").assertIsDisplayed()
+    compose.onNodeWithContentDescription("0.0", substring = true).assertDoesNotExist()
+    for (count in listOf(1, 3)) {
+      compose.runOnIdle {
+        state.value = TripRatingUiState.Content(RatingSummary("owner", count, 13.0 / 3))
+      }
+      compose.onNodeWithText("4.3 / 5", substring = true, useUnmergedTree = true).assertExists()
+      compose
+          .onNodeWithContentDescription(
+              "4.3 out of 5 stars, $count ${if (count == 1) "rating" else "ratings"}"
+          )
+          .assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun ratingFailureRetriesOnlyRatingsAndLeavesTripActionsUsable() {
+    var tripRetries = 0
+    var ratingRetries = 0
+    var added: String? = null
+    var viewed: String? = null
+    var backs = 0
+    show(
+        TripDetailsUiState.Content(trip),
+        onRetry = { tripRetries++ },
+        onBack = { backs++ },
+        onAddItems = { added = it },
+        onViewOrders = { viewed = it },
+        ratingState = TripRatingUiState.Error(RatingError.Unknown),
+        onRetryRating = { ratingRetries++ },
+    )
+    compose.onNodeWithText("Ratings unavailable. Try again.").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).performScrollTo().performClick()
+    compose.onNodeWithText("View orders").performScrollTo().performClick()
+    compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
+    compose.onNodeWithText("Back").performClick()
+    compose.runOnIdle {
+      assertEquals(1, ratingRetries)
+      assertEquals(0, tripRetries)
+      assertEquals(trip.id, added)
+      assertEquals(trip.id, viewed)
+      assertEquals(1, backs)
     }
   }
 

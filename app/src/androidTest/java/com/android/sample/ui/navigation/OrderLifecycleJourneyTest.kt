@@ -83,6 +83,13 @@ class OrderLifecycleJourneyTest {
               trips,
               google,
               productRepository = ProductRepositoryFirestore(client.firestore),
+              ratingRepositoryFactory = {
+                FakeRatingRepository(
+                    it,
+                    FakeOrderRepository(it),
+                    FakeTripRepository("rating-owner"),
+                )
+              },
               orderRepositoryFactory = { OrderRepositoryFirestore(it, client.firestore) },
               checklistRepositoryFactory = {
                 ShoppingChecklistRepositoryFirestore(it, client.firestore)

@@ -99,6 +99,9 @@ class OrderNavigationTest {
       tripRepository: TripRepository = trips,
       positions: CommandoPositionRepository? = null,
       source: DeviceLocationProvider? = null,
+      ratings: ((() -> String?) -> RatingRepository) = {
+        error("Order navigation must not initialize ratings")
+      },
   ) {
     content = {
       SampleAppTheme {
@@ -107,7 +110,7 @@ class OrderNavigationTest {
             tripRepository,
             credentials,
             orderRepositoryFactory = factory,
-            ratingRepositoryFactory = { error("Order navigation must not initialize ratings") },
+            ratingRepositoryFactory = ratings,
             positionRepositoryFactory = positions?.let { { _ -> it } },
             locationProvider = source,
         )
@@ -391,7 +394,7 @@ class OrderNavigationTest {
 
   @Test
   fun commandoCanOpenHisPublishedTripFromHomeAndReturn() {
-    show()
+    show(ratings = { FakeRatingRepository(it, FakeOrderRepository(it), trips) })
     click(AppTestTags.COMMANDO_MODE)
     click(HomeTestTags.MANAGE_TRIP)
     compose.onNodeWithText("Migros EPFL").assertIsDisplayed()

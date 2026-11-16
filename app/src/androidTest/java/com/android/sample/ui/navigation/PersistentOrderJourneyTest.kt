@@ -100,6 +100,13 @@ class PersistentOrderJourneyTest {
               trips,
               google,
               productRepository = products,
+              ratingRepositoryFactory = {
+                FakeRatingRepository(
+                    it,
+                    FakeOrderRepository(it),
+                    FakeTripRepository("rating-owner"),
+                )
+              },
               orderRepositoryFactory = { OrderRepositoryFirestore(it, first.firestore) },
           )
         }

@@ -37,6 +37,9 @@ import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.RatingError
+import com.android.sample.data.repository.RatingRepository
+import com.android.sample.data.repository.RatingResult
 import com.android.sample.data.repository.SavedTripSearchRepository
 import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.TripError
@@ -66,8 +69,10 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.android.sample.ui.trips.RecordingRatings
 import com.android.sample.ui.trips.SavedTripSearchTestTags
 import com.android.sample.ui.trips.ScriptedTripRepository
+import com.android.sample.ui.trips.TripRatingTestTags
 import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.assertTripCard
 import com.android.sample.ui.trips.discoveryTrip
@@ -97,6 +102,7 @@ private const val SEEDED_TRIP_ID = "known-trip"
 @RunWith(RobolectricTestRunner::class)
 class CommandoAppTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+  private val ratingIds = mutableListOf<String>()
   private val alice = AuthUser("alice", displayName = "Alice Smith", email = "alice@example.com")
   private val bob = AuthUser("bob", displayName = "Bob Jones", email = "bob@example.com")
 
@@ -201,6 +207,7 @@ class CommandoAppTest {
       trips: TripRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
+      ratings: ((() -> String?) -> RatingRepository)? = null,
   ) {
     compose.setContent {
       SampleAppTheme {
@@ -209,6 +216,7 @@ class CommandoAppTest {
             trips,
             picker,
             productRepository = products,
+            ratingRepositoryFactory = ratings ?: { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
         )
       }
@@ -313,14 +321,36 @@ class CommandoAppTest {
   }
 
   @Test
+  @Config(qualifiers = "en-rUS-w412dp-h917dp-mdpi")
+  fun ratingRetryDoesNotReloadTripAndFailureStillAllowsCatalogueNavigation() {
+    val trips = ScriptedTripRepository(twoTrips(alice.uid))
+    val ratings = RecordingRatings()
+    ratings.load = { RatingResult.Error(RatingError.Unknown) }
+    show(FakeAuthRepository(alice), trips, ratings = { ratings })
+    click(HomeTestTags.TRIP_ACTION)
+    compose.onTripCard(firstTrip.id).performClick()
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).performScrollTo().performClick()
+    compose.runOnIdle {
+      assertEquals(listOf(firstTrip.id), trips.requestedIds)
+      assertEquals(List(2) { firstTrip.ownerId }, ratings.ids)
+    }
+    compose.onNodeWithText("Ratings unavailable. Try again.").assertExists()
+    compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
+    assertCatalogue()
+    compose.runOnIdle { assertEquals(List(2) { firstTrip.ownerId }, ratings.ids) }
+  }
+
+  @Test
   fun selectedOpaqueTripIsLoadedExactlyAndBothBackActionsRestoreTheExistingList() {
     val trips = ScriptedTripRepository(twoTrips(alice.uid))
     val requestedIds = trips.requestedIds
     show(FakeAuthRepository(alice), trips)
     click(HomeTestTags.TRIP_ACTION)
     assertAvailableTripsRestored()
+    compose.runOnIdle { assertTrue(ratingIds.isEmpty()) }
     compose.onTripCard(secondTrip.id).performClick()
     assertTripDetails(secondTrip)
+    compose.runOnIdle { assertEquals(listOf(secondTrip.ownerId), ratingIds) }
     compose.onNodeWithText(firstTrip.store.name).assertDoesNotExist()
     compose.onNodeWithText(firstTrip.handoffLocation.name).assertDoesNotExist()
     compose.onNodeWithTag(AppTestTags.TOP_BAR).assertDoesNotExist()
@@ -334,8 +364,10 @@ class CommandoAppTest {
         .assertIsEnabled()
         .performClick()
     assertCatalogue()
+    compose.runOnIdle { assertEquals(listOf(secondTrip.ownerId), ratingIds) }
     click(CatalogueTestTags.BACK)
     assertTripDetails(secondTrip)
+    compose.runOnIdle { assertEquals(List(2) { secondTrip.ownerId }, ratingIds) }
     compose.onNodeWithText("Add items").assertDoesNotExist()
     // Returning must preserve the Details ViewModel rather than loading another entry; the
     // Catalogue loads the same trip once for its own header.
@@ -367,6 +399,7 @@ class CommandoAppTest {
       // The first three are the Details and the two Catalogue lookups of the opaque trip.
       assertEquals(List(3) { secondTrip.id } + listOf(firstTrip.id, secondTrip.id), requestedIds)
       // The list reloads on every resume: one load on entry plus one per return from Details.
+      assertEquals(List(5) { secondTrip.ownerId }, ratingIds)
       assertEquals(4, trips.upcomingLoads)
     }
   }
@@ -393,6 +426,7 @@ class CommandoAppTest {
     compose.onNodeWithText("Something went wrong while loading this trip.").assertIsDisplayed()
     click(AppTestTags.BACK_BUTTON)
     assertAvailableTripsRestored()
+    compose.runOnIdle { assertTrue(ratingIds.isEmpty()) }
   }
 
   @Test

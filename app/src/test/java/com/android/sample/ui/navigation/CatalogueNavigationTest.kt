@@ -20,6 +20,7 @@ import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.android.sample.ui.trips.RecordingRatings
 import java.time.Duration
 import java.time.Instant
 import kotlinx.coroutines.test.runTest
@@ -40,6 +41,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], qualifiers = "w412dp-h917dp-mdpi")
 class CatalogueNavigationTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+  private val ratingIds = mutableListOf<String>()
   private val alice = AuthUser("alice", displayName = "Alice", email = "alice@example.com")
   private val auth = FakeAuthRepository(alice)
   private val time = Instant.parse("2030-01-01T12:00:00Z")
@@ -93,6 +95,7 @@ class CatalogueNavigationTest {
             trips,
             credentials,
             productRepository = products,
+            ratingRepositoryFactory = { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = factory,
         )
       }
@@ -130,6 +133,7 @@ class CatalogueNavigationTest {
         .onNodeWithTag(CatalogueTestTags.SUMMARY)
         .assertTextContains("CHF 7.80", substring = true)
     click(CatalogueTestTags.CONTINUE)
+    compose.runOnIdle { assertEquals(listOf(migrosTrip.ownerId), ratingIds) }
     // Review opens on the same draft, priced by the catalogue, with the trip it belongs to.
     compose.onNodeWithText(migrosTrip.store.name).assertIsDisplayed()
     compose.onNodeWithText(oat.name).assertIsDisplayed()
@@ -155,6 +159,7 @@ class CatalogueNavigationTest {
     back()
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertIsDisplayed()
     compose.runOnIdle {
+      assertEquals(listOf(migrosTrip.ownerId), ratingIds)
       assertEquals(1, factoryCalls)
       assertEquals(1, createdOrders)
     }

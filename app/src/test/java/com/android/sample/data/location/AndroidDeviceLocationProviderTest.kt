@@ -9,7 +9,7 @@ import android.location.LocationManager
 import android.os.CancellationSignal
 import androidx.core.location.LocationManagerCompat
 import androidx.core.util.Consumer
-import com.android.sample.model.DeviceLocation
+import com.commando.app.model.DeviceLocation
 import io.mockk.*
 import java.util.concurrent.Executor
 import kotlinx.coroutines.ExperimentalCoroutinesApi

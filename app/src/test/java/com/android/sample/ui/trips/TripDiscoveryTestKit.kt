@@ -9,7 +9,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Trip
+import com.commando.app.model.Trip
 
 /** Shared lookups and repository wrapper for the trip discovery tests; see [discoveryTrip]. */
 

@@ -8,14 +8,14 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.CriteriaProblem
 import com.android.sample.model.DeparturePeriod
-import com.android.sample.model.Location
 import com.android.sample.model.StoreFilter
-import com.android.sample.model.Trip
-import com.android.sample.model.TripLocations
 import com.android.sample.model.TripSearchCriteria
 import com.android.sample.model.TripSort
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripLocations
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate

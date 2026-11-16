@@ -8,8 +8,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Trip
-import com.android.sample.model.TripLocations
+import com.commando.app.model.Trip
+import com.commando.app.model.TripLocations
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate

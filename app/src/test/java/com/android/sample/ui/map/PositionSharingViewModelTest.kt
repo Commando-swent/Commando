@@ -5,7 +5,7 @@ import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.location.*
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.model.*
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset

@@ -7,8 +7,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
-import com.android.sample.model.CommandoPosition
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.model.CommandoPosition
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Rule

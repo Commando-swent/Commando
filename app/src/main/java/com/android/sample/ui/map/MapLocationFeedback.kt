@@ -5,7 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.android.sample.R
 import com.android.sample.data.location.DeviceLocationResult
-import com.android.sample.model.canIdentifyNearbyTrips
+import com.commando.app.model.canIdentifyNearbyTrips
 
 /** Stable semantics for the device-location overlay. */
 internal object MapLocationTestTags {

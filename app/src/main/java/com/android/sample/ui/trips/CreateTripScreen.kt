@@ -22,9 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripLocations
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripLocations
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter

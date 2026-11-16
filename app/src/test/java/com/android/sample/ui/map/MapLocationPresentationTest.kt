@@ -1,7 +1,7 @@
 package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.*
+import com.commando.app.model.*
 import org.junit.Assert.*
 import org.junit.Test
 

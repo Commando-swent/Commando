@@ -7,8 +7,8 @@ import com.android.sample.model.Order
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Rating
 import com.android.sample.model.RatingSummary
-import com.android.sample.model.Trip
 import com.android.sample.model.normalizeRatingComment
+import com.commando.app.model.Trip
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext

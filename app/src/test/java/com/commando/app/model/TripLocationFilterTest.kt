@@ -1,6 +1,8 @@
-package com.android.sample.model
+package com.commando.app.model
 
 // AI assistance: Claude Code; OpenAI Codex (classification tests).
+import com.android.sample.model.TripSearchCriteria
+import com.android.sample.model.classifyTripSearch
 import java.time.Instant
 import java.time.ZoneOffset
 import org.junit.Assert.assertEquals

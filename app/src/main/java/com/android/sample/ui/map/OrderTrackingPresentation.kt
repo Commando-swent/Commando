@@ -3,8 +3,8 @@ package com.android.sample.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.annotation.StringRes
 import com.android.sample.R
-import com.android.sample.model.CommandoPosition
-import com.android.sample.model.Location
+import com.commando.app.model.CommandoPosition
+import com.commando.app.model.Location
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.ceil

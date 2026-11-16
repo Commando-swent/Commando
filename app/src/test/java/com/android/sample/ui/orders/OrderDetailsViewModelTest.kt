@@ -12,9 +12,7 @@ import com.android.sample.data.repository.RatingResult
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Location
 import com.android.sample.model.NewRating
-import com.android.sample.model.NewTrip
 import com.android.sample.model.Order
 import com.android.sample.model.OrderDecision
 import com.android.sample.model.OrderDraft
@@ -22,9 +20,11 @@ import com.android.sample.model.OrderItem
 import com.android.sample.model.OrderStatus
 import com.android.sample.model.Rating
 import com.android.sample.model.RatingSummary
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
-import com.android.sample.model.TripTransition
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
+import com.commando.app.model.TripTransition
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine

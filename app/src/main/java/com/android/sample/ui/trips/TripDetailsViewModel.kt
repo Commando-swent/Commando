@@ -6,8 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
-import com.android.sample.model.Trip
-import com.android.sample.model.TripTransition
+import com.commando.app.model.Trip
+import com.commando.app.model.TripTransition
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

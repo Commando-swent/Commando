@@ -6,10 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.model.CriteriaProblem
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripFeed
 import com.android.sample.model.TripSearchCriteria
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripFeed
 import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

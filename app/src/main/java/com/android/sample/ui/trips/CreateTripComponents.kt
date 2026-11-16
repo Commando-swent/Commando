@@ -27,7 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
-import com.android.sample.model.Location
+import com.commando.app.model.Location
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime

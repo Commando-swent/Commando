@@ -11,7 +11,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.catalogue.StubProductRepository
@@ -19,6 +18,7 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
+import com.commando.app.model.*
 import java.time.Instant
 import org.junit.Rule
 import org.junit.Test

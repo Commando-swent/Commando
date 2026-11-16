@@ -15,10 +15,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.TripError
-import com.android.sample.model.Location
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
-import com.android.sample.model.TripTransition
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
+import com.commando.app.model.TripTransition
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

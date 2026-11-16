@@ -25,6 +25,8 @@ import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
 import com.android.sample.ui.trips.discoveryTrip
+import com.commando.app.model.Location
+import com.commando.app.model.TripLocations
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter

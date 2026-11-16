@@ -37,6 +37,9 @@ import com.android.sample.data.repository.RatingError
 import com.android.sample.model.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
+import com.commando.app.model.Location
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import java.time.Instant
 
 /** Stable action selectors, independent of the presentation language. */

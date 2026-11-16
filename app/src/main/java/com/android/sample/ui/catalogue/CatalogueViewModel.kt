@@ -15,9 +15,9 @@ import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderDraft
 import com.android.sample.model.OrderItem
 import com.android.sample.model.Product
-import com.android.sample.model.Trip
 import com.android.sample.model.storeIdFor
 import com.android.sample.ui.orders.OrderDraftState
+import com.commando.app.model.Trip
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

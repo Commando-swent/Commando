@@ -29,7 +29,7 @@ import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.model.MAX_ORDER_PRODUCTS
 import com.android.sample.model.OrderItem
-import com.android.sample.model.Trip
+import com.commando.app.model.Trip
 
 object ReviewOrderTags {
   const val COMMISSION = "order_commission"

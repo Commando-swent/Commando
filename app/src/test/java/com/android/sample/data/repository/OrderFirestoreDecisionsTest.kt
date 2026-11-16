@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (#325).
 import com.android.sample.model.*
+import com.commando.app.model.TripStatus
 import com.google.firebase.Timestamp
 import java.time.Instant
 import org.junit.Assert.*

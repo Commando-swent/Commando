@@ -5,12 +5,12 @@ import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.data.repository.TripResult
 import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.android.sample.data.repository.successData
-import com.android.sample.model.Location
-import com.android.sample.model.NewTrip
-import com.android.sample.model.Trip
-import com.android.sample.model.TripStatus
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.model.Location
+import com.commando.app.model.NewTrip
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp

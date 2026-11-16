@@ -344,7 +344,6 @@
     <string name="profile_add_photo_description">Ajouter une photo de profil</string>
     <string name="app_name">Commando</string>
     <string name="title_activity_main">MainActivity</string>
-    <string name="title_activity_second">SecondActivity</string>
     <string name="nav_login">Connexion</string>
     <string name="nav_home">Accueil</string>
     <string name="nav_orders">Commandes</string>

@@ -189,11 +189,12 @@ dependencies {
   globalTestImplementation(libs.kaspresso.compose)
 }
 
+// AI assistance: OpenAI Codex. Match suites by their stable package suffix across namespace moves.
 val firebaseEmulatorTestPatterns =
     mapOf(
-        "auth" to "com.android.sample.emulator.auth.*",
-        "firestoreAdapter" to "com.android.sample.emulator.firestore.adapter.*",
-        "firestoreSecurity" to "com.android.sample.emulator.firestore.security.*",
+        "auth" to "*.emulator.auth.*",
+        "firestoreAdapter" to "*.emulator.firestore.adapter.*",
+        "firestoreSecurity" to "*.emulator.firestore.security.*",
     )
 val firebaseEmulatorProfile = providers.gradleProperty("firebaseEmulatorProfile").orNull
 
@@ -205,7 +206,7 @@ tasks.withType<Test> {
   }
 
   if (firebaseEmulatorProfile == null) {
-    filter { excludeTestsMatching("com.android.sample.emulator.*") }
+    filter { firebaseEmulatorTestPatterns.values.forEach { excludeTestsMatching(it) } }
   } else if (name == "testDebugUnitTest") {
     filter {
       val testPattern =

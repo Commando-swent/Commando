@@ -11,6 +11,7 @@
     <string name="chat_read_only">Discussion fermée · %1$s</string>
     <plurals name="chat_text_limit">
         <item quantity="one">Utilisez au maximum %1$d caractère.</item>
+        <item quantity="many">Utilisez au maximum %1$d caractères.</item>
         <item quantity="other">Utilisez au maximum %1$d caractères.</item>
     </plurals>
     <string name="chat_locked_pending">La discussion s’ouvre après acceptation de la commande.</string>

@@ -85,10 +85,12 @@ fun OrderChatScreen(
     onRetry: () -> Unit,
     onDraft: (String) -> Unit,
     onSend: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
-      Modifier.fillMaxSize()
+      modifier
+          .fillMaxSize()
           .testTag(OrderChatTestTags.SCREEN)
           .background(
               Brush.verticalGradient(
@@ -419,6 +421,7 @@ private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onS
 internal fun OrderChatEntry(
     state: com.android.sample.ui.orders.OrderDetailsUiState.Content,
     onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
   val role =
       stringResource(
@@ -426,6 +429,7 @@ internal fun OrderChatEntry(
           else R.string.home_requester
       )
   Surface(
+      modifier = modifier,
       shape = RoundedCornerShape(19.dp),
       color = ChatSurface,
       border = BorderStroke(1.dp, ChatOutline),

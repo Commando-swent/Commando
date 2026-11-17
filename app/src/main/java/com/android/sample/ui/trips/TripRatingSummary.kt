@@ -28,6 +28,18 @@ object TripRatingTestTags {
 private val CREATOR_AVATAR_SIZE = 52.dp
 private val CREATOR_GAP = 14.dp
 private val CREATOR_TEXT_INSET = CREATOR_AVATAR_SIZE + CREATOR_GAP
+private val DETAIL_FONT_SIZE = 13.sp
+private val DETAIL_LINE_HEIGHT = 18.sp
+private val CREATOR_LABEL_FONT_SIZE = 11.sp
+private val CREATOR_LABEL_LETTER_SPACING = 0.8.sp
+private val CREATOR_NAME_SPACING = 3.dp
+private val CREATOR_NAME_FONT_SIZE = 16.sp
+private val CREATOR_NAME_LINE_HEIGHT = 22.sp
+private val RATING_SPACING = 6.dp
+private val RATING_PROGRESS_SIZE = 16.dp
+private val RATING_PROGRESS_STROKE_WIDTH = 2.dp
+private val RATING_STAR_SIZE = 18.sp
+private val RETRY_CONTENT_PADDING = 0.dp
 
 /**
  * Shows the trip creator and overall rating [state]; [onRetry] reloads only the rating summary.
@@ -44,14 +56,19 @@ internal fun TripRatingSummary(
   val colors = MaterialTheme.colorScheme
   val typography = MaterialTheme.typography
   val locale = LocalConfiguration.current.locales[0]
-  val detailStyle = typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp)
+  val detailStyle =
+      typography.bodySmall.copy(fontSize = DETAIL_FONT_SIZE, lineHeight = DETAIL_LINE_HEIGHT)
   Column(
       modifier.fillMaxWidth().testTag(TripRatingTestTags.SECTION),
-      verticalArrangement = Arrangement.spacedBy(14.dp),
+      verticalArrangement = Arrangement.spacedBy(CREATOR_GAP),
   ) {
     Text(
         stringResource(R.string.trip_details_created_by).uppercase(locale),
-        style = typography.labelSmall.copy(fontSize = 11.sp, letterSpacing = 0.8.sp),
+        style =
+            typography.labelSmall.copy(
+                fontSize = CREATOR_LABEL_FONT_SIZE,
+                letterSpacing = CREATOR_LABEL_LETTER_SPACING,
+            ),
         color = colors.onSurfaceVariant,
         modifier = Modifier.semantics { heading() },
     )
@@ -63,10 +80,17 @@ internal fun TripRatingSummary(
       Box(Modifier.size(CREATOR_AVATAR_SIZE)) {
         ProfileAvatar(null, showPhotoAction = false, diameter = CREATOR_AVATAR_SIZE)
       }
-      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+      Column(
+          Modifier.weight(1f),
+          verticalArrangement = Arrangement.spacedBy(CREATOR_NAME_SPACING),
+      ) {
         Text(
             commandoName?.takeUnless(String::isBlank) ?: stringResource(R.string.home_commando),
-            style = typography.titleMedium.copy(fontSize = 16.sp, lineHeight = 22.sp),
+            style =
+                typography.titleMedium.copy(
+                    fontSize = CREATOR_NAME_FONT_SIZE,
+                    lineHeight = CREATOR_NAME_LINE_HEIGHT,
+                ),
             color = colors.onSurface,
         )
         Text(
@@ -81,15 +105,18 @@ internal fun TripRatingSummary(
             .padding(start = CREATOR_TEXT_INSET)
             .testTag(TripRatingTestTags.SUMMARY)
             .semantics { liveRegion = LiveRegionMode.Polite },
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(RATING_SPACING),
     ) {
       when (state) {
         TripRatingUiState.Loading -> {
           Row(
               verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              horizontalArrangement = Arrangement.spacedBy(RATING_SPACING),
           ) {
-            CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+            CircularProgressIndicator(
+                Modifier.size(RATING_PROGRESS_SIZE),
+                strokeWidth = RATING_PROGRESS_STROKE_WIDTH,
+            )
             Text(
                 stringResource(R.string.trip_details_rating_loading),
                 style = detailStyle,
@@ -110,9 +137,9 @@ internal fun TripRatingSummary(
           Row(
               Modifier.clearAndSetSemantics { contentDescription = description },
               verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              horizontalArrangement = Arrangement.spacedBy(RATING_SPACING),
           ) {
-            Text("★", color = RatingAmber, fontSize = 18.sp)
+            Text("★", color = RatingAmber, fontSize = RATING_STAR_SIZE)
             Text(
                 stringResource(R.string.trip_details_rating_value, average, count),
                 style = detailStyle,
@@ -135,7 +162,7 @@ internal fun TripRatingSummary(
           TextButton(
               onClick = onRetry,
               modifier = Modifier.testTag(TripRatingTestTags.RETRY),
-              contentPadding = PaddingValues(0.dp),
+              contentPadding = PaddingValues(RETRY_CONTENT_PADDING),
           ) {
             Text(stringResource(R.string.trips_retry))
           }

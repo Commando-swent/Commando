@@ -316,14 +316,17 @@ private fun AuthenticatedApp(
       tripRoutes(
           navController = navController,
           tripRepository = tripRepository,
-          userId = userId,
-          mode = { appUiState.mode },
+          session =
+              TripRouteSession(
+                  userId = userId,
+                  mode = { appUiState.mode },
+                  ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
+                  commandoName = { ownerId ->
+                    repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
+                  },
+              ),
           locationFilter = locationFilter,
           savedSearchViewModel = savedSearchViewModel,
-          ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
-          commandoName = { ownerId ->
-            repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
-          },
       )
       composable(
           route = CommandoScreens.IncomingOrders.route,

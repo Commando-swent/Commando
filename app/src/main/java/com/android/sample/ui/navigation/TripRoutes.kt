@@ -31,19 +31,24 @@ import com.android.sample.ui.trips.TripRatingViewModel
 import com.commando.app.model.TripLocations
 
 /**
- * Registers trip creation, discovery, the owner's list and Trip Details. [mode] is read when each
- * destination composes, not when the graph is built, so Trip Details shows the current mode's
- * actions. [commandoName] returns the signed-in user's name when they own the trip.
+ * The signed-in account as seen by the trip routes. [mode] is read when a destination composes, not
+ * when the graph is built, so Trip Details shows the current mode's actions. [ratingRepository] is
+ * bound to the session, and [commandoName] returns the user's name when they own the trip.
  */
+internal class TripRouteSession(
+    val userId: String,
+    val mode: () -> AppMode,
+    val ratingRepository: () -> RatingRepository,
+    val commandoName: (String?) -> String?,
+)
+
+/** Registers trip creation, discovery, the owner's list and Trip Details. */
 internal fun NavGraphBuilder.tripRoutes(
     navController: NavHostController,
     tripRepository: TripRepository,
-    userId: String,
-    mode: () -> AppMode,
+    session: TripRouteSession,
     locationFilter: TripLocationFilterViewModel,
     savedSearchViewModel: SavedTripSearchViewModel,
-    ratingRepository: () -> RatingRepository,
-    commandoName: (String?) -> String?,
 ) {
   composable(route = CommandoScreens.CreateTrip.name) { entry ->
     val createTripViewModel: CreateTripViewModel =
@@ -102,7 +107,7 @@ internal fun NavGraphBuilder.tripRoutes(
   composable(route = CommandoScreens.MyTrips.name) { entry ->
     // The authenticated graph is keyed by account, so this list never outlives its owner.
     val myTripsViewModel: MyTripsViewModel =
-        viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
+        viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, session.userId) }
     // Coming back from Trip Details shows a status the owner just changed there.
     RefreshOnResume(myTripsViewModel, myTripsViewModel::retry)
     MyTripsScreen(
@@ -128,30 +133,30 @@ internal fun NavGraphBuilder.tripRoutes(
         viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
     val tripState by tripDetailsViewModel.uiState.collectAsState()
     val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
-    val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, ratingRepository)
+    val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
     // The entry point is for the owner only; the repository and rules check ownership again.
-    val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == userId
+    val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == session.userId
     TripDetailsScreen(
         viewModel = tripDetailsViewModel,
         onBack = { navController.popBackStack() },
         onAddItems =
-            if (mode() == AppMode.Requester) {
+            if (session.mode() == AppMode.Requester) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
               }
             } else null,
         onViewOrders =
-            if (mode() == AppMode.Commando && ownsTrip) {
+            if (session.mode() == AppMode.Commando && ownsTrip) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
                   launchSingleTop = true
                 }
               }
             } else null,
-        showOwnerActions = mode() == AppMode.Commando && ownsTrip,
+        showOwnerActions = session.mode() == AppMode.Commando && ownsTrip,
         ratingState = ratingState,
         onRetryRating = onRetryRating,
-        commandoName = commandoName(ownerId),
+        commandoName = session.commandoName(ownerId),
     )
   }
 }

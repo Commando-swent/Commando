@@ -491,6 +491,7 @@
     <string name="order_tracking_retry">Réessayer le suivi</string>
     <string name="rating_title">Évaluer votre commande</string>
     <string name="rating_prompt">Comment était votre expérience avec ce commando ?</string>
+    <string name="order_details_submitted_rating">Votre évaluation</string>
     <string name="rating_select">Choisissez une note de 1 à 5</string>
     <string name="rating_star">%1$d sur %2$d étoiles</string>
     <string name="rating_value">%1$d / %2$d</string>

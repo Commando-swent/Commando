@@ -21,7 +21,7 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeTestTags
-import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.MapTestTags
 import com.android.sample.ui.map.OrderTrackingTestTags
 import com.android.sample.ui.map.PositionSharingTestTags
 import com.android.sample.ui.map.TripMapTestTags
@@ -301,8 +301,8 @@ class OrderNavigationTest {
     click(AppTestTags.TRIPS_BUTTON)
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(TripMapTestTags.STATUS).assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + "sample-migros").assertDoesNotExist()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + "sample-migros").assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.DETAILS).assertDoesNotExist()
     assertTrue(lookups.isEmpty())
     click(NavigationTestTags.MAP_LIST)
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).assertIsDisplayed()

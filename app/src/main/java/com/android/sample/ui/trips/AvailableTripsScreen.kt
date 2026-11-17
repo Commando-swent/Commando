@@ -124,7 +124,7 @@ fun AvailableTripsScreen(
     onOpenMap?.let {
       item {
         TextButton(onClick = it, modifier = Modifier.testTag(NavigationTestTags.OPEN_MAP)) {
-          Text(stringResource(R.string.nav_mock_map))
+          Text(stringResource(R.string.nav_map))
         }
       }
     }

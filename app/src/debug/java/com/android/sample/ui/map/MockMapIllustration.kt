@@ -60,7 +60,7 @@ internal fun MapIllustration(modifier: Modifier) {
 @Composable
 internal fun EmptyMapCard(modifier: Modifier) {
   Surface(
-      modifier.fillMaxWidth().testTag(MockMapTestTags.EMPTY),
+      modifier.fillMaxWidth().testTag(MapTestTags.EMPTY),
       shape = RoundedCornerShape(24.dp),
       color = MaterialTheme.colorScheme.secondaryContainer,
       border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
@@ -82,7 +82,7 @@ internal fun EmptyMapCard(modifier: Modifier) {
         )
       }
       Text(
-          stringResource(R.string.mock_map_empty_title),
+          stringResource(R.string.trip_map_empty_title),
           style = MaterialTheme.typography.titleMedium,
           textAlign = TextAlign.Center,
       )

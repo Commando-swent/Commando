@@ -47,7 +47,7 @@ class MockMapComponentsTest {
         )
       }
     }
-    val marker = compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + sample.id)
+    val marker = compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + sample.id)
     marker.assertIsNotSelected().assertHeightIsAtLeast(48.dp).performClick().assertIsSelected()
     assertEquals(1, clicks)
     marker.performClick()
@@ -66,7 +66,7 @@ class MockMapComponentsTest {
     compose.onNodeWithText("20:45").assertIsDisplayed()
     compose.onNodeWithContentDescription("Sample trip: Migros EPFL at 20:45").performClick()
     compose.onNodeWithText("+2").assertDoesNotExist()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + sample.id).assertIsSelected()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + sample.id).assertIsSelected()
   }
 
   @Test
@@ -82,7 +82,7 @@ class MockMapComponentsTest {
         }
       }
     }
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + second.id).performClick()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + second.id).performClick()
     assertEquals(listOf("other"), calls)
   }
 
@@ -97,7 +97,7 @@ class MockMapComponentsTest {
       }
     }
     compose.onNodeWithText("No trips on the map yet").assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.EMPTY).assertIsDisplayed()
+    compose.onNodeWithTag(MapTestTags.EMPTY).assertIsDisplayed()
     compose.onAllNodes(hasClickAction()).assertCountEquals(0)
     val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
     assertEquals(412, bitmap.width)

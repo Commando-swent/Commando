@@ -20,7 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import com.android.sample.R
-import com.android.sample.ui.map.MockMapTestTags as Tags
+import com.android.sample.ui.map.MapTestTags as Tags
 import com.android.sample.ui.navigation.NavigationTestTags
 
 @Composable
@@ -69,7 +69,7 @@ fun MockMapScreen(
         MapIllustration(Modifier.matchParentSize())
         MapPanel(Modifier.fillMaxWidth().padding(16.dp)) {
           Text(
-              stringResource(R.string.mock_map_title),
+              stringResource(R.string.trip_map_discovery_title),
               style = MaterialTheme.typography.titleMedium,
           )
           Text(
@@ -227,7 +227,7 @@ internal fun MapErrorCard(onRetry: (() -> Unit)?, modifier: Modifier) {
         Modifier.align(Alignment.CenterHorizontally).size(48.dp),
     )
     Text(
-        stringResource(R.string.mock_map_error_title),
+        stringResource(R.string.trip_map_error_title),
         style = MaterialTheme.typography.titleMedium,
     )
     Text(stringResource(R.string.mock_map_error_body), style = MaterialTheme.typography.bodyMedium)

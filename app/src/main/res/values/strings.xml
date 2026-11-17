@@ -17,9 +17,8 @@
     <string name="home_find_trip">Find a trip</string>
     <string name="home_publish_trip">Publish a trip</string>
     <string name="home_trips">Trips</string>
-    <string name="nav_mock_map">Mock map · sample trips</string>
+    <string name="nav_map">Map</string>
     <string name="nav_trip_list">Back to trip list</string>
-    <string name="mock_map_details_unavailable">Sample trip · details unavailable</string>
     <string name="nav_orders_demo">Demo orders · stored only for this session</string>
     <string name="position_sharing_title">Share my live position</string>
     <string name="position_sharing_off">Position sharing is off</string>

@@ -1,6 +1,7 @@
 package com.android.sample.model
 
 // AI assistance: OpenAI Codex.
+import com.commando.app.model.OrderStatus
 import java.time.Instant
 
 /** UTF-16 code units, matching Kotlin String.length; mirrored in firestore.rules. */

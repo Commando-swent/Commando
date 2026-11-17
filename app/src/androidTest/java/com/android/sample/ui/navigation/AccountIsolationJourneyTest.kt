@@ -189,6 +189,13 @@ class AccountIsolationJourneyTest {
               TripRepositoryFirestore(auth, client.firestore),
               dismissedGoogle,
               productRepository = ProductRepositoryFirestore(client.firestore),
+              ratingRepositoryFactory = {
+                FakeRatingRepository(
+                    it,
+                    FakeOrderRepository(it),
+                    FakeTripRepository("rating-owner"),
+                )
+              },
               orderRepositoryFactory = { OrderRepositoryFirestore(it, client.firestore) },
           )
         }

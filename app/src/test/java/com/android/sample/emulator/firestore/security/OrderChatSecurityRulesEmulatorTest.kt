@@ -4,6 +4,7 @@ package com.android.sample.emulator.firestore.security
 import android.os.Looper
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
+import com.commando.app.model.OrderStatus
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source

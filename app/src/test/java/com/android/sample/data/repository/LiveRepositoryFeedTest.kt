@@ -106,6 +106,10 @@ class LiveRepositoryFeedTest {
     repo.publishForDiscovery("trip", fix)
     assertEquals(fix, repo.observeDiscovery("owner", "trip").first())
     assertNull(repo.observeDiscovery("owner", "other-trip").first())
+    for (invalid in listOf(fix.copy(latitude = 91.0), fix.copy(capturedAt = now.minusMillis(1)))) {
+      assertTrue(runCatching { repo.publish("trip", invalid) }.isFailure)
+      assertEquals(fix, repo.observeDiscovery("owner", "trip").first())
+    }
     repo.publish("trip", fix)
     assertNull(repo.observeDiscovery("owner", "trip").first())
   }

@@ -236,6 +236,63 @@ class CommandoPositionSecurityRulesEmulatorTest {
     }
   }
 
+  @Test
+  fun discoveryRequiresSeparateOptInAndRejectsGuestsUnscopedQueriesAndForgedConsent() = runTest {
+    withClients("owner" to true, "viewer" to true, "guest" to false) { (owner, viewer, guest) ->
+      val trip = trip(owner)
+      val uid = owner.auth.currentUser!!.uid
+      val publisher = repo(owner)
+      fun position(client: EmulatorClient) =
+          client.firestore.collection("commandoPositions").document(uid)
+      publisher.publish(trip, fix())
+      assertPermissionDenied { position(viewer).get(Source.SERVER).await() }
+      assertPermissionDenied { position(guest).get(Source.SERVER).await() }
+      val consent = position(viewer).collection("discovery").document("consent")
+      assertPermissionDenied {
+        consent
+            .set(
+                mapOf(
+                    "enabled" to true,
+                    "tripId" to trip,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                )
+            )
+            .await()
+      }
+      assertPermissionDenied {
+        position(guest).collection("discovery").document("consent").get(Source.SERVER).await()
+      }
+      publisher.publishForDiscovery(trip, fix())
+      assertTrue(position(viewer).get(Source.SERVER).await().exists())
+      assertNotNull(repo(viewer).observeDiscovery(uid, trip).filterNotNull().first())
+      assertPermissionDenied {
+        viewer.firestore
+            .collection("commandoPositions")
+            .document(uid)
+            .update("discoverable", true)
+            .await()
+      }
+      assertPermissionDenied {
+        owner.firestore
+            .collection("commandoPositions")
+            .document(uid)
+            .update("discoverable", "yes")
+            .await()
+      }
+      assertPermissionDenied {
+        viewer.firestore.collection("commandoPositions").get(Source.SERVER).await()
+      }
+      publisher.publish(trip, fix())
+      assertPermissionDenied { position(viewer).get(Source.SERVER).await() }
+      assertPermissionDenied {
+        viewer.firestore.collection("commandoPositions").document(uid).get(Source.SERVER).await()
+      }
+      publisher.publishForDiscovery(trip, fix())
+      updateDocumentAsOwner("trips/$trip", mapOf("status" to "IN_PROGRESS"))
+      assertPermissionDenied { position(viewer).get(Source.SERVER).await() }
+    }
+  }
+
   private fun repo(client: EmulatorClient) =
       CommandoPositionRepositoryFirestore({ client.auth.currentUser?.uid }, client.firestore)
 

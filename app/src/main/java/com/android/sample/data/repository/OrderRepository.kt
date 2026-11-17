@@ -8,6 +8,10 @@ import com.commando.app.model.OrderStatus
 
 /** Inject the SAME session-scoped repository into Review, My Orders and Order Details. */
 interface OrderRepository {
+  /** Observe confirmed requester orders; null means unconfirmed, never an empty list. */
+  fun observeMyOrders(): kotlinx.coroutines.flow.Flow<OrderResult<List<Order>>?> =
+      kotlinx.coroutines.flow.flow { error("Live orders unsupported") }
+
   /** Derives requester identity from the session; does not clear the caller's draft. */
   suspend fun createOrder(draft: OrderDraft): OrderResult<Order>
 

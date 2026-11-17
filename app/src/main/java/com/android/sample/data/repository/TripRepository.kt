@@ -7,6 +7,9 @@ import com.commando.app.model.TripTransition
 import com.commando.app.model.blocksTripCompletion
 
 interface TripRepository {
+  /** Observe confirmed upcoming trips; null means unconfirmed. Unsupported adapters fail closed. */
+  fun observeUpcomingTrips(): kotlinx.coroutines.flow.Flow<TripResult<List<Trip>>?> =
+      kotlinx.coroutines.flow.flow { error("Live trips unsupported") }
 
   suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip>
 

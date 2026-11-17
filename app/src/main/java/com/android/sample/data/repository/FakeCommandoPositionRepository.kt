@@ -17,9 +17,12 @@ class FakeCommandoPositionRepository(
     private val clock: Clock = Clock.systemUTC(),
     private val positions: MutableStateFlow<Map<String, CommandoPosition>> =
         MutableStateFlow(emptyMap()),
+    private val discoveryTrips: MutableStateFlow<Map<String, String>> =
+        MutableStateFlow(emptyMap()),
 ) : CommandoPositionRepository {
   override suspend fun publish(tripId: String, position: CommandoPosition) {
     val uid = user()
+    discoveryTrips.update { it - uid }
     require(tripId.isDocumentId() && position.isFresh(clock.instant()))
     positions.update {
       val previous = it[uid]
@@ -30,8 +33,19 @@ class FakeCommandoPositionRepository(
     }
   }
 
+  override suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) {
+    publish(tripId, position)
+    discoveryTrips.update { it + (user() to tripId) }
+  }
+
+  override fun observeDiscovery(ownerId: String, tripId: String): Flow<CommandoPosition?> =
+      observe(ownerId).combine(discoveryTrips) { fix, consent ->
+        fix.takeIf { consent[ownerId] == tripId }
+      }
+
   override suspend fun stopSharing() {
     val uid = user()
+    discoveryTrips.update { it - uid }
     positions.update { it - uid }
   }
 

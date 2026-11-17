@@ -13,6 +13,19 @@ interface CommandoPositionRepository {
   /** Replaces the signed-in owner's position. [tripId] identifies an owned eligible trip. */
   suspend fun publish(tripId: String, position: CommandoPosition)
 
+  /**
+   * Explicit per-publication discovery opt-in; ordinary publish remains private to active orders.
+   */
+  suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) {
+    error("Discovery publication unsupported")
+  }
+
+  /**
+   * Observes only explicitly discoverable positions on this eligible trip; empty means unavailable.
+   */
+  fun observeDiscovery(ownerId: String, tripId: String): Flow<CommandoPosition?> =
+      kotlinx.coroutines.flow.flow { error("Discovery observation unsupported") }
+
   /** Deletes the owner's position; call and await before signing out while still authenticated. */
   suspend fun stopSharing()
 

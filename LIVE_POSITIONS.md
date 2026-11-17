@@ -69,3 +69,22 @@ The S6 work in #270/#272 (temporarily closed) retains automatic discovery, autom
 switching, multi-commando grouping and summaries. #273/#275 are closed; this implementation
 does not depend on them. Deployed rules, actual physical acquisition, Figma alignment and a
 production two-user demonstration remain checks to perform separately from injected tests.
+
+## Reactive discovery and tracking (#270 / #364)
+
+`observeUpcomingTrips` and `observeMyOrders` are session-bound streams; null means
+unconfirmed metadata, never a confirmed empty list. Cached/pending snapshots cannot
+select discovery. The subsequent #270 ViewModel PR supplies mode selection and grouping; #272 supplies
+foreground wiring, controls and navigation. This repository/security PR does not close #270.
+
+Discovery uses **separate consent on every publication**: `publishForDiscovery` writes
+the existing single position and `commandoPositions/{uid}/discovery/consent` atomically.
+The latter contains `enabled`/`tripId` and a server `updatedAt` revision, readable by
+authenticated users. Each publication advances that revision so rapid opt-out/opt-in
+can restart a permission-revoked listener even if intermediate snapshots coalesce. Coordinate
+reads require enabled consent for the exact shared trip, still PUBLISHED and future.
+Ordinary `publish` atomically disables discovery; stopping deletes both documents.
+Collection scans remain denied. Nearby means the shared 500 m radius from the selected
+delivery point, or EPFL centre when absent; shared store/time/handoff filters also apply.
+This is a presentation filter, not a geographic access restriction. Rules remain local
+until reviewed and deployed; no deployment or two-user production demo is claimed.

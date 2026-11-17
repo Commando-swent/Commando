@@ -66,6 +66,14 @@ service cloud.firestore {
     }
 
     match /commandoPositions/{ownerId} {
+      function canDiscover() {
+        let consent = get(/databases/$(database)/documents/commandoPositions/$(ownerId)/discovery/consent).data;
+        let trip = get(/databases/$(database)/documents/trips/$(resource.data.tripId)).data;
+        return consent.enabled == true && consent.tripId == resource.data.tripId
+          && trip.ownerId == ownerId && trip.status == "PUBLISHED"
+          && trip.scheduledAt > request.time;
+      }
+
       function canTrackSharedTrip() {
         let orderId = get(/databases/$(database)/documents/commandoPositions/$(ownerId)/viewers/$(request.auth.uid)).data.orderId;
         return positionOrderAccess(ownerId, orderId)
@@ -98,8 +106,20 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
       allow delete: if isAuthenticated() && request.auth.uid == ownerId;
       allow get: if isAuthenticated()
-        && (request.auth.uid == ownerId || canTrackSharedTrip());
+        && (request.auth.uid == ownerId || canTrackSharedTrip() || canDiscover());
       allow list: if false;
+
+      // Public consent contains no coordinates; positions remain one guarded document per owner.
+      match /discovery/{consentId} {
+        allow get: if isAuthenticated() && consentId == "consent";
+        allow create, update: if isAuthenticated() && request.auth.uid == ownerId
+          && consentId == "consent"
+          && request.resource.data.keys().hasAll(["enabled", "tripId", "updatedAt"])
+          && request.resource.data.keys().hasOnly(["enabled", "tripId", "updatedAt"])
+          && request.resource.data.enabled is bool && request.resource.data.tripId is string
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if isAuthenticated() && request.auth.uid == ownerId;
+      }
 
       // Each requester privately identifies one current order; no coordinates are duplicated.
       match /viewers/{viewerId} {

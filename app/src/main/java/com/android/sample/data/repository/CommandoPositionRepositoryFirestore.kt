@@ -2,8 +2,11 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.commando.app.model.CommandoPosition
+import com.commando.app.model.OrderStatus
+import com.commando.app.model.isActiveForTracking
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -16,9 +19,13 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
 /** Server-confirmed positions. Firestore rules independently validate every eligibility witness. */
@@ -33,12 +40,19 @@ class CommandoPositionRepositoryFirestore(
   private val auth
     get() = FirebaseAuth.getInstance(firestore.app)
 
-  override suspend fun publish(tripId: String, position: CommandoPosition) {
+  override suspend fun publish(tripId: String, position: CommandoPosition) =
+      write(tripId, position, false)
+
+  override suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) =
+      write(tripId, position, true)
+
+  private suspend fun write(tripId: String, position: CommandoPosition, discoverable: Boolean) {
     val uid = user()
     require(tripId.isDocumentId() && position.isFresh(clock.instant()))
-    positions
-        .document(uid)
+    firestore
+        .batch()
         .set(
+            positions.document(uid),
             mapOf(
                 "tripId" to tripId,
                 "latitude" to position.latitude,
@@ -46,15 +60,44 @@ class CommandoPositionRepositoryFirestore(
                 "accuracyMeters" to position.accuracyMeters,
                 "capturedAt" to Timestamp(position.capturedAt),
                 "updatedAt" to FieldValue.serverTimestamp(),
-            )
+            ),
         )
+        .set(
+            consent(uid),
+            mapOf(
+                "enabled" to discoverable,
+                "tripId" to tripId,
+                "updatedAt" to FieldValue.serverTimestamp(),
+            ),
+        )
+        .commit()
         .await()
     checkSession(uid)
   }
 
+  private fun consent(ownerId: String) =
+      positions.document(ownerId).collection("discovery").document("consent")
+
+  @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+  override fun observeDiscovery(ownerId: String, tripId: String): Flow<CommandoPosition?> = flow {
+    val uid = user()
+    require(ownerId.isDocumentId() && tripId.isDocumentId())
+    emitAll(
+        documents(consent(ownerId), uid)
+            .flatMapLatest { metadata ->
+              if (metadata?.get("enabled") == true && metadata.get("tripId") == tripId)
+                  documents(positions.document(ownerId), uid)
+                      .map { it?.toCommandoPosition() }
+                      .catch { emit(null) }
+              else flowOf(null)
+            }
+            .freshPositions(clock)
+    )
+  }
+
   override suspend fun stopSharing() {
     val uid = user()
-    positions.document(uid).delete().await()
+    firestore.batch().delete(consent(uid)).delete(positions.document(uid)).commit().await()
     checkSession(uid)
   }
 
@@ -72,7 +115,8 @@ class CommandoPositionRepositoryFirestore(
           .await()
       checkSession(uid)
     }
-    val positionUpdates = snapshots(ownerId, uid)
+    val positionUpdates =
+        documents(positions.document(ownerId), uid).map { it?.toCommandoPosition() }
     val visible =
         if (orderId == null) positionUpdates
         else
@@ -83,29 +127,30 @@ class CommandoPositionRepositoryFirestore(
     emitAll(visible.freshPositions(clock))
   }
 
-  private fun snapshots(ownerId: String, uid: String): Flow<CommandoPosition?> = callbackFlow {
-    val listener =
-        positions.document(ownerId).addSnapshotListener(
-            { it.run() },
-            MetadataChanges.INCLUDE,
-        ) { doc, error ->
-          when {
-            !sameSession(uid) -> close(SecurityException(POSITION_SESSION_ENDED))
-            error != null -> close(error)
-            doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
-                trySend(null)
-            else -> trySend(doc.toCommandoPosition())
-          }
+  private fun documents(reference: DocumentReference, uid: String): Flow<DocumentSnapshot?> =
+      callbackFlow {
+        val listener =
+            reference.addSnapshotListener(
+                { it.run() },
+                MetadataChanges.INCLUDE,
+            ) { doc, error ->
+              when {
+                !sameSession(uid) -> close(SecurityException(POSITION_SESSION_ENDED))
+                error != null -> close(error)
+                doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
+                    trySend(null)
+                else -> trySend(doc)
+              }
+            }
+        val sessionListener = FirebaseAuth.AuthStateListener {
+          if (!sameSession(uid)) close(SecurityException(POSITION_SESSION_ENDED))
         }
-    val sessionListener = FirebaseAuth.AuthStateListener {
-      if (!sameSession(uid)) close(SecurityException(POSITION_SESSION_ENDED))
-    }
-    auth.addAuthStateListener(sessionListener)
-    awaitClose {
-      listener.remove()
-      auth.removeAuthStateListener(sessionListener)
-    }
-  }
+        auth.addAuthStateListener(sessionListener)
+        awaitClose {
+          listener.remove()
+          auth.removeAuthStateListener(sessionListener)
+        }
+      }
 
   private fun orderConfirmation(orderId: String, uid: String): Flow<Boolean> = callbackFlow {
     val listener = watchOrder(orderId, uid, { trySend(it) }, { close(it) })
@@ -129,7 +174,10 @@ class CommandoPositionRepositoryFirestore(
           error != null -> revoked(error)
           doc == null || doc.metadata.isFromCache || doc.metadata.hasPendingWrites() ->
               confirmed(false)
-          doc.get("requesterId") != uid || doc.get("status") !in ACTIVE_ORDER_STATUSES ->
+          doc.get("requesterId") != uid ||
+              OrderStatus.entries
+                  .firstOrNull { it.name == doc.get("status") }
+                  ?.isActiveForTracking() != true ->
               revoked(
                   FirebaseFirestoreException(
                       "Position order is no longer active",
@@ -142,7 +190,6 @@ class CommandoPositionRepositoryFirestore(
 
   private companion object {
     const val POSITION_SESSION_ENDED = "Position session ended"
-    val ACTIVE_ORDER_STATUSES = setOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
   }
 
   private suspend fun user(): String {
@@ -160,7 +207,10 @@ class CommandoPositionRepositoryFirestore(
 
 /** Decodes untrusted snapshots; missing or wrongly typed fields must not become live markers. */
 internal fun DocumentSnapshot.toCommandoPosition(): CommandoPosition? {
-  val data = data?.toMap() ?: return null
+  return data?.let(::decodeCommandoPosition)
+}
+
+private fun decodeCommandoPosition(data: Map<String, Any?>): CommandoPosition? {
   return CommandoPosition(
       (data["latitude"] as? Number)?.toDouble() ?: return null,
       (data["longitude"] as? Number)?.toDouble() ?: return null,

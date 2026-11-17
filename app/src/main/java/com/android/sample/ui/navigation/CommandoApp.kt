@@ -32,6 +32,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -487,21 +488,8 @@ private fun AuthenticatedApp(
             viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
         val tripState by tripDetailsViewModel.uiState.collectAsState()
         val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
-        var ratingState: TripRatingUiState? = null
-        var onRetryRating: () -> Unit = {}
-        if (ownerId != null) {
-          // Only this destination loads ratings; Review Order also reuses the trip lookup.
-          key(ownerId) {
-            val ratingViewModel: TripRatingViewModel =
-                viewModel(viewModelStoreOwner = entry, key = "trip-rating/$ownerId") {
-                  TripRatingViewModel(ratingRepositoryFactory(orders::currentUserId))
-                }
-            val summary by ratingViewModel.uiState.collectAsState()
-            ratingState = summary
-            onRetryRating = ratingViewModel::retry
-            RefreshOnResume(ratingViewModel to ownerId) { ratingViewModel.refresh(ownerId) }
-          }
-        }
+        val (ratingState, onRetryRating) =
+            rememberTripRating(ownerId, entry, orders, ratingRepositoryFactory)
         // The entry point is for the owner only; the repository and rules check ownership again.
         val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == userId
         TripDetailsScreen(
@@ -879,6 +867,26 @@ private fun AuthenticatedApp(
         } ?: androidx.compose.material3.CircularProgressIndicator()
       }
     }
+  }
+}
+
+/** Retains owner-specific ratings in the Trip Details entry, using its authenticated session. */
+@Composable
+private fun rememberTripRating(
+    ownerId: String?,
+    entry: NavBackStackEntry,
+    orders: SessionOrderViewModel,
+    ratingRepositoryFactory: (() -> String?) -> RatingRepository,
+): Pair<TripRatingUiState?, () -> Unit> {
+  if (ownerId == null) return null to {}
+  return key(ownerId) {
+    val model: TripRatingViewModel =
+        viewModel(viewModelStoreOwner = entry, key = "trip-rating/$ownerId") {
+          TripRatingViewModel(ratingRepositoryFactory(orders::currentUserId))
+        }
+    val state by model.uiState.collectAsState()
+    RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
+    state to model::retry
   }
 }
 

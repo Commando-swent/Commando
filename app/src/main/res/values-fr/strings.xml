@@ -373,6 +373,7 @@
     <string name="trip_details_rating_description">%1$s sur 5 étoiles, %2$s</string>
     <plurals name="trip_details_rating_count">
         <item quantity="one">%d évaluation</item>
+        <item quantity="many">%d évaluations</item>
         <item quantity="other">%d évaluations</item>
     </plurals>
     <string name="trip_details_back">Retour</string>

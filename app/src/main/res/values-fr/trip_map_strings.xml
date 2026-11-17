@@ -23,4 +23,15 @@
         <item quantity="other">%1$d trajets à venir sur le campus</item>
         <item quantity="many">%1$d trajets à venir sur le campus</item>
     </plurals>
+    <string name="trip_map_discovery_title">Trajets près de vous</string>
+    <string name="trip_map_sample_marker">Trajet fictif : %1$s à %2$s</string>
+    <string name="trip_map_sample_time">Départ fictif · %1$s</string>
+    <string name="trip_map_handoff">Point de remise</string>
+    <string name="trip_map_details">Voir le trajet</string>
+    <string name="trip_map_close">Fermer l’aperçu du trajet</string>
+    <string name="trip_map_empty_title">Aucun trajet sur la carte</string>
+    <string name="trip_map_error_title">Une erreur est survenue lors du chargement des trajets.</string>
+    <string name="trip_map_shared">%1$d TRAJETS À CE POINT DE REMISE</string>
+    <string name="trip_map_sample_page">Afficher le trajet fictif %1$d sur %2$d : %3$s</string>
+    <string name="trip_map_sample_details_unavailable">Trajet fictif · détails indisponibles</string>
 </resources>

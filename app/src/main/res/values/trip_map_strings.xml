@@ -22,4 +22,15 @@
         <item quantity="one">%1$d upcoming trip on campus</item>
         <item quantity="other">%1$d upcoming trips on campus</item>
     </plurals>
+    <string name="trip_map_sample_details_unavailable">Sample trip · details unavailable</string>
+    <string name="trip_map_discovery_title">Trips near you</string>
+    <string name="trip_map_sample_marker">Sample trip: %1$s at %2$s</string>
+    <string name="trip_map_sample_time">Sample departure · %1$s</string>
+    <string name="trip_map_handoff">Handoff point</string>
+    <string name="trip_map_details">View trip</string>
+    <string name="trip_map_close">Close trip preview</string>
+    <string name="trip_map_empty_title">No trips on the map yet</string>
+    <string name="trip_map_error_title">Something went wrong while loading trips.</string>
+    <string name="trip_map_shared">%1$d TRIPS AT THIS HANDOFF POINT</string>
+    <string name="trip_map_sample_page">Show sample trip %1$d of %2$d: %3$s</string>
 </resources>

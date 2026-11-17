@@ -55,7 +55,7 @@ import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.home.HomeTestTags
-import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.MapTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
@@ -587,8 +587,8 @@ class CommandoAppTest {
     compose
         .onNodeWithTag(TripMapTestTags.CLEAR_FILTER)
         .assert(hasText("CE building", substring = true))
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + firstTrip.id).assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + firstTrip.id).assertIsDisplayed()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
     click(NavigationTestTags.MAP_LIST)
     assertFiltered()
     compose.onTripCard(firstTrip.id).performClick()
@@ -667,8 +667,8 @@ class CommandoAppTest {
         .onNode(hasScrollToNodeAction())
         .performScrollToNode(hasTestTag(NavigationTestTags.OPEN_MAP))
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performClick()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
     pressBack()
     assertMigrosOnly()
     compose
@@ -707,7 +707,7 @@ class CommandoAppTest {
         .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + secondTrip.id)
         .performScrollTo()
         .performClick()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     assertTripDetails(secondTrip)
     pressBack()
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled()

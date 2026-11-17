@@ -48,7 +48,7 @@ internal fun MapMarker(
 ) {
   val description =
       stringResource(
-          if (trip.isSample) R.string.mock_map_marker else R.string.trip_map_marker,
+          if (trip.isSample) R.string.trip_map_sample_marker else R.string.trip_map_marker,
           trip.store,
           time,
           trip.handoff,
@@ -60,7 +60,7 @@ internal fun MapMarker(
                   labelShift.coerceAtLeast(-labelShift) * 2
           )
           .heightIn(min = 48.dp)
-          .testTag(MockMapTestTags.MARKER_PREFIX + trip.id)
+          .testTag(MapTestTags.MARKER_PREFIX + trip.id)
           .selectable(selected, role = Role.Button, onClick = onClick)
           .semantics { contentDescription = description },
       horizontalAlignment = Alignment.CenterHorizontally,
@@ -147,7 +147,7 @@ internal fun MapDiscoveryHeader(
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             stringResource(
-                if (tracking) R.string.order_tracking_title else R.string.mock_map_title
+                if (tracking) R.string.order_tracking_title else R.string.trip_map_discovery_title
             ),
             style = MaterialTheme.typography.titleMedium,
             fontSize = 21.sp,
@@ -262,8 +262,8 @@ internal fun MapFeedbackCard(
         is TripMapUiState.NoMatches -> noMatchesMessage(state.location)
         is TripMapUiState.InvalidCriteria -> criteriaProblemMessage(state.problem)
         TripMapUiState.SessionEnded -> stringResource(R.string.trip_map_session_ended)
-        is TripMapUiState.Error -> stringResource(R.string.mock_map_error_title)
-        else -> stringResource(R.string.mock_map_empty_title)
+        is TripMapUiState.Error -> stringResource(R.string.trip_map_error_title)
+        else -> stringResource(R.string.trip_map_empty_title)
       }
   MapFloatingSurface(
       modifier
@@ -312,7 +312,7 @@ internal fun MapFeedbackCard(
         if (error)
             Button(
                 onRefresh,
-                Modifier.fillMaxWidth().height(56.dp).testTag(MockMapTestTags.RETRY),
+                Modifier.fillMaxWidth().height(56.dp).testTag(MapTestTags.RETRY),
             ) {
               Text(stringResource(R.string.trips_retry))
             }

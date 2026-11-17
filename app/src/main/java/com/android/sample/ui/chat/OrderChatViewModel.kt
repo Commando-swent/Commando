@@ -28,6 +28,10 @@ data class OrderChatUiState(
     val sending: Boolean = false,
     val sendError: OrderError? = null,
 ) {
+  /** Unknown outcomes keep the submitted text immutable until the server reconciles it. */
+  val canEditDraft: Boolean
+    get() = !sending && sendError != OrderError.Unknown
+
   val canSend: Boolean
     get() =
         !loading &&
@@ -141,7 +145,7 @@ class OrderChatViewModel(
     if (invalidSession() || mutableState.value.sending || saved.get<String>(OUTBOUND) != null)
         return
     saved[DRAFT] = text
-    mutableState.update { it.copy(draft = text) }
+    mutableState.update { it.copy(draft = text, sendError = null) }
   }
 
   /** Reuses the saved ID/text on retry; busy taps and new sends in read-only states are ignored. */
@@ -172,7 +176,11 @@ class OrderChatViewModel(
     else {
       val error = (result as OrderResult.Error).error
       if (error == OrderError.NotAuthenticated) endSession()
-      else mutableState.update { it.copy(sending = false, sendError = error) }
+      else {
+        // Only Unknown may represent a committed write whose acknowledgement was lost.
+        if (error != OrderError.Unknown) saved[OUTBOUND] = null
+        mutableState.update { it.copy(sending = false, sendError = error) }
+      }
     }
   }
 

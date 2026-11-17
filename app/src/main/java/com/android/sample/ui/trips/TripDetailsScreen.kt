@@ -30,6 +30,8 @@ import com.commando.app.model.TripStatus
  * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);
  * [onViewOrders] opens the trip's incoming orders and is shown only when not null.
  * [showOwnerActions] is true only for the trip's owner and adds the close and complete actions.
+ * [ratingState] enables the creator section; [onRetryRating] retries only its summary.
+ * [commandoName] is the owner's known name, or null to show the generic Commando label.
  */
 @Composable
 fun TripDetailsScreen(
@@ -39,6 +41,9 @@ fun TripDetailsScreen(
     modifier: Modifier = Modifier,
     onViewOrders: ((String) -> Unit)? = null,
     showOwnerActions: Boolean = false,
+    ratingState: TripRatingUiState? = null,
+    onRetryRating: () -> Unit = {},
+    commandoName: String? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
   val ownerControls =
@@ -57,6 +62,9 @@ fun TripDetailsScreen(
       modifier,
       onViewOrders,
       ownerControls,
+      ratingState,
+      onRetryRating,
+      commandoName,
   )
 }
 
@@ -64,7 +72,9 @@ fun TripDetailsScreen(
  * Stateless trip details for [state]. Both actions receive the trip ID: [onAddItems] opens the
  * catalogue (disabled when null, or once the trip is no longer published) and [onViewOrders] opens
  * the incoming orders (hidden when null). [ownerControls] shows the owner's section when not null.
- * Back is blocked while a close or complete is being written.
+ * Back is blocked while a close or complete is being written. Optional [ratingState] is independent
+ * of trip actions; [onRetryRating] reloads only ratings. [commandoName] must belong to the trip
+ * owner; null uses a generic label without exposing IDs.
  */
 @Composable
 fun TripDetailsScreen(
@@ -75,6 +85,9 @@ fun TripDetailsScreen(
     modifier: Modifier = Modifier,
     onViewOrders: ((String) -> Unit)? = null,
     ownerControls: TripOwnerControls? = null,
+    ratingState: TripRatingUiState? = null,
+    onRetryRating: () -> Unit = {},
+    commandoName: String? = null,
 ) {
   Column(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
@@ -99,7 +112,7 @@ fun TripDetailsScreen(
       when (state) {
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
-          TripDetailsContent(state.trip)
+          TripDetailsContent(state.trip, ratingState, onRetryRating, commandoName)
           ownerControls?.let { TripOwnerSection(state, it) }
           if (onViewOrders != null) {
             TripDetailsButton(
@@ -130,7 +143,12 @@ fun TripDetailsScreen(
 }
 
 @Composable
-private fun TripDetailsContent(trip: Trip) {
+private fun TripDetailsContent(
+    trip: Trip,
+    ratingState: TripRatingUiState?,
+    onRetryRating: () -> Unit,
+    commandoName: String?,
+) {
   val locale = LocalConfiguration.current.locales[0]
   TripDetailsCard {
     Text(
@@ -149,6 +167,10 @@ private fun TripDetailsContent(trip: Trip) {
         label = stringResource(R.string.trip_details_handoff),
         value = trip.handoffLocation.name,
     )
+    if (ratingState != null) {
+      HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+      TripRatingSummary(ratingState, onRetryRating, commandoName)
+    }
   }
 }
 

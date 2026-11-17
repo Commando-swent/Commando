@@ -3,10 +3,16 @@ package com.android.sample.ui.chat
 // AI assistance: OpenAI Codex.
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.model.*
@@ -74,6 +80,33 @@ class OrderChatScreenTest {
     tag(OrderChatTestTags.BACK).performClick()
     tag(OrderChatTestTags.INFO).performClick()
     assertEquals(2, backs)
+  }
+
+  @Test
+  fun parentModifiersConstrainTheScreenAndEntryRoots() {
+    val entryTag = "parent_chat_entry"
+    val context = state.context!!
+    compose.setContent {
+      SampleAppTheme {
+        Column {
+          OrderChatScreen(
+              state,
+              {},
+              {},
+              {},
+              {},
+              modifier = Modifier.width(320.dp).height(480.dp),
+          )
+          OrderChatEntry(
+              OrderDetailsUiState.Content(context.order, context.trip, context.viewerId),
+              {},
+              modifier = Modifier.width(280.dp).testTag(entryTag),
+          )
+        }
+      }
+    }
+    tag(OrderChatTestTags.SCREEN).assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(480.dp)
+    tag(entryTag).assertWidthIsEqualTo(280.dp)
   }
 
   @Test

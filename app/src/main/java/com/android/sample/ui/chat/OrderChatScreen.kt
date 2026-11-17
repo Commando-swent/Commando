@@ -113,11 +113,19 @@ fun OrderChatScreen(
                 Modifier.align(Alignment.Center).testTag(OrderChatTestTags.LOADING)
             )
         error != null ->
-            ChatLoadError(
-                error,
-                onRetry,
-                Modifier.align(Alignment.Center),
-            )
+            Column(
+                Modifier.align(Alignment.Center).padding(24.dp).testTag(OrderChatTestTags.ERROR),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+              Text(
+                  stringResource(chatLoadErrorMessage(error)),
+                  Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+              )
+              if (error != OrderError.NotAuthenticated)
+                  TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
+                    Text(stringResource(R.string.my_orders_retry))
+                  }
+            }
         state.chat != null -> ChatHistory(state)
       }
     }
@@ -125,27 +133,15 @@ fun OrderChatScreen(
   }
 }
 
-/** Renders a known load failure separately from the nullable conversation state. */
-@Composable
-private fun ChatLoadError(error: OrderError, onRetry: () -> Unit, modifier: Modifier = Modifier) {
-  Column(
-      modifier.padding(24.dp).testTag(OrderChatTestTags.ERROR),
-      horizontalAlignment = Alignment.CenterHorizontally,
-  ) {
-    val message =
-        when (error) {
-          OrderError.NotAuthenticated -> R.string.order_details_authentication_required
-          OrderError.PermissionDenied -> R.string.order_details_permission_denied
-          OrderError.NotFound -> R.string.order_details_not_found
-          else -> R.string.chat_load_error
-        }
-    Text(stringResource(message), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
-    if (error != OrderError.NotAuthenticated)
-        TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
-          Text(stringResource(R.string.my_orders_retry))
-        }
-  }
-}
+/** Maps a known load failure to its localized message without inferring nullable UI state. */
+@androidx.annotation.StringRes
+private fun chatLoadErrorMessage(error: OrderError): Int =
+    when (error) {
+      OrderError.NotAuthenticated -> R.string.order_details_authentication_required
+      OrderError.PermissionDenied -> R.string.order_details_permission_denied
+      OrderError.NotFound -> R.string.order_details_not_found
+      else -> R.string.chat_load_error
+    }
 
 @Composable
 private fun ChatHeader(context: ChatContext?, onBack: () -> Unit) {

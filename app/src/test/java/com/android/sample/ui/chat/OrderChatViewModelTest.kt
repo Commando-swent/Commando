@@ -21,27 +21,11 @@ class OrderChatViewModelTest {
   @get:Rule val main = MainDispatcherRule()
   private val user = MutableStateFlow<String?>("requester")
   private val now = Instant.parse("2030-01-01T12:00:00Z")
-  private val trip =
-      Trip(
-          "trip",
-          "owner",
-          TripLocations.stores.first(),
-          now,
-          TripLocations.handoffPoints.first(),
-          TripStatus.IN_PROGRESS,
-          now,
-          now,
-      )
-  private var order =
-      Order(
-          "order",
-          trip.id,
-          "requester",
-          listOf(OrderItem("milk", "Milk", 100, 1)),
-          0,
-          OrderStatus.ACCEPTED,
-          now,
-      )
+  private val store = TripLocations.stores.first()
+  private val handoff = TripLocations.handoffPoints.first()
+  private val items = listOf(OrderItem("milk", "Milk", 100, 1))
+  private val trip = Trip("trip", "owner", store, now, handoff, TripStatus.IN_PROGRESS, now, now)
+  private var order = Order("order", trip.id, "requester", items, 0, OrderStatus.ACCEPTED, now)
   private var load: suspend () -> OrderResult<Order> = { OrderResult.Success(order) }
   private var tripResult: TripResult<Trip> = TripResult.Success(trip)
   private val history =
@@ -87,12 +71,14 @@ class OrderChatViewModelTest {
 
   private suspend fun TestScope.withModel(
       saved: SavedStateHandle = SavedStateHandle(),
+      start: Boolean = true,
       block: suspend (OrderChatViewModel) -> Unit,
   ) {
     val store = ViewModelStore()
     val model = OrderChatViewModel(order.id, orders, trips, repository, { user.value }, user, saved)
     store.put("chat", model)
     try {
+      if (start) startChat(model)
       block(model)
     } finally {
       store.clear()
@@ -101,19 +87,32 @@ class OrderChatViewModelTest {
     assertEquals(0, subscriptions)
   }
 
+  private fun TestScope.startChat(model: OrderChatViewModel) {
+    model.start()
+    runCurrent()
+  }
+
+  private fun TestScope.sendDraft(model: OrderChatViewModel, text: String? = null) {
+    if (text != null) model.updateDraft(text)
+    model.send()
+    runCurrent()
+  }
+
+  private fun TestScope.publish(status: OrderStatus, message: ChatMessage) {
+    history.value = OrderResult.Success(OrderChat(status, listOf(message)))
+    runCurrent()
+  }
+
   @Test
   fun validDraftCannotSendBeforeLoadingOrAfterAccessFailure() = runTest {
     observe = { flow { awaitCancellation() } }
     withModel { model ->
-      model.start()
-      runCurrent()
       model.updateDraft("waiting for server permission")
       assertFalse(model.uiState.value.canSend)
       model.send()
       assertTrue(requests.isEmpty())
       observe = { flowOf(OrderResult.Error(OrderError.PermissionDenied)) }
-      model.start()
-      runCurrent()
+      startChat(model)
       assertEquals(OrderError.PermissionDenied, model.uiState.value.error)
       assertFalse(model.uiState.value.canSend)
       model.send()
@@ -122,12 +121,11 @@ class OrderChatViewModelTest {
   }
 
   @Test
-  fun successBusyClicksValidationAndLiveReadOnly() = runTest {
-    withModel { model ->
+  fun invalidDraftsCannotBeSubmitted() = runTest {
+    withModel(start = false) { model ->
       model.send()
       assertTrue(requests.isEmpty())
-      model.start()
-      runCurrent()
+      startChat(model)
       assertTrue(model.uiState.value.context!!.partnerIsCommando)
       for (invalid in listOf("", " \n", "x".repeat(MAX_CHAT_TEXT_LENGTH + 1))) {
         model.updateDraft(invalid)
@@ -135,33 +133,72 @@ class OrderChatViewModelTest {
         assertFalse(model.uiState.value.canSend)
       }
       assertTrue(requests.isEmpty())
+    }
+  }
+
+  @Test
+  fun duplicateTapsKeepOneInFlightMessage() = runTest {
+    withModel { model ->
       val gate = CompletableDeferred<OrderResult<Unit>>()
       write = { _, _ -> gate.await() }
       model.updateDraft("hello")
       model.send()
-      model.send()
-      runCurrent()
+      sendDraft(model)
       model.updateDraft("must not replace the in-flight text")
       assertEquals("hello", model.uiState.value.draft)
       assertEquals(1, requests.size)
       assertTrue(model.uiState.value.sending)
+      assertFalse(model.uiState.value.canEditDraft)
       gate.complete(OrderResult.Success(Unit))
       runCurrent()
       assertEquals("", model.uiState.value.draft)
       assertFalse(model.uiState.value.sending)
+    }
+  }
+
+  @Test
+  fun deliveredHistoryRemainsReadOnlyAfterRestart() = runTest {
+    withModel { model ->
       history.value = OrderResult.Success(OrderChat(OrderStatus.DELIVERED, emptyList()))
       runCurrent()
       model.updateDraft("late")
       model.send()
-      assertEquals(1, requests.size)
+      assertTrue(requests.isEmpty())
       assertFalse(model.uiState.value.canSend)
       model.stop()
       runCurrent()
       assertNull(model.uiState.value.context)
       assertNull(model.uiState.value.chat)
-      model.start()
-      runCurrent()
+      startChat(model)
       assertEquals(OrderStatus.DELIVERED, model.uiState.value.chat!!.status)
+    }
+  }
+
+  @Test
+  fun definitiveRejectionUnlocksPreservedDraftAndUsesNewId() = runTest {
+    for (error in
+        listOf(OrderError.InvalidData, OrderError.PermissionDenied, OrderError.NotFound)) {
+      val saved = SavedStateHandle()
+      write = { _, _ -> OrderResult.Error(error) }
+      withModel(saved) { model ->
+        sendDraft(model, "rejected")
+        assertEquals(error, model.uiState.value.sendError)
+        assertEquals("rejected", model.uiState.value.draft)
+        assertTrue(model.uiState.value.canEditDraft)
+        model.updateDraft("corrected")
+        assertNull(model.uiState.value.sendError)
+      }
+      val rejectedId = requests.last().first
+      withModel(saved) { model ->
+        assertTrue(model.uiState.value.canEditDraft)
+        model.updateDraft("corrected")
+        assertNull(model.uiState.value.sendError)
+        write = { _, _ -> OrderResult.Success(Unit) }
+        sendDraft(model)
+        assertNotEquals(rejectedId, requests.last().first)
+        assertEquals("corrected", requests.last().second)
+        assertEquals("", model.uiState.value.draft)
+      }
     }
   }
 
@@ -170,29 +207,21 @@ class OrderChatViewModelTest {
     val saved = SavedStateHandle()
     write = { _, _ -> OrderResult.Error(OrderError.Unknown) }
     withModel(saved) { model ->
-      model.start()
-      runCurrent()
-      model.updateDraft("keep me")
-      model.send()
-      runCurrent()
+      sendDraft(model, "keep me")
       assertEquals(OrderError.Unknown, model.uiState.value.sendError)
+      assertFalse(model.uiState.value.canEditDraft)
       model.updateDraft("do not overwrite an uncertain send")
       assertEquals("keep me", model.uiState.value.draft)
     }
     withModel(saved) { model ->
-      model.start()
-      runCurrent()
       write = { _, _ -> OrderResult.Success(Unit) }
-      model.send()
-      runCurrent()
+      sendDraft(model)
       assertEquals(requests.first(), requests.last())
       assertEquals("", model.uiState.value.draft)
       model.updateDraft("private draft")
     }
     user.value = "owner"
     withModel(saved) { model ->
-      model.start()
-      runCurrent()
       assertFalse(model.uiState.value.context!!.partnerIsCommando)
       assertEquals("", model.uiState.value.draft)
       user.value = null
@@ -211,24 +240,12 @@ class OrderChatViewModelTest {
   @Test
   fun uncertainCommitIsRecoveredFromMatchingServerMessage() = runTest {
     withModel { model ->
-      model.start()
-      runCurrent()
       write = { _, _ -> OrderResult.Error(OrderError.Unknown) }
-      model.updateDraft("committed")
-      model.send()
-      runCurrent()
+      sendDraft(model, "committed")
       val (id, text) = requests.single()
-      history.value =
-          OrderResult.Success(
-              OrderChat(OrderStatus.ACCEPTED, listOf(ChatMessage(id, "owner", text, now)))
-          )
-      runCurrent()
+      publish(OrderStatus.ACCEPTED, ChatMessage(id, "owner", text, now))
       assertEquals(text, model.uiState.value.draft)
-      history.value =
-          OrderResult.Success(
-              OrderChat(OrderStatus.DELIVERED, listOf(ChatMessage(id, "requester", text, now)))
-          )
-      runCurrent()
+      publish(OrderStatus.DELIVERED, ChatMessage(id, "requester", text, now))
       assertEquals("", model.uiState.value.draft)
       assertNull(model.uiState.value.sendError)
       assertFalse(model.uiState.value.sending)
@@ -237,22 +254,18 @@ class OrderChatViewModelTest {
 
   @Test
   fun boundedOfflineLoadingRetryAndUnexpectedStreamEnd() = runTest {
+    observe = { emptyFlow() }
     withModel { model ->
-      observe = { emptyFlow() }
-      model.start()
-      runCurrent()
       assertEquals(OrderError.Unknown, model.uiState.value.error)
       observe = { flow { awaitCancellation() } }
-      model.start()
-      runCurrent()
+      startChat(model)
       advanceTimeBy(OrderChatViewModel.RESPONSE_TIMEOUT_MS)
       runCurrent()
       assertEquals(OrderError.Unknown, model.uiState.value.error)
       assertFalse(model.uiState.value.loading)
       assertEquals(0, subscriptions)
       observe = { history }
-      model.start()
-      runCurrent()
+      startChat(model)
       assertNull(model.uiState.value.error)
       assertEquals(1, subscriptions)
       model.stop()
@@ -269,8 +282,6 @@ class OrderChatViewModelTest {
     val gate = CompletableDeferred<OrderResult<Order>>()
     load = { withContext(NonCancellable) { gate.await() } }
     withModel { model ->
-      model.start()
-      runCurrent()
       user.value = "outsider"
       runCurrent()
       gate.complete(OrderResult.Success(order))
@@ -281,12 +292,8 @@ class OrderChatViewModelTest {
     user.value = "requester"
     load = { OrderResult.Success(order) }
     withModel { model ->
-      model.start()
-      runCurrent()
       write = { _, _ -> OrderResult.Error(OrderError.NotAuthenticated) }
-      model.updateDraft("secret")
-      model.send()
-      runCurrent()
+      sendDraft(model, "secret")
       assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
       assertEquals("", model.uiState.value.draft)
     }
@@ -301,12 +308,8 @@ class OrderChatViewModelTest {
             OrderError.NotAuthenticated,
             OrderError.InvalidData,
         )) {
-      withModel { model ->
-        load = { OrderResult.Error(error) }
-        model.start()
-        runCurrent()
-        assertEquals(error, model.uiState.value.error)
-      }
+      load = { OrderResult.Error(error) }
+      withModel { model -> assertEquals(error, model.uiState.value.error) }
     }
     load = { OrderResult.Success(order) }
     for ((error, expected) in
@@ -316,11 +319,7 @@ class OrderChatViewModelTest {
             TripError.Unknown to OrderError.Unknown,
         )) {
       tripResult = TripResult.Error(error)
-      withModel { model ->
-        model.start()
-        runCurrent()
-        assertEquals(expected, model.uiState.value.error)
-      }
+      withModel { model -> assertEquals(expected, model.uiState.value.error) }
     }
     tripResult = TripResult.Success(trip)
     for (invalid in
@@ -330,56 +329,39 @@ class OrderChatViewModelTest {
             order.copy(requesterId = "outsider"),
         )) {
       load = { OrderResult.Success(invalid) }
-      withModel { model ->
-        model.start()
-        runCurrent()
-        assertEquals(OrderError.PermissionDenied, model.uiState.value.error)
-      }
+      withModel { model -> assertEquals(OrderError.PermissionDenied, model.uiState.value.error) }
     }
     load = { throw IllegalStateException("offline") }
-    withModel { model ->
-      model.start()
-      runCurrent()
-      assertEquals(OrderError.Unknown, model.uiState.value.error)
-    }
+    withModel { model -> assertEquals(OrderError.Unknown, model.uiState.value.error) }
   }
 
   @Test
   fun stalledAndThrowingSendsKeepTheirIdAndBackgroundingCancelsThem() = runTest {
     withModel { model ->
-      model.start()
-      runCurrent()
       write = { _, _ -> awaitCancellation() }
-      model.updateDraft("pending")
-      model.send()
-      runCurrent()
+      sendDraft(model, "pending")
       advanceTimeBy(OrderChatViewModel.RESPONSE_TIMEOUT_MS)
       runCurrent()
       assertEquals(OrderError.Unknown, model.uiState.value.sendError)
       assertEquals("pending", model.uiState.value.draft)
       write = { _, _ -> throw IllegalStateException("connection lost") }
-      model.send()
-      runCurrent()
+      sendDraft(model)
       assertEquals(requests.first(), requests.last())
       write = { _, _ -> awaitCancellation() }
-      model.send()
-      runCurrent()
+      sendDraft(model)
       model.stop()
       runCurrent()
       assertFalse(model.uiState.value.sending)
       assertEquals("pending", model.uiState.value.draft)
-      model.start()
-      runCurrent()
+      startChat(model)
       history.value = OrderResult.Error(OrderError.PermissionDenied)
       runCurrent()
       assertEquals(OrderError.PermissionDenied, model.uiState.value.error)
       assertNull(model.uiState.value.chat)
       history.value = OrderResult.Success(OrderChat(OrderStatus.DELIVERED, emptyList()))
-      model.start()
-      runCurrent()
+      startChat(model)
       write = { _, _ -> OrderResult.Success(Unit) }
-      model.send()
-      runCurrent()
+      sendDraft(model)
       assertEquals(requests.first(), requests.last())
       assertEquals("", model.uiState.value.draft)
     }
@@ -388,19 +370,11 @@ class OrderChatViewModelTest {
   @Test
   fun committedSnapshotBeforeFailedAcknowledgementStillClearsTheDraft() = runTest {
     withModel { model ->
-      model.start()
-      runCurrent()
       val acknowledgement = CompletableDeferred<OrderResult<Unit>>()
       write = { _, _ -> acknowledgement.await() }
-      model.updateDraft("acknowledged by stream")
-      model.send()
-      runCurrent()
+      sendDraft(model, "acknowledged by stream")
       val (id, text) = requests.single()
-      history.value =
-          OrderResult.Success(
-              OrderChat(OrderStatus.ACCEPTED, listOf(ChatMessage(id, "requester", text, now)))
-          )
-      runCurrent()
+      publish(OrderStatus.ACCEPTED, ChatMessage(id, "requester", text, now))
       assertTrue(model.uiState.value.sending)
       acknowledgement.complete(OrderResult.Error(OrderError.Unknown))
       runCurrent()
@@ -423,8 +397,6 @@ class OrderChatViewModelTest {
       OrderResult.Success(order)
     }
     withModel { model ->
-      model.start()
-      runCurrent()
       assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
       assertNull(model.uiState.value.context)
     }
@@ -437,23 +409,17 @@ class OrderChatViewModelTest {
       }
     }
     withModel { model ->
-      model.start()
-      runCurrent()
       assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
       assertNull(model.uiState.value.chat)
     }
     user.value = "requester"
     observe = { history }
     withModel { model ->
-      model.start()
-      runCurrent()
       write = { _, _ ->
         user.value = "outsider"
         OrderResult.Success(Unit)
       }
-      model.updateDraft("private")
-      model.send()
-      runCurrent()
+      sendDraft(model, "private")
       assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
       assertEquals("", model.uiState.value.draft)
     }
@@ -462,13 +428,9 @@ class OrderChatViewModelTest {
   @Test
   fun permissionLossWhileSendingCannotRestoreMessagesAndUnknownIdsCannotClearDraft() = runTest {
     withModel { model ->
-      model.start()
-      runCurrent()
       val acknowledgement = CompletableDeferred<OrderResult<Unit>>()
       write = { _, _ -> acknowledgement.await() }
-      model.updateDraft("private draft")
-      model.send()
-      runCurrent()
+      sendDraft(model, "private draft")
       history.value = OrderResult.Error(OrderError.PermissionDenied)
       runCurrent()
       acknowledgement.complete(OrderResult.Error(OrderError.Unknown))
@@ -482,8 +444,7 @@ class OrderChatViewModelTest {
               ChatMessage(id, "requester", "different", now),
           )) {
         history.value = OrderResult.Success(OrderChat(order.status, listOf(message)))
-        model.start()
-        runCurrent()
+        startChat(model)
         assertEquals(text, model.uiState.value.draft)
       }
     }

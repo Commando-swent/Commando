@@ -77,6 +77,20 @@ class OrderChatScreenTest {
   }
 
   @Test
+  fun definitiveRejectionAllowsCorrectionButUnknownOutcomeLocksTheInput() {
+    state = chatPreviewState().copy(draft = "rejected", sendError = OrderError.InvalidData)
+    show()
+    tag(OrderChatTestTags.INPUT).assertIsEnabled().performTextReplacement("corrected")
+    tag(OrderChatTestTags.SEND).assertIsEnabled().performClick()
+    assertEquals("corrected", state.draft)
+    assertEquals(1, sends)
+    compose.runOnIdle { state = state.copy(sendError = OrderError.Unknown) }
+    tag(OrderChatTestTags.INPUT).assertIsNotEnabled()
+    tag(OrderChatTestTags.SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.RETRY_SEND).assertIsEnabled()
+  }
+
+  @Test
   fun emptyHistorySendRetryAndTypedLoadingErrors() {
     state = chatPreviewState(empty = true)
     show()

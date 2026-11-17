@@ -55,6 +55,9 @@ class OrderChatNavigationTest {
             orderRepositoryFactory = { uid ->
               FakeOrderRepository(uid, initialOrders = listOf(order), tripRepository = trips)
             },
+            ratingRepositoryFactory = { uid ->
+              FakeRatingRepository(uid, FakeOrderRepository(uid), trips)
+            },
             chatRepositoryFactory = { uid ->
               object : OrderChatRepository {
                 override fun observeChat(orderId: String) =

@@ -369,7 +369,7 @@ private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onS
               state.draft,
               onDraft,
               Modifier.weight(1f).testTag(OrderChatTestTags.INPUT),
-              enabled = !state.sending && state.sendError == null,
+              enabled = state.canEditDraft,
               shape = RoundedCornerShape(25.dp),
               placeholder = { Text(stringResource(R.string.chat_placeholder)) },
               maxLines = 4,
@@ -385,7 +385,7 @@ private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onS
               Modifier.size(50.dp).testTag(OrderChatTestTags.SEND).semantics {
                 contentDescription = sendDescription
               },
-              enabled = state.canSend && state.sendError == null,
+              enabled = state.canSend && state.canEditDraft,
           ) {
             if (state.sending) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             else

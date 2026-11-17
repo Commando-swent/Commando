@@ -215,7 +215,7 @@ private fun AuthenticatedApp(
     onSignOut: () -> Unit,
     signOutError: AuthException?,
     onLanguageSelected: (AppLanguage) -> Unit,
-    positions: () -> CommandoPositionRepository,
+    positions: Lazy<CommandoPositionRepository>,
     locationProvider: DeviceLocationProvider?,
 ) {
   val appViewModel: AppViewModel = viewModel()
@@ -243,7 +243,7 @@ private fun AuthenticatedApp(
           ?: remember(context) { AndroidDeviceLocationProvider(context.applicationContext) }
   val sharing: PositionSharingViewModel = viewModel {
     PositionSharingViewModel(
-        positions,
+        positions::value,
         tripRepository,
         source,
         orders::currentUserId,
@@ -680,7 +680,7 @@ private fun AuthenticatedApp(
                   orderId,
                   orders.repository,
                   tripRepository,
-                  positions(),
+                  positions.value,
                   orders::currentUserId,
                   orders.sessionChanges,
               )

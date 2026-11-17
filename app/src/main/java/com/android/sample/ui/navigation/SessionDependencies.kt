@@ -28,7 +28,7 @@ internal class SessionDependencies(
     val checklists: ShoppingChecklistRepository,
     val savedSearches: SavedTripSearchRepository,
     val notifications: Lazy<NotificationRepository>,
-    val positions: () -> CommandoPositionRepository,
+    val positions: Lazy<CommandoPositionRepository>,
 )
 
 /**
@@ -91,7 +91,7 @@ internal fun rememberSessionDependencies(
       checklists,
       savedSearches,
       notifications,
-      { positions.repository },
+      positions.repository,
   )
 }
 
@@ -100,5 +100,5 @@ private class SessionTripRepositoryViewModel(val repository: TripRepository) : V
 
 /** Retains a lazy position transport for the authenticated session, including rotation. */
 private class SessionPositionRepository(create: () -> CommandoPositionRepository) : ViewModel() {
-  val repository by lazy(create)
+  val repository = lazy(create)
 }

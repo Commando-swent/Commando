@@ -2,16 +2,13 @@ package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
-// and the trip owner's close and complete actions (#233).
+// and the trip owner's close and complete actions (#233), and moved the shared helpers, session
+// dependencies and authentication routes into their own files (#322).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -24,16 +21,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
-import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -44,32 +35,22 @@ import com.android.sample.R
 import com.android.sample.data.location.AndroidDeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.repository.CommandoPositionRepository
-import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
 import com.android.sample.data.repository.NotificationRepository
-import com.android.sample.data.repository.NotificationRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.OrderRepositoryFirestore
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.RatingRepository
 import com.android.sample.data.repository.RatingRepositoryFirestore
 import com.android.sample.data.repository.SavedTripSearchRepository
-import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.ShoppingChecklistRepository
-import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
 import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.ui.auth.AndroidGoogleCredentialClient
 import com.android.sample.ui.auth.AuthMode
-import com.android.sample.ui.auth.AuthRoute
-import com.android.sample.ui.auth.AuthViewModel
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
-import com.android.sample.ui.auth.WelcomeScreen
 import com.android.sample.ui.catalogue.CatalogueRoute
 import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
@@ -144,8 +125,6 @@ fun CommandoApp(
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
 ) {
   val context = LocalContext.current
-  val activity = LocalActivity.current
-  val googleUnavailable = stringResource(R.string.auth_google_unavailable)
   val clearSessionError = stringResource(R.string.auth_google_clear_error)
   val googleClient =
       googleCredentials
@@ -166,83 +145,37 @@ fun CommandoApp(
         startDestination = if (signedIn) CommandoScreens.App.name else CommandoScreens.Welcome.name,
     ) {
       if (!signedIn) {
-        composable(route = CommandoScreens.Welcome.name) {
-          WelcomeScreen(
-              onLogIn = {
-                initialAuthMode = AuthMode.LOGIN
-                navController.navigate(CommandoScreens.Auth.name) { launchSingleTop = true }
-              },
-              onCreateAccount = {
-                initialAuthMode = AuthMode.SIGN_UP
-                navController.navigate(CommandoScreens.Auth.name) { launchSingleTop = true }
-              },
-          )
-        }
-        composable(route = CommandoScreens.Auth.name) {
-          val authViewModel: AuthViewModel = viewModel {
-            AuthViewModel(repository, initialAuthMode)
-          }
-          val authUiState by authViewModel.uiState.collectAsState()
-          Box(
-              Modifier.fillMaxSize()
-                  .testTag(
-                      if (authUiState.mode == AuthMode.LOGIN) NavigationTestTags.LOGIN_SCREEN
-                      else NavigationTestTags.SIGN_UP_SCREEN
-                  )
-          ) {
-            AuthRoute(
-                viewModel = authViewModel,
-                requestGoogleCredential = {
-                  try {
-                    googleClient.request(activity ?: context)
-                  } catch (_: GoogleSignInNotConfiguredException) {
-                    Toast.makeText(context, googleUnavailable, Toast.LENGTH_LONG).show()
-                    null
-                  }
-                },
-                // Session observation changes the graph after authentication succeeds.
-                onAuthenticated = {},
-                onBack = { navController.popBackStack() },
-            )
-          }
-        }
+        authRoutes(
+            navController = navController,
+            repository = repository,
+            googleClient = googleClient,
+            initialAuthMode = { initialAuthMode },
+            onAuthModeSelected = { initialAuthMode = it },
+        )
       } else {
         composable(route = CommandoScreens.App.name) {
-          val tripRepositoryViewModel: SessionTripRepositoryViewModel = viewModel {
-            SessionTripRepositoryViewModel(
-                tripRepository ?: TripRepositoryFirestore(authRepository = repository)
-            )
-          }
-          val trips = tripRepositoryViewModel.repository
-          val orders: SessionOrderViewModel = viewModel {
-            SessionOrderViewModel(user.uid, repository) { currentUserId ->
-              orderRepositoryFactory?.invoke(currentUserId)
-                  ?: OrderRepositoryFirestore(currentUserId)
-            }
-          }
-          // Bound to the same session identity as the orders, so an account change ends it too.
-          val checklists =
-              remember(orders) {
-                checklistRepositoryFactory?.invoke(orders::currentUserId)
-                    ?: ShoppingChecklistRepositoryFirestore(orders::currentUserId)
-              }
-          // Presets stay on this phone, one list per account (#191).
-          val savedSearches =
-              remember(orders) {
-                savedSearchRepositoryFactory?.invoke(orders::currentUserId)
-                    ?: SavedTripSearchRepositoryLocal(context, orders::currentUserId)
-              }
+          val session =
+              rememberSessionDependencies(
+                  userId = user.uid,
+                  authRepository = repository,
+                  tripRepository = tripRepository,
+                  orderRepositoryFactory = orderRepositoryFactory,
+                  checklistRepositoryFactory = checklistRepositoryFactory,
+                  savedSearchRepositoryFactory = savedSearchRepositoryFactory,
+                  notificationRepositoryFactory = notificationRepositoryFactory,
+                  positionRepositoryFactory = positionRepositoryFactory,
+              )
           AuthenticatedApp(
               repository = repository,
               photoRepository = photoRepository,
-              tripRepository = trips,
+              tripRepository = session.trips,
               productRepository = productRepository,
-              orders = orders,
+              orders = session.orders,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
-              notificationRepositoryFactory = notificationRepositoryFactory,
-              checklists = checklists,
-              savedSearches = savedSearches,
+              notifications = session.notifications,
+              checklists = session.checklists,
+              savedSearches = session.savedSearches,
               userId = user.uid,
               onSignOut = {
                 if (sessionViewModel.signOut()) {
@@ -257,7 +190,7 @@ fun CommandoApp(
               },
               signOutError = sessionUiState.signOutError,
               onLanguageSelected = onLanguageSelected,
-              positionRepositoryFactory = positionRepositoryFactory,
+              positions = session.positions,
               locationProvider = locationProvider,
           )
         }
@@ -275,24 +208,16 @@ private fun AuthenticatedApp(
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
-    notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)?,
+    notifications: Lazy<NotificationRepository>,
     checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
     userId: String,
     onSignOut: () -> Unit,
     signOutError: AuthException?,
     onLanguageSelected: (AppLanguage) -> Unit,
-    positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)?,
+    positions: () -> CommandoPositionRepository,
     locationProvider: DeviceLocationProvider?,
 ) {
-  // Lazily constructed so isolated previews and unrelated routes need no Firebase instance.
-  val notifications =
-      remember(orders) {
-        lazy {
-          notificationRepositoryFactory?.invoke(orders::currentUserId)
-              ?: NotificationRepositoryFirestore(orders::currentUserId)
-        }
-      }
   val appViewModel: AppViewModel = viewModel()
   // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
   val locationFilter: TripLocationFilterViewModel = viewModel()
@@ -313,18 +238,12 @@ private fun AuthenticatedApp(
           ?: CommandoScreens.Home
 
   val context = LocalContext.current
-  val positions: SessionPositionRepository = viewModel {
-    SessionPositionRepository {
-      positionRepositoryFactory?.invoke(orders::currentUserId)
-          ?: CommandoPositionRepositoryFirestore(orders::currentUserId)
-    }
-  }
   val source =
       locationProvider
           ?: remember(context) { AndroidDeviceLocationProvider(context.applicationContext) }
   val sharing: PositionSharingViewModel = viewModel {
     PositionSharingViewModel(
-        { positions.repository },
+        positions,
         tripRepository,
         source,
         orders::currentUserId,
@@ -761,7 +680,7 @@ private fun AuthenticatedApp(
                   orderId,
                   orders.repository,
                   tripRepository,
-                  positions.repository,
+                  positions(),
                   orders::currentUserId,
                   orders.sessionChanges,
               )
@@ -890,62 +809,6 @@ private fun rememberTripRating(
   }
 }
 
-/**
- * Calls [onResume] whenever the current destination resumes, including when it is first shown and
- * when the user comes back to it. [key] restarts the observer when the destination's state changes.
- */
-@Composable
-private fun RefreshOnResume(key: Any, onResume: () -> Unit) {
-  val lifecycleOwner = LocalLifecycleOwner.current
-  DisposableEffect(lifecycleOwner, key) {
-    val observer = LifecycleEventObserver { _, event ->
-      if (event == Lifecycle.Event.ON_RESUME) onResume()
-    }
-    lifecycleOwner.lifecycle.addObserver(observer)
-    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-  }
-}
-
-/** Retains one trip repository for the authenticated App entry, including activity recreation. */
-private class SessionTripRepositoryViewModel(val repository: TripRepository) : ViewModel()
-
-/** Reuse an existing top-level destination rather than stacking copies when switching tabs. */
-private fun NavHostController.openScreen(screen: CommandoScreens) {
-  if (!popBackStack(screen.name, inclusive = false)) {
-    navigate(screen.name) { launchSingleTop = true }
-  }
-}
-
-/** Replaces a saved edit's details entry while preserving its caller, including My Orders. */
-private fun NavHostController.openSavedOrder(editId: String?) {
-  val target = editId?.let(CommandoScreens::orderDetailsRoute) ?: CommandoScreens.MyOrders.name
-  navigate(target) {
-    if (editId != null) popUpTo(target) { inclusive = true } else popUpTo(CommandoScreens.Home.name)
-    launchSingleTop = true
-  }
-}
-
-/** Clears the previous edit cart when navigation leaves its flow; rotation retains the cart. */
-@Composable
-private fun DiscardAbandonedEdit(orders: SessionOrderViewModel, editingOrderId: String?) {
-  var previousEditId by remember { mutableStateOf<String?>(null) }
-  LaunchedEffect(editingOrderId) {
-    if (previousEditId != editingOrderId) previousEditId?.let(orders::finishEdit)
-    previousEditId = editingOrderId
-  }
-}
-
-/** Catalogue and Review carry the same trip and optional persisted edit identity. */
-private fun orderFlowArguments() =
-    listOf(
-        navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType },
-        navArgument(CommandoScreens.EDIT_ORDER_ARGUMENT) {
-          type = NavType.StringType
-          nullable = true
-          defaultValue = null
-        },
-    )
-
 /** Stops sharing on role exit and returns a sign-out action that awaits confirmed cleanup. */
 @Composable
 private fun rememberSharingSignOut(
@@ -966,9 +829,4 @@ private fun rememberSharingSignOut(
     if (mode == AppMode.Requester && !sharing.stop().await()) snackbar.showSnackbar(stopError)
   }
   return signOutAfterCleanup
-}
-
-/** Retains a lazy position transport for the authenticated session, including rotation. */
-private class SessionPositionRepository(create: () -> CommandoPositionRepository) : ViewModel() {
-  val repository by lazy(create)
 }

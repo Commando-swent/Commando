@@ -128,17 +128,3 @@ class TripRatingViewModelTest {
     }
   }
 }
-
-internal class RecordingRatings(
-    identity: () -> String? = { "requester" },
-    val ids: MutableList<String> = mutableListOf(),
-    private val base: RatingRepository =
-        FakeRatingRepository(identity, FakeOrderRepository(identity), FakeTripRepository("owner")),
-) : RatingRepository by base {
-  var load: (suspend (String) -> RatingResult<RatingSummary>)? = null
-
-  override suspend fun getRatingSummary(commandoId: String): RatingResult<RatingSummary> {
-    ids += commandoId
-    return load?.invoke(commandoId) ?: base.getRatingSummary(commandoId)
-  }
-}

@@ -113,14 +113,15 @@ class TripRoutesNavigationTest {
     click(tag)
   }
 
-  private fun addItems() = compose.onNodeWithText("Add items to this run").performScrollTo()
+  private fun string(id: Int, vararg args: Any) = compose.activity.getString(id, *args)
 
-  private fun viewOrders() = compose.onNodeWithText("View orders")
+  private fun addItems() =
+      compose.onNodeWithText(string(R.string.trip_details_add_items)).performScrollTo()
+
+  private fun viewOrders() = compose.onNodeWithText(string(R.string.trip_details_view_orders))
 
   private fun confirmDialog() =
-      compose
-          .onNodeWithText(compose.activity.getString(R.string.create_trip_dialog_ok))
-          .performClick()
+      compose.onNodeWithText(string(R.string.create_trip_dialog_ok)).performClick()
 
   private fun openCoopAsRequester() {
     scrollAndClick(AvailableTripsScreenTestTags.tripCard(coop.id))
@@ -167,9 +168,9 @@ class TripRoutesNavigationTest {
     scrollAndClick(TripSearchTestTags.TOGGLE)
     compose.onNodeWithText("Coop only").performScrollTo().performClick()
     val active =
-        compose.activity.getString(
+        string(
             R.string.trips_filters_active,
-            compose.activity.getString(R.string.trips_store_coop),
+            string(R.string.trips_store_coop),
         )
     val assertFiltered = {
       scrollTo(TripSearchTestTags.TOGGLE)
@@ -207,7 +208,7 @@ class TripRoutesNavigationTest {
     click(CreateTripScreenTestTags.TIME_FIELD)
     confirmDialog()
     click(CreateTripScreenTestTags.PUBLISH_BUTTON)
-    compose.onNodeWithText("Trip published").assertExists()
+    compose.onNodeWithText(string(R.string.create_trip_published)).assertExists()
     // Virtual time: Home is reached once the short confirmation snackbar has timed out.
     compose.mainClock.advanceTimeBy(5_000)
     compose.onNodeWithTag(HomeTestTags.CURRENT_TRIP).assertIsDisplayed()

@@ -74,8 +74,12 @@ production two-user demonstration remain checks to perform separately from injec
 
 `observeUpcomingTrips` and `observeMyOrders` are session-bound streams; null means
 unconfirmed metadata, never a confirmed empty list. Cached/pending snapshots cannot
-select discovery. The subsequent #270 ViewModel PR supplies mode selection and grouping; #272 supplies
-foreground wiring, controls and navigation. This repository/security PR does not close #270.
+select discovery. `LiveMapViewModel.start/stop` own listener lifetimes; #272 supplies foreground wiring,
+controls and navigation. Tracking retains closed-trip orders and every order link.
+Discovery starts only with confirmed orders and no active ones, applies the shared
+trip filters and uses a local clock to remove expired fixes without backend events.
+Session changes and retry cancel the former observers and reject late results.
+The ViewModel tries each distinct associated-trip witness without widening S5 access.
 
 Discovery uses **separate consent on every publication**: `publishForDiscovery` writes
 the existing single position and `commandoPositions/{uid}/discovery/consent` atomically.

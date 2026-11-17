@@ -18,8 +18,10 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.map.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
+import com.android.sample.ui.trips.RecordingRatings
 import com.commando.app.model.*
 import java.time.Instant
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,6 +34,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], qualifiers = "en-rUS-w412dp-h917dp-mdpi")
 class NearbyTripNavigationTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+  private val ratingIds = mutableListOf<String>()
 
   @Test
   fun locatePreservesFilterAndOpensTheNearbyTripDetails() {
@@ -75,6 +78,7 @@ class NearbyTripNavigationTest {
             FakeAuthRepository(AuthUser("requester")),
             trips,
             productRepository = StubProductRepository(),
+            ratingRepositoryFactory = { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
         )
       }
@@ -92,6 +96,7 @@ class NearbyTripNavigationTest {
     compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + near.id).performClick()
     compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
     compose.onNodeWithText(near.store.name).assertIsDisplayed()
+    compose.runOnIdle { assertEquals(listOf(near.ownerId), ratingIds) }
     compose.onNodeWithTag(TripMapTestTags.HEADER).assertDoesNotExist()
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
   }

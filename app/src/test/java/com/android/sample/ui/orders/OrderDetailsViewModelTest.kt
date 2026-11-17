@@ -1255,6 +1255,7 @@ class OrderDetailsViewModelTest {
             Triple(null, delivered, trip),
             Triple(trip.ownerId, delivered.copy(requesterId = trip.ownerId), trip),
             Triple(order.requesterId, delivered, trip.copy(id = "wrong-trip")),
+            Triple(order.requesterId, delivered.copy(id = "wrong-order"), trip),
         )) {
       val ratings = TestRatings()
       val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(viewer)
@@ -1272,6 +1273,53 @@ class OrderDetailsViewModelTest {
       assertTrue(ratings.inputs.isEmpty())
       vm.viewModelScope.cancel()
     }
+  }
+
+  @Test
+  fun changedIdentitySnapshotDiscardsHistoricalRatingBeforeAuthEventArrives() = runTest {
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+    var userId: String? = order.requesterId
+    val gate = CompletableDeferred<RatingResult<Rating?>>()
+    val ratings = TestRatings().apply { read = { gate.await() } }
+    val vm = ratingVm(ratings, session, OrderStatus.DELIVERED, { userId })
+    runCurrent()
+    assertEquals(listOf(order.id), ratings.readIds)
+    assertEquals(null, (vm.uiState.value as OrderDetailsUiState.Content).submittedRating)
+    userId = "another-requester"
+    assertEquals(order.requesterId, session.value)
+    gate.complete(RatingResult.Success(ratings.saved))
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    assertEquals(RatingDialogState(), vm.ratingState.value)
+    userId = order.requesterId
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    assertEquals(listOf(order.id), ratings.readIds)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun changedIdentitySnapshotPreventsQueuedHistoricalLookupWithoutAuthEvent() = runTest {
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
+    var userId: String? = order.requesterId
+    val ratings = TestRatings()
+    trips.lookup = {
+      // Queue the account change before the rating coroutine, without notifying session observers.
+      backgroundScope.launch { userId = "another-requester" }
+      TripResult.Success(trip)
+    }
+    val vm = ratingVm(ratings, session, OrderStatus.DELIVERED, { userId })
+    runCurrent()
+    assertEquals("another-requester", userId)
+    assertEquals(order.requesterId, session.value)
+    assertEquals(listOf(trip.id), trips.ids)
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    assertTrue(!ratings.initialized)
+    assertTrue(ratings.readIds.isEmpty())
+    assertTrue(ratings.inputs.isEmpty())
+    assertEquals(RatingDialogState(), vm.ratingState.value)
+    vm.viewModelScope.cancel()
   }
 
   @Test
@@ -1463,6 +1511,7 @@ class OrderDetailsViewModelTest {
       session: kotlinx.coroutines.flow.MutableStateFlow<String?> =
           kotlinx.coroutines.flow.MutableStateFlow(order.requesterId),
       status: OrderStatus = OrderStatus.READY_FOR_HANDOFF,
+      currentUserId: () -> String? = { session.value },
   ): OrderDetailsViewModel {
     orders.lookup = { OrderResult.Success(order.copy(status = status)) }
     orders.decision = { OrderResult.Success(order.copy(status = OrderStatus.DELIVERED)) }
@@ -1470,7 +1519,7 @@ class OrderDetailsViewModelTest {
         order.id,
         orders,
         trips,
-        { session.value },
+        currentUserId,
         session,
         { identity ->
           ratings.also {

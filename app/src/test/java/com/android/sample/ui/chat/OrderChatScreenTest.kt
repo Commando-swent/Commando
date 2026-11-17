@@ -116,6 +116,15 @@ class OrderChatScreenTest {
       tag(OrderChatTestTags.INPUT).assertDoesNotExist()
     }
     assertEquals(3, retries)
+    compose.runOnIdle { state = chatPreviewState() }
+    tag(OrderChatTestTags.ERROR).assertDoesNotExist()
+    tag(OrderChatTestTags.INPUT).assertIsDisplayed()
+    tag(OrderChatTestTags.MESSAGE + "incoming").assertIsDisplayed()
+    // A late error can coexist with stale content; it must still hide the composer/history.
+    compose.runOnIdle { state = state.copy(error = OrderError.NotFound) }
+    tag(OrderChatTestTags.ERROR).assertIsDisplayed()
+    tag(OrderChatTestTags.INPUT).assertDoesNotExist()
+    tag(OrderChatTestTags.HISTORY).assertDoesNotExist()
   }
 
   @Test

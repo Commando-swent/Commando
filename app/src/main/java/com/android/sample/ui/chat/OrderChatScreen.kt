@@ -88,6 +88,8 @@ fun OrderChatScreen(
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
+  val error = state.error
+  val showComposer = !state.loading && error == null && state.chat != null
   Column(
       modifier
           .fillMaxSize()
@@ -110,32 +112,38 @@ fun OrderChatScreen(
             CircularProgressIndicator(
                 Modifier.align(Alignment.Center).testTag(OrderChatTestTags.LOADING)
             )
-        state.error != null ->
-            Column(
-                Modifier.align(Alignment.Center).padding(24.dp).testTag(OrderChatTestTags.ERROR),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-              val message =
-                  when (state.error) {
-                    OrderError.NotAuthenticated -> R.string.order_details_authentication_required
-                    OrderError.PermissionDenied -> R.string.order_details_permission_denied
-                    OrderError.NotFound -> R.string.order_details_not_found
-                    else -> R.string.chat_load_error
-                  }
-              Text(
-                  stringResource(message),
-                  Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-              )
-              if (state.error != OrderError.NotAuthenticated)
-                  TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
-                    Text(stringResource(R.string.my_orders_retry))
-                  }
-            }
+        error != null ->
+            ChatLoadError(
+                error,
+                onRetry,
+                Modifier.align(Alignment.Center),
+            )
         state.chat != null -> ChatHistory(state)
       }
     }
-    if (!state.loading && state.error == null && state.chat != null)
-        ChatComposer(state, onDraft, onSend)
+    if (showComposer) ChatComposer(state, onDraft, onSend)
+  }
+}
+
+/** Renders a known load failure separately from the nullable conversation state. */
+@Composable
+private fun ChatLoadError(error: OrderError, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+  Column(
+      modifier.padding(24.dp).testTag(OrderChatTestTags.ERROR),
+      horizontalAlignment = Alignment.CenterHorizontally,
+  ) {
+    val message =
+        when (error) {
+          OrderError.NotAuthenticated -> R.string.order_details_authentication_required
+          OrderError.PermissionDenied -> R.string.order_details_permission_denied
+          OrderError.NotFound -> R.string.order_details_not_found
+          else -> R.string.chat_load_error
+        }
+    Text(stringResource(message), Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+    if (error != OrderError.NotAuthenticated)
+        TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
+          Text(stringResource(R.string.my_orders_retry))
+        }
   }
 }
 

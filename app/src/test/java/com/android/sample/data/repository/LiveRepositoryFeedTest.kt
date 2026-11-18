@@ -5,6 +5,8 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.trips.discoveryTrip
 import com.commando.app.model.*
+import com.google.firebase.Timestamp
+import io.mockk.every
 import io.mockk.mockk
 import java.time.Clock
 import java.time.Instant
@@ -23,6 +25,77 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveRepositoryFeedTest {
   private val now = Instant.parse("2026-11-10T10:00:00Z")
+
+  @Test
+  fun confirmedOrderFeedRejectsInvalidForeignAndPreviousSessionSnapshots() = runTest {
+    var uid: String? = "viewer"
+    val updates = MutableStateFlow<List<OrderFirestoreDocument>?>(null)
+    val source = mockk<OrderFirestoreDataSource>()
+    every { source.observeMine("viewer") } returns updates
+    val repository = OrderRepositoryFirestore(source, { uid })
+    val seen = mutableListOf<OrderResult<List<Order>>?>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeMyOrders().collect { seen += it }
+    }
+    assertNull(seen.last())
+    updates.value = listOf(FirestoreDocument("invalid", emptyMap()))
+    runCurrent()
+    assertEquals(OrderResult.Error(OrderError.InvalidData), seen.last())
+    val draft = OrderDraft("trip", listOf(OrderItem("milk", "Milk", 200, 1)))
+    val document =
+        FirestoreDocument(
+            "owned",
+            draft.firestoreFields("viewer") + ("createdAt" to Timestamp(now)),
+        )
+    updates.value = listOf(document.copy(data = document.data + ("requesterId" to "other")))
+    runCurrent()
+    assertEquals(OrderResult.Error(OrderError.PermissionDenied), seen.last())
+    updates.value = listOf(document)
+    runCurrent()
+    assertEquals("owned", (seen.last() as OrderResult.Success).data.single().id)
+    uid = "other"
+    updates.value = emptyList()
+    runCurrent()
+    assertEquals(OrderResult.Error(OrderError.NotAuthenticated), seen.last())
+  }
+
+  @Test
+  fun tripFeedRejectsMalformedDataAndLateSnapshotsAfterSignOut() = runTest {
+    val auth = FakeAuthRepository(AuthUser("viewer"))
+    val updates = MutableStateFlow<List<TripFirestoreDocument>?>(null)
+    val source = mockk<TripFirestoreDataSource>()
+    every { source.observeUpcomingTrips(any(), any(), "viewer") } returns updates
+    val repository = TripRepositoryFirestore(source, auth, { now })
+    val seen = mutableListOf<TripResult<List<Trip>>?>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeUpcomingTrips().collect { seen += it }
+    }
+    assertNull(seen.last())
+    updates.value = listOf(FirestoreDocument("invalid", emptyMap()))
+    runCurrent()
+    assertEquals(TripResult.Error(TripError.InvalidData), seen.last())
+    updates.value = emptyList()
+    runCurrent()
+    assertEquals(TripResult.Success(emptyList<Trip>()), seen.last())
+    auth.signOut()
+    updates.value = listOf(FirestoreDocument("late", emptyMap()))
+    runCurrent()
+    assertEquals(TripResult.Error(TripError.PermissionDenied), seen.last())
+  }
+
+  @Test
+  fun fakeOrderFeedCannotSwitchToAnotherAccountOnItsNextUpdate() = runTest {
+    var uid: String? = "viewer"
+    val repository = FakeOrderRepository({ uid })
+    val seen = mutableListOf<OrderResult<List<Order>>>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeMyOrders().collect { seen += it }
+    }
+    uid = "other"
+    repository.forcedError = OrderError.Unknown
+    runCurrent()
+    assertEquals(OrderResult.Error(OrderError.NotAuthenticated), seen.last())
+  }
 
   @Test
   fun unsupportedLiveAdaptersFailClosedInsteadOfReturningOneShotEmptyLists() = runTest {

@@ -46,16 +46,18 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.authentication.AuthException
+import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.model.authentication.ProfileUpdateResult
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.home.HomeTestTags
-import com.android.sample.ui.map.MockMapTestTags
+import com.android.sample.ui.map.MapTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
@@ -195,7 +197,7 @@ class CommandoAppTest {
   private val products = StubProductRepository()
 
   private fun show(
-      repository: FakeAuthRepository,
+      repository: AuthRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
   ) {
@@ -203,7 +205,7 @@ class CommandoAppTest {
   }
 
   private fun show(
-      repository: FakeAuthRepository,
+      repository: AuthRepository,
       trips: TripRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
@@ -587,8 +589,8 @@ class CommandoAppTest {
     compose
         .onNodeWithTag(TripMapTestTags.CLEAR_FILTER)
         .assert(hasText("CE building", substring = true))
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + firstTrip.id).assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + firstTrip.id).assertIsDisplayed()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
     click(NavigationTestTags.MAP_LIST)
     assertFiltered()
     compose.onTripCard(firstTrip.id).performClick()
@@ -667,8 +669,8 @@ class CommandoAppTest {
         .onNode(hasScrollToNodeAction())
         .performScrollToNode(hasTestTag(NavigationTestTags.OPEN_MAP))
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performClick()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
     pressBack()
     assertMigrosOnly()
     compose
@@ -707,7 +709,7 @@ class CommandoAppTest {
         .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + secondTrip.id)
         .performScrollTo()
         .performClick()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     assertTripDetails(secondTrip)
     pressBack()
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled()
@@ -1148,6 +1150,28 @@ class CommandoAppTest {
         )
     pressBack()
     assertProfile("Alice Smith", "alice@example.com", "AS")
+  }
+
+  @Test
+  fun backWhileProfileSaveIsPendingKeepsEditProfileOpen() {
+    val pending = CompletableDeferred<Result<ProfileUpdateResult>>()
+    val fake = FakeAuthRepository(alice)
+    show(
+        object : AuthRepository by fake {
+          override suspend fun updateProfile(fullName: String, email: String) = pending.await()
+        }
+    )
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).performTextReplacement("Alice Brown")
+    click(ProfileEditTestTags.SAVE)
+    pressBack()
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).assertIsDisplayed()
+    compose.runOnIdle {
+      pending.complete(Result.success(ProfileUpdateResult(alice.copy(displayName = "Alice Brown"))))
+    }
+    pressBack()
+    assertScreen(NavigationTestTags.PROFILE_SCREEN)
   }
 
   @After

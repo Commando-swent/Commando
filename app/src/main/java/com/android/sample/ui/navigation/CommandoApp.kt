@@ -3,9 +3,10 @@ package com.android.sample.ui.navigation
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
-// dependencies and authentication routes into their own files (#322).
+// dependencies, authentication and trip routes into their own files (#322). OpenAI Codex
+// extracted the profile and catalogue routes, and Claude Code rebased them onto the shared
+// helpers (#323).
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -24,7 +25,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -38,7 +38,6 @@ import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.NotificationRepository
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.ProductRepository
-import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.RatingRepository
 import com.android.sample.data.repository.RatingRepositoryFirestore
@@ -51,8 +50,6 @@ import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.ui.auth.AndroidGoogleCredentialClient
 import com.android.sample.ui.auth.AuthMode
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.catalogue.CatalogueRoute
-import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
@@ -65,7 +62,6 @@ import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.map.rememberPositionSharingControl
-import com.android.sample.ui.notifications.*
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
@@ -80,31 +76,15 @@ import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.orders.ShoppingChecklistScreen
 import com.android.sample.ui.orders.ShoppingChecklistViewModel
 import com.android.sample.ui.profile.AppLanguage
-import com.android.sample.ui.profile.EditProfileScreen
-import com.android.sample.ui.profile.ProfileHelpScreen
-import com.android.sample.ui.profile.ProfileLanguageScreen
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
-import com.android.sample.ui.profile.ProfileScreen
-import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
-import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.android.sample.ui.session.SessionViewModel
-import com.android.sample.ui.trips.AvailableTripsScreen
-import com.android.sample.ui.trips.AvailableTripsViewModel
-import com.android.sample.ui.trips.CreateTripScreen
-import com.android.sample.ui.trips.CreateTripViewModel
-import com.android.sample.ui.trips.MyTripsScreen
-import com.android.sample.ui.trips.MyTripsViewModel
 import com.android.sample.ui.trips.SavedTripSearchViewModel
-import com.android.sample.ui.trips.SavedTripSearches
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
-import com.android.sample.ui.trips.TripRatingUiState
-import com.android.sample.ui.trips.TripRatingViewModel
 import com.android.sample.ui.trips.formatTripDeparture
-import com.commando.app.model.TripLocations
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
@@ -324,116 +304,21 @@ private fun AuthenticatedApp(
             },
         )
       }
-      composable(route = CommandoScreens.CreateTrip.name) { entry ->
-        val createTripViewModel: CreateTripViewModel =
-            viewModel(viewModelStoreOwner = entry) { CreateTripViewModel(tripRepository) }
-        CreateTripScreen(
-            viewModel = createTripViewModel,
-            onBack = { navController.popBackStack() },
-            onTripPublished = {
-              // Resuming Home refreshes its current trip from the shared repository.
-              navController.popBackStack(CommandoScreens.Home.name, inclusive = false)
-            },
-        )
-      }
-      composable(route = CommandoScreens.AvailableTrips.name) { entry ->
-        val availableTripsViewModel: AvailableTripsViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              // The resume observer below loads on entry and on every return.
-              AvailableTripsViewModel(
-                  tripRepository,
-                  locationFilter.selected,
-                  loadImmediately = false,
-                  criteria = locationFilter.criteria,
-              )
-            }
-        RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
-        val selectedPoint by locationFilter.selected.collectAsState()
-        val criteria by locationFilter.criteria.collectAsState()
-        AvailableTripsScreen(
-            viewModel = availableTripsViewModel,
-            selectedPoint = selectedPoint,
-            points = TripLocations.handoffPoints,
-            onSelectPoint = locationFilter::select,
-            onClearPoint = locationFilter::clear,
-            criteria = criteria,
-            onCriteriaChange = locationFilter::setCriteria,
-            onClearCriteria = locationFilter::clearCriteria,
-            presets = {
-              val presetState by savedSearchViewModel.uiState.collectAsState()
-              SavedTripSearches(
-                  state = presetState,
-                  onSave = { savedSearchViewModel.save(it, criteria) },
-                  // A preset replaces the criteria only; the delivery point is kept.
-                  onApply = { locationFilter.setCriteria(it.criteria) },
-                  onRename = savedSearchViewModel::rename,
-                  onDelete = savedSearchViewModel::delete,
-              )
-            },
-            onTripSelected = { tripId ->
-              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
-            },
-            onOpenMap = {
-              navController.navigate(CommandoScreens.TripMap.name) { launchSingleTop = true }
-            },
-        )
-      }
-      composable(route = CommandoScreens.MyTrips.name) { entry ->
-        // The authenticated graph is keyed by account, so this list never outlives its owner.
-        val myTripsViewModel: MyTripsViewModel =
-            viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
-        // Coming back from Trip Details shows a status the owner just changed there.
-        RefreshOnResume(myTripsViewModel, myTripsViewModel::retry)
-        MyTripsScreen(
-            viewModel = myTripsViewModel,
-            onTripSelected = { tripId ->
-              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
-            },
-            onPublishTrip = {
-              navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
-            },
-        )
-      }
-      composable(
-          route = CommandoScreens.TripDetails.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Trip Details requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        val tripDetailsViewModel: TripDetailsViewModel =
-            viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
-        val tripState by tripDetailsViewModel.uiState.collectAsState()
-        val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
-        val (ratingState, onRetryRating) =
-            rememberTripRating(ownerId, entry, orders, ratingRepositoryFactory)
-        // The entry point is for the owner only; the repository and rules check ownership again.
-        val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == userId
-        TripDetailsScreen(
-            viewModel = tripDetailsViewModel,
-            onBack = { navController.popBackStack() },
-            onAddItems =
-                if (appUiState.mode == AppMode.Requester) {
-                  { selectedTripId ->
-                    navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
-                  }
-                } else null,
-            onViewOrders =
-                if (appUiState.mode == AppMode.Commando && ownsTrip) {
-                  { selectedTripId ->
-                    navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
-                      launchSingleTop = true
-                    }
-                  }
-                } else null,
-            showOwnerActions = appUiState.mode == AppMode.Commando && ownsTrip,
-            ratingState = ratingState,
-            onRetryRating = onRetryRating,
-            commandoName = repository.currentUser?.takeIf { it.uid == ownerId }?.displayName,
-        )
-      }
+      tripRoutes(
+          navController = navController,
+          tripRepository = tripRepository,
+          session =
+              TripRouteSession(
+                  userId = userId,
+                  mode = { appUiState.mode },
+                  ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
+                  commandoName = { ownerId ->
+                    repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
+                  },
+              ),
+          locationFilter = locationFilter,
+          savedSearchViewModel = savedSearchViewModel,
+      )
       composable(
           route = CommandoScreens.IncomingOrders.route,
           arguments =
@@ -480,41 +365,12 @@ private fun AuthenticatedApp(
         RefreshOnResume(checklist, checklist::refresh)
         ShoppingChecklistScreen(viewModel = checklist)
       }
-      composable(
-          route = CommandoScreens.Catalogue.route,
-          arguments = orderFlowArguments(),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Catalogue requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
-        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
-            draft ->
-          // This entry stays on the back stack behind Review, so returning keeps the selection.
-          val catalogueViewModel: CatalogueViewModel =
-              viewModel(viewModelStoreOwner = entry) {
-                CatalogueViewModel(
-                    tripId,
-                    tripRepository,
-                    productRepository ?: ProductRepositoryFirestore(),
-                    draft,
-                )
-              }
-          CatalogueRoute(
-              viewModel = catalogueViewModel,
-              onBack = {
-                editId?.let(orders::finishEdit)
-                navController.popBackStack()
-              },
-              onContinue = { trip ->
-                navController.navigate(CommandoScreens.reviewOrderRoute(trip.id, editId)) {
-                  launchSingleTop = true
-                }
-              },
-          )
-        }
-      }
+      orderFlowRoutes(
+          navController = navController,
+          orders = orders,
+          tripRepository = tripRepository,
+          productRepository = productRepository,
+      )
       composable(
           route = CommandoScreens.ReviewOrder.route,
           arguments = orderFlowArguments(),
@@ -687,125 +543,20 @@ private fun AuthenticatedApp(
             }
         OrderTrackingHost(model, onBack = { navController.popBackStack() })
       }
-      composable(route = CommandoScreens.Profile.name) {
-        val profileUiState by profileViewModel.uiState.collectAsState()
-        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
-        ProfileScreen(
-            uiState = profileUiState,
-            onBack = { navController.popBackStack() },
-            onSignOut = signOutAfterCleanup,
-            signOutError = signOutError,
-            photo = photo,
-            onPhotoClick = onPhotoClick,
-            onOrderHistory = {
-              // History is a child of Profile even when My Orders was opened earlier from a tab.
-              navController.navigate(CommandoScreens.MyOrders.name) { launchSingleTop = true }
-            },
-            onHelp = { navController.openScreen(CommandoScreens.ProfileHelp) },
-            onLanguage = { navController.openScreen(CommandoScreens.ProfileLanguage) },
-            onNotifications = { navController.openScreen(CommandoScreens.Notifications) },
-            onNotificationPreferences = {
-              navController.openScreen(CommandoScreens.NotificationPreferences)
-            },
-            onEdit = {
-              profileViewModel.beginEditing()
-              navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
-            },
-        )
-      }
-      composable(route = CommandoScreens.Notifications.name) {
-        val model: NotificationsViewModel = viewModel {
-          NotificationsViewModel(notifications.value, orders::currentUserId, orders.sessionChanges)
-        }
-        RefreshOnResume(model, model::refreshInbox)
-        val state by model.inbox.collectAsState()
-        NotificationInboxScreen(
-            state,
-            { navController.popBackStack() },
-            { navController.openScreen(CommandoScreens.NotificationPreferences) },
-            model::refreshInbox,
-            model::markAsRead,
-            model::retryReadUpdate,
-            {
-              navController.navigate(CommandoScreens.orderDetailsRoute(it)) {
-                launchSingleTop = true
-              }
-            },
-        )
-      }
-      composable(route = CommandoScreens.NotificationPreferences.name) {
-        val model: NotificationsViewModel = viewModel {
-          NotificationsViewModel(notifications.value, orders::currentUserId, orders.sessionChanges)
-        }
-        RefreshOnResume(model, model::refreshPreferences)
-        val state by model.preferences.collectAsState()
-        NotificationPreferencesScreen(
-            state,
-            { navController.popBackStack() },
-            model::refreshPreferences,
-            model::updatePreferences,
-            model::retryPreferenceUpdate,
-        )
-      }
-      composable(route = CommandoScreens.ProfileHelp.name) {
-        ProfileHelpScreen(onBack = { navController.popBackStack() })
-      }
-      composable(route = CommandoScreens.ProfileLanguage.name) {
-        ProfileLanguageScreen(
-            selected = AppLanguage.fromLanguage(LocalConfiguration.current.locales[0].language),
-            onSelectLanguage = onLanguageSelected,
-            onBack = { navController.popBackStack() },
-        )
-      }
-      composable(route = CommandoScreens.EditProfile.name) {
-        val draft by profileViewModel.editState.collectAsState()
-        val profile by profileViewModel.uiState.collectAsState()
-        LaunchedEffect(profile, draft == null) {
-          if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
-        }
-        val onCancel = {
-          if (profileViewModel.editState.value?.isSaving != true) {
-            profileViewModel.cancelEditing()
-            navController.popBackStack()
-          }
-          Unit
-        }
-        BackHandler { onCancel() }
-        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
-        draft?.let {
-          EditProfileScreen(
-              it,
-              profileViewModel::updateFullName,
-              profileViewModel::updateEmail,
-              profileViewModel::saveProfile,
-              onCancel,
-              (profile as? ProfileUiState.Content)?.fullName,
-              photo = photo,
-              onPhotoClick = onPhotoClick,
-          )
-        } ?: androidx.compose.material3.CircularProgressIndicator()
-      }
+      profileRoutes(
+          navController = navController,
+          profileViewModel = profileViewModel,
+          photoSnackbarHost = photoSnackbarHost,
+          notifications = notifications,
+          orders = orders,
+          actions =
+              ProfileRouteActions(
+                  signOut = signOutAfterCleanup,
+                  signOutError = signOutError,
+                  selectLanguage = onLanguageSelected,
+              ),
+      )
     }
-  }
-}
-
-/** Retains owner-specific ratings in the Trip Details entry, using its authenticated session. */
-@Composable
-private fun rememberTripRating(
-    ownerId: String?,
-    entry: NavBackStackEntry,
-    orders: SessionOrderViewModel,
-    ratingRepositoryFactory: (() -> String?) -> RatingRepository,
-): Pair<TripRatingUiState?, () -> Unit> {
-  if (ownerId == null) return null to {}
-  return key(ownerId) {
-    val model: TripRatingViewModel =
-        viewModel(viewModelStoreOwner = entry, key = "trip-rating/$ownerId") {
-          TripRatingViewModel(ratingRepositoryFactory(orders::currentUserId))
-        }
-    val state by model.uiState.collectAsState()
-    RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
-    state to model::retry
   }
 }
 

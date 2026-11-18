@@ -14,17 +14,18 @@ data class MapTripSummary(
     val distanceLabel: String? = null,
 )
 
-object MockMapTestTags {
-  const val SKELETON_PREFIX = "mock_map_skeleton_"
-  const val MARKER_PREFIX = "mock_map_marker_"
-  const val SUMMARY = "mock_map_summary"
-  const val DETAILS = "mock_map_details"
-  const val LOADING = "mock_map_loading"
-  const val ERROR = "mock_map_error"
-  const val RETRY = "mock_map_retry"
-  const val ALLOW = "mock_map_allow"
-  const val LOCATION_OFF = "mock_map_location_off"
-  const val LOCATION = "mock_map_sample_location"
-  const val PAGE_PREFIX = "mock_map_page_"
-  const val EMPTY = "mock_map_empty"
+/** Stable tags shared by the production map and illustration previews. */
+object MapTestTags {
+  const val SKELETON_PREFIX = "map_skeleton_"
+  const val MARKER_PREFIX = "map_marker_"
+  const val SUMMARY = "map_summary"
+  const val DETAILS = "map_details"
+  const val LOADING = "map_loading"
+  const val ERROR = "map_error"
+  const val RETRY = "map_retry"
+  const val ALLOW = "map_allow"
+  const val LOCATION_OFF = "map_location_off"
+  const val LOCATION = "map_sample_location"
+  const val PAGE_PREFIX = "map_page_"
+  const val EMPTY = "map_empty"
 }

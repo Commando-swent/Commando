@@ -135,6 +135,90 @@ class OrderDetailsScreenTest {
   private fun string(id: Int) = ApplicationProvider.getApplicationContext<Context>().getString(id)
 
   @Test
+  fun submittedRatingRendersReadOnlyStarsAndOptionalComment() {
+    val saved =
+        Rating(order.id, trip.id, order.requesterId, trip.ownerId, 4, "Friendly delivery", time)
+    val content =
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.DELIVERED),
+            trip,
+            order.requesterId,
+            submittedRating = saved,
+        )
+    show(content)
+    for (score in RATING_SCORE_RANGE) {
+      compose.runOnIdle { state.value = content.copy(submittedRating = saved.copy(score = score)) }
+      val description =
+          ApplicationProvider.getApplicationContext<Context>()
+              .getString(R.string.rating_star, score, RATING_SCORE_RANGE.last)
+      compose
+          .onNodeWithTag(OrderDetailsTestTags.RATING_SCORE)
+          .performScrollTo()
+          .assertIsDisplayed()
+          .assertContentDescriptionEquals(description)
+          .assert(hasClickAction().not())
+      val stars = "★".repeat(score) + "☆".repeat(5 - score)
+      val value =
+          ApplicationProvider.getApplicationContext<Context>()
+              .getString(R.string.rating_value, score, 5)
+      compose.onNodeWithText(stars, useUnmergedTree = true).assertIsDisplayed()
+      compose.onNodeWithText(value, useUnmergedTree = true).assertIsDisplayed()
+    }
+    compose
+        .onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertTextEquals(saved.comment!!)
+    for (comment in listOf(null, "", " \t\n")) {
+      compose.runOnIdle {
+        state.value = content.copy(submittedRating = saved.copy(comment = comment))
+      }
+      compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).assertDoesNotExist()
+      compose.onNodeWithTag(OrderDetailsTestTags.SUBMITTED_RATING).assertExists()
+    }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+  }
+
+  @Test
+  fun deliveredOrderWithoutFeedbackHasNoRatingCardOrDialog() {
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.DELIVERED),
+            trip,
+            order.requesterId,
+        )
+    )
+    compose.onNodeWithTag(OrderDetailsTestTags.SUBMITTED_RATING).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_SCORE).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).assertDoesNotExist()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    backWorks()
+  }
+
+  @Test
+  fun endingSessionRemovesDisplayedRating() {
+    val saved =
+        Rating(order.id, trip.id, order.requesterId, trip.ownerId, 4, "Private feedback", time)
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.DELIVERED),
+            trip,
+            order.requesterId,
+            submittedRating = saved,
+        )
+    )
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).performScrollTo().assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose.onNodeWithTag(OrderDetailsTestTags.SUBMITTED_RATING).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).assertDoesNotExist()
+    compose.onNodeWithText(saved.comment!!).assertDoesNotExist()
+    backWorks()
+  }
+
+  @Test
   fun editingIsOnlyOfferedToTheRequesterOnAPendingOpenTrip() {
     var edits = 0
     val content =

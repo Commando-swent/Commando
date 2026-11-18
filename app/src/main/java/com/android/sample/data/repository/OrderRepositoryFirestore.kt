@@ -37,7 +37,7 @@ internal constructor(
   }
 
   private suspend fun createForSession(draft: OrderDraft, uid: String): OrderResult<Order> {
-    val input = draft.copy(items = draft.items.toList())
+    val input = draft.copy(items = ArrayList(draft.items))
     if (!input.isValid() || !input.tripId.isDocumentId()) return failure(OrderError.InvalidData)
     val key = uid to input
     // Retain the ID across uncertain writes/confirmation failures, including cancellation.
@@ -112,7 +112,7 @@ internal constructor(
       draft: OrderDraft,
       expectedRevision: Int,
   ): OrderResult<Order> = session { uid ->
-    val input = draft.copy(items = draft.items.toList())
+    val input = draft.copy(items = ArrayList(draft.items))
     if (
         !orderId.isDocumentId() ||
             !input.tripId.isDocumentId() ||

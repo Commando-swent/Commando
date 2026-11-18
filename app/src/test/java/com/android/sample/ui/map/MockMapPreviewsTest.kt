@@ -7,7 +7,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import com.android.sample.ui.map.MockMapTestTags as Tags
+import com.android.sample.ui.map.MapTestTags as Tags
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

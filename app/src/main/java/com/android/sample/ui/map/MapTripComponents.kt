@@ -26,7 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import com.android.sample.R
-import com.android.sample.ui.map.MockMapTestTags as Tags
+import com.android.sample.ui.map.MapTestTags as Tags
 
 /** Floating card from Figma 424:2673 / 424:3003, shared by real trips and previews. */
 @Composable
@@ -86,7 +86,8 @@ internal fun MapTripPreview(
                 tint = MaterialTheme.colorScheme.primary,
             )
             Text(
-                if (trip.isSample) stringResource(R.string.mock_map_time, trip.time) else trip.time,
+                if (trip.isSample) stringResource(R.string.trip_map_sample_time, trip.time)
+                else trip.time,
                 fontSize = 13.sp,
                 lineHeight = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -102,7 +103,7 @@ internal fun MapTripPreview(
         ) {
           Image(
               painterResource(R.drawable.map_close),
-              stringResource(R.string.mock_map_close),
+              stringResource(R.string.trip_map_close),
               Modifier.size(16.dp),
           )
         }
@@ -128,7 +129,7 @@ internal fun MapTripPreview(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
           Text(trip.handoff, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
           Text(
-              stringResource(R.string.mock_map_handoff),
+              stringResource(R.string.trip_map_handoff),
               fontSize = 12.sp,
               lineHeight = 15.sp,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -159,8 +160,8 @@ internal fun MapTripPreview(
       ) {
         Text(
             stringResource(
-                if (onDetails == null) R.string.mock_map_details_unavailable
-                else R.string.mock_map_details
+                if (onDetails == null) R.string.trip_map_sample_details_unavailable
+                else R.string.trip_map_details
             ),
             fontSize = 16.sp,
             lineHeight = 24.sp,
@@ -216,7 +217,7 @@ internal fun MapSharedPointPager(
       horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     Text(
-        stringResource(R.string.mock_map_shared, group.size),
+        stringResource(R.string.trip_map_shared, group.size),
         Modifier.weight(1f),
         color = MaterialTheme.colorScheme.primary,
         fontSize = 11.sp,
@@ -232,7 +233,7 @@ internal fun MapSharedPointPager(
         val selected = trip.id == selectedId
         val description =
             stringResource(
-                if (trip.isSample) R.string.mock_map_page else R.string.trip_map_page,
+                if (trip.isSample) R.string.trip_map_sample_page else R.string.trip_map_page,
                 index + 1,
                 group.size,
                 trip.store,

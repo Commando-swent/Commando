@@ -63,7 +63,7 @@ class FakeOrderRepository(
   }
 
   override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = withSession { userId ->
-    val input = draft.copy(items = draft.items.toList())
+    val input = draft.copy(items = ArrayList(draft.items))
     if (!input.isValid()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val tripError = creationTripError(input.tripId, userId)
     if (tripError != null) return@withSession OrderResult.Error(tripError)
@@ -101,7 +101,7 @@ class FakeOrderRepository(
       draft: OrderDraft,
       expectedRevision: Int,
   ): OrderResult<Order> = withSession { uid ->
-    val input = draft.copy(items = draft.items.toList())
+    val input = draft.copy(items = ArrayList(draft.items))
     if (!orderId.isDocumentId() || !input.isValid() || expectedRevision < 0)
         return@withSession OrderResult.Error(OrderError.InvalidData)
     val stored = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)
@@ -342,5 +342,5 @@ class FakeOrderRepository(
     }
   }
 
-  private fun Order.snapshot() = copy(items = items.toList())
+  private fun Order.snapshot() = copy(items = ArrayList(items))
 }

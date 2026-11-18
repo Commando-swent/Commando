@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: Claude Code (characterization tests for trip routes, #322).
+// AI assistance: Claude Code (characterization tests for trip routes, #322; owner earnings, #301).
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
@@ -21,6 +21,7 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.android.sample.ui.trips.TripEarningsTestTags
 import com.android.sample.ui.trips.TripOwnerTestTags
 import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.discoveryTrip
@@ -84,7 +85,12 @@ class TripRoutesNavigationTest {
             ioDispatcher = Dispatchers.Unconfined,
         )
     runBlocking { presets.saveSearch("Coop only", TripSearchCriteria(StoreFilter.COOP)) }
-    val orders = listOf(coopOrder, coopOrder.copy(id = "order-migros", tripId = migros.id))
+    val orders =
+        listOf(
+            coopOrder,
+            coopOrder.copy(id = "order-migros", tripId = migros.id),
+            coopOrder.copy(id = "order-delivered", status = OrderStatus.DELIVERED),
+        )
     compose.setContent {
       SampleAppTheme {
         CommandoApp(
@@ -128,6 +134,7 @@ class TripRoutesNavigationTest {
     addItems().assertIsEnabled()
     viewOrders().assertDoesNotExist()
     compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
+    compose.onNodeWithTag(TripEarningsTestTags.CARD).assertDoesNotExist()
   }
 
   @Test
@@ -142,6 +149,8 @@ class TripRoutesNavigationTest {
     click(AppTestTags.TRIPS_BUTTON)
     click(MyTripsTestTags.TRIP_CARD_PREFIX + coop.id)
     compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertExists()
+    // Only the delivered order's commission counts, not the pending one's.
+    compose.onNodeWithTag(TripEarningsTestTags.AMOUNT).assertTextEquals("CHF 1.50")
     // The add action stays on screen but cannot be used outside Requester mode.
     addItems().assertIsNotEnabled()
     viewOrders().performScrollTo().performClick()

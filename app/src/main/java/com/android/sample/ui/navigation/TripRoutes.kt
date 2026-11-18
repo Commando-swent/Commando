@@ -1,6 +1,7 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: Claude Code moved the trip destinations out of CommandoApp (#322).
+// AI assistance: Claude Code moved the trip destinations out of CommandoApp (#322) and added the
+// owner's earnings (#301).
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -12,6 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.RatingRepository
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.ui.trips.AvailableTripsScreen
@@ -25,6 +27,7 @@ import com.android.sample.ui.trips.SavedTripSearches
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
+import com.android.sample.ui.trips.TripEarningsViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
 import com.android.sample.ui.trips.TripRatingUiState
 import com.android.sample.ui.trips.TripRatingViewModel
@@ -32,14 +35,16 @@ import com.commando.app.model.TripLocations
 
 /**
  * The signed-in account as seen by the trip routes. [mode] is read when a destination composes, not
- * when the graph is built, so Trip Details shows the current mode's actions. [ratingRepository] is
- * bound to the session, and [commandoName] returns the user's name when they own the trip.
+ * when the graph is built, so Trip Details shows the current mode's actions. [ratingRepository] and
+ * [orderRepository] are bound to the session, and [commandoName] returns the user's name when they
+ * own the trip.
  */
 internal class TripRouteSession(
     val userId: String,
     val mode: () -> AppMode,
     val ratingRepository: () -> RatingRepository,
     val commandoName: (String?) -> String?,
+    val orderRepository: OrderRepository,
 )
 
 /** Registers trip creation, discovery, the owner's list and Trip Details. */
@@ -136,6 +141,7 @@ internal fun NavGraphBuilder.tripRoutes(
     val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
     // The entry point is for the owner only; the repository and rules check ownership again.
     val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == session.userId
+    val showOwnerActions = session.mode() == AppMode.Commando && ownsTrip
     TripDetailsScreen(
         viewModel = tripDetailsViewModel,
         onBack = { navController.popBackStack() },
@@ -146,19 +152,42 @@ internal fun NavGraphBuilder.tripRoutes(
               }
             } else null,
         onViewOrders =
-            if (session.mode() == AppMode.Commando && ownsTrip) {
+            if (showOwnerActions) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
                   launchSingleTop = true
                 }
               }
             } else null,
-        showOwnerActions = session.mode() == AppMode.Commando && ownsTrip,
+        showOwnerActions = showOwnerActions,
         ratingState = ratingState,
         onRetryRating = onRetryRating,
         commandoName = session.commandoName(ownerId),
+        earningsViewModel =
+            rememberTripEarnings(showOwnerActions, tripId, entry, session.orderRepository),
     )
   }
+}
+
+/**
+ * Retains the owner's earnings in the Trip Details entry and reloads them each time the owner comes
+ * back. Returns null, so no order query runs, unless [show] is true for the trip's owner.
+ */
+@Composable
+private fun rememberTripEarnings(
+    show: Boolean,
+    tripId: String,
+    entry: NavBackStackEntry,
+    orderRepository: OrderRepository,
+): TripEarningsViewModel? {
+  if (!show) return null
+  val model: TripEarningsViewModel =
+      viewModel(viewModelStoreOwner = entry, key = "trip-earnings/$tripId") {
+        // The resume observer below loads on entry and on every return.
+        TripEarningsViewModel(orderRepository, tripId, loadImmediately = false)
+      }
+  RefreshOnResume(model, model::refresh)
+  return model
 }
 
 /**

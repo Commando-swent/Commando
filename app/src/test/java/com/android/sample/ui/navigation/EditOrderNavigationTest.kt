@@ -136,6 +136,20 @@ class EditOrderNavigationTest {
   }
 
   @Test
+  fun catalogueBackAbandonsTheEditBasket() {
+    compose.setContent(content)
+    compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).performClick()
+    compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id).performClick()
+    click(OrderDetailsTestTags.EDIT)
+    compose.onNodeWithTag(CatalogueTestTags.increase("milk")).performScrollTo().performClick()
+    compose.onNodeWithTag(CatalogueTestTags.quantity("milk")).assertTextEquals("3")
+    click(CatalogueTestTags.BACK)
+    click(OrderDetailsTestTags.EDIT)
+    compose.onNodeWithTag(CatalogueTestTags.quantity("milk")).assertTextEquals("2")
+    assertEquals(OrderResult.Success(order), runBlocking { repo.getOrderById(order.id) })
+  }
+
+  @Test
   fun activityRecreationRetainsEditIdentityAndAbandonDoesNotWrite() {
     openEdit()
     compose.onNodeWithTag("increase_milk").performScrollTo().performClick()

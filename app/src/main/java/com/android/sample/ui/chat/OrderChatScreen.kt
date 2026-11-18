@@ -88,8 +88,6 @@ fun OrderChatScreen(
     modifier: Modifier = Modifier,
 ) {
   val colors = MaterialTheme.colorScheme
-  val error = state.error
-  val showComposer = !state.loading && error == null && state.chat != null
   Column(
       modifier
           .fillMaxSize()
@@ -106,30 +104,38 @@ fun OrderChatScreen(
   ) {
     ChatHeader(state.context, onBack)
     if (state.context != null) ChatOrderContext(state.context, onBack)
-    Box(Modifier.weight(1f).fillMaxWidth()) {
-      when {
-        state.loading ->
-            CircularProgressIndicator(
-                Modifier.align(Alignment.Center).testTag(OrderChatTestTags.LOADING)
-            )
-        error != null ->
-            Column(
-                Modifier.align(Alignment.Center).padding(24.dp).testTag(OrderChatTestTags.ERROR),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-              Text(
-                  stringResource(chatLoadErrorMessage(error)),
-                  Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-              )
-              if (error != OrderError.NotAuthenticated)
-                  TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
-                    Text(stringResource(R.string.my_orders_retry))
-                  }
+    if (state.loading) {
+      Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator(Modifier.testTag(OrderChatTestTags.LOADING))
+      }
+    } else {
+      when (val error = state.error) {
+        null ->
+            when (state.chat) {
+              null -> Spacer(Modifier.weight(1f))
+              else -> {
+                Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state) }
+                ChatComposer(state, onDraft, onSend)
+              }
             }
-        state.chat != null -> ChatHistory(state)
+        else ->
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+              Column(
+                  Modifier.padding(24.dp).testTag(OrderChatTestTags.ERROR),
+                  horizontalAlignment = Alignment.CenterHorizontally,
+              ) {
+                Text(
+                    stringResource(chatLoadErrorMessage(error)),
+                    Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+                if (error != OrderError.NotAuthenticated)
+                    TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
+                      Text(stringResource(R.string.my_orders_retry))
+                    }
+              }
+            }
       }
     }
-    if (showComposer) ChatComposer(state, onDraft, onSend)
   }
 }
 

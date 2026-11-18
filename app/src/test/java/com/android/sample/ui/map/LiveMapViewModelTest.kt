@@ -259,6 +259,20 @@ class LiveMapViewModelTest {
   }
 
   @Test
+  fun discoveryPositionFailureClearsMarkersAndRetryRecovers() = modelTest {
+    failPosition = true
+    val vm = model()
+    runCurrent()
+    assertEquals(LiveMapMode.DISCOVERY, content(vm).mode)
+    assertTrue(content(vm).commandos.isEmpty())
+    failPosition = false
+    vm.start()
+    runCurrent()
+    assertEquals(listOf("alice"), content(vm).commandos.map { it.ownerId })
+    assertNotNull(content(vm).commandos.single().position)
+  }
+
+  @Test
   fun lateTripLookupCannotRestoreCoordinatesAfterAnAccountChange() = modelTest {
     val reply = CompletableDeferred<TripResult<Trip>>()
     val delayed =

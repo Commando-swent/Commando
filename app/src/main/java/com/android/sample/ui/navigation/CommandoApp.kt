@@ -3,7 +3,7 @@ package com.android.sample.ui.navigation
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
-// dependencies and authentication routes into their own files (#322).
+// dependencies, authentication and trip routes into their own files (#322).
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
@@ -93,22 +93,12 @@ import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.android.sample.ui.session.SessionViewModel
-import com.android.sample.ui.trips.AvailableTripsScreen
-import com.android.sample.ui.trips.AvailableTripsViewModel
-import com.android.sample.ui.trips.CreateTripScreen
-import com.android.sample.ui.trips.CreateTripViewModel
-import com.android.sample.ui.trips.MyTripsScreen
-import com.android.sample.ui.trips.MyTripsViewModel
 import com.android.sample.ui.trips.SavedTripSearchViewModel
-import com.android.sample.ui.trips.SavedTripSearches
 import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
-import com.android.sample.ui.trips.TripRatingUiState
-import com.android.sample.ui.trips.TripRatingViewModel
 import com.android.sample.ui.trips.formatTripDeparture
-import com.commando.app.model.TripLocations
 import kotlinx.coroutines.launch
 
 private const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
@@ -333,116 +323,21 @@ private fun AuthenticatedApp(
             },
         )
       }
-      composable(route = CommandoScreens.CreateTrip.name) { entry ->
-        val createTripViewModel: CreateTripViewModel =
-            viewModel(viewModelStoreOwner = entry) { CreateTripViewModel(tripRepository) }
-        CreateTripScreen(
-            viewModel = createTripViewModel,
-            onBack = { navController.popBackStack() },
-            onTripPublished = {
-              // Resuming Home refreshes its current trip from the shared repository.
-              navController.popBackStack(CommandoScreens.Home.name, inclusive = false)
-            },
-        )
-      }
-      composable(route = CommandoScreens.AvailableTrips.name) { entry ->
-        val availableTripsViewModel: AvailableTripsViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              // The resume observer below loads on entry and on every return.
-              AvailableTripsViewModel(
-                  tripRepository,
-                  locationFilter.selected,
-                  loadImmediately = false,
-                  criteria = locationFilter.criteria,
-              )
-            }
-        RefreshOnResume(availableTripsViewModel, availableTripsViewModel::retry)
-        val selectedPoint by locationFilter.selected.collectAsState()
-        val criteria by locationFilter.criteria.collectAsState()
-        AvailableTripsScreen(
-            viewModel = availableTripsViewModel,
-            selectedPoint = selectedPoint,
-            points = TripLocations.handoffPoints,
-            onSelectPoint = locationFilter::select,
-            onClearPoint = locationFilter::clear,
-            criteria = criteria,
-            onCriteriaChange = locationFilter::setCriteria,
-            onClearCriteria = locationFilter::clearCriteria,
-            presets = {
-              val presetState by savedSearchViewModel.uiState.collectAsState()
-              SavedTripSearches(
-                  state = presetState,
-                  onSave = { savedSearchViewModel.save(it, criteria) },
-                  // A preset replaces the criteria only; the delivery point is kept.
-                  onApply = { locationFilter.setCriteria(it.criteria) },
-                  onRename = savedSearchViewModel::rename,
-                  onDelete = savedSearchViewModel::delete,
-              )
-            },
-            onTripSelected = { tripId ->
-              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
-            },
-            onOpenMap = {
-              navController.navigate(CommandoScreens.TripMap.name) { launchSingleTop = true }
-            },
-        )
-      }
-      composable(route = CommandoScreens.MyTrips.name) { entry ->
-        // The authenticated graph is keyed by account, so this list never outlives its owner.
-        val myTripsViewModel: MyTripsViewModel =
-            viewModel(viewModelStoreOwner = entry) { MyTripsViewModel(tripRepository, userId) }
-        // Coming back from Trip Details shows a status the owner just changed there.
-        RefreshOnResume(myTripsViewModel, myTripsViewModel::retry)
-        MyTripsScreen(
-            viewModel = myTripsViewModel,
-            onTripSelected = { tripId ->
-              navController.navigate(CommandoScreens.tripDetailsRoute(tripId))
-            },
-            onPublishTrip = {
-              navController.navigate(CommandoScreens.CreateTrip.name) { launchSingleTop = true }
-            },
-        )
-      }
-      composable(
-          route = CommandoScreens.TripDetails.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Trip Details requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        val tripDetailsViewModel: TripDetailsViewModel =
-            viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
-        val tripState by tripDetailsViewModel.uiState.collectAsState()
-        val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
-        val (ratingState, onRetryRating) =
-            rememberTripRating(ownerId, entry, orders, ratingRepositoryFactory)
-        // The entry point is for the owner only; the repository and rules check ownership again.
-        val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == userId
-        TripDetailsScreen(
-            viewModel = tripDetailsViewModel,
-            onBack = { navController.popBackStack() },
-            onAddItems =
-                if (appUiState.mode == AppMode.Requester) {
-                  { selectedTripId ->
-                    navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
-                  }
-                } else null,
-            onViewOrders =
-                if (appUiState.mode == AppMode.Commando && ownsTrip) {
-                  { selectedTripId ->
-                    navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
-                      launchSingleTop = true
-                    }
-                  }
-                } else null,
-            showOwnerActions = appUiState.mode == AppMode.Commando && ownsTrip,
-            ratingState = ratingState,
-            onRetryRating = onRetryRating,
-            commandoName = repository.currentUser?.takeIf { it.uid == ownerId }?.displayName,
-        )
-      }
+      tripRoutes(
+          navController = navController,
+          tripRepository = tripRepository,
+          session =
+              TripRouteSession(
+                  userId = userId,
+                  mode = { appUiState.mode },
+                  ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
+                  commandoName = { ownerId ->
+                    repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
+                  },
+              ),
+          locationFilter = locationFilter,
+          savedSearchViewModel = savedSearchViewModel,
+      )
       composable(
           route = CommandoScreens.IncomingOrders.route,
           arguments =
@@ -830,26 +725,6 @@ private fun AuthenticatedApp(
         } ?: androidx.compose.material3.CircularProgressIndicator()
       }
     }
-  }
-}
-
-/** Retains owner-specific ratings in the Trip Details entry, using its authenticated session. */
-@Composable
-private fun rememberTripRating(
-    ownerId: String?,
-    entry: NavBackStackEntry,
-    orders: SessionOrderViewModel,
-    ratingRepositoryFactory: (() -> String?) -> RatingRepository,
-): Pair<TripRatingUiState?, () -> Unit> {
-  if (ownerId == null) return null to {}
-  return key(ownerId) {
-    val model: TripRatingViewModel =
-        viewModel(viewModelStoreOwner = entry, key = "trip-rating/$ownerId") {
-          TripRatingViewModel(ratingRepositoryFactory(orders::currentUserId))
-        }
-    val state by model.uiState.collectAsState()
-    RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
-    state to model::retry
   }
 }
 

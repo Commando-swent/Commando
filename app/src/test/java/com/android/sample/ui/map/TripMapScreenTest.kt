@@ -83,12 +83,12 @@ class TripMapScreenTest {
   @Test
   fun sharedPointSelectionOpensTheActualTripIdWithoutDemoActions() {
     show()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).performClick()
-    compose.onNodeWithTag(MockMapTestTags.PAGE_PREFIX + second.id).performScrollTo().performClick()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).performClick()
+    compose.onNodeWithTag(MapTestTags.PAGE_PREFIX + second.id).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     assertEquals(second.id, details)
-    compose.onNodeWithTag(MockMapTestTags.LOCATION).assertDoesNotExist()
-    compose.onNodeWithTag(MockMapTestTags.ALLOW).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.LOCATION).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.ALLOW).assertDoesNotExist()
   }
 
   @Test
@@ -107,17 +107,17 @@ class TripMapScreenTest {
     for ((next, message) in
         listOf(
             TripMapUiState.Loading to context.getString(R.string.trip_map_loading),
-            TripMapUiState.Empty to context.getString(R.string.mock_map_empty_title),
+            TripMapUiState.Empty to context.getString(R.string.trip_map_empty_title),
             TripMapUiState.NoMatches(point) to
                 context.getString(R.string.trips_no_matches, point.name),
             TripMapUiState.Error(TripError.NetworkError) to
-                context.getString(R.string.mock_map_error_title),
+                context.getString(R.string.trip_map_error_title),
             TripMapUiState.SessionEnded to context.getString(R.string.trip_map_session_ended),
         )) {
       compose.runOnIdle { state = next }
       compose.onNodeWithText(message).assertIsDisplayed()
-      compose.onNodeWithTag(MockMapTestTags.SUMMARY).assertDoesNotExist()
-      if (next is TripMapUiState.Error) compose.onNodeWithTag(MockMapTestTags.RETRY).performClick()
+      compose.onNodeWithTag(MapTestTags.SUMMARY).assertDoesNotExist()
+      if (next is TripMapUiState.Error) compose.onNodeWithTag(MapTestTags.RETRY).performClick()
     }
     assertEquals(1, refreshes)
   }
@@ -139,8 +139,8 @@ class TripMapScreenTest {
           .onNodeWithTag(TripMapTestTags.STATUS)
           .assertIsDisplayed()
           .assert(hasAnyDescendant(hasText(context.getString(message))))
-      compose.onNodeWithTag(MockMapTestTags.SUMMARY).assertDoesNotExist()
-      compose.onNodeWithTag(MockMapTestTags.RETRY).assertDoesNotExist()
+      compose.onNodeWithTag(MapTestTags.SUMMARY).assertDoesNotExist()
+      compose.onNodeWithTag(MapTestTags.RETRY).assertDoesNotExist()
     }
     assertEquals(0, refreshes)
   }
@@ -157,13 +157,13 @@ class TripMapScreenTest {
     val trips = listOf(outside, covered)
     state = TripMapUiState.Content(trips)
     show()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + outside.id).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + outside.id).assertDoesNotExist()
     for (candidate in trips) {
       compose
           .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + candidate.id)
           .performScrollTo()
           .performTouchInput { click() }
-      compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
+      compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
       assertEquals(candidate.id, details)
       compose.runOnIdle { state = TripMapUiState.Content(trips) }
     }
@@ -186,7 +186,7 @@ class TripMapScreenTest {
           .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + candidate.id)
           .performScrollTo()
           .performTouchInput { click() }
-      compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
+      compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
       assertEquals(candidate.id, details)
       compose.runOnIdle { state = TripMapUiState.Content(trips) }
     }
@@ -198,7 +198,7 @@ class TripMapScreenTest {
     show()
     val map = compose.onNodeWithTag(TripMapTestTags.SURFACE).fetchSemanticsNode().boundsInRoot
     val header = compose.onNodeWithTag(TripMapTestTags.HEADER).fetchSemanticsNode().boundsInRoot
-    val card = compose.onNodeWithTag(MockMapTestTags.SUMMARY).fetchSemanticsNode().boundsInRoot
+    val card = compose.onNodeWithTag(MapTestTags.SUMMARY).fetchSemanticsNode().boundsInRoot
     assertTrue(map.height > map.width * 1.5f)
     assertEquals(78f, header.height, 1f)
     assertEquals(map.width - 32f, card.width, 1f)
@@ -233,12 +233,12 @@ class TripMapScreenTest {
     show(fontScale = 2f)
     for (trips in listOf(listOf(trip, second), listOf(trip))) {
       compose.runOnIdle { state = TripMapUiState.Content(trips, trip.id) }
-      val card = compose.onNodeWithTag(MockMapTestTags.SUMMARY).fetchSemanticsNode().boundsInRoot
+      val card = compose.onNodeWithTag(MapTestTags.SUMMARY).fetchSemanticsNode().boundsInRoot
       val locate = compose.onNodeWithTag(TripMapTestTags.LOCATE).fetchSemanticsNode().boundsInRoot
       val header = compose.onNodeWithTag(TripMapTestTags.HEADER).fetchSemanticsNode().boundsInRoot
       assertTrue("Locate must clear the actual card height", locate.bottom < card.top)
       assertTrue("Locate must clear the actual header", locate.top >= header.bottom)
-      compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
+      compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performTouchInput { click() }
       assertEquals(trip.id, details)
       compose.onNodeWithTag(TripMapTestTags.LOCATE).performTouchInput { click() }
       compose.waitForIdle()
@@ -258,7 +258,7 @@ class TripMapScreenTest {
     show(realBackground = true)
     val map = compose.onNodeWithTag(TripMapTestTags.SURFACE).getUnclippedBoundsInRoot()
     val marker =
-        compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).getUnclippedBoundsInRoot()
+        compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).getUnclippedBoundsInRoot()
     val label =
         compose
             .onNodeWithTag(TripMapTestTags.MARKER_LABEL_PREFIX + trip.id, useUnmergedTree = true)
@@ -279,7 +279,7 @@ class TripMapScreenTest {
     compose
         .onNodeWithTag(TripMapTestTags.MARKER_LABEL_PREFIX + trip.id, useUnmergedTree = true)
         .performTouchInput { click(Offset(width - 2f, center.y)) }
-    compose.onNodeWithTag(MockMapTestTags.SUMMARY).assertIsDisplayed()
+    compose.onNodeWithTag(MapTestTags.SUMMARY).assertIsDisplayed()
   }
 
   @Test
@@ -299,12 +299,12 @@ class TripMapScreenTest {
     assertEquals(surface.center.x, position.center.x, 1f)
     assertEquals(surface.center.y, position.center.y, 1f)
     compose.onNodeWithTag(TripMapTestTags.CLEAR_FILTER).assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).performClick()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).performClick()
     val context = ApplicationProvider.getApplicationContext<Context>()
     compose
         .onNodeWithText(context.getString(R.string.map_location_nearby_distance, 0))
         .assertExists()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     assertEquals(trip.id, details)
     assertEquals(0, clears)
   }
@@ -323,7 +323,7 @@ class TripMapScreenTest {
       compose.runOnIdle { locationState = MapLocationUiState.Resolved(result) }
       compose.onNodeWithText(context.getString(message)).assertIsDisplayed()
       compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
-      compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).assertExists()
+      compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).assertExists()
     }
   }
 
@@ -341,8 +341,8 @@ class TripMapScreenTest {
                 .getString(R.string.map_location_outside)
         )
         .assertIsDisplayed()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id).performClick()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     compose.waitForIdle()
     assertEquals(trip.id, details)
   }
@@ -384,9 +384,9 @@ class TripMapScreenTest {
             )
         )
     show()
-    compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + far.id).assertDoesNotExist()
+    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + far.id).assertDoesNotExist()
     compose.onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + far.id).performScrollTo().performClick()
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     compose.waitForIdle()
     assertEquals(far.id, details)
   }
@@ -402,7 +402,7 @@ class TripMapScreenTest {
             )
         )
     show(fontScale = 2f)
-    compose.onNodeWithTag(MockMapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
     compose.waitForIdle()
     assertEquals(trip.id, details)
   }
@@ -441,7 +441,7 @@ class TripMapScreenTest {
             )
         )
     show()
-    val marker = compose.onNodeWithTag(MockMapTestTags.MARKER_PREFIX + trip.id)
+    val marker = compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id)
     compose.onNodeWithTag(TripMapTestTags.SURFACE).performTouchInput {
       swipe(Offset(center.x, center.y + 90), Offset(center.x + 60, center.y + 90))
     }

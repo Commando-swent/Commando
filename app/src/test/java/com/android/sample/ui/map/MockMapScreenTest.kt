@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.TripError
-import com.android.sample.ui.map.MockMapTestTags as Tags
+import com.android.sample.ui.map.MapTestTags as Tags
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File

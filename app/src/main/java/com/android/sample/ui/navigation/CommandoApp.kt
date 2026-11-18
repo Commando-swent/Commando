@@ -549,9 +549,12 @@ private fun AuthenticatedApp(
           photoSnackbarHost = photoSnackbarHost,
           notifications = notifications,
           orders = orders,
-          onSignOut = signOutAfterCleanup,
-          signOutError = signOutError,
-          onLanguageSelected = onLanguageSelected,
+          actions =
+              ProfileRouteActions(
+                  signOut = signOutAfterCleanup,
+                  signOutError = signOutError,
+                  selectLanguage = onLanguageSelected,
+              ),
       )
     }
   }

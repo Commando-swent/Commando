@@ -28,6 +28,16 @@ import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.profile.rememberProfilePhotoActions
 
+/**
+ * The app-level account actions Profile triggers: [signOut] reports a failure through
+ * [signOutError], and [selectLanguage] applies the chosen app language.
+ */
+internal class ProfileRouteActions(
+    val signOut: () -> Unit,
+    val signOutError: AuthException?,
+    val selectLanguage: (AppLanguage) -> Unit,
+)
+
 /** Registers Profile and its settings pages around the app-owned shared Profile ViewModel. */
 internal fun NavGraphBuilder.profileRoutes(
     navController: NavHostController,
@@ -35,9 +45,7 @@ internal fun NavGraphBuilder.profileRoutes(
     photoSnackbarHost: SnackbarHostState,
     notifications: Lazy<NotificationRepository>,
     orders: SessionOrderViewModel,
-    onSignOut: () -> Unit,
-    signOutError: AuthException?,
-    onLanguageSelected: (AppLanguage) -> Unit,
+    actions: ProfileRouteActions,
 ) {
   composable(route = CommandoScreens.Profile.name) {
     val profileUiState by profileViewModel.uiState.collectAsState()
@@ -45,8 +53,8 @@ internal fun NavGraphBuilder.profileRoutes(
     ProfileScreen(
         uiState = profileUiState,
         onBack = { navController.popBackStack() },
-        onSignOut = onSignOut,
-        signOutError = signOutError,
+        onSignOut = actions.signOut,
+        signOutError = actions.signOutError,
         photo = photo,
         onPhotoClick = onPhotoClick,
         onOrderHistory = {
@@ -99,7 +107,7 @@ internal fun NavGraphBuilder.profileRoutes(
   composable(route = CommandoScreens.ProfileLanguage.name) {
     ProfileLanguageScreen(
         selected = AppLanguage.fromLanguage(LocalConfiguration.current.locales[0].language),
-        onSelectLanguage = onLanguageSelected,
+        onSelectLanguage = actions.selectLanguage,
         onBack = { navController.popBackStack() },
     )
   }

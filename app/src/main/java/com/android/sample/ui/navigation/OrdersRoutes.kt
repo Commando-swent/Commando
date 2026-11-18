@@ -1,6 +1,7 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: Claude Code moved the order destinations out of CommandoApp (#378).
+import android.os.Bundle
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -57,7 +58,8 @@ internal fun NavGraphBuilder.ordersRoutes(
       arguments =
           listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
   ) { entry ->
-    val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+    val orderId =
+        requireRouteArgument(entry.arguments, CommandoScreens.ORDER_ID_ARGUMENT, "Order Details")
     val model: OrderDetailsViewModel =
         viewModel(viewModelStoreOwner = entry) {
           OrderDetailsViewModel(
@@ -89,15 +91,7 @@ internal fun NavGraphBuilder.ordersRoutes(
             launchSingleTop = true
           }
         },
-        onEdit = {
-          (model.uiState.value as? OrderDetailsUiState.Content)
-              ?.takeIf { it.canEdit }
-              ?.let {
-                navController.navigate(CommandoScreens.catalogueRoute(it.order.tripId, orderId)) {
-                  launchSingleTop = true
-                }
-              }
-        },
+        onEdit = { navController.openOrderEdit(model.uiState.value, orderId) },
     )
   }
   composable(
@@ -106,9 +100,7 @@ internal fun NavGraphBuilder.ordersRoutes(
           listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
   ) { entry ->
     val tripId =
-        requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-          "Incoming Orders requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-        }
+        requireRouteArgument(entry.arguments, CommandoScreens.TRIP_ID_ARGUMENT, "Incoming Orders")
     // The resume observer loads on entry and refreshes after a decision in Order Details.
     val incomingOrdersViewModel: IncomingOrdersViewModel =
         viewModel(viewModelStoreOwner = entry) {
@@ -131,9 +123,11 @@ internal fun NavGraphBuilder.ordersRoutes(
           listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
   ) { entry ->
     val tripId =
-        requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-          "Shopping Checklist requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-        }
+        requireRouteArgument(
+            entry.arguments,
+            CommandoScreens.TRIP_ID_ARGUMENT,
+            "Shopping Checklist",
+        )
     // Reloading on resume picks up orders accepted while the checklist was in the background.
     val checklist: ShoppingChecklistViewModel =
         viewModel(viewModelStoreOwner = entry) {
@@ -148,3 +142,17 @@ internal fun NavGraphBuilder.ordersRoutes(
 private fun NavHostController.openOrderDetails(orderId: String) {
   navigate(CommandoScreens.orderDetailsRoute(orderId)) { launchSingleTop = true }
 }
+
+/**
+ * Opens Catalogue to edit [orderId] when the latest [state] still allows it. The button is only
+ * shown for an editable order, but the order may change (for example, accepted) before the tap.
+ */
+internal fun NavHostController.openOrderEdit(state: OrderDetailsUiState, orderId: String) {
+  val content = state as? OrderDetailsUiState.Content ?: return
+  if (!content.canEdit) return
+  navigate(CommandoScreens.catalogueRoute(content.order.tripId, orderId)) { launchSingleTop = true }
+}
+
+/** Returns the [name] argument of [screen]'s route, with a clear message if it is missing. */
+internal fun requireRouteArgument(arguments: Bundle?, name: String, screen: String): String =
+    requireNotNull(arguments?.getString(name)) { "$screen requires the $name argument" }

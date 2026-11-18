@@ -1,5 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="rating_title">Rate your order</string>
+    <string name="order_details_submitted_rating">Your rating</string>
     <string name="rating_prompt">How was your experience with this commando?</string>
     <string name="rating_select">Select a rating from 1 to 5</string>
     <!-- Stars describes the fixed five-star scale, not the selected score. -->

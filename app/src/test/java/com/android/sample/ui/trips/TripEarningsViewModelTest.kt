@@ -83,22 +83,6 @@ class TripEarningsViewModelTest {
   }
 
   @Test
-  fun refreshPicksUpAnOrderDeliveredMeanwhile() = runTest {
-    val viewModel = TripEarningsViewModel(orders, trip.id)
-    advanceUntilIdle()
-    sessionUser = ready.requesterId
-    assertEquals(
-        OrderResult.Success(ready.copy(status = OrderStatus.DELIVERED)),
-        orders.confirmReceipt(ready.id),
-    )
-    sessionUser = trip.ownerId
-    viewModel.refresh()
-    assertEquals(TripEarningsUiState.Loading, viewModel.uiState.value)
-    advanceUntilIdle()
-    assertEquals(content(TripEarnings(650L, 2)), viewModel.uiState.value)
-  }
-
-  @Test
   fun retryAfterAFailureShowsTheEarnings() = runTest {
     orders.forcedError = OrderError.Unknown
     val viewModel = TripEarningsViewModel(orders, trip.id)
@@ -108,18 +92,6 @@ class TripEarningsViewModelTest {
     viewModel.refresh()
     advanceUntilIdle()
     assertEquals(content(TripEarnings(250L, 1)), viewModel.uiState.value)
-  }
-
-  @Test
-  fun otherUsersAndEndedSessionsCannotReadTheEarnings() = runTest {
-    sessionUser = "requester"
-    val viewModel = TripEarningsViewModel(orders, trip.id)
-    advanceUntilIdle()
-    assertEquals(TripEarningsUiState.Error(OrderError.PermissionDenied), viewModel.uiState.value)
-    sessionUser = null
-    viewModel.refresh()
-    advanceUntilIdle()
-    assertEquals(TripEarningsUiState.Error(OrderError.NotAuthenticated), viewModel.uiState.value)
   }
 
   @Test

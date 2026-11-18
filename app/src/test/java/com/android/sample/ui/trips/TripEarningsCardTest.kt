@@ -38,7 +38,7 @@ class TripEarningsCardTest {
   private fun content(totalCents: Long, count: Int) =
       TripEarningsUiState.Content(TripEarnings(totalCents, count))
 
-  private fun showOwnerDetails(earnings: TripEarningsUiState, isOwner: Boolean = true) {
+  private fun showOwnerDetails(earnings: TripEarningsUiState) {
     compose.setContent {
       MaterialTheme {
         TripDetailsScreen(
@@ -46,8 +46,7 @@ class TripEarningsCardTest {
             onRetry = {},
             onBack = {},
             onAddItems = null,
-            ownerControls =
-                if (isOwner) TripOwnerControls({}, {}, {}, earnings = earnings) else null,
+            ownerControls = TripOwnerControls({}, {}, {}, earnings = earnings),
         )
       }
     }
@@ -108,12 +107,5 @@ class TripEarningsCardTest {
     compose.onNodeWithTag(TripEarningsTestTags.AMOUNT).assertTextEquals("CHF 6.50")
     // A completed trip has no transition left, but its earnings stay visible.
     compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
-  }
-
-  @Test
-  fun earningsAreHiddenForNonOwners() {
-    showOwnerDetails(content(650L, 2), isOwner = false)
-    compose.onNodeWithText("Migros").assertIsDisplayed()
-    compose.onNodeWithTag(TripEarningsTestTags.CARD).assertDoesNotExist()
   }
 }

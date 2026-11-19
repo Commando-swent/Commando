@@ -1,7 +1,11 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
-import com.commando.app.model.*
+import com.commando.app.model.NotificationEventType
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDecision
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderStatus
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth

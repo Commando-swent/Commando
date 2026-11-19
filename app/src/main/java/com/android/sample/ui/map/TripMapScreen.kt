@@ -36,6 +36,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
@@ -128,12 +129,18 @@ fun TripMapScreen(
     val controlsHeight = with(density) { controlsBounds.height.toDp() }
     val cardLimit = (maxHeight - controlsHeight - 32.dp).coerceAtLeast(0.dp)
     val locate: @Composable () -> Unit = {
-      MapLocateAction(
-          tracking != null,
-          trackedFix,
-          { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) },
-          onLocate,
-          { scope.launch { snackbar.showSnackbar(locationMessage) } },
+      MapRoundAction(
+          R.drawable.map_locate,
+          if (tracking == null) R.string.trip_map_locate else R.string.order_tracking_recenter,
+          {
+            if (tracking != null) {
+              trackedFix
+                  ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
+                  ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+            } else if (onLocate != null) onLocate()
+            else scope.launch { snackbar.showSnackbar(locationMessage) }
+          },
+          Modifier.testTag(TripMapTestTags.LOCATE),
       )
     }
     MapTripCanvas(
@@ -286,12 +293,7 @@ fun TripMapScreen(
               onRefresh,
               Modifier.align(Alignment.Center)
                   .padding(horizontal = 24.dp)
-                  .offset(
-                      y =
-                          if (maxHeight > 500.dp)
-                              (if (state is TripMapUiState.Error) (-50).dp else (-47).dp)
-                          else 0.dp
-                  )
+                  .offset(y = mapFeedbackOffset(maxHeight, state))
                   .heightIn(max = maxHeight - 16.dp),
           )
     }
@@ -354,37 +356,19 @@ fun TripMapScreen(
   }
 }
 
+private fun mapFeedbackOffset(height: Dp, state: TripMapUiState): Dp =
+    when {
+      height <= 500.dp -> 0.dp
+      state is TripMapUiState.Error -> (-50).dp
+      else -> (-47).dp
+    }
+
 private fun liveMapTitle(mode: LiveMapMode?): Int =
     when (mode) {
       LiveMapMode.DISCOVERY -> R.string.live_map_discovery
       LiveMapMode.TRACKING -> R.string.live_map_tracking
       null -> R.string.live_map_context
     }
-
-/** Reuses the locate control for device positioning and selected-order recentering. */
-@Composable
-private fun MapLocateAction(
-    tracking: Boolean,
-    fix: CommandoPosition?,
-    onCenter: (MapPosition) -> Unit,
-    onLocate: (() -> Unit)?,
-    onUnavailable: () -> Unit,
-) {
-  MapRoundAction(
-      R.drawable.map_locate,
-      if (tracking) R.string.order_tracking_recenter else R.string.trip_map_locate,
-      {
-        when {
-          tracking ->
-              fix?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
-                  ?.let(onCenter)
-          onLocate != null -> onLocate()
-          else -> onUnavailable()
-        }
-      },
-      Modifier.testTag(TripMapTestTags.LOCATE),
-  )
-}
 
 /** Centers only the first tracking fix; later updates preserve the user's camera. */
 @Composable

@@ -148,6 +148,7 @@ class MapRoutesNavigationTest {
   fun failedSharingStopOnRequesterSwitchShowsErrorAndKeepsSession() {
     stopGate.completeExceptionally(IllegalStateException("delete failed"))
     click(AppTestTags.REQUESTER_MODE)
+    assertMode(selected = AppTestTags.REQUESTER_MODE, other = AppTestTags.COMMANDO_MODE)
     assertStopFailureKeepsSession()
     val failedAttempts = stopCalls
     assertTrue(failedAttempts > 0)
@@ -155,10 +156,11 @@ class MapRoutesNavigationTest {
     // Entering Commando mode reports no stop error; leaving it again retries the failed delete.
     dismissStopError()
     click(AppTestTags.COMMANDO_MODE)
-    compose.waitForIdle()
+    assertMode(selected = AppTestTags.COMMANDO_MODE, other = AppTestTags.REQUESTER_MODE)
     compose.onNodeWithText(string(R.string.position_sharing_stop)).assertDoesNotExist()
     assertNotNull(auth.currentUser)
     click(AppTestTags.REQUESTER_MODE)
+    assertMode(selected = AppTestTags.REQUESTER_MODE, other = AppTestTags.COMMANDO_MODE)
     assertStopFailureKeepsSession()
     assertTrue(stopCalls > failedAttempts)
   }
@@ -166,7 +168,7 @@ class MapRoutesNavigationTest {
   @Test
   fun requesterSwitchWaitsForPendingStopAndShowsNoErrorOnSuccess() {
     click(AppTestTags.REQUESTER_MODE)
-    compose.waitForIdle()
+    assertMode(selected = AppTestTags.REQUESTER_MODE, other = AppTestTags.COMMANDO_MODE)
     assertTrue(stopCalls > 0)
     assertTrue(storage.value.isNotEmpty())
 
@@ -175,6 +177,12 @@ class MapRoutesNavigationTest {
     compose.onNodeWithText(string(R.string.position_sharing_stop)).assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertIsDisplayed()
     assertNotNull(auth.currentUser)
+  }
+
+  /** The mode toggles live in the shared top bar, which stays visible on Profile. */
+  private fun assertMode(selected: String, other: String) {
+    compose.onNodeWithTag(selected).assertIsDisplayed().assertIsSelected()
+    compose.onNodeWithTag(other).assertIsDisplayed().assertIsNotSelected()
   }
 
   private fun assertStopFailureKeepsSession() {

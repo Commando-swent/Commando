@@ -74,8 +74,9 @@ production two-user demonstration remain checks to perform separately from injec
 
 `observeUpcomingTrips` and `observeMyOrders` are session-bound streams; null means
 unconfirmed metadata, never a confirmed empty list. Cached/pending snapshots cannot
-select discovery. The subsequent #270 ViewModel PR supplies mode selection and grouping; #272 supplies
-foreground wiring, controls and navigation. This repository/security PR does not close #270.
+select discovery. #270 supplies the repository feeds and discovery authorization; #369 supplies
+the ViewModel mode selection and grouping. #272 supplies foreground wiring, controls and navigation.
+The repository/security PR closes #270; the separate ViewModel PR closes #369.
 
 Discovery uses **separate consent on every publication**: `publishForDiscovery` writes
 the existing single position and `commandoPositions/{uid}/discovery/consent` atomically.

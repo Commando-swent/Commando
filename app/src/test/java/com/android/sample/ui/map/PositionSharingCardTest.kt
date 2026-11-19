@@ -22,6 +22,38 @@ class PositionSharingCardTest {
   @get:Rule val compose = createComposeRule()
 
   @Test
+  fun discoveryIsASeparateDisabledByDefaultControl() {
+    var sharing: PositionSharingState by mutableStateOf(PositionSharingState.Off)
+    var discovery by mutableStateOf(DiscoverySharingState.UNAVAILABLE)
+    var requested: Boolean? = null
+    compose.setContent {
+      SampleAppTheme {
+        PositionSharingCard(
+            sharing,
+            {},
+            discovery = discovery,
+            onDiscoveryToggle = { requested = it },
+        )
+      }
+    }
+    compose
+        .onNodeWithTag(PositionSharingTestTags.DISCOVERY_TOGGLE)
+        .assertIsOff()
+        .assertIsNotEnabled()
+    compose.runOnIdle {
+      sharing = PositionSharingState.Live
+      discovery = DiscoverySharingState.PRIVATE
+    }
+    compose.onNodeWithTag(PositionSharingTestTags.DISCOVERY_TOGGLE).assertIsOff().performClick()
+    compose.runOnIdle {
+      assertEquals(true, requested)
+      discovery = DiscoverySharingState.DISCOVERABLE
+    }
+    compose.onNodeWithTag(PositionSharingTestTags.DISCOVERY_TOGGLE).assertIsOn().performClick()
+    compose.runOnIdle { assertEquals(false, requested) }
+  }
+
+  @Test
   fun failedDeletionStaysCheckedAndAllowsTheUserToRetryStopping() {
     var state: PositionSharingState by mutableStateOf(PositionSharingState.Off)
     var requested: Boolean? = null

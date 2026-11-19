@@ -253,8 +253,78 @@ class PositionSharingViewModelTest {
     assertTrue(positions.writes.isEmpty())
   }
 
+  @Test
+  fun discoveryRequiresSeparateConsentAndStoppingNeverRestoresIt() = modelTest {
+    val vm = model()
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertTrue(positions.writes.isEmpty())
+    vm.start(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(0, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(false)
+    runCurrent()
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    positions.failDelete = true
+    vm.setDiscoveryEnabled(false)
+    runCurrent()
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(PositionSharingState.Failed(SharingFailureReason.STOP), vm.uiState.value)
+    positions.failDelete = false
+    vm.stop().await()
+    assertEquals(DiscoverySharingState.UNAVAILABLE, vm.discoveryState.value)
+    vm.start(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(2, positions.discoveryWrites)
+  }
+
+  @Test
+  fun departureRevokesConsentAndUncertainWritesKeepTheStopWarning() = modelTest {
+    val vm = model()
+    vm.start(true)
+    runCurrent()
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    owned.value = TripResult.Success(listOf(trip.copy(status = TripStatus.IN_PROGRESS)))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    assertEquals(DiscoverySharingState.UNAVAILABLE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(1, positions.discoveryWrites)
+    owned.value = TripResult.Success(listOf(trip))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    positions.failDiscovery = true
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(PositionSharingState.Failed(SharingFailureReason.STOP), vm.uiState.value)
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(2, positions.discoveryWrites)
+  }
+
   private class RecordingPositions : CommandoPositionRepository {
     val writes = mutableListOf<CommandoPosition>()
+    var discoveryWrites = 0
+    var failDiscovery = false
+
+    override suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) {
+      discoveryWrites++
+      publish(tripId, position)
+      if (failDiscovery) failDelete = true
+      check(!failDiscovery)
+    }
+
     var current: CommandoPosition? = null
     var tripId: String? = null
     var failDelete = false

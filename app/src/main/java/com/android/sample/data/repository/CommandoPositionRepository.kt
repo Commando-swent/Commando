@@ -22,7 +22,8 @@ interface CommandoPositionRepository {
   }
 
   /**
-   * Observes only explicitly discoverable positions on this eligible trip; empty means unavailable.
+   * Observes only explicitly discoverable positions on this eligible trip. Null means unavailable,
+   * including revoked discovery access; transport and session failures terminate the flow.
    */
   fun observeDiscovery(ownerId: String, tripId: String): Flow<CommandoPosition?> = flow {
     error("Discovery observation unsupported")

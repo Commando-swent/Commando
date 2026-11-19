@@ -110,16 +110,11 @@ internal constructor(
                   TripResult.Error(TripError.PermissionDenied)
               else documents?.toTripsResult()
             }
-            .expireUpcomingTrips(now)
             .catch { error ->
-              if (error is CancellationException) throw error
-              emit(
-                  TripResult.Error(
-                      (error as? Exception)?.toFirestoreFailure()?.toTripError(TripError.Unknown)
-                          ?: TripError.Unknown
-                  )
-              )
+              if (error is CancellationException || error !is Exception) throw error
+              emit(TripResult.Error(error.toFirestoreFailure().toTripError(TripError.Unknown)))
             }
+            .expireUpcomingTrips(now)
     )
   }
 

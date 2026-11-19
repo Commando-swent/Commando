@@ -1,7 +1,6 @@
 package com.android.sample.data.repository
 
 // AI assistance: Claude Code (#147); OpenAI Codex (cancellation contract and KDoc).
-/** Inject the SAME session-scoped repository into Review, My Orders and Order Details. */
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
 import com.commando.app.model.OrderDraft
@@ -9,6 +8,7 @@ import com.commando.app.model.OrderStatus
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
+/** Inject the SAME session-scoped repository into Review, My Orders and Order Details. */
 interface OrderRepository {
   /** Observe confirmed requester orders; null means unconfirmed, never an empty list. */
   fun observeMyOrders(): Flow<OrderResult<List<Order>>?> = flow { error("Live orders unsupported") }

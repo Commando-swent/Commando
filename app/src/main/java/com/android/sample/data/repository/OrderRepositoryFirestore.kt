@@ -115,8 +115,8 @@ internal constructor(
               }
             }
             .catch { error ->
-              if (error is CancellationException) throw error
-              emit(failure((error as? Exception)?.toOrderError() ?: OrderError.Unknown))
+              if (error is CancellationException || error !is Exception) throw error
+              emit(failure(error.toOrderError()))
             }
     )
   }

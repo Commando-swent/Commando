@@ -3,14 +3,13 @@ package com.android.sample.ui.navigation
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
-// dependencies, authentication and trip routes into their own files (#322). OpenAI Codex
+// dependencies, authentication, trip and map routes into their own files (#322). OpenAI Codex
 // extracted the profile and catalogue routes, and Claude Code rebased them onto the shared
-// helpers (#323).
+// helpers (#323), then moved the order destinations into their own file (#378).
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -25,14 +24,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
 import com.android.sample.R
-import com.android.sample.data.location.AndroidDeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.NotificationRepository
@@ -53,28 +49,11 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
-import com.android.sample.ui.map.MapLocationHost
-import com.android.sample.ui.map.OrderTrackingHost
-import com.android.sample.ui.map.OrderTrackingViewModel
 import com.android.sample.ui.map.PositionSharingCard
-import com.android.sample.ui.map.PositionSharingViewModel
-import com.android.sample.ui.map.TripMapScreen
-import com.android.sample.ui.map.TripMapUiState
-import com.android.sample.ui.map.TripMapViewModel
-import com.android.sample.ui.map.rememberPositionSharingControl
-import com.android.sample.ui.orders.IncomingOrdersScreen
-import com.android.sample.ui.orders.IncomingOrdersViewModel
-import com.android.sample.ui.orders.MyOrdersScreen
-import com.android.sample.ui.orders.MyOrdersViewModel
-import com.android.sample.ui.orders.OrderDetailsScreen
-import com.android.sample.ui.orders.OrderDetailsUiState
-import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.OrderFlowDraft
 import com.android.sample.ui.orders.ReviewOrderRoute
 import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
-import com.android.sample.ui.orders.ShoppingChecklistScreen
-import com.android.sample.ui.orders.ShoppingChecklistViewModel
 import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileViewModel
@@ -217,23 +196,16 @@ private fun AuthenticatedApp(
       CommandoScreens.entries.firstOrNull { it.route == backStackEntry?.destination?.route }
           ?: CommandoScreens.Home
 
-  val context = LocalContext.current
-  val source =
-      locationProvider
-          ?: remember(context) { AndroidDeviceLocationProvider(context.applicationContext) }
-  val sharing: PositionSharingViewModel = viewModel {
-    PositionSharingViewModel(
-        positions::value,
-        tripRepository,
-        source,
-        orders::currentUserId,
-        orders.sessionChanges,
-    )
-  }
-  val (sharingState, toggleSharing) =
-      rememberPositionSharingControl(sharing, enabled = appUiState.mode == AppMode.Commando)
-  val signOutAfterCleanup =
-      rememberSharingSignOut(sharing, appUiState.mode, onSignOut, photoSnackbarHost)
+  val sharing =
+      rememberPositionSharing(
+          positions,
+          tripRepository,
+          orders,
+          locationProvider,
+          appUiState.mode,
+          onSignOut,
+          photoSnackbarHost,
+      )
   AppScaffold(
       currentScreen = currentScreen,
       mode = appUiState.mode,
@@ -292,7 +264,7 @@ private fun AuthenticatedApp(
             mode = appUiState.mode,
             tripState = tripState,
             onRetry = onRetry,
-            sharingControl = { PositionSharingCard(sharingState, toggleSharing) },
+            sharingControl = { PositionSharingCard(sharing.state, sharing.toggle) },
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
             onManageTrip = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId)) {
@@ -320,52 +292,18 @@ private fun AuthenticatedApp(
           locationFilter = locationFilter,
           savedSearchViewModel = savedSearchViewModel,
       )
-      composable(
-          route = CommandoScreens.IncomingOrders.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Incoming Orders requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        // The resume observer loads on entry and refreshes after a decision in Order Details.
-        val incomingOrdersViewModel: IncomingOrdersViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              IncomingOrdersViewModel(orders.repository, tripId, loadImmediately = false)
-            }
-        RefreshOnResume(incomingOrdersViewModel, incomingOrdersViewModel::refresh)
-        IncomingOrdersScreen(
-            viewModel = incomingOrdersViewModel,
-            onOrderClick = { orderId ->
-              navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
-                launchSingleTop = true
-              }
-            },
-            onOpenChecklist = {
-              navController.navigate(CommandoScreens.shoppingChecklistRoute(tripId)) {
-                launchSingleTop = true
-              }
-            },
-        )
-      }
-      composable(
-          route = CommandoScreens.ShoppingChecklist.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType }),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Shopping Checklist requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        // Reloading on resume picks up orders accepted while the checklist was in the background.
-        val checklist: ShoppingChecklistViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              ShoppingChecklistViewModel(orders.repository, checklists, tripId)
-            }
-        RefreshOnResume(checklist, checklist::refresh)
-        ShoppingChecklistScreen(viewModel = checklist)
-      }
+      ordersRoutes(
+          navController = navController,
+          orders = orders,
+          tripRepository = tripRepository,
+          checklists = checklists,
+          userId = userId,
+          ratingRepositoryFactory = ratingRepositoryFactory,
+          onBrowseTrips = {
+            appViewModel.switchMode(AppMode.Requester)
+            navController.openScreen(CommandoScreens.AvailableTrips)
+          },
+      )
       orderFlowRoutes(
           navController = navController,
           orders = orders,
@@ -425,125 +363,13 @@ private fun AuthenticatedApp(
           }
         }
       }
-      composable(route = CommandoScreens.TripMap.name) { entry ->
-        val map: TripMapViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              TripMapViewModel(
-                  tripRepository,
-                  locationFilter.selected,
-                  orders::currentUserId,
-                  orders.sessionChanges,
-                  criteria = locationFilter.criteria,
-              )
-            }
-        RefreshOnResume(map, map::refresh)
-        val state by map.uiState.collectAsState()
-        val selectedPoint by locationFilter.selected.collectAsState()
-        MapLocationHost(state == TripMapUiState.SessionEnded) { locationState, locate ->
-          TripMapScreen(
-              state,
-              map::refresh,
-              map::selectTrip,
-              map::clearSelection,
-              onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
-              onBack = { navController.popBackStack() },
-              selectedPoint = selectedPoint,
-              onClearPoint = locationFilter::clear,
-              locationState = locationState,
-              onLocate = locate,
-          )
-        }
-      }
-      composable(route = CommandoScreens.MyOrders.name) { entry ->
-        val model: MyOrdersViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              MyOrdersViewModel(orders.repository, tripRepository, userId, loadImmediately = false)
-            }
-        RefreshOnResume(model, model::retry)
-        MyOrdersScreen(
-            viewModel = model,
-            requesterId = userId,
-            onOrderClick = { orderId ->
-              navController.navigate(CommandoScreens.orderDetailsRoute(orderId)) {
-                launchSingleTop = true
-              }
-            },
-            onBrowseTrips = {
-              appViewModel.switchMode(AppMode.Requester)
-              navController.openScreen(CommandoScreens.AvailableTrips)
-            },
-            isDemo = orders.isDemo,
-        )
-      }
-      composable(
-          route = CommandoScreens.OrderDetails.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
-      ) { entry ->
-        val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
-        val model: OrderDetailsViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              OrderDetailsViewModel(
-                  orderId,
-                  orders.repository,
-                  tripRepository,
-                  orders::currentUserId,
-                  orders.sessionChanges,
-                  ratingRepositoryFactory = ratingRepositoryFactory,
-              )
-            }
-        val state by model.uiState.collectAsState()
-        val ratingState by model.ratingState.collectAsState()
-        OrderDetailsScreen(
-            state = state,
-            ratingState = ratingState,
-            onRatingScore = model::selectScore,
-            onRatingComment = model::updateComment,
-            onRatingSubmit = model::submitRating,
-            onRatingDismiss = model::dismissRating,
-            onBack = { navController.popBackStack() },
-            onRetry = model::retry,
-            onDecision = model::decide,
-            onMarkReadyForHandoff = model::markReadyForHandoff,
-            onCancel = model::cancel,
-            onConfirmReceipt = model::confirmReceipt,
-            onTrack = {
-              navController.navigate(CommandoScreens.orderTrackingRoute(orderId)) {
-                launchSingleTop = true
-              }
-            },
-            onEdit = {
-              (model.uiState.value as? OrderDetailsUiState.Content)
-                  ?.takeIf { it.canEdit }
-                  ?.let {
-                    navController.navigate(
-                        CommandoScreens.catalogueRoute(it.order.tripId, orderId)
-                    ) {
-                      launchSingleTop = true
-                    }
-                  }
-            },
-        )
-      }
-      composable(
-          route = CommandoScreens.OrderTracking.route,
-          arguments =
-              listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
-      ) { entry ->
-        val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
-        val model: OrderTrackingViewModel =
-            viewModel(viewModelStoreOwner = entry) {
-              OrderTrackingViewModel(
-                  orderId,
-                  orders.repository,
-                  tripRepository,
-                  positions.value,
-                  orders::currentUserId,
-                  orders.sessionChanges,
-              )
-            }
-        OrderTrackingHost(model, onBack = { navController.popBackStack() })
-      }
+      mapRoutes(
+          navController = navController,
+          tripRepository = tripRepository,
+          orders = orders,
+          positions = positions,
+          locationFilter = locationFilter,
+      )
       profileRoutes(
           navController = navController,
           profileViewModel = profileViewModel,
@@ -552,33 +378,11 @@ private fun AuthenticatedApp(
           orders = orders,
           actions =
               ProfileRouteActions(
-                  signOut = signOutAfterCleanup,
+                  signOut = sharing.signOut,
                   signOutError = signOutError,
                   selectLanguage = onLanguageSelected,
               ),
       )
     }
   }
-}
-
-/** Stops sharing on role exit and returns a sign-out action that awaits confirmed cleanup. */
-@Composable
-private fun rememberSharingSignOut(
-    sharing: PositionSharingViewModel,
-    mode: AppMode,
-    onSignOut: () -> Unit,
-    snackbar: SnackbarHostState,
-): () -> Unit {
-  val sharingScope = rememberCoroutineScope()
-  val stopError = stringResource(R.string.position_sharing_stop)
-  val signOutAfterCleanup = {
-    sharingScope.launch {
-      if (sharing.stop().await()) onSignOut() else snackbar.showSnackbar(stopError)
-    }
-    Unit
-  }
-  LaunchedEffect(mode) {
-    if (mode == AppMode.Requester && !sharing.stop().await()) snackbar.showSnackbar(stopError)
-  }
-  return signOutAfterCleanup
 }

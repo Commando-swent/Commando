@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: Claude Code (characterization tests for trip routes, #322).
+// AI assistance: Claude Code (characterization tests for trip routes, #322; owner earnings, #301).
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
@@ -11,6 +11,8 @@ import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeRatingRepository
 import com.android.sample.data.repository.FakeTripRepository
+import com.android.sample.data.repository.OrderRepository
+import com.android.sample.data.repository.OrderResult
 import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
@@ -21,6 +23,7 @@ import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.android.sample.ui.trips.TripEarningsTestTags
 import com.android.sample.ui.trips.TripOwnerTestTags
 import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.discoveryTrip
@@ -34,6 +37,7 @@ import com.commando.app.model.TripSearchCriteria
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -57,6 +61,7 @@ class TripRoutesNavigationTest {
   private val coop = migros.copy(id = "coop", store = Location("Coop Renens", 46.53, 6.64))
   // Same chain as the preset, but over 1 km from CE building, so only the point hides it.
   private val farCoop = coop.copy(id = "far-coop", handoffLocation = Location("Far", 46.53, 6.58))
+  private val carolsCoop = coop.copy(id = "carols-coop", ownerId = "carol")
 
   private val coopOrder =
       Order(
@@ -68,6 +73,15 @@ class TripRoutesNavigationTest {
           OrderStatus.PENDING,
           time,
       )
+
+  private val readyOrder =
+      coopOrder.copy(id = "order-ready", status = OrderStatus.READY_FOR_HANDOFF)
+
+  /** Trip IDs of every orders-by-trip query, i.e. every earnings or incoming-orders load. */
+  private val tripQueries = mutableListOf<String>()
+  // Lets a test act as the requester on the same repository the app uses.
+  private var actingUser: String? = null
+  private lateinit var orderRepository: FakeOrderRepository
 
   private val credentials =
       object : GoogleCredentialClient {
@@ -84,14 +98,30 @@ class TripRoutesNavigationTest {
             ioDispatcher = Dispatchers.Unconfined,
         )
     runBlocking { presets.saveSearch("Coop only", TripSearchCriteria(StoreFilter.COOP)) }
-    val orders = listOf(coopOrder, coopOrder.copy(id = "order-migros", tripId = migros.id))
+    val orders =
+        listOf(
+            coopOrder,
+            coopOrder.copy(id = "order-migros", tripId = migros.id),
+            coopOrder.copy(id = "order-delivered", status = OrderStatus.DELIVERED),
+            readyOrder,
+        )
     compose.setContent {
       SampleAppTheme {
         CommandoApp(
             FakeAuthRepository(AuthUser("alice")),
             trips,
             credentials,
-            orderRepositoryFactory = { FakeOrderRepository(it, orders, tripRepository = trips) },
+            orderRepositoryFactory = { session ->
+              val fake =
+                  FakeOrderRepository({ actingUser ?: session() }, orders, tripRepository = trips)
+              orderRepository = fake
+              object : OrderRepository by fake {
+                override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> {
+                  tripQueries += tripId
+                  return fake.getOrdersForTrip(tripId)
+                }
+              }
+            },
             savedSearchRepositoryFactory = { presets },
             ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
         )
@@ -118,6 +148,15 @@ class TripRoutesNavigationTest {
   private fun addItems() =
       compose.onNodeWithText(string(R.string.trip_details_add_items)).performScrollTo()
 
+  private fun earnings() = compose.onNodeWithTag(TripEarningsTestTags.AMOUNT)
+
+  private fun openCoopAsOwner() {
+    click(AppTestTags.HOME_BUTTON)
+    click(AppTestTags.COMMANDO_MODE)
+    click(AppTestTags.TRIPS_BUTTON)
+    click(MyTripsTestTags.TRIP_CARD_PREFIX + coop.id)
+  }
+
   private fun viewOrders() = compose.onNodeWithText(string(R.string.trip_details_view_orders))
 
   private fun confirmDialog() =
@@ -128,6 +167,7 @@ class TripRoutesNavigationTest {
     addItems().assertIsEnabled()
     viewOrders().assertDoesNotExist()
     compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
+    compose.onNodeWithTag(TripEarningsTestTags.CARD).assertDoesNotExist()
   }
 
   @Test
@@ -137,11 +177,10 @@ class TripRoutesNavigationTest {
     openCoopAsRequester()
     click(AppTestTags.BACK_BUTTON)
 
-    click(AppTestTags.HOME_BUTTON)
-    click(AppTestTags.COMMANDO_MODE)
-    click(AppTestTags.TRIPS_BUTTON)
-    click(MyTripsTestTags.TRIP_CARD_PREFIX + coop.id)
+    openCoopAsOwner()
     compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertExists()
+    // Only the delivered order's commission counts, not the pending or ready ones.
+    earnings().assertTextEquals("CHF 1.50")
     // The add action stays on screen but cannot be used outside Requester mode.
     addItems().assertIsNotEnabled()
     viewOrders().performScrollTo().performClick()
@@ -157,6 +196,37 @@ class TripRoutesNavigationTest {
     click(AppTestTags.REQUESTER_MODE)
     click(AppTestTags.TRIPS_BUTTON)
     openCoopAsRequester()
+  }
+
+  @Test
+  fun earningsReloadWhenTheOwnerComesBackToTripDetails() {
+    show(trips(migros, coop))
+    openCoopAsOwner()
+    earnings().assertTextEquals("CHF 1.50")
+    viewOrders().performScrollTo().performClick()
+    // The requester confirms receipt while the owner is away from Trip Details.
+    actingUser = readyOrder.requesterId
+    runBlocking { orderRepository.confirmReceipt(readyOrder.id) }
+    actingUser = null
+    click(AppTestTags.BACK_BUTTON)
+    earnings().assertTextEquals("CHF 3.00")
+  }
+
+  @Test
+  fun earningsAreQueriedOnlyForTheOwnerInCommandoMode() {
+    show(trips(migros, coop, carolsCoop))
+    click(AppTestTags.TRIPS_BUTTON)
+    // Requester mode, on the user's own trip and on someone else's.
+    openCoopAsRequester()
+    click(AppTestTags.BACK_BUTTON)
+    scrollAndClick(AvailableTripsScreenTestTags.tripCard(carolsCoop.id))
+    addItems().assertIsEnabled()
+    compose.onNodeWithTag(TripEarningsTestTags.CARD).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(emptyList<String>(), tripQueries) }
+    click(AppTestTags.BACK_BUTTON)
+    openCoopAsOwner()
+    earnings().assertTextEquals("CHF 1.50")
+    compose.runOnIdle { assertEquals(listOf(coop.id), tripQueries) }
   }
 
   @Test

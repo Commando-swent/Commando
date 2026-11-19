@@ -315,6 +315,7 @@ private fun AuthenticatedApp(
                   commandoName = { ownerId ->
                     repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
                   },
+                  orderRepository = orders.repository,
               ),
           locationFilter = locationFilter,
           savedSearchViewModel = savedSearchViewModel,

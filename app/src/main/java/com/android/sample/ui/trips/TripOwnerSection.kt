@@ -1,6 +1,6 @@
 package com.android.sample.ui.trips
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code (#233); earnings card (#301).
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,22 +32,29 @@ object TripOwnerTestTags {
 private val SECTION_SPACING = 8.dp
 
 /**
- * Owner-only actions of Trip Details: [onRequestTransition] asks to close or complete the trip, and
- * [onConfirmTransition] and [onDismissTransition] answer the confirmation.
+ * Owner-only part of Trip Details: [onRequestTransition] asks to close or complete the trip, and
+ * [onConfirmTransition] and [onDismissTransition] answer the confirmation. [earnings] shows the
+ * earnings card when not null, and [onRetryEarnings] reloads only the earnings.
  */
 class TripOwnerControls(
     val onRequestTransition: (TripTransition) -> Unit,
     val onConfirmTransition: () -> Unit,
     val onDismissTransition: () -> Unit,
+    val earnings: TripEarningsUiState? = null,
+    val onRetryEarnings: () -> Unit = {},
 )
 
 /** The only transition the owner can start from [status], or null once the trip has ended. */
 internal fun nextTransition(status: TripStatus): TripTransition? =
     TripTransition.entries.firstOrNull { it.source == status }
 
-/** The close or complete action and its confirmation for the owner of [state]'s trip. */
+/**
+ * The earnings, then the close or complete action and its confirmation, for the owner of [state]'s
+ * trip. Earnings stay visible once the trip has ended.
+ */
 @Composable
 internal fun TripOwnerSection(state: TripDetailsUiState.Content, controls: TripOwnerControls) {
+  controls.earnings?.let { TripEarningsCard(it, controls.onRetryEarnings) }
   val transition = nextTransition(state.trip.status) ?: return
   Column(verticalArrangement = Arrangement.spacedBy(SECTION_SPACING)) {
     TripDetailsButton(

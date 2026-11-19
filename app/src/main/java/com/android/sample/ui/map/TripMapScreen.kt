@@ -128,18 +128,12 @@ fun TripMapScreen(
     val controlsHeight = with(density) { controlsBounds.height.toDp() }
     val cardLimit = (maxHeight - controlsHeight - 32.dp).coerceAtLeast(0.dp)
     val locate: @Composable () -> Unit = {
-      MapRoundAction(
-          R.drawable.map_locate,
-          if (tracking == null) R.string.trip_map_locate else R.string.order_tracking_recenter,
-          {
-            if (tracking != null) {
-              trackedFix
-                  ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
-                  ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
-            } else if (onLocate != null) onLocate()
-            else scope.launch { snackbar.showSnackbar(locationMessage) }
-          },
-          Modifier.testTag(TripMapTestTags.LOCATE),
+      MapLocateAction(
+          tracking != null,
+          trackedFix,
+          { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) },
+          onLocate,
+          { scope.launch { snackbar.showSnackbar(locationMessage) } },
       )
     }
     MapTripCanvas(
@@ -188,12 +182,7 @@ fun TripMapScreen(
               liveState != LiveMapState.Loading,
           Modifier.fillMaxWidth(),
           tracking = tracking != null || liveContent?.mode == LiveMapMode.TRACKING,
-          titleRes =
-              liveState?.let {
-                if (liveContent == null) R.string.live_map_context
-                else if (liveContent.mode == LiveMapMode.TRACKING) R.string.live_map_tracking
-                else R.string.live_map_discovery
-              },
+          titleRes = liveState?.let { liveMapTitle(liveContent?.mode) },
       )
       fix?.let {
         Text(
@@ -318,47 +307,83 @@ fun TripMapScreen(
         )
       }
     }
-    if (trackingPresentation != null) {
-      OrderTrackingStatusCard(
-          trackingPresentation,
-          onRecenter = {
-            trackedFix
-                ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
-                ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
-          },
-          onRetry = onRefresh,
-          modifier =
-              Modifier.align(Alignment.BottomCenter)
-                  .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)
-                  .heightIn(max = (maxHeight - controlsHeight - 56.dp).coerceAtLeast(0.dp)),
-      )
-    } else if (liveState != null) {
-      Column(
-          Modifier.align(Alignment.BottomCenter)
-              .padding(start = 16.dp, end = 16.dp, bottom = 48.dp)
-              .fillMaxWidth(),
-          horizontalAlignment = Alignment.End,
-          verticalArrangement = Arrangement.spacedBy(8.dp),
-      ) {
-        if (showLocateWithCard) locate()
-        LiveMapSummary(
-            liveState,
-            selectedOwner,
-            { selectedOwner = null },
-            onTripDetails,
-            onOrderDetails,
-            onRefresh,
-            Modifier.fillMaxWidth().heightIn(max = (cardLimit - 96.dp).coerceAtLeast(0.dp)),
+    when {
+      trackingPresentation != null -> {
+        OrderTrackingStatusCard(
+            trackingPresentation,
+            onRecenter = {
+              trackedFix
+                  ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
+                  ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+            },
+            onRetry = onRefresh,
+            modifier =
+                Modifier.align(Alignment.BottomCenter)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)
+                    .heightIn(max = (maxHeight - controlsHeight - 56.dp).coerceAtLeast(0.dp)),
         )
       }
-    } else if (content?.selectedTrip == null) {
-      Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
+      liveState != null -> {
+        Column(
+            Modifier.align(Alignment.BottomCenter)
+                .padding(start = 16.dp, end = 16.dp, bottom = 48.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          if (showLocateWithCard) locate()
+          LiveMapSummary(
+              liveState,
+              selectedOwner,
+              { selectedOwner = null },
+              onTripDetails,
+              onOrderDetails,
+              onRefresh,
+              Modifier.fillMaxWidth().heightIn(max = (cardLimit - 96.dp).coerceAtLeast(0.dp)),
+          )
+        }
+      }
+      content?.selectedTrip == null -> {
+        Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
+      }
     }
     SnackbarHost(
         snackbar,
         Modifier.align(Alignment.TopCenter).padding(top = controlsHeight + 16.dp),
     )
   }
+}
+
+private fun liveMapTitle(mode: LiveMapMode?): Int =
+    when (mode) {
+      LiveMapMode.DISCOVERY -> R.string.live_map_discovery
+      LiveMapMode.TRACKING -> R.string.live_map_tracking
+      null -> R.string.live_map_context
+    }
+
+/** Reuses the locate control for device positioning and selected-order recentering. */
+@Composable
+private fun MapLocateAction(
+    tracking: Boolean,
+    fix: CommandoPosition?,
+    onCenter: (MapPosition) -> Unit,
+    onLocate: (() -> Unit)?,
+    onUnavailable: () -> Unit,
+) {
+  MapRoundAction(
+      R.drawable.map_locate,
+      if (tracking) R.string.order_tracking_recenter else R.string.trip_map_locate,
+      {
+        when {
+          tracking ->
+              fix?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
+                  ?.let(onCenter)
+          onLocate != null -> onLocate()
+          else -> onUnavailable()
+        }
+      },
+      Modifier.testTag(TripMapTestTags.LOCATE),
+  )
 }
 
 /** Centers only the first tracking fix; later updates preserve the user's camera. */

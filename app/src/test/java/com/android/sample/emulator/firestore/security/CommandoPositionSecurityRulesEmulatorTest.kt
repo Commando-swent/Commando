@@ -383,7 +383,10 @@ class CommandoPositionSecurityRulesEmulatorTest {
       val position = viewer.firestore.collection("commandoPositions").document(uid)
       assertTrue(position.get(Source.SERVER).await().exists())
       // Keep PUBLISHED, changing only departure time to isolate the authorization condition.
-      updateDocumentAsOwner("trips/$tripId", mapOf("scheduledAt" to Instant.now().minusSeconds(1)))
+      updateDocumentAsOwner(
+          "trips/$tripId",
+          mapOf("scheduledAt" to Timestamp(Instant.now().minusSeconds(1))),
+      )
       assertPermissionDenied { position.get(Source.SERVER).await() }
     }
   }

@@ -23,16 +23,10 @@ class FakeCommandoPositionRepository(
   override suspend fun publish(tripId: String, position: CommandoPosition) {
     val uid = user()
     require(tripId.isDocumentId() && position.isFresh(clock.instant()))
-    val previous = positions.value[uid]
-    require(previous == null || !position.capturedAt.isBefore(previous.capturedAt)) {
-      "Position capture time cannot regress"
-    }
+    checkCaptureTime(positions.value[uid], position)
     discoveryTrips.update { it - uid }
     positions.update {
-      val previous = it[uid]
-      require(previous == null || !position.capturedAt.isBefore(previous.capturedAt)) {
-        "Position capture time cannot regress"
-      }
+      checkCaptureTime(it[uid], position)
       it + (uid to position)
     }
   }
@@ -64,6 +58,12 @@ class FakeCommandoPositionRepository(
             }
             .freshPositions(clock)
     )
+  }
+
+  private fun checkCaptureTime(previous: CommandoPosition?, position: CommandoPosition) {
+    require(previous == null || !position.capturedAt.isBefore(previous.capturedAt)) {
+      "Position capture time cannot regress"
+    }
   }
 
   private fun user() =

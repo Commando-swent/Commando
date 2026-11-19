@@ -13,8 +13,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import com.android.sample.ui.orders.SessionOrderViewModel
 
 /**
@@ -40,15 +38,6 @@ internal fun NavHostController.openScreen(screen: CommandoScreens) {
   }
 }
 
-/** Replaces a saved edit's details entry while preserving its caller, including My Orders. */
-internal fun NavHostController.openSavedOrder(editId: String?) {
-  val target = editId?.let(CommandoScreens::orderDetailsRoute) ?: CommandoScreens.MyOrders.name
-  navigate(target) {
-    if (editId != null) popUpTo(target) { inclusive = true } else popUpTo(CommandoScreens.Home.name)
-    launchSingleTop = true
-  }
-}
-
 /** Clears the previous edit cart when navigation leaves its flow; rotation retains the cart. */
 @Composable
 internal fun DiscardAbandonedEdit(orders: SessionOrderViewModel, editingOrderId: String?) {
@@ -58,14 +47,3 @@ internal fun DiscardAbandonedEdit(orders: SessionOrderViewModel, editingOrderId:
     previousEditId = editingOrderId
   }
 }
-
-/** Catalogue and Review carry the same trip and optional persisted edit identity. */
-internal fun orderFlowArguments() =
-    listOf(
-        navArgument(CommandoScreens.TRIP_ID_ARGUMENT) { type = NavType.StringType },
-        navArgument(CommandoScreens.EDIT_ORDER_ARGUMENT) {
-          type = NavType.StringType
-          nullable = true
-          defaultValue = null
-        },
-    )

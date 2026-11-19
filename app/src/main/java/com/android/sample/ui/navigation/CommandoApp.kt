@@ -5,7 +5,8 @@ package com.android.sample.ui.navigation
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
 // dependencies, authentication, trip and map routes into their own files (#322). OpenAI Codex
 // extracted the profile and catalogue routes, and Claude Code rebased them onto the shared
-// helpers (#323), then moved the order destinations into their own file (#378).
+// helpers (#323), then moved the order destinations into their own file (#378) and Review
+// Order into the order-flow routes (#379).
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
@@ -19,7 +20,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
@@ -56,20 +56,13 @@ import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
 import com.android.sample.ui.map.PositionSharingCard
-import com.android.sample.ui.orders.OrderFlowDraft
-import com.android.sample.ui.orders.ReviewOrderRoute
-import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.SavedTripSearchViewModel
-import com.android.sample.ui.trips.TripDetailsScreen
-import com.android.sample.ui.trips.TripDetailsUiState
-import com.android.sample.ui.trips.TripDetailsViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
-import com.android.sample.ui.trips.formatTripDeparture
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
@@ -319,59 +312,6 @@ private fun AuthenticatedApp(
           tripRepository = tripRepository,
           productRepository = productRepository,
       )
-      composable(
-          route = CommandoScreens.ReviewOrder.route,
-          arguments = orderFlowArguments(),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Review Order requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        // Review renders the whole Trip, so the destination reloads it from its own ID rather
-        // than carrying a Trip that activity recreation would lose.
-        val tripViewModel: TripDetailsViewModel =
-            viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
-        val tripState by tripViewModel.uiState.collectAsState()
-        val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
-        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
-            draft ->
-          // The same draft holder as the Catalogue entry; there is no second editable cart.
-          val reviewOrderViewModel: ReviewOrderViewModel =
-              viewModel(viewModelStoreOwner = entry) {
-                ReviewOrderViewModel(orders.repository, draft, editId)
-              }
-          val openOrders = {
-            editId?.let(orders::finishEdit)
-            navController.openSavedOrder(editId)
-          }
-          val locale = LocalConfiguration.current.locales[0]
-          when (val state = tripState) {
-            // Before submission, Back and Add Products return to the retained Catalogue.
-            is TripDetailsUiState.Content ->
-                ReviewOrderRoute(
-                    viewModel = reviewOrderViewModel,
-                    trip = state.trip,
-                    onBack = {
-                      if (reviewOrderViewModel.uiState.value.order != null) openOrders()
-                      else navController.popBackStack()
-                    },
-                    onAddProducts = { navController.popBackStack() },
-                    // Both exits from confirmation discard the submitted draft's screens.
-                    onViewOrders = { openOrders() },
-                    tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
-                    isDemo = orders.isDemo,
-                )
-            // Reuse Trip Details for the loading and failure states of the same lookup.
-            else ->
-                TripDetailsScreen(
-                    state = state,
-                    onRetry = tripViewModel::retry,
-                    onBack = { navController.popBackStack() },
-                    onAddItems = null,
-                )
-          }
-        }
-      }
       mapRoutes(
           navController = navController,
           tripRepository = tripRepository,

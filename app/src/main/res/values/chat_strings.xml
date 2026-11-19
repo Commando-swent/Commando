@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_title">Order chat</string>
+    <string name="chat_context">%1$s · %2$s</string>
+    <string name="chat_empty_title">Coordinate your order</string>
+    <string name="chat_empty_body">Ask about items and arrange your handoff. Messages stay attached to this order.</string>
+    <string name="chat_placeholder">Write a message…</string>
+    <string name="chat_send">Send message</string>
+    <string name="chat_send_failed">Not sent · Tap to retry</string>
+    <string name="chat_load_error">Couldn’t load the conversation. Check your connection and retry.</string>
+    <string name="chat_read_only">Chat closed · %1$s</string>
+    <plurals name="chat_text_limit">
+        <item quantity="one">Use at most %1$d character.</item>
+        <item quantity="other">Use at most %1$d characters.</item>
+    </plurals>
+    <string name="chat_locked_pending">Chat opens when the order is accepted.</string>
+    <string name="chat_message_partner">Message %1$s</string>
+</resources>

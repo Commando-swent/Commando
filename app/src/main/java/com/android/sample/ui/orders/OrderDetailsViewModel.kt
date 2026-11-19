@@ -95,6 +95,16 @@ sealed class OrderDetailsUiState {
               order.tripId == trip.id &&
               order.status.isActiveForTracking()
 
+    /** The repository independently authorizes these persisted participants. */
+    val isChatParticipant: Boolean
+      get() =
+          viewerId != null &&
+              order.tripId == trip.id &&
+              (viewerId == order.requesterId || viewerId == trip.ownerId)
+
+    val canOpenChat: Boolean
+      get() = isChatParticipant && order.status != OrderStatus.PENDING
+
     val canDecide: Boolean
       get() = isEligibleOwner && order.status == OrderStatus.PENDING
 

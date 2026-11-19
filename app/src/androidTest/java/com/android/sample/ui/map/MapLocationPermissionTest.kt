@@ -89,12 +89,10 @@ class MapLocationPermissionTest {
     }
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
     assertEquals(0, reads)
-    // A resumed activity can still be waiting for the previous window to release focus.
+    // Semantics invokes the action directly; transient system-window focus is not a prerequisite.
     compose.waitUntil(DEVICE_WAIT_MILLIS) {
       compose.runOnUiThread {
-        val activity = compose.activity
-        activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-            activity.hasWindowFocus()
+        compose.activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
       }
     }
     val permissionWasGranted = hasLocationPermission()

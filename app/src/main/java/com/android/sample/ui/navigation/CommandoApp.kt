@@ -24,14 +24,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.android.sample.R
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.NotificationRepository
+import com.android.sample.data.repository.OrderChatRepository
+import com.android.sample.data.repository.OrderChatRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProfilePhotoRepository
@@ -46,6 +50,8 @@ import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.ui.auth.AndroidGoogleCredentialClient
 import com.android.sample.ui.auth.AuthMode
 import com.android.sample.ui.auth.GoogleCredentialClient
+import com.android.sample.ui.chat.OrderChatHost
+import com.android.sample.ui.chat.OrderChatViewModel
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
@@ -82,6 +88,7 @@ fun CommandoApp(
     locationProvider: DeviceLocationProvider? = null,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
+    chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
 ) {
   val context = LocalContext.current
   val clearSessionError = stringResource(R.string.auth_google_clear_error)
@@ -132,6 +139,7 @@ fun CommandoApp(
               orders = session.orders,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
+              chatRepositoryFactory = chatRepositoryFactory,
               notifications = session.notifications,
               checklists = session.checklists,
               savedSearches = session.savedSearches,
@@ -167,6 +175,7 @@ private fun AuthenticatedApp(
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
+    chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
     notifications: Lazy<NotificationRepository>,
     checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
@@ -370,6 +379,36 @@ private fun AuthenticatedApp(
           positions = positions,
           locationFilter = locationFilter,
       )
+      composable(
+          route = CommandoScreens.OrderChat.route,
+          arguments =
+              listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
+      ) { entry ->
+        val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+        val model: OrderChatViewModel =
+            viewModel(viewModelStoreOwner = entry) {
+              OrderChatViewModel(
+                  orderId,
+                  orders.repository,
+                  tripRepository,
+                  chatRepositoryFactory?.invoke(orders::currentUserId)
+                      ?: OrderChatRepositoryFirestore(orders::currentUserId),
+                  orders::currentUserId,
+                  orders.sessionChanges,
+                  entry.savedStateHandle,
+              )
+            }
+        OrderChatHost(
+            model,
+            onBack = {
+              navController.previousBackStackEntry
+                  ?.savedStateHandle
+                  ?.set(ORDER_REFRESH_AFTER_CHAT, true)
+              navController.popBackStack()
+            },
+        )
+      }
+
       profileRoutes(
           navController = navController,
           profileViewModel = profileViewModel,

@@ -53,6 +53,8 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeScreen
 import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.home.HomeViewModel
+import com.android.sample.ui.map.LiveMapHost
+import com.android.sample.ui.map.LiveMapViewModel
 import com.android.sample.ui.map.MapLocationHost
 import com.android.sample.ui.map.OrderTrackingHost
 import com.android.sample.ui.map.OrderTrackingViewModel
@@ -60,7 +62,6 @@ import com.android.sample.ui.map.PositionSharingCard
 import com.android.sample.ui.map.PositionSharingViewModel
 import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
-import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.map.rememberPositionSharingControl
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
@@ -232,6 +233,7 @@ private fun AuthenticatedApp(
   }
   val (sharingState, toggleSharing) =
       rememberPositionSharingControl(sharing, enabled = appUiState.mode == AppMode.Commando)
+  val discoverySharing by sharing.discoveryState.collectAsState()
   val signOutAfterCleanup =
       rememberSharingSignOut(sharing, appUiState.mode, onSignOut, photoSnackbarHost)
   AppScaffold(
@@ -292,7 +294,14 @@ private fun AuthenticatedApp(
             mode = appUiState.mode,
             tripState = tripState,
             onRetry = onRetry,
-            sharingControl = { PositionSharingCard(sharingState, toggleSharing) },
+            sharingControl = {
+              PositionSharingCard(
+                  sharingState,
+                  toggleSharing,
+                  discovery = discoverySharing,
+                  onDiscoveryToggle = sharing::setDiscoveryEnabled,
+              )
+            },
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
             onManageTrip = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId)) {
@@ -426,32 +435,40 @@ private fun AuthenticatedApp(
         }
       }
       composable(route = CommandoScreens.TripMap.name) { entry ->
-        val map: TripMapViewModel =
+        val map: LiveMapViewModel =
             viewModel(viewModelStoreOwner = entry) {
-              TripMapViewModel(
+              LiveMapViewModel(
+                  orders.repository,
                   tripRepository,
-                  locationFilter.selected,
+                  positions.value,
                   orders::currentUserId,
                   orders.sessionChanges,
-                  criteria = locationFilter.criteria,
+                  locationFilter.selected,
+                  locationFilter.criteria,
               )
             }
-        RefreshOnResume(map, map::refresh)
-        val state by map.uiState.collectAsState()
         val selectedPoint by locationFilter.selected.collectAsState()
-        MapLocationHost(state == TripMapUiState.SessionEnded) { locationState, locate ->
-          TripMapScreen(
-              state,
-              map::refresh,
-              map::selectTrip,
-              map::clearSelection,
-              onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
-              onBack = { navController.popBackStack() },
-              selectedPoint = selectedPoint,
-              onClearPoint = locationFilter::clear,
-              locationState = locationState,
-              onLocate = locate,
-          )
+        LiveMapHost(map) { state, retry ->
+          MapLocationHost(orders.currentUserId() != userId) { locationState, locate ->
+            TripMapScreen(
+                TripMapUiState.Content(emptyList()),
+                retry,
+                {},
+                {},
+                onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
+                onBack = { navController.popBackStack() },
+                selectedPoint = selectedPoint,
+                onClearPoint = locationFilter::clear,
+                locationState = locationState,
+                onLocate = locate,
+                liveState = state,
+                onOrderDetails = {
+                  navController.navigate(CommandoScreens.orderDetailsRoute(it)) {
+                    launchSingleTop = true
+                  }
+                },
+            )
+          }
         }
       }
       composable(route = CommandoScreens.MyOrders.name) { entry ->

@@ -35,6 +35,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
+import com.android.sample.data.repository.FakeCommandoPositionRepository
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.RatingError
@@ -57,6 +58,7 @@ import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.map.LiveMapTags
 import com.android.sample.ui.map.MapTestTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.profile.ProfileEditTestTags
@@ -86,6 +88,7 @@ import java.time.format.FormatStyle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -220,6 +223,9 @@ class CommandoAppTest {
             productRepository = products,
             ratingRepositoryFactory = ratings ?: { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
+            positionRepositoryFactory = {
+              FakeCommandoPositionRepository(MutableStateFlow(repository.currentUser?.uid))
+            },
         )
       }
     }
@@ -589,7 +595,7 @@ class CommandoAppTest {
     compose
         .onNodeWithTag(TripMapTestTags.CLEAR_FILTER)
         .assert(hasText("CE building", substring = true))
-    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + firstTrip.id).assertIsDisplayed()
+    compose.onNodeWithTag(LiveMapTags.SUMMARY).assertIsDisplayed()
     compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + secondTrip.id).assertDoesNotExist()
     click(NavigationTestTags.MAP_LIST)
     assertFiltered()
@@ -601,7 +607,7 @@ class CommandoAppTest {
     assertScreen(NavigationTestTags.PROFILE_SCREEN)
     pressBack()
     assertFiltered()
-    compose.runOnIdle { assertEquals(5, trips.upcomingLoads) }
+    compose.runOnIdle { assertEquals(4, trips.upcomingLoads) }
 
     compose.runOnIdle { repository.signOut() }
     assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
@@ -669,7 +675,7 @@ class CommandoAppTest {
         .onNode(hasScrollToNodeAction())
         .performScrollToNode(hasTestTag(NavigationTestTags.OPEN_MAP))
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performClick()
-    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + migros.id).assertIsDisplayed()
+    compose.onNodeWithTag(LiveMapTags.SUMMARY).assertIsDisplayed()
     compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + coop.id).assertDoesNotExist()
     pressBack()
     assertMigrosOnly()
@@ -701,17 +707,12 @@ class CommandoAppTest {
   }
 
   @Test
-  fun mapOpensOpaqueTripDetailsAndRefreshesOnReturn() {
+  fun privateMapKeepsTripDetailsInTheListAndRefreshesOnReturn() {
     show(FakeAuthRepository(alice), twoTrips(alice.uid))
     click(HomeTestTags.TRIP_ACTION)
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).performScrollTo().performClick()
-    compose
-        .onNodeWithTag(TripMapTestTags.OFF_MAP_PREFIX + secondTrip.id)
-        .performScrollTo()
-        .performClick()
-    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
-    assertTripDetails(secondTrip)
-    pressBack()
+    compose.onNodeWithTag(LiveMapTags.SUMMARY).assertIsDisplayed()
+    compose.onNodeWithTag(LiveMapTags.TRIP + secondTrip.id).assertDoesNotExist()
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled()
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
     for (trip in listOf(firstTrip, secondTrip)) {
@@ -720,6 +721,8 @@ class CommandoAppTest {
           .performScrollToNode(hasTestTag(AvailableTripsScreenTestTags.tripCard(trip.id)))
       compose.assertTripCard(trip)
     }
+    compose.onTripCard(secondTrip.id).performClick()
+    assertTripDetails(secondTrip)
   }
 
   @Test

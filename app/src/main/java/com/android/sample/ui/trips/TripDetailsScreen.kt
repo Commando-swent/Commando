@@ -1,7 +1,7 @@
 package com.android.sample.ui.trips
 
-// AI assistance: Claude Code for the incoming-orders entry point (#147) and the owner's close and
-// complete actions (#233).
+// AI assistance: Claude Code for the incoming-orders entry point (#147), the owner's close and
+// complete actions (#233) and the owner's earnings (#301).
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -29,9 +29,10 @@ import com.commando.app.model.TripStatus
 /**
  * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);
  * [onViewOrders] opens the trip's incoming orders and is shown only when not null.
- * [showOwnerActions] is true only for the trip's owner and adds the close and complete actions.
- * [ratingState] enables the creator section; [onRetryRating] retries only its summary.
- * [commandoName] is the owner's known name, or null to show the generic Commando label.
+ * [showOwnerActions] is true only for the trip's owner and adds the close and complete actions, and
+ * the earnings of [earningsViewModel] when it is not null. [ratingState] enables the creator
+ * section; [onRetryRating] retries only its summary. [commandoName] is the owner's known name, or
+ * null to show the generic Commando label.
  */
 @Composable
 fun TripDetailsScreen(
@@ -44,14 +45,18 @@ fun TripDetailsScreen(
     ratingState: TripRatingUiState? = null,
     onRetryRating: () -> Unit = {},
     commandoName: String? = null,
+    earningsViewModel: TripEarningsViewModel? = null,
 ) {
   val state by viewModel.uiState.collectAsState()
+  val earnings = earningsViewModel?.uiState?.collectAsState()?.value
   val ownerControls =
       if (showOwnerActions) {
         TripOwnerControls(
             onRequestTransition = viewModel::requestTransition,
             onConfirmTransition = viewModel::confirmTransition,
             onDismissTransition = viewModel::dismissTransition,
+            earnings = earnings,
+            onRetryEarnings = { earningsViewModel?.refresh() },
         )
       } else null
   TripDetailsScreen(
@@ -223,10 +228,14 @@ private fun TripDetailsError(message: String, onRetry: (() -> Unit)?) {
   }
 }
 
+/** Bordered card that groups one part of Trip Details. */
 @Composable
-private fun TripDetailsCard(content: @Composable ColumnScope.() -> Unit) {
+internal fun TripDetailsCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
   Card(
-      modifier = Modifier.fillMaxWidth(),
+      modifier = modifier.fillMaxWidth(),
       shape = RoundedCornerShape(16.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
       border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),

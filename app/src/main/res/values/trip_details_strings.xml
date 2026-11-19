@@ -30,4 +30,11 @@
     <string name="trip_details_error_status_changed">This trip has changed. Go back and open it again.</string>
     <string name="trip_details_error_network">Could not reach the server. Check your connection and try again.</string>
     <string name="trip_details_error_update">Could not update the trip. Try again.</string>
+    <string name="trip_details_earnings_title">Your earnings on this trip</string>
+    <string name="trip_details_earnings_loading">Loading earnings…</string>
+    <string name="trip_details_earnings_error">Earnings unavailable. Try again.</string>
+    <plurals name="trip_details_earnings_delivered">
+        <item quantity="one">Commission from %d delivered order</item>
+        <item quantity="other">Commission from %d delivered orders</item>
+    </plurals>
 </resources>

@@ -161,10 +161,9 @@ class LiveMapViewModel(
                   if (mode == LiveMapMode.TRACKING) trackingFixes(person)
                   else {
                     val streams =
-                        person.trips.map {
-                          val stream: Flow<CommandoPosition?> =
-                              positions.observeDiscovery(person.ownerId, it.id)
-                          stream.catch { emit(null) }
+                        person.trips.map { trip ->
+                          flow { emitAll(positions.observeDiscovery(person.ownerId, trip.id)) }
+                              .catch { emit(null) }
                         }
                     combine(streams) { values ->
                       values.filterNotNull().maxByOrNull { it.capturedAt }

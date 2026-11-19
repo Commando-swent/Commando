@@ -2,9 +2,12 @@ package com.android.sample.ui.navigation
 
 // AI assistance: Claude Code moved the order destinations out of CommandoApp (#378).
 import android.os.Bundle
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -23,6 +26,8 @@ import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.orders.ShoppingChecklistScreen
 import com.android.sample.ui.orders.ShoppingChecklistViewModel
+
+internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
 
 /**
  * Registers My Orders, Order Details, Incoming Orders and the Shopping Checklist. Every order
@@ -71,6 +76,7 @@ internal fun NavGraphBuilder.ordersRoutes(
               ratingRepositoryFactory = ratingRepositoryFactory,
           )
         }
+    RefreshOrderAfterChat(entry, model)
     val state by model.uiState.collectAsState()
     val ratingState by model.ratingState.collectAsState()
     OrderDetailsScreen(
@@ -86,6 +92,9 @@ internal fun NavGraphBuilder.ordersRoutes(
         onMarkReadyForHandoff = model::markReadyForHandoff,
         onCancel = model::cancel,
         onConfirmReceipt = model::confirmReceipt,
+        onChat = {
+          navController.navigate(CommandoScreens.orderChatRoute(orderId)) { launchSingleTop = true }
+        },
         onTrack = {
           navController.navigate(CommandoScreens.orderTrackingRoute(orderId)) {
             launchSingleTop = true
@@ -156,3 +165,16 @@ internal fun NavHostController.openOrderEdit(state: OrderDetailsUiState, orderId
 /** Returns the [name] argument of [screen]'s route, with a clear message if it is missing. */
 internal fun requireRouteArgument(arguments: Bundle?, name: String, screen: String): String =
     requireNotNull(arguments?.getString(name)) { "$screen requires the $name argument" }
+
+/** Consumes the chat return signal without reloading unrelated order-detail entries. */
+@Composable
+private fun RefreshOrderAfterChat(entry: NavBackStackEntry, model: OrderDetailsViewModel) {
+  val refreshAfterChat by
+      entry.savedStateHandle.getStateFlow(ORDER_REFRESH_AFTER_CHAT, false).collectAsState()
+  LaunchedEffect(refreshAfterChat) {
+    if (refreshAfterChat) {
+      entry.savedStateHandle[ORDER_REFRESH_AFTER_CHAT] = false
+      model.retry()
+    }
+  }
+}

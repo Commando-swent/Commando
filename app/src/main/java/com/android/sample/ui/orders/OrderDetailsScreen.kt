@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.RatingError
+import com.android.sample.ui.chat.OrderChatEntry
 import com.android.sample.ui.theme.RatingAmber
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
@@ -42,6 +43,7 @@ import java.time.Instant
 
 /** Stable action selectors, independent of the presentation language. */
 object OrderDetailsTestTags {
+  const val CHAT = "order_details_chat"
   const val TRACK = "order_details_track"
   const val ACCEPT = "order_details_accept"
   const val REJECT = "order_details_reject"
@@ -74,6 +76,7 @@ object OrderDetailsTestTags {
  * @param onCancel Requests cancellation only after the requester confirms the dialog.
  * @param notice Optional contextual feedback rendered below the safe header in the scroll area.
  * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
+ * @param onChat Opens the selected conversation; pending orders display a locked entry.
  * @param onTrack Opens the selected active order's commando map for its requester.
  * @param ratingState Transient receipt rating input and submission feedback.
  * @param onRatingScore Selects stars; [onRatingComment] edits the optional comment.
@@ -92,6 +95,7 @@ fun OrderDetailsScreen(
     notice: String? = null,
     onConfirmReceipt: () -> Unit = {},
     onTrack: () -> Unit = {},
+    onChat: (() -> Unit)? = null,
     ratingState: RatingDialogState = RatingDialogState(),
     onRatingScore: (Int) -> Unit = {},
     onRatingComment: (String) -> Unit = {},
@@ -160,6 +164,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
+          if (onChat != null && state.isChatParticipant) OrderChatEntry(state, onChat)
           if (state.canRate) state.submittedRating?.let { SubmittedOrderRating(it) }
           if (ratingState.submitted || ratingState.error == RatingError.AlreadyRated) {
             Text(

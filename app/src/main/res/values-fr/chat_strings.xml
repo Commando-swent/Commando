@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="chat_title">Discussion de la commande</string>
+    <string name="chat_context">%1$s · %2$s</string>
+    <string name="chat_empty_title">Organisez votre commande</string>
+    <string name="chat_empty_body">Posez vos questions et organisez la remise. Les messages restent liés à cette commande.</string>
+    <string name="chat_placeholder">Écrivez un message…</string>
+    <string name="chat_send">Envoyer le message</string>
+    <string name="chat_send_failed">Non envoyé · Appuyez pour réessayer</string>
+    <string name="chat_load_error">Impossible de charger la discussion. Vérifiez votre connexion et réessayez.</string>
+    <string name="chat_read_only">Discussion fermée · %1$s</string>
+    <plurals name="chat_text_limit">
+        <item quantity="one">Utilisez au maximum %1$d caractère.</item>
+        <item quantity="many">Utilisez au maximum %1$d caractères.</item>
+        <item quantity="other">Utilisez au maximum %1$d caractères.</item>
+    </plurals>
+    <string name="chat_locked_pending">La discussion s’ouvre après acceptation de la commande.</string>
+    <string name="chat_message_partner">Contacter : %1$s</string>
+</resources>

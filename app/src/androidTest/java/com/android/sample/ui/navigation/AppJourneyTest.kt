@@ -139,6 +139,9 @@ class AppJourneyTest {
     scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled().performClick()
+    compose.waitUntil(timeoutMillis = 15_000) {
+      compose.onNodeWithTag(LiveMapTags.MARKER + trip.ownerId).isDisplayed()
+    }
     compose.onNodeWithTag(LiveMapTags.MARKER + trip.ownerId).assertIsDisplayed()
     captureMap("live-map-discovery")
     compose.onNodeWithTag(LiveMapTags.MARKER + trip.ownerId).performClick()

@@ -17,7 +17,11 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
 class TripRepositoryFirestore
@@ -106,6 +110,7 @@ internal constructor(
                   TripResult.Error(TripError.PermissionDenied)
               else documents?.toTripsResult()
             }
+            .expireUpcomingTrips(now)
             .catch { error ->
               if (error is CancellationException) throw error
               emit(

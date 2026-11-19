@@ -10,7 +10,9 @@ import com.commando.app.model.TripTransition
 import com.commando.app.model.blocksTripCompletion
 import java.time.Instant
 import java.util.UUID
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 
 /** In-memory [TripRepository] for tests and previews. */
 class FakeTripRepository(
@@ -23,7 +25,8 @@ class FakeTripRepository(
 
   private val changes = MutableStateFlow(0L)
 
-  override fun observeUpcomingTrips() = changes.map { getUpcomingTrips() }
+  override fun observeUpcomingTrips() =
+      changes.map { getUpcomingTrips() }.expireUpcomingTrips(now).filterNotNull()
 
   private val trips = initialTrips.associateByTo(linkedMapOf(), Trip::id)
 

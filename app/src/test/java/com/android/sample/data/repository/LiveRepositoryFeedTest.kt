@@ -84,6 +84,83 @@ class LiveRepositoryFeedTest {
   }
 
   @Test
+  fun quietServerTripFeedDropsDeparturesAndCancelsExpiryForUnconfirmedSnapshots() = runTest {
+    val source = mockk<TripFirestoreDataSource>()
+    val snapshots =
+        MutableStateFlow<List<TripFirestoreDocument>?>(
+            listOf(tripDocument("first", 1000), tripDocument("second", 2000))
+        )
+    every { source.observeUpcomingTrips(any(), any(), "viewer") } returns snapshots
+    val repository =
+        TripRepositoryFirestore(
+            source,
+            FakeAuthRepository(AuthUser("viewer")),
+            { now.plusMillis(testScheduler.currentTime) },
+        )
+    val seen = mutableListOf<TripResult<List<Trip>>?>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeUpcomingTrips().collect { seen += it }
+    }
+    runCurrent()
+    assertEquals(listOf("first", "second"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    advanceTimeBy(1000)
+    runCurrent()
+    assertEquals(listOf("second"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    snapshots.value = null
+    runCurrent()
+    val count = seen.size
+    advanceTimeBy(1000)
+    runCurrent()
+    assertNull(seen.last())
+    assertEquals(count, seen.size)
+    // A later confirmed snapshot must be filtered against the current clock as well.
+    snapshots.value = listOf(tripDocument("second", 2000), tripDocument("third", 3000))
+    runCurrent()
+    assertEquals(listOf("third"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    advanceTimeBy(1000)
+    runCurrent()
+    assertEquals(TripResult.Success(emptyList<Trip>()), seen.last())
+  }
+
+  @Test
+  fun quietFakeTripFeedDropsADepartureWithoutAnyRepositoryMutation() = runTest {
+    val repository =
+        FakeTripRepository("owner", now = { now.plusMillis(testScheduler.currentTime) })
+    repository.publishTrip(
+        NewTrip(
+            TripLocations.stores.first(),
+            now.plusSeconds(1),
+            TripLocations.handoffPoints.first(),
+        )
+    )
+    val seen = mutableListOf<TripResult<List<Trip>>>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeUpcomingTrips().collect { seen += it }
+    }
+    runCurrent()
+    assertEquals(1, (seen.last() as TripResult.Success).data.size)
+    advanceTimeBy(1000)
+    runCurrent()
+    assertTrue((seen.last() as TripResult.Success).data.isEmpty())
+  }
+
+  private fun tripDocument(id: String, departureMillis: Long): TripFirestoreDocument {
+    val location = mapOf("name" to "EPFL", "latitude" to 46.52, "longitude" to 6.56)
+    return FirestoreDocument(
+        id,
+        mapOf(
+            "ownerId" to "owner",
+            "store" to location,
+            "handoffLocation" to location,
+            "status" to "PUBLISHED",
+            "scheduledAt" to Timestamp(now.plusMillis(departureMillis)),
+            "createdAt" to Timestamp(now),
+            "updatedAt" to Timestamp(now),
+        ),
+    )
+  }
+
+  @Test
   fun fakeOrderFeedCannotSwitchToAnotherAccountOnItsNextUpdate() = runTest {
     var uid: String? = "viewer"
     val repository = FakeOrderRepository({ uid })

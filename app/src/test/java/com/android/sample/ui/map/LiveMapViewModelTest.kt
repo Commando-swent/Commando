@@ -68,13 +68,14 @@ class LiveMapViewModelTest {
   private fun model(
       clock: Clock = Clock.fixed(now, ZoneOffset.UTC),
       tripRepo: TripRepository = repository,
+      positionRepo: CommandoPositionRepository = positions,
   ): LiveMapViewModel =
       LiveMapViewModel(
               object : OrderRepository by FakeOrderRepository({ identity.value }) {
                 override fun observeMyOrders() = orders
               },
               tripRepo,
-              positions,
+              positionRepo,
               { identity.value },
               identity,
               point,
@@ -239,6 +240,71 @@ class LiveMapViewModelTest {
     vm.stop()
     runCurrent()
     assertEquals(0, orders.subscriptionCount.value)
+    assertEquals(0, fixes.subscriptionCount.value)
+    assertEquals(LiveMapState.Loading, vm.uiState.value)
+  }
+
+  @Test
+  fun switchingSharedTripRetriesEarlierWitnessWithoutOrderChanges() = modelTest {
+    val sharedTrip = MutableStateFlow("c")
+    val attempts = mutableListOf<String?>()
+    val switchingPositions =
+        object : CommandoPositionRepository by positions {
+          override fun observe(ownerId: String, orderId: String?) = flow {
+            attempts += orderId
+            emitAll(
+                sharedTrip.map { tripId ->
+                  check(tripId == if (orderId == "one") "a" else "c")
+                  fixes.value
+                }
+            )
+          }
+        }
+    orders.value = OrderResult.Success(listOf(order("one"), order("two", "c")))
+    val vm = model(positionRepo = switchingPositions)
+    runCurrent()
+    assertEquals(listOf("one", "two"), attempts)
+    assertNotNull(content(vm).commandos.single().position)
+
+    sharedTrip.value = "a"
+    runCurrent()
+    assertNull(content(vm).commandos.single().position)
+    advanceTimeBy(LiveMapViewModel.WITNESS_RETRY_MILLIS)
+    runCurrent()
+    val person = content(vm).commandos.single()
+    assertNotNull(person.position)
+    assertFalse(person.positionUnavailable)
+    assertEquals(listOf("one", "two"), person.orders.map { it.id })
+    assertEquals(listOf("one", "two", "one"), attempts)
+    assertEquals(1, sharedTrip.subscriptionCount.value)
+  }
+
+  @Test
+  fun exhaustedWitnessesRecoverAutomaticallyAndStopCancelsBackoff() = modelTest {
+    orders.value = OrderResult.Success(listOf(order("one")))
+    failPosition = true
+    val vm = model()
+    runCurrent()
+    assertTrue(content(vm).commandos.single().positionUnavailable)
+    assertEquals(listOf("one"), observed)
+    advanceTimeBy(LiveMapViewModel.WITNESS_RETRY_MILLIS - 1)
+    runCurrent()
+    assertEquals(listOf("one"), observed)
+    failPosition = false
+    advanceTimeBy(1)
+    runCurrent()
+    assertNotNull(content(vm).commandos.single().position)
+    assertFalse(content(vm).commandos.single().positionUnavailable)
+
+    failPosition = true
+    vm.start()
+    runCurrent()
+    vm.stop()
+    runCurrent()
+    val attemptsAtStop = observed.size
+    advanceTimeBy(3 * LiveMapViewModel.WITNESS_RETRY_MILLIS)
+    runCurrent()
+    assertEquals(attemptsAtStop, observed.size)
     assertEquals(0, fixes.subscriptionCount.value)
     assertEquals(LiveMapState.Loading, vm.uiState.value)
   }

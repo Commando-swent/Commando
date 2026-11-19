@@ -3,9 +3,10 @@ package com.android.sample.ui.navigation
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
-// dependencies, authentication and trip routes into their own files (#322).
+// dependencies, authentication and trip routes into their own files (#322). OpenAI Codex
+// extracted the profile and catalogue routes, and Claude Code rebased them onto the shared
+// helpers (#323).
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -40,7 +41,6 @@ import com.android.sample.data.repository.OrderChatRepository
 import com.android.sample.data.repository.OrderChatRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.ProductRepository
-import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.RatingRepository
 import com.android.sample.data.repository.RatingRepositoryFirestore
@@ -53,8 +53,6 @@ import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.ui.auth.AndroidGoogleCredentialClient
 import com.android.sample.ui.auth.AuthMode
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.catalogue.CatalogueRoute
-import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.chat.OrderChatHost
 import com.android.sample.ui.chat.OrderChatViewModel
 import com.android.sample.ui.home.HomeScreen
@@ -69,7 +67,6 @@ import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.map.rememberPositionSharingControl
-import com.android.sample.ui.notifications.*
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
@@ -84,14 +81,8 @@ import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.orders.ShoppingChecklistScreen
 import com.android.sample.ui.orders.ShoppingChecklistViewModel
 import com.android.sample.ui.profile.AppLanguage
-import com.android.sample.ui.profile.EditProfileScreen
-import com.android.sample.ui.profile.ProfileHelpScreen
-import com.android.sample.ui.profile.ProfileLanguageScreen
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
-import com.android.sample.ui.profile.ProfileScreen
-import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
-import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.SavedTripSearchViewModel
 import com.android.sample.ui.trips.TripDetailsScreen
@@ -334,6 +325,7 @@ private fun AuthenticatedApp(
                   commandoName = { ownerId ->
                     repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
                   },
+                  orderRepository = orders.repository,
               ),
           locationFilter = locationFilter,
           savedSearchViewModel = savedSearchViewModel,
@@ -384,41 +376,12 @@ private fun AuthenticatedApp(
         RefreshOnResume(checklist, checklist::refresh)
         ShoppingChecklistScreen(viewModel = checklist)
       }
-      composable(
-          route = CommandoScreens.Catalogue.route,
-          arguments = orderFlowArguments(),
-      ) { entry ->
-        val tripId =
-            requireNotNull(entry.arguments?.getString(CommandoScreens.TRIP_ID_ARGUMENT)) {
-              "Catalogue requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
-            }
-        val editId = entry.arguments?.getString(CommandoScreens.EDIT_ORDER_ARGUMENT)
-        OrderFlowDraft(orders, tripRepository, tripId, editId, { navController.popBackStack() }) {
-            draft ->
-          // This entry stays on the back stack behind Review, so returning keeps the selection.
-          val catalogueViewModel: CatalogueViewModel =
-              viewModel(viewModelStoreOwner = entry) {
-                CatalogueViewModel(
-                    tripId,
-                    tripRepository,
-                    productRepository ?: ProductRepositoryFirestore(),
-                    draft,
-                )
-              }
-          CatalogueRoute(
-              viewModel = catalogueViewModel,
-              onBack = {
-                editId?.let(orders::finishEdit)
-                navController.popBackStack()
-              },
-              onContinue = { trip ->
-                navController.navigate(CommandoScreens.reviewOrderRoute(trip.id, editId)) {
-                  launchSingleTop = true
-                }
-              },
-          )
-        }
-      }
+      orderFlowRoutes(
+          navController = navController,
+          orders = orders,
+          tripRepository = tripRepository,
+          productRepository = productRepository,
+      )
       composable(
           route = CommandoScreens.ReviewOrder.route,
           arguments = orderFlowArguments(),
@@ -626,104 +589,19 @@ private fun AuthenticatedApp(
             }
         OrderTrackingHost(model, onBack = { navController.popBackStack() })
       }
-      composable(route = CommandoScreens.Profile.name) {
-        val profileUiState by profileViewModel.uiState.collectAsState()
-        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
-        ProfileScreen(
-            uiState = profileUiState,
-            onBack = { navController.popBackStack() },
-            onSignOut = signOutAfterCleanup,
-            signOutError = signOutError,
-            photo = photo,
-            onPhotoClick = onPhotoClick,
-            onOrderHistory = {
-              // History is a child of Profile even when My Orders was opened earlier from a tab.
-              navController.navigate(CommandoScreens.MyOrders.name) { launchSingleTop = true }
-            },
-            onHelp = { navController.openScreen(CommandoScreens.ProfileHelp) },
-            onLanguage = { navController.openScreen(CommandoScreens.ProfileLanguage) },
-            onNotifications = { navController.openScreen(CommandoScreens.Notifications) },
-            onNotificationPreferences = {
-              navController.openScreen(CommandoScreens.NotificationPreferences)
-            },
-            onEdit = {
-              profileViewModel.beginEditing()
-              navController.navigate(CommandoScreens.EditProfile.name) { launchSingleTop = true }
-            },
-        )
-      }
-      composable(route = CommandoScreens.Notifications.name) {
-        val model: NotificationsViewModel = viewModel {
-          NotificationsViewModel(notifications.value, orders::currentUserId, orders.sessionChanges)
-        }
-        RefreshOnResume(model, model::refreshInbox)
-        val state by model.inbox.collectAsState()
-        NotificationInboxScreen(
-            state,
-            { navController.popBackStack() },
-            { navController.openScreen(CommandoScreens.NotificationPreferences) },
-            model::refreshInbox,
-            model::markAsRead,
-            model::retryReadUpdate,
-            {
-              navController.navigate(CommandoScreens.orderDetailsRoute(it)) {
-                launchSingleTop = true
-              }
-            },
-        )
-      }
-      composable(route = CommandoScreens.NotificationPreferences.name) {
-        val model: NotificationsViewModel = viewModel {
-          NotificationsViewModel(notifications.value, orders::currentUserId, orders.sessionChanges)
-        }
-        RefreshOnResume(model, model::refreshPreferences)
-        val state by model.preferences.collectAsState()
-        NotificationPreferencesScreen(
-            state,
-            { navController.popBackStack() },
-            model::refreshPreferences,
-            model::updatePreferences,
-            model::retryPreferenceUpdate,
-        )
-      }
-      composable(route = CommandoScreens.ProfileHelp.name) {
-        ProfileHelpScreen(onBack = { navController.popBackStack() })
-      }
-      composable(route = CommandoScreens.ProfileLanguage.name) {
-        ProfileLanguageScreen(
-            selected = AppLanguage.fromLanguage(LocalConfiguration.current.locales[0].language),
-            onSelectLanguage = onLanguageSelected,
-            onBack = { navController.popBackStack() },
-        )
-      }
-      composable(route = CommandoScreens.EditProfile.name) {
-        val draft by profileViewModel.editState.collectAsState()
-        val profile by profileViewModel.uiState.collectAsState()
-        LaunchedEffect(profile, draft == null) {
-          if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
-        }
-        val onCancel = {
-          if (profileViewModel.editState.value?.isSaving != true) {
-            profileViewModel.cancelEditing()
-            navController.popBackStack()
-          }
-          Unit
-        }
-        BackHandler { onCancel() }
-        val (photo, onPhotoClick) = rememberProfilePhotoActions(profileViewModel, photoSnackbarHost)
-        draft?.let {
-          EditProfileScreen(
-              it,
-              profileViewModel::updateFullName,
-              profileViewModel::updateEmail,
-              profileViewModel::saveProfile,
-              onCancel,
-              (profile as? ProfileUiState.Content)?.fullName,
-              photo = photo,
-              onPhotoClick = onPhotoClick,
-          )
-        } ?: androidx.compose.material3.CircularProgressIndicator()
-      }
+      profileRoutes(
+          navController = navController,
+          profileViewModel = profileViewModel,
+          photoSnackbarHost = photoSnackbarHost,
+          notifications = notifications,
+          orders = orders,
+          actions =
+              ProfileRouteActions(
+                  signOut = signOutAfterCleanup,
+                  signOutError = signOutError,
+                  selectLanguage = onLanguageSelected,
+              ),
+      )
     }
   }
 }

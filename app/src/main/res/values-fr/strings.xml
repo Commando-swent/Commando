@@ -385,6 +385,14 @@
     <string name="trip_details_error_status_changed">Ce trajet a changé. Revenez en arrière et rouvrez-le.</string>
     <string name="trip_details_error_network">Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.</string>
     <string name="trip_details_error_update">Impossible de mettre à jour le trajet. Réessayez.</string>
+    <string name="trip_details_earnings_title">Vos gains sur ce trajet</string>
+    <string name="trip_details_earnings_loading">Chargement des gains…</string>
+    <string name="trip_details_earnings_error">Gains indisponibles. Réessayez.</string>
+    <plurals name="trip_details_earnings_delivered">
+        <item quantity="one">Commission de %d commande livrée</item>
+        <item quantity="many">Commission de %d commandes livrées</item>
+        <item quantity="other">Commission de %d commandes livrées</item>
+    </plurals>
     <string name="trips_title">Trajets disponibles</string>
     <string name="trips_subtitle">Les prochains trajets sur lesquels vous pouvez commander.</string>
     <string name="trips_loading">Chargement des trajets disponibles</string>
@@ -491,6 +499,7 @@
     <string name="order_tracking_retry">Réessayer le suivi</string>
     <string name="rating_title">Évaluer votre commande</string>
     <string name="rating_prompt">Comment était votre expérience avec ce commando ?</string>
+    <string name="order_details_submitted_rating">Votre évaluation</string>
     <string name="rating_select">Choisissez une note de 1 à 5</string>
     <string name="rating_star">%1$d sur %2$d étoiles</string>
     <string name="rating_value">%1$d / %2$d</string>

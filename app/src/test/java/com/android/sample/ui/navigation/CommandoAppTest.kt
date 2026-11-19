@@ -46,9 +46,11 @@ import com.android.sample.data.repository.TripError
 import com.android.sample.data.repository.TripRepository
 import com.android.sample.data.repository.TripResult
 import com.android.sample.model.authentication.AuthException
+import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.android.sample.model.authentication.ProfileUpdateResult
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.auth.WelcomeTestTags
@@ -195,7 +197,7 @@ class CommandoAppTest {
   private val products = StubProductRepository()
 
   private fun show(
-      repository: FakeAuthRepository,
+      repository: AuthRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
   ) {
@@ -203,7 +205,7 @@ class CommandoAppTest {
   }
 
   private fun show(
-      repository: FakeAuthRepository,
+      repository: AuthRepository,
       trips: TripRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
@@ -1148,6 +1150,28 @@ class CommandoAppTest {
         )
     pressBack()
     assertProfile("Alice Smith", "alice@example.com", "AS")
+  }
+
+  @Test
+  fun backWhileProfileSaveIsPendingKeepsEditProfileOpen() {
+    val pending = CompletableDeferred<Result<ProfileUpdateResult>>()
+    val fake = FakeAuthRepository(alice)
+    show(
+        object : AuthRepository by fake {
+          override suspend fun updateProfile(fullName: String, email: String) = pending.await()
+        }
+    )
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).performTextReplacement("Alice Brown")
+    click(ProfileEditTestTags.SAVE)
+    pressBack()
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).assertIsDisplayed()
+    compose.runOnIdle {
+      pending.complete(Result.success(ProfileUpdateResult(alice.copy(displayName = "Alice Brown"))))
+    }
+    pressBack()
+    assertScreen(NavigationTestTags.PROFILE_SCREEN)
   }
 
   @After

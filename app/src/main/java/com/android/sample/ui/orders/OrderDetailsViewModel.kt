@@ -23,6 +23,7 @@ import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.isActiveForTracking
 import com.commando.app.model.normalizeRatingComment
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -45,7 +46,7 @@ sealed interface OrderMutationState {
 
 internal val RATING_SCORE_RANGE = 1..5
 
-/** Transient feedback for this receipt action; never loads historical ratings on screen entry. */
+/** Transient receipt feedback, independent of the submitted rating loaded with order details. */
 data class RatingDialogState(
     val visible: Boolean = false,
     /** Selected score in 1..5; 0 means no selection. */
@@ -76,6 +77,8 @@ sealed class OrderDetailsUiState {
       val trip: Trip,
       val viewerId: String? = null,
       val mutation: OrderMutationState = OrderMutationState.Idle,
+      /** Repository-confirmed requester feedback; absent while loading or unavailable. */
+      val submittedRating: Rating? = null,
   ) : OrderDetailsUiState() {
     private val isEligibleOwner: Boolean
       get() =
@@ -178,6 +181,9 @@ class OrderDetailsViewModel(
   private var ratingOffered = false
   private var ratingUncertain = false
   private var isLoading = false
+  private val ratingsConfigured = ratingRepositoryFactory != null
+  private var ratingReadJob: Job? = null
+  private var ratingReadGeneration = 0L
 
   private val session = SessionGuard(currentUserId)
   private val ratingRepository: RatingRepository by lazy {
@@ -189,6 +195,7 @@ class OrderDetailsViewModel(
     viewModelScope.launch {
       sessionChanges.collect { userId ->
         if (session.hasEnded(userId)) {
+          invalidateRatingRead()
           mutableState.value = OrderDetailsUiState.SessionEnded
           mutableRating.value = RatingDialogState()
         }
@@ -197,6 +204,9 @@ class OrderDetailsViewModel(
     load()
   }
 
+  /**
+   * Reloads order details and eligible submitted feedback without interrupting the rating dialog.
+   */
   fun retry() {
     load()
   }
@@ -212,13 +222,17 @@ class OrderDetailsViewModel(
         return
     // Set before launching so rapid retries cannot start simultaneous loads.
     isLoading = true
+    invalidateRatingRead()
     mutableState.value = OrderDetailsUiState.Loading
     viewModelScope.launch {
       try {
         val state = fetchOrder()
         // A repository may return even after the destination's coroutine was cancelled.
         currentCoroutineContext().ensureActive()
-        if (!endSessionIfChanged()) mutableState.value = state
+        if (!endSessionIfChanged()) {
+          mutableState.value = state
+          loadSubmittedRating()
+        }
       } finally {
         isLoading = false
       }
@@ -227,11 +241,51 @@ class OrderDetailsViewModel(
 
   private fun endSessionIfChanged(): Boolean {
     if (session.hasEnded()) {
+      invalidateRatingRead()
       mutableState.value = OrderDetailsUiState.SessionEnded
       mutableRating.value = RatingDialogState()
       return true
     }
     return false
+  }
+
+  private fun invalidateRatingRead() {
+    ratingReadGeneration++
+    ratingReadJob?.cancel()
+    ratingReadJob = null
+  }
+
+  private fun loadSubmittedRating() {
+    val content = mutableState.value as? OrderDetailsUiState.Content ?: return
+    if (
+        !ratingsConfigured ||
+            !content.canRate ||
+            content.order.id != orderId ||
+            content.submittedRating != null ||
+            ratingReadJob?.isActive == true ||
+            endSessionIfChanged()
+    )
+        return
+    val generation = ratingReadGeneration
+    ratingReadJob = viewModelScope.launch {
+      if (endSessionIfChanged() || generation != ratingReadGeneration) return@launch
+      val result =
+          try {
+            ratingRepository.getRatingForOrder(orderId)
+          } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            RatingResult.Error(RatingError.Unknown)
+          }
+      currentCoroutineContext().ensureActive()
+      if (endSessionIfChanged() || generation != ratingReadGeneration) return@launch
+      if (result is RatingResult.Success) publishSubmittedRating(result.data)
+    }
+  }
+
+  private fun publishSubmittedRating(rating: Rating?) {
+    val content = mutableState.value as? OrderDetailsUiState.Content ?: return
+    if (content.canRate && content.order.id == orderId && rating?.orderId == orderId)
+        mutableState.value = content.copy(submittedRating = rating)
   }
 
   /** Saves an eligible owner's decision; concurrent taps are ignored until it finishes. */
@@ -304,6 +358,7 @@ class OrderDetailsViewModel(
     if (endSessionIfChanged()) return
     val state = mutableRating.value
     if (!state.visible || state.submitting || !state.valid || state.terminalError) return
+    invalidateRatingRead()
     mutableRating.value = state.copy(submitting = true, error = null)
     viewModelScope.launch {
       val result =
@@ -315,6 +370,17 @@ class OrderDetailsViewModel(
           }
       currentCoroutineContext().ensureActive()
       if (endSessionIfChanged()) return@launch
+      if (result is RatingResult.Success) {
+        invalidateRatingRead()
+        publishSubmittedRating(result.data)
+      } else if (
+          result is RatingResult.Error &&
+              result.error == RatingError.AlreadyRated &&
+              !ratingUncertain
+      ) {
+        // Uncertain-write reconciliation already read and published any existing feedback.
+        loadSubmittedRating()
+      }
       mutableRating.value =
           when (result) {
             is RatingResult.Success -> state.copy(visible = false, submitted = true, error = null)
@@ -330,6 +396,9 @@ class OrderDetailsViewModel(
         is RatingResult.Error -> return existing
         is RatingResult.Success ->
             existing.data?.let { saved ->
+              currentCoroutineContext().ensureActive()
+              if (endSessionIfChanged()) return RatingResult.Error(RatingError.NotAuthenticated)
+              publishSubmittedRating(saved)
               return if (
                   saved.orderId == input.orderId &&
                       saved.score == input.score &&

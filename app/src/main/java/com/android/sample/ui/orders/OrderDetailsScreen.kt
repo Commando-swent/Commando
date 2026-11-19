@@ -35,6 +35,7 @@ import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.RatingError
 import com.android.sample.ui.chat.OrderChatEntry
+import com.android.sample.ui.theme.RatingAmber
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
 import com.commando.app.model.*
@@ -52,6 +53,9 @@ object OrderDetailsTestTags {
   const val KEEP_ORDER = "order_details_keep_order"
   const val MARK_READY_FOR_HANDOFF = "order_details_mark_ready_for_handoff"
   const val CONFIRM_RECEIPT = "order_details_confirm_receipt"
+  const val SUBMITTED_RATING = "order_details_submitted_rating"
+  const val RATING_SCORE = "order_details_rating_score"
+  const val RATING_COMMENT = "order_details_rating_comment"
 }
 
 /**
@@ -59,7 +63,8 @@ object OrderDetailsTestTags {
  *
  * The caller owns loading, authorization, persistence and navigation. All mutation actions are
  * disabled while saving; the displayed status always comes from the supplied persisted order.
- * Cancellation first opens a confirmation dialog, and dismissing it performs no mutation.
+ * Cancellation first opens a confirmation dialog, and dismissing it performs no mutation. Delivered
+ * requester content may include read-only submitted feedback independently of the dialog.
  *
  * @param state Loading, error or confirmed content supplied by the shared ViewModel.
  * @param onBack Returns to the existing caller-owned destination.
@@ -160,6 +165,7 @@ fun OrderDetailsScreen(
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
           if (onChat != null && state.isChatParticipant) OrderChatEntry(state, onChat)
+          if (state.canRate) state.submittedRating?.let { SubmittedOrderRating(it) }
           if (ratingState.submitted || ratingState.error == RatingError.AlreadyRated) {
             Text(
                 stringResource(
@@ -366,9 +372,41 @@ private fun OrderDetailsContent(order: Order, trip: Trip) {
 }
 
 @Composable
-private fun OrderDetailsCard(content: @Composable ColumnScope.() -> Unit) {
+private fun SubmittedOrderRating(rating: Rating) {
+  OrderDetailsCard(Modifier.testTag(OrderDetailsTestTags.SUBMITTED_RATING)) {
+    OrderDetailsSection(stringResource(R.string.order_details_submitted_rating))
+    val description = stringResource(R.string.rating_star, rating.score, RATING_SCORE_RANGE.last)
+    Row(
+        Modifier.testTag(OrderDetailsTestTags.RATING_SCORE).clearAndSetSemantics {
+          contentDescription = description
+        },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+      Text(
+          RATING_SCORE_RANGE.joinToString("") { if (it <= rating.score) "★" else "☆" },
+          color = RatingAmber,
+          fontSize = 28.sp,
+      )
+      Text(stringResource(R.string.rating_value, rating.score, RATING_SCORE_RANGE.last))
+    }
+    rating.comment?.takeUnless(String::isBlank)?.let {
+      Text(
+          it,
+          Modifier.testTag(OrderDetailsTestTags.RATING_COMMENT),
+          style = MaterialTheme.typography.bodyLarge,
+      )
+    }
+  }
+}
+
+@Composable
+private fun OrderDetailsCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
   Card(
-      modifier = Modifier.fillMaxWidth(),
+      modifier = modifier.fillMaxWidth(),
       shape = RoundedCornerShape(20.dp),
       colors =
           CardDefaults.cardColors(

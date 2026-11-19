@@ -70,6 +70,7 @@ class PositionSharingViewModel(
   private var worker: Job? = null
   private var dirty = false
   private var discoveryConsent = false
+  private var sharedTripId: String? = null
 
   init {
     viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) stop().await() } }
@@ -192,11 +193,13 @@ class PositionSharingViewModel(
         )
     dirty = true
     val eligible = trip.status == TripStatus.PUBLISHED && trip.scheduledAt > clock.instant()
+    // Consent belongs to the shared trip and must never follow an automatic trip switch.
+    if (!eligible || trip.id != sharedTripId) discoveryConsent = false
     val discoverable = eligible && discoveryConsent
-    if (!eligible) discoveryConsent = false
     if (discoverable) mutableDiscovery.value = DiscoverySharingState.DISCOVERABLE
     if (discoverable) repository.publishForDiscovery(trip.id, position)
     else repository.publish(trip.id, position)
+    sharedTripId = trip.id
     mutableDiscovery.value =
         when {
           !eligible -> DiscoverySharingState.UNAVAILABLE

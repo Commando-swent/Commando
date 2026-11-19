@@ -35,8 +35,9 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * Pins that sign-out waits for position sharing to stop and that a failed stop keeps the session.
- * Map and tracking navigation are covered by CommandoAppTest and OrderNavigationTest.
+ * Pins that sign-out waits for position sharing to stop and that a failed stop keeps the session,
+ * and the stop error and retry on a switch to Requester mode. Map and tracking navigation are
+ * covered by CommandoAppTest and OrderNavigationTest.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w412dp-h917dp-mdpi")
@@ -123,25 +124,23 @@ class MapRoutesNavigationTest {
   fun failedSharingStopKeepsProfileWithErrorAndRetrySignsOut() {
     stopGate.completeExceptionally(IllegalStateException("delete failed"))
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    compose.onNodeWithText(string(R.string.position_sharing_stop)).assertIsDisplayed()
-    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertIsDisplayed()
-    compose.onNodeWithTag(WelcomeTestTags.SCREEN).assertDoesNotExist()
-    assertNotNull(auth.currentUser)
+    assertStopFailureKeepsSession()
     // The cancelled worker and the explicit stop may each attempt the delete once.
     val failedAttempts = stopCalls
     assertTrue(failedAttempts > 0)
-    assertTrue(storage.value.isNotEmpty())
+
+    // A second sign-out while the delete still fails retries it and keeps the session.
+    dismissStopError()
+    signOutAccessibly()
+    assertStopFailureKeepsSession()
+    val repeatedAttempts = stopCalls
+    assertTrue(repeatedAttempts > failedAttempts)
 
     compose.runOnIdle { stopGate = CompletableDeferred(Unit) }
-    // The stop-error snackbar can overlap the button; activate its accessible action instead.
-    compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_BUTTON).performSemanticsAction(
-        SemanticsActions.OnClick
-    ) {
-      it()
-    }
+    signOutAccessibly()
     compose.waitUntil(5_000) { auth.currentUser == null }
     compose.onNodeWithTag(WelcomeTestTags.SCREEN).assertIsDisplayed()
-    assertTrue(stopCalls > failedAttempts)
+    assertTrue(stopCalls > repeatedAttempts)
     assertTrue(storage.value.isEmpty())
   }
 
@@ -149,11 +148,56 @@ class MapRoutesNavigationTest {
   fun failedSharingStopOnRequesterSwitchShowsErrorAndKeepsSession() {
     stopGate.completeExceptionally(IllegalStateException("delete failed"))
     click(AppTestTags.REQUESTER_MODE)
-    compose.onNodeWithText(string(R.string.position_sharing_stop)).assertIsDisplayed()
-    assertTrue(stopCalls > 0)
+    assertStopFailureKeepsSession()
+    val failedAttempts = stopCalls
+    assertTrue(failedAttempts > 0)
+
+    // Entering Commando mode reports no stop error; leaving it again retries the failed delete.
+    dismissStopError()
+    click(AppTestTags.COMMANDO_MODE)
+    compose.waitForIdle()
+    compose.onNodeWithText(string(R.string.position_sharing_stop)).assertDoesNotExist()
     assertNotNull(auth.currentUser)
-    compose.onNodeWithTag(WelcomeTestTags.SCREEN).assertDoesNotExist()
+    click(AppTestTags.REQUESTER_MODE)
+    assertStopFailureKeepsSession()
+    assertTrue(stopCalls > failedAttempts)
+  }
+
+  @Test
+  fun requesterSwitchWaitsForPendingStopAndShowsNoErrorOnSuccess() {
+    click(AppTestTags.REQUESTER_MODE)
+    compose.waitForIdle()
+    assertTrue(stopCalls > 0)
     assertTrue(storage.value.isNotEmpty())
+
+    compose.runOnIdle { stopGate.complete(Unit) }
+    compose.waitUntil(5_000) { storage.value.isEmpty() }
+    compose.onNodeWithText(string(R.string.position_sharing_stop)).assertDoesNotExist()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertIsDisplayed()
+    assertNotNull(auth.currentUser)
+  }
+
+  private fun assertStopFailureKeepsSession() {
+    compose.onNodeWithText(string(R.string.position_sharing_stop)).assertIsDisplayed()
+    compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTestTags.SCREEN).assertDoesNotExist()
+    assertNotNull(auth.currentUser)
+    assertTrue(storage.value.isNotEmpty())
+  }
+
+  /** Lets the short snackbar time out on the virtual clock, so a new error must show it again. */
+  private fun dismissStopError() {
+    compose.mainClock.advanceTimeBy(10_000)
+    compose.onNodeWithText(string(R.string.position_sharing_stop)).assertDoesNotExist()
+  }
+
+  // The stop-error snackbar can overlap the button; activate its accessible action instead.
+  private fun signOutAccessibly() {
+    compose.onNodeWithTag(NavigationTestTags.SIGN_OUT_BUTTON).performSemanticsAction(
+        SemanticsActions.OnClick
+    ) {
+      it()
+    }
   }
 
   private fun click(tag: String) = compose.onNodeWithTag(tag).performClick()

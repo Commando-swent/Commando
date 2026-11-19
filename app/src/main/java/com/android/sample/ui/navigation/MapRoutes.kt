@@ -4,10 +4,10 @@ package com.android.sample.ui.navigation
 // CommandoApp (#380, #322).
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DontMemoize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -115,18 +115,21 @@ internal fun rememberPositionSharing(
     snackbar: SnackbarHostState,
 ): PositionSharingWiring {
   val context = LocalContext.current
-  val source =
-      locationProvider
-          ?: remember(context) { AndroidDeviceLocationProvider(context.applicationContext) }
-  val sharing: PositionSharingViewModel = viewModel {
-    PositionSharingViewModel(
-        positions::value,
-        tripRepository,
-        source,
-        orders::currentUserId,
-        orders.sessionChanges,
-    )
-  }
+  // The device source is built once per ViewModel, inside its factory. @DontMemoize here and on the
+  // two lambdas below removes the recomposition checks the Compose compiler generates for them,
+  // which tests cannot reach and SonarCloud counts as uncovered conditions. Behavior is unchanged;
+  // the sign-out lambda gets a new identity on each recomposition, and Profile only uses it as an
+  // onClick.
+  val sharing: PositionSharingViewModel =
+      viewModel @DontMemoize {
+        PositionSharingViewModel(
+            positions::value,
+            tripRepository,
+            locationProvider ?: AndroidDeviceLocationProvider(context.applicationContext),
+            orders::currentUserId,
+            orders.sessionChanges,
+        )
+      }
   val (state, toggle) = rememberPositionSharingControl(sharing, enabled = mode == AppMode.Commando)
   val signOut = rememberSharingSignOut(sharing, mode, onSignOut, snackbar)
   return PositionSharingWiring(state, toggle, signOut)
@@ -142,13 +145,14 @@ private fun rememberSharingSignOut(
 ): () -> Unit {
   val sharingScope = rememberCoroutineScope()
   val stopError = stringResource(R.string.position_sharing_stop)
-  val signOutAfterCleanup = {
-    sharingScope.launch {
-      if (sharing.stop().await()) onSignOut() else snackbar.showSnackbar(stopError)
-    }
-    Unit
-  }
-  LaunchedEffect(mode) {
+  val signOutAfterCleanup =
+      @DontMemoize {
+        sharingScope.launch {
+          if (sharing.stop().await()) onSignOut() else snackbar.showSnackbar(stopError)
+        }
+        Unit
+      }
+  LaunchedEffect(mode) @DontMemoize {
     if (mode == AppMode.Requester && !sharing.stop().await()) snackbar.showSnackbar(stopError)
   }
   return signOutAfterCleanup

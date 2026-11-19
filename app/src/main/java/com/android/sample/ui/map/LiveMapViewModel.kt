@@ -166,13 +166,11 @@ class LiveMapViewModel(
                               .catch { emit(null) }
                         }
                     combine(streams) { values ->
-                      values.filterNotNull().maxByOrNull { it.capturedAt }
-                    }
+                          values.filterNotNull().maxByOrNull { it.capturedAt }
+                        }
+                        .map { person.copy(position = it) }
                   }
-              fixes
-                  .map { person.copy(position = it) }
-                  .onStart { emit(person) }
-                  .catch { emit(person.copy(positionUnavailable = true)) }
+              fixes.onStart { emit(person) }.catch { emit(person.copy(positionUnavailable = true)) }
             }
     val live = if (updates.isEmpty()) flowOf(emptyList()) else combine(updates) { it.toList() }
     combine(live, selectedPoint, ticks()) { commandos, point, now ->
@@ -192,17 +190,21 @@ class LiveMapViewModel(
         .collect { show(it, epoch) }
   }
 
-  // The S5 rules authorize the exact shared trip. Try each associated witness, keeping every link.
-  private fun trackingFixes(person: LiveCommando): Flow<CommandoPosition?> =
-      person.orders
-          .distinctBy { it.tripId }
-          .asReversed()
-          .fold(flow<CommandoPosition?> { error("No authorized position witness") }) {
-              fallback,
-              order ->
+  // The rules authorize the exact shared trip, which can change without an order update.
+  private fun trackingFixes(person: LiveCommando): Flow<LiveCommando> = flow {
+    val witnesses = person.orders.distinctBy { it.tripId }
+    while (currentCoroutineContext().isActive) {
+      for (order in witnesses) {
+        emitAll(
             flow { emitAll(positions.observe(person.ownerId, order.id)) }
-                .catch { emitAll(fallback) }
-          }
+                .map { person.copy(position = it) }
+                .catch { emit(person.copy(positionUnavailable = true)) }
+        )
+      }
+      // Retry every witness after exhaustion; delay is cancelled with the owning observation.
+      delay(WITNESS_RETRY_MILLIS)
+    }
+  }
 
   private suspend fun show(state: LiveMapState, epoch: Long) {
     currentCoroutineContext().ensureActive()
@@ -230,6 +232,7 @@ class LiveMapViewModel(
 
   companion object {
     const val LOCAL_REFRESH_MILLIS = 1_000L
+    const val WITNESS_RETRY_MILLIS = 1_000L
   }
 }
 

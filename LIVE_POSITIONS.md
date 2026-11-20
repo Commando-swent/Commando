@@ -80,6 +80,12 @@ The repository/security PR closes #270; the separate ViewModel PR closes #369.
 Upcoming-trip feeds also expire departures using the repository clock, even when no
 Firestore snapshot changes; unconfirmed or replacement snapshots cancel the old timer.
 
+`LiveMapViewModel.start/stop` own listener lifetimes. Tracking retains closed-trip orders
+and every order link. Discovery starts only with confirmed orders and no active ones,
+applies the shared trip filters and uses a local clock to remove expired fixes without
+backend events. Session changes and retry cancel the former observers and reject late
+results. The ViewModel tries each distinct associated-trip witness without widening S5 access.
+
 Discovery uses **separate consent on every publication**: `publishForDiscovery` writes
 the existing single position and `commandoPositions/{uid}/discovery/consent` atomically.
 The latter contains `enabled`/`tripId` and a server `updatedAt` revision, readable by

@@ -2,7 +2,8 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (requester cancellation, pending-order editing and live feeds).
 // AI assistance: Claude Code for the trip-owner query (#147).
-// AI assistance: Claude Code for refusing orders on non-published trips (#233).
+// AI assistance: Claude Code for refusing orders on non-published trips (#233) and Commando
+// cancellation of accepted orders (#401).
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
 import com.commando.app.model.OrderDraft
@@ -184,6 +185,9 @@ class FakeOrderRepository(
 
   override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
       transitionOrder(orderId, OwnerOrderTransition.MARK_READY)
+
+  override suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OwnerOrderTransition.CANCEL_ACCEPTED)
 
   override suspend fun confirmReceipt(orderId: String): OrderResult<Order> = withSession { userId ->
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)

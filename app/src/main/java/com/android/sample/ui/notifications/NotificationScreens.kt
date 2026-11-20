@@ -1,6 +1,7 @@
 package com.android.sample.ui.notifications
 
 // AI assistance: OpenAI Codex. Layout: Notifications proposal, Figma #190/#202.
+// AI assistance: Claude Code for the order cancellation event (#401).
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -262,12 +263,14 @@ private fun NotificationCard(
         NotificationEventType.ORDER_PLACED -> R.string.notifications_placed
         NotificationEventType.ORDER_ACCEPTED -> R.string.notifications_accepted
         NotificationEventType.ORDER_REJECTED -> R.string.notifications_rejected
+        NotificationEventType.ORDER_CANCELLED -> R.string.notifications_cancelled
       }
   val message =
       when (event.type) {
         NotificationEventType.ORDER_PLACED -> R.string.notifications_placed_body
         NotificationEventType.ORDER_ACCEPTED -> R.string.notifications_accepted_body
         NotificationEventType.ORDER_REJECTED -> R.string.notifications_rejected_body
+        NotificationEventType.ORDER_CANCELLED -> R.string.notifications_cancelled_body
       }
   val locale = LocalConfiguration.current.locales[0]
   val zone = ZoneId.systemDefault()
@@ -310,6 +313,7 @@ private fun NotificationCard(
             NotificationEventType.ORDER_PLACED -> OrderStatus.PENDING
             NotificationEventType.ORDER_ACCEPTED -> OrderStatus.ACCEPTED
             NotificationEventType.ORDER_REJECTED -> OrderStatus.REJECTED
+            NotificationEventType.ORDER_CANCELLED -> OrderStatus.CANCELLED
           }
       )
       Text(

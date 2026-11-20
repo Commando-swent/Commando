@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), #401 test double: Claude Code.
 
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError
@@ -1608,6 +1608,9 @@ class OrderDetailsViewModelTest {
       readyIds += orderId
       return decision()
     }
+
+    override suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order> =
+        error("Not used")
 
     override suspend fun decideOrder(
         orderId: String,

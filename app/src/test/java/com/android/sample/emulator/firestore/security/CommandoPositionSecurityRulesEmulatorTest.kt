@@ -78,7 +78,21 @@ class CommandoPositionSecurityRulesEmulatorTest {
               mapOf("tripId" to "missing"),
               mapOf("extra" to true),
           )) {
-        assertPermissionDenied { ref.set(data(own) + change).await() }
+        assertPermissionDenied {
+          owner.firestore
+              .batch()
+              .set(ref, data(own) + change)
+              .set(
+                  ref.collection("discovery").document("consent"),
+                  mapOf(
+                      "enabled" to false,
+                      "tripId" to own,
+                      "updatedAt" to FieldValue.serverTimestamp(),
+                  ),
+              )
+              .commit()
+              .await()
+        }
       }
       repo(owner).publish(own, fix())
       assertTrue(ref.get(Source.SERVER).await().exists())
@@ -233,6 +247,147 @@ class CommandoPositionSecurityRulesEmulatorTest {
           observation.cancelAndJoin()
         }
       }
+    }
+  }
+
+  @Test
+  fun discoveryRequiresSeparateOptInAndRejectsGuestsUnscopedQueriesAndForgedConsent() = runTest {
+    withClients("owner" to true, "viewer" to true, "guest" to false) { (owner, viewer, guest) ->
+      val trip = trip(owner)
+      val uid = owner.auth.currentUser!!.uid
+      val publisher = repo(owner)
+      fun position(client: EmulatorClient) =
+          client.firestore.collection("commandoPositions").document(uid)
+      publisher.publish(trip, fix())
+      assertPermissionDenied { position(viewer).get(Source.SERVER).await() }
+      assertPermissionDenied { position(guest).get(Source.SERVER).await() }
+      val consent = position(viewer).collection("discovery").document("consent")
+      assertPermissionDenied {
+        consent
+            .set(
+                mapOf(
+                    "enabled" to true,
+                    "tripId" to trip,
+                    "updatedAt" to FieldValue.serverTimestamp(),
+                )
+            )
+            .await()
+      }
+      assertPermissionDenied {
+        position(guest).collection("discovery").document("consent").get(Source.SERVER).await()
+      }
+      publisher.publishForDiscovery(trip, fix())
+      assertTrue(position(viewer).get(Source.SERVER).await().exists())
+      assertNotNull(repo(viewer).observeDiscovery(uid, trip).filterNotNull().first())
+      assertPermissionDenied {
+        viewer.firestore
+            .collection("commandoPositions")
+            .document(uid)
+            .update("discoverable", true)
+            .await()
+      }
+      assertPermissionDenied {
+        owner.firestore
+            .collection("commandoPositions")
+            .document(uid)
+            .update("discoverable", "yes")
+            .await()
+      }
+      assertPermissionDenied {
+        viewer.firestore.collection("commandoPositions").get(Source.SERVER).await()
+      }
+      publisher.publish(trip, fix())
+      assertPermissionDenied { position(viewer).get(Source.SERVER).await() }
+      assertPermissionDenied {
+        viewer.firestore.collection("commandoPositions").document(uid).get(Source.SERVER).await()
+      }
+      publisher.publishForDiscovery(trip, fix())
+      updateDocumentAsOwner("trips/$trip", mapOf("status" to "IN_PROGRESS"))
+      assertPermissionDenied { position(viewer).get(Source.SERVER).await() }
+    }
+  }
+
+  @Test
+  fun discoveryPublicationRequiresBothPositionAndConsentInTheSameBatch() = runTest {
+    withClients("owner" to true, "other" to true, "viewer" to true) { (owner, other, viewer) ->
+      val ownTrip = trip(owner)
+      val foreignTrip = trip(other)
+      val uid = owner.auth.currentUser!!.uid
+      val position = owner.firestore.collection("commandoPositions").document(uid)
+      val consent = position.collection("discovery").document("consent")
+      fun consentData(tripId: String) =
+          mapOf(
+              "enabled" to true,
+              "tripId" to tripId,
+              "updatedAt" to FieldValue.serverTimestamp(),
+          )
+      // Neither initial document can be created on its own.
+      assertPermissionDenied { consent.set(consentData(ownTrip)).await() }
+      assertPermissionDenied { position.set(data(ownTrip)).await() }
+      repo(owner).publishForDiscovery(ownTrip, fix())
+      assertTrue(
+          viewer.firestore
+              .collection("commandoPositions")
+              .document(uid)
+              .get(Source.SERVER)
+              .await()
+              .exists()
+      )
+      // Nor can an existing consent or position be independently refreshed.
+      assertPermissionDenied { consent.set(consentData(ownTrip)).await() }
+      assertPermissionDenied { position.set(data(ownTrip)).await() }
+      for (invalidTrip in listOf(foreignTrip, "missing", "invalid/trip", "")) {
+        assertPermissionDenied {
+          owner.firestore
+              .batch()
+              .set(position, data(ownTrip))
+              .set(consent, consentData(invalidTrip))
+              .commit()
+              .await()
+        }
+      }
+      // Denied writes leave the previous valid pair intact; ordinary publication revokes discovery.
+      assertEquals(ownTrip, consent.get(Source.SERVER).await().getString("tripId"))
+      repo(owner).publish(ownTrip, fix())
+      assertFalse(consent.get(Source.SERVER).await().getBoolean("enabled")!!)
+      assertPermissionDenied {
+        viewer.firestore.collection("commandoPositions").document(uid).get(Source.SERVER).await()
+      }
+    }
+  }
+
+  @Test
+  fun discoveryDeniesConsentForADifferentTripEvenWhenTheOwnerMatches() = runTest {
+    withClients("owner" to true, "viewer" to true) { (owner, viewer) ->
+      val consentTrip = trip(owner)
+      val positionTrip = trip(owner)
+      val uid = owner.auth.currentUser!!.uid
+      repo(owner).publishForDiscovery(positionTrip, fix())
+      // Seed legacy/corrupt server state directly: current client rules reject this write.
+      updateDocumentAsOwner(
+          "commandoPositions/$uid/discovery/consent",
+          mapOf("tripId" to consentTrip),
+      )
+      assertPermissionDenied {
+        viewer.firestore.collection("commandoPositions").document(uid).get(Source.SERVER).await()
+      }
+    }
+  }
+
+  @Test
+  fun discoveryDeniesAPublishedTripWhoseDepartureHasPassed() = runTest {
+    withClients("owner" to true, "viewer" to true) { (owner, viewer) ->
+      val tripId = trip(owner)
+      val uid = owner.auth.currentUser!!.uid
+      repo(owner).publishForDiscovery(tripId, fix())
+      val position = viewer.firestore.collection("commandoPositions").document(uid)
+      assertTrue(position.get(Source.SERVER).await().exists())
+      // Keep PUBLISHED, changing only departure time to isolate the authorization condition.
+      updateDocumentAsOwner(
+          "trips/$tripId",
+          mapOf("scheduledAt" to Timestamp(Instant.now().minusSeconds(1))),
+      )
+      assertPermissionDenied { position.get(Source.SERVER).await() }
     }
   }
 

@@ -6,12 +6,28 @@ import java.time.Clock
 import java.time.Duration
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.transformLatest
 
 /** One shared position per commando; consumers must cancel observation when their session ends. */
 interface CommandoPositionRepository {
   /** Replaces the signed-in owner's position. [tripId] identifies an owned eligible trip. */
   suspend fun publish(tripId: String, position: CommandoPosition)
+
+  /**
+   * Explicit per-publication discovery opt-in; ordinary publish remains private to active orders.
+   */
+  suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) {
+    error("Discovery publication unsupported")
+  }
+
+  /**
+   * Observes only explicitly discoverable positions on this eligible trip. Null means unavailable,
+   * including revoked discovery access; transport and session failures terminate the flow.
+   */
+  fun observeDiscovery(ownerId: String, tripId: String): Flow<CommandoPosition?> = flow {
+    error("Discovery observation unsupported")
+  }
 
   /** Deletes the owner's position; call and await before signing out while still authenticated. */
   suspend fun stopSharing()

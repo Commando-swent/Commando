@@ -17,21 +17,33 @@ class FakeCommandoPositionRepository(
     private val clock: Clock = Clock.systemUTC(),
     private val positions: MutableStateFlow<Map<String, CommandoPosition>> =
         MutableStateFlow(emptyMap()),
+    private val discoveryTrips: MutableStateFlow<Map<String, String>> =
+        MutableStateFlow(emptyMap()),
 ) : CommandoPositionRepository {
   override suspend fun publish(tripId: String, position: CommandoPosition) {
     val uid = user()
     require(tripId.isDocumentId() && position.isFresh(clock.instant()))
+    checkCaptureTime(positions.value[uid], position)
+    discoveryTrips.update { it - uid }
     positions.update {
-      val previous = it[uid]
-      require(previous == null || !position.capturedAt.isBefore(previous.capturedAt)) {
-        "Position capture time cannot regress"
-      }
+      checkCaptureTime(it[uid], position)
       it + (uid to position)
     }
   }
 
+  override suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) {
+    publish(tripId, position)
+    discoveryTrips.update { it + (user() to tripId) }
+  }
+
+  override fun observeDiscovery(ownerId: String, tripId: String): Flow<CommandoPosition?> =
+      observe(ownerId).combine(discoveryTrips) { fix, consent ->
+        fix.takeIf { consent[ownerId] == tripId }
+      }
+
   override suspend fun stopSharing() {
     val uid = user()
+    discoveryTrips.update { it - uid }
     positions.update { it - uid }
   }
 
@@ -46,6 +58,12 @@ class FakeCommandoPositionRepository(
             }
             .freshPositions(clock)
     )
+  }
+
+  private fun checkCaptureTime(previous: CommandoPosition?, position: CommandoPosition) {
+    require(previous == null || !position.capturedAt.isBefore(previous.capturedAt)) {
+      "Position capture time cannot regress"
+    }
   }
 
   private fun user() =

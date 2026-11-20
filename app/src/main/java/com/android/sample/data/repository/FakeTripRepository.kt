@@ -1,6 +1,6 @@
 package com.android.sample.data.repository
 
-// AI assistance: Claude Code for the trip transition (#233).
+// AI assistance: Claude Code for trip transitions; OpenAI Codex for live feeds.
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus
@@ -10,6 +10,9 @@ import com.commando.app.model.TripTransition
 import com.commando.app.model.blocksTripCompletion
 import java.time.Instant
 import java.util.UUID
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
 
 /** In-memory [TripRepository] for tests and previews. */
 class FakeTripRepository(
@@ -20,9 +23,18 @@ class FakeTripRepository(
     private val tripOrderStatuses: suspend (tripId: String) -> List<OrderStatus> = { emptyList() },
 ) : TripRepository {
 
+  private val changes = MutableStateFlow(0L)
+
+  override fun observeUpcomingTrips() =
+      changes.map { getUpcomingTrips() }.expireUpcomingTrips(now).filterNotNull()
+
   private val trips = initialTrips.associateByTo(linkedMapOf(), Trip::id)
 
   var forcedError: TripError? = null
+    set(value) {
+      field = value
+      changes.value += 1
+    }
 
   override suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> {
     forcedError?.let {
@@ -46,6 +58,7 @@ class FakeTripRepository(
             updatedAt = createdAt,
         )
     trips[trip.id] = trip
+    changes.value += 1
     return TripResult.Success(trip)
   }
 
@@ -95,6 +108,7 @@ class FakeTripRepository(
     }
     val updated = trip.copy(status = transition.target, updatedAt = now())
     trips[tripId] = updated
+    changes.value += 1
     return TripResult.Success(updated)
   }
 

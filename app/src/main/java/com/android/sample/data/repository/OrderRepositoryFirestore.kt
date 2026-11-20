@@ -1,16 +1,31 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
-import com.commando.app.model.*
+import com.commando.app.model.NotificationEventType
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDecision
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderStatus
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.*
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.Transaction
+import com.google.firebase.firestore.WriteBatch
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
@@ -36,7 +51,7 @@ internal constructor(
   }
 
   private suspend fun createForSession(draft: OrderDraft, uid: String): OrderResult<Order> {
-    val input = draft.copy(items = draft.items.toList())
+    val input = draft.copy(items = ArrayList(draft.items))
     if (!input.isValid() || !input.tripId.isDocumentId()) return failure(OrderError.InvalidData)
     val key = uid to input
     // Retain the ID across uncertain writes/confirmation failures, including cancellation.
@@ -77,12 +92,41 @@ internal constructor(
     OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
   }
 
+  override fun observeMyOrders(): Flow<OrderResult<List<Order>>?> = flow {
+    val uid = currentUserId()
+    if (uid.isNullOrBlank()) {
+      emit(failure(OrderError.NotAuthenticated))
+      return@flow
+    }
+    emitAll(
+        source
+            .observeMine(uid)
+            .map { documents ->
+              if (currentUserId() != uid) failure(OrderError.NotAuthenticated)
+              else if (documents == null) null
+              else {
+                val orders = documents.map { it.toOrder() }
+                when {
+                  null in orders -> failure(OrderError.InvalidData)
+                  orders.filterNotNull().any { it.requesterId != uid } ->
+                      failure(OrderError.PermissionDenied)
+                  else -> OrderResult.Success(orders.filterNotNull().sortedWith(NEWEST_ORDER_FIRST))
+                }
+              }
+            }
+            .catch { error ->
+              if (error is CancellationException || error !is Exception) throw error
+              emit(failure(error.toOrderError()))
+            }
+    )
+  }
+
   override suspend fun editOrder(
       orderId: String,
       draft: OrderDraft,
       expectedRevision: Int,
   ): OrderResult<Order> = session { uid ->
-    val input = draft.copy(items = draft.items.toList())
+    val input = draft.copy(items = ArrayList(draft.items))
     if (
         !orderId.isDocumentId() ||
             !input.tripId.isDocumentId() ||
@@ -225,6 +269,10 @@ internal interface OrderFirestoreDataSource {
   /** Server read of every order whose `tripId` is [tripId]; the rules restrict it to the owner. */
   suspend fun getForTrip(tripId: String): List<OrderFirestoreDocument>
 
+  fun observeMine(uid: String): Flow<List<OrderFirestoreDocument>?> = flow {
+    error("Live orders unsupported")
+  }
+
   /** Server trip fields used for creation eligibility and associated-owner authorization. */
   suspend fun getTrip(id: String): Map<String, Any?>?
 
@@ -291,6 +339,9 @@ internal class FirebaseOrderFirestoreDataSource(
   override suspend fun getMine(uid: String) = whereEqualTo("requesterId", uid)
 
   override suspend fun getForTrip(tripId: String) = whereEqualTo("tripId", tripId)
+
+  override fun observeMine(uid: String) =
+      orders.whereEqualTo("requesterId", uid).observeServerDocuments(firestore, uid)
 
   private suspend fun whereEqualTo(field: String, value: String) =
       orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {

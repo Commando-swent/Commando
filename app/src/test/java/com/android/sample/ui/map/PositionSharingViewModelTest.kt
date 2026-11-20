@@ -49,7 +49,8 @@ class PositionSharingViewModelTest {
       source: DeviceLocationProvider = DeviceLocationProvider {
         reads++
         result
-      }
+      },
+      clock: Clock = Clock.fixed(now, ZoneOffset.UTC),
   ): PositionSharingViewModel =
       PositionSharingViewModel(
               { positions },
@@ -57,7 +58,7 @@ class PositionSharingViewModelTest {
               source,
               { identity.value },
               identity,
-              Clock.fixed(now, ZoneOffset.UTC),
+              clock,
               { 1500L },
           )
           .also { store.put("sharing", it) }
@@ -253,8 +254,132 @@ class PositionSharingViewModelTest {
     assertTrue(positions.writes.isEmpty())
   }
 
+  @Test
+  fun discoveryRequiresSeparateConsentAndStoppingNeverRestoresIt() = modelTest {
+    val vm = model()
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertTrue(positions.writes.isEmpty())
+    vm.start(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(0, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(false)
+    runCurrent()
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    positions.failDelete = true
+    vm.setDiscoveryEnabled(false)
+    runCurrent()
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(PositionSharingState.Failed(SharingFailureReason.STOP), vm.uiState.value)
+    positions.failDelete = false
+    vm.stop().await()
+    assertEquals(DiscoverySharingState.UNAVAILABLE, vm.discoveryState.value)
+    vm.start(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(2, positions.discoveryWrites)
+  }
+
+  @Test
+  fun departureRevokesConsentAndUncertainWritesKeepTheStopWarning() = modelTest {
+    val vm = model()
+    vm.start(true)
+    runCurrent()
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    owned.value = TripResult.Success(listOf(trip.copy(status = TripStatus.IN_PROGRESS)))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    assertEquals(DiscoverySharingState.UNAVAILABLE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(1, positions.discoveryWrites)
+    owned.value = TripResult.Success(listOf(trip))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    positions.failDiscovery = true
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(PositionSharingState.Failed(SharingFailureReason.STOP), vm.uiState.value)
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(2, positions.discoveryWrites)
+  }
+
+  @Test
+  fun departureWithAnotherUpcomingTripRequiresRenewedDiscoveryConsent() = modelTest {
+    val later = trip.copy(id = "later", scheduledAt = trip.scheduledAt.plusSeconds(3600))
+    owned.value = TripResult.Success(listOf(trip, later))
+    val advancingClock =
+        object : Clock() {
+          override fun getZone() = ZoneOffset.UTC
+
+          override fun withZone(zone: java.time.ZoneId): Clock = this
+
+          override fun instant() = now.plusMillis(testScheduler.currentTime)
+        }
+    val vm = model(clock = advancingClock)
+    vm.start(true)
+    runCurrent()
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    advanceTimeBy(3600_000)
+    runCurrent()
+    assertEquals("later", positions.tripId)
+    assertEquals(PositionSharingState.Live, vm.uiState.value)
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    val discoveries = positions.discoveryWrites
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    assertEquals(discoveries, positions.discoveryWrites)
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    assertEquals(DiscoverySharingState.DISCOVERABLE, vm.discoveryState.value)
+    assertEquals(discoveries + 1, positions.discoveryWrites)
+  }
+
+  @Test
+  fun switchingUpcomingTripsRevokesConsentEvenWhenTheOriginalTripReturns() = modelTest {
+    val vm = model()
+    vm.start(true)
+    runCurrent()
+    vm.setDiscoveryEnabled(true)
+    runCurrent()
+    owned.value = TripResult.Success(listOf(trip.copy(id = "replacement")))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    assertEquals("replacement", positions.tripId)
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+    owned.value = TripResult.Success(listOf(trip))
+    advanceTimeBy(PositionSharingViewModel.PUBLICATION_INTERVAL_MILLIS)
+    runCurrent()
+    assertEquals("trip", positions.tripId)
+    assertEquals(DiscoverySharingState.PRIVATE, vm.discoveryState.value)
+    assertEquals(1, positions.discoveryWrites)
+  }
+
   private class RecordingPositions : CommandoPositionRepository {
     val writes = mutableListOf<CommandoPosition>()
+    var discoveryWrites = 0
+    var failDiscovery = false
+
+    override suspend fun publishForDiscovery(tripId: String, position: CommandoPosition) {
+      discoveryWrites++
+      publish(tripId, position)
+      if (failDiscovery) failDelete = true
+      check(!failDiscovery)
+    }
+
     var current: CommandoPosition? = null
     var tripId: String? = null
     var failDelete = false

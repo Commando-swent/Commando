@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_map_context">Live campus map</string>
+    <string name="live_map_commando">Commando %1$d</string>
+    <string name="live_map_loading">Confirming your active orders…</string>
+    <string name="live_map_error">The live map is unavailable. Retry to refresh your orders and nearby commandos.</string>
+    <string name="live_map_retry">Retry</string>
+    <string name="live_map_tracking">Your deliveries</string>
+    <string name="live_map_discovery">Nearby commandos</string>
+    <string name="live_map_filters">Check your trip filters to discover nearby commandos.</string>
+    <string name="live_map_empty">No nearby commandos are sharing their position.</string>
+    <string name="live_map_all">Show all commandos</string>
+    <string name="live_map_position_missing">Position unavailable — order details remain accessible.</string>
+    <string name="live_map_order">Order %1$s</string>
+    <string name="live_map_trip">%1$s · %2$s</string>
+    <string name="live_map_consent_title">Appear in nearby discovery</string>
+    <string name="live_map_consent_hint">Let signed-in users discover you. Available while sharing an upcoming trip; off by default.</string>
+</resources>

@@ -36,6 +36,7 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
@@ -81,8 +82,15 @@ fun TripMapScreen(
     locationState: MapLocationUiState = MapLocationUiState.Idle,
     onLocate: (() -> Unit)? = null,
     tracking: OrderTrackingState? = null,
+    liveState: LiveMapState? = null,
+    onOrderDetails: (String) -> Unit = {},
     mapSurface: @Composable (Modifier) -> Unit = { CampusMapBackground(it) },
 ) {
+  val liveContent = liveState as? LiveMapState.Content
+  var selectedOwner by rememberSaveable(liveContent?.mode) { mutableStateOf<String?>(null) }
+  LaunchedEffect(liveContent?.commandos) {
+    if (liveContent?.commandos?.none { it.ownerId == selectedOwner } != false) selectedOwner = null
+  }
   val trackingPresentation = rememberTrackingPresentation(tracking)
   val trackedFix = trackingPresentation?.fix
   val content = state as? TripMapUiState.Content
@@ -146,6 +154,8 @@ fun TripMapScreen(
         { dx, dy, zoom -> camera = camera.moved(dx, dy, zoom) },
         onViewportBounds = { viewportBounds = it },
         trackedPosition = trackedFix,
+        liveCommandos = liveContent?.commandos.orEmpty(),
+        onSelectCommando = { selectedOwner = it },
     ) { id, bounds ->
       markerBounds[id] = bounds
     }
@@ -162,7 +172,8 @@ fun TripMapScreen(
             )
     )
     val subtitle =
-        trackingPresentation?.let { stringResource(R.string.order_tracking_context) }
+        liveState?.let { stringResource(R.string.live_map_context) }
+            ?: trackingPresentation?.let { stringResource(R.string.order_tracking_context) }
             ?: mapSubtitle(state, fix, nearby.size)
     Column(
         Modifier.fillMaxWidth().padding(16.dp).onGloballyPositioned {
@@ -173,9 +184,12 @@ fun TripMapScreen(
           subtitle,
           onBack,
           onRefresh,
-          state != TripMapUiState.Loading && state != TripMapUiState.SessionEnded,
+          state != TripMapUiState.Loading &&
+              state != TripMapUiState.SessionEnded &&
+              liveState != LiveMapState.Loading,
           Modifier.fillMaxWidth(),
-          tracking = tracking != null,
+          tracking = tracking != null || liveContent?.mode == LiveMapMode.TRACKING,
+          titleRes = liveState?.let { liveMapTitle(liveContent?.mode) },
       )
       fix?.let {
         Text(
@@ -279,12 +293,7 @@ fun TripMapScreen(
               onRefresh,
               Modifier.align(Alignment.Center)
                   .padding(horizontal = 24.dp)
-                  .offset(
-                      y =
-                          if (maxHeight > 500.dp)
-                              (if (state is TripMapUiState.Error) (-50).dp else (-47).dp)
-                          else 0.dp
-                  )
+                  .offset(y = mapFeedbackOffset(maxHeight, state))
                   .heightIn(max = maxHeight - 16.dp),
           )
     }
@@ -300,22 +309,45 @@ fun TripMapScreen(
         )
       }
     }
-    if (trackingPresentation != null) {
-      OrderTrackingStatusCard(
-          trackingPresentation,
-          onRecenter = {
-            trackedFix
-                ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
-                ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
-          },
-          onRetry = onRefresh,
-          modifier =
-              Modifier.align(Alignment.BottomCenter)
-                  .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)
-                  .heightIn(max = (maxHeight - controlsHeight - 56.dp).coerceAtLeast(0.dp)),
-      )
-    } else if (content?.selectedTrip == null) {
-      Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
+    when {
+      trackingPresentation != null -> {
+        OrderTrackingStatusCard(
+            trackingPresentation,
+            onRecenter = {
+              trackedFix
+                  ?.let { CAMPUS_MAP_PROJECTION.project(Location("", it.latitude, it.longitude)) }
+                  ?.let { camera = MapCamera.centeredAt(it, LOCATION_CAMERA_ZOOM) }
+            },
+            onRetry = onRefresh,
+            modifier =
+                Modifier.align(Alignment.BottomCenter)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 40.dp)
+                    .heightIn(max = (maxHeight - controlsHeight - 56.dp).coerceAtLeast(0.dp)),
+        )
+      }
+      liveState != null -> {
+        Column(
+            Modifier.align(Alignment.BottomCenter)
+                .padding(start = 16.dp, end = 16.dp, bottom = 48.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          if (showLocateWithCard) locate()
+          LiveMapSummary(
+              liveState,
+              selectedOwner,
+              { selectedOwner = null },
+              onTripDetails,
+              onOrderDetails,
+              onRefresh,
+              Modifier.fillMaxWidth().heightIn(max = (cardLimit - 96.dp).coerceAtLeast(0.dp)),
+          )
+        }
+      }
+      content?.selectedTrip == null -> {
+        Box(Modifier.align(Alignment.BottomEnd).padding(16.dp)) { locate() }
+      }
     }
     SnackbarHost(
         snackbar,
@@ -323,6 +355,20 @@ fun TripMapScreen(
     )
   }
 }
+
+private fun mapFeedbackOffset(height: Dp, state: TripMapUiState): Dp =
+    when {
+      height <= 500.dp -> 0.dp
+      state is TripMapUiState.Error -> (-50).dp
+      else -> (-47).dp
+    }
+
+private fun liveMapTitle(mode: LiveMapMode?): Int =
+    when (mode) {
+      LiveMapMode.DISCOVERY -> R.string.live_map_discovery
+      LiveMapMode.TRACKING -> R.string.live_map_tracking
+      null -> R.string.live_map_context
+    }
 
 /** Centers only the first tracking fix; later updates preserve the user's camera. */
 @Composable
@@ -464,6 +510,8 @@ private fun MapTripCanvas(
     onViewportBounds: (Rect) -> Unit,
     modifier: Modifier = Modifier,
     trackedPosition: CommandoPosition? = null,
+    liveCommandos: List<LiveCommando> = emptyList(),
+    onSelectCommando: (String) -> Unit = {},
     onMarkerBounds: (String, Rect) -> Unit,
 ) {
   BoxWithConstraints(
@@ -490,6 +538,7 @@ private fun MapTripCanvas(
           translationY = ((.5 - camera.center.y) * camera.zoom * size.height).toFloat()
         }
     )
+    LiveCommandoMarkers(liveCommandos, camera, onSelectCommando)
     trackedPosition?.let { fix ->
       CAMPUS_MAP_PROJECTION.project(Location("", fix.latitude, fix.longitude))?.let { point ->
         val projected = camera.project(point)

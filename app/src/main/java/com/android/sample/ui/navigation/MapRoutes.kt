@@ -1,7 +1,7 @@
 package com.android.sample.ui.navigation
 
 // AI assistance: Claude Code moved the map destinations and the position-sharing wiring out of
-// CommandoApp (#380, #322).
+// CommandoApp (#380, #322). OpenAI Codex integrated live map and discovery consent (#272).
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DontMemoize
@@ -22,6 +22,9 @@ import com.android.sample.data.location.AndroidDeviceLocationProvider
 import com.android.sample.data.location.DeviceLocationProvider
 import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.TripRepository
+import com.android.sample.ui.map.DiscoverySharingState
+import com.android.sample.ui.map.LiveMapHost
+import com.android.sample.ui.map.LiveMapViewModel
 import com.android.sample.ui.map.MapLocationHost
 import com.android.sample.ui.map.OrderTrackingHost
 import com.android.sample.ui.map.OrderTrackingViewModel
@@ -29,7 +32,6 @@ import com.android.sample.ui.map.PositionSharingState
 import com.android.sample.ui.map.PositionSharingViewModel
 import com.android.sample.ui.map.TripMapScreen
 import com.android.sample.ui.map.TripMapUiState
-import com.android.sample.ui.map.TripMapViewModel
 import com.android.sample.ui.map.rememberPositionSharingControl
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
@@ -42,34 +44,43 @@ internal fun NavGraphBuilder.mapRoutes(
     orders: SessionOrderViewModel,
     positions: Lazy<CommandoPositionRepository>,
     locationFilter: TripLocationFilterViewModel,
+    userId: String,
 ) {
   composable(route = CommandoScreens.TripMap.name) { entry ->
-    val map: TripMapViewModel =
+    val map: LiveMapViewModel =
         viewModel(viewModelStoreOwner = entry) {
-          TripMapViewModel(
+          LiveMapViewModel(
+              orders.repository,
               tripRepository,
-              locationFilter.selected,
+              positions.value,
               orders::currentUserId,
               orders.sessionChanges,
-              criteria = locationFilter.criteria,
+              locationFilter.selected,
+              locationFilter.criteria,
           )
         }
-    RefreshOnResume(map, map::refresh)
-    val state by map.uiState.collectAsState()
     val selectedPoint by locationFilter.selected.collectAsState()
-    MapLocationHost(state == TripMapUiState.SessionEnded) { locationState, locate ->
-      TripMapScreen(
-          state,
-          map::refresh,
-          map::selectTrip,
-          map::clearSelection,
-          onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
-          onBack = { navController.popBackStack() },
-          selectedPoint = selectedPoint,
-          onClearPoint = locationFilter::clear,
-          locationState = locationState,
-          onLocate = locate,
-      )
+    LiveMapHost(map) { state, retry ->
+      MapLocationHost(orders.currentUserId() != userId) { locationState, locate ->
+        TripMapScreen(
+            TripMapUiState.Content(emptyList()),
+            retry,
+            {},
+            {},
+            onTripDetails = { navController.navigate(CommandoScreens.tripDetailsRoute(it)) },
+            onBack = { navController.popBackStack() },
+            selectedPoint = selectedPoint,
+            onClearPoint = locationFilter::clear,
+            locationState = locationState,
+            onLocate = locate,
+            liveState = state,
+            onOrderDetails = {
+              navController.navigate(CommandoScreens.orderDetailsRoute(it)) {
+                launchSingleTop = true
+              }
+            },
+        )
+      }
     }
   }
   composable(
@@ -98,6 +109,8 @@ internal class PositionSharingWiring(
     val state: PositionSharingState,
     val toggle: (Boolean) -> Unit,
     val signOut: () -> Unit,
+    val discovery: DiscoverySharingState,
+    val toggleDiscovery: (Boolean) -> Unit,
 )
 
 /**
@@ -132,7 +145,8 @@ internal fun rememberPositionSharing(
       }
   val (state, toggle) = rememberPositionSharingControl(sharing, enabled = mode == AppMode.Commando)
   val signOut = rememberSharingSignOut(sharing, mode, onSignOut, snackbar)
-  return PositionSharingWiring(state, toggle, signOut)
+  val discovery by sharing.discoveryState.collectAsState()
+  return PositionSharingWiring(state, toggle, signOut, discovery, sharing::setDiscoveryEnabled)
 }
 
 /** Stops sharing on role exit and returns a sign-out action that awaits confirmed cleanup. */

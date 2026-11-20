@@ -2,7 +2,9 @@ package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
 import android.content.Context
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,7 +15,7 @@ import com.android.sample.ui.auth.AuthTestTags
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.home.HomeTestTags
-import com.android.sample.ui.map.MapTestTags
+import com.android.sample.ui.map.LiveMapTags
 import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
@@ -28,6 +30,7 @@ import com.commando.app.model.*
 import java.time.Instant
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.flow.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -95,6 +98,15 @@ class AppJourneyTest {
             trips,
             google,
             productRepository = products,
+            positionRepositoryFactory = {
+              object :
+                  CommandoPositionRepository by FakeCommandoPositionRepository(
+                      MutableStateFlow(alice.uid)
+                  ) {
+                override fun observeDiscovery(ownerId: String, tripId: String) =
+                    flowOf(CommandoPosition(46.521, 6.566, 20.0, Instant.now()))
+              }
+            },
             ratingRepositoryFactory = {
               FakeRatingRepository(it, FakeOrderRepository(it), FakeTripRepository("rating-owner"))
             },
@@ -127,10 +139,14 @@ class AppJourneyTest {
     scrollTripsTo(hasTestTag(NavigationTestTags.OPEN_MAP))
     click(NavigationTestTags.OPEN_MAP)
     compose.onNodeWithTag(TripMapTestTags.REFRESH).assertIsEnabled().performClick()
-    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).assertIsDisplayed()
-    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + trip.id).performClick()
-    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().assertIsDisplayed()
-    compose.onNodeWithTag(MapTestTags.DETAILS).performClick()
+    compose.waitUntil(timeoutMillis = 15_000) {
+      compose.onNodeWithTag(LiveMapTags.MARKER + trip.ownerId).isDisplayed()
+    }
+    compose.onNodeWithTag(LiveMapTags.MARKER + trip.ownerId).assertIsDisplayed()
+    captureMap("live-map-discovery")
+    compose.onNodeWithTag(LiveMapTags.MARKER + trip.ownerId).performClick()
+    compose.onNodeWithTag(LiveMapTags.TRIP + trip.id).performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(LiveMapTags.TRIP + trip.id).performClick()
     compose.onNodeWithText(trip.handoffLocation.name).assertIsDisplayed()
     back()
     compose.onNodeWithTag(NavigationTestTags.MAP_LIST).assertIsDisplayed().performClick()
@@ -171,6 +187,7 @@ class AppJourneyTest {
     click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.HOME_BUTTON)
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).assertIsSelected()
+    captureMap("discovery-consent-off")
     compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performScrollTo().performClick()
     publishTrip()
     compose.waitUntil(timeoutMillis = 15_000) {
@@ -232,6 +249,16 @@ class AppJourneyTest {
 
   private fun back() = compose.runOnUiThread {
     compose.activity.onBackPressedDispatcher.onBackPressed()
+  }
+
+  private fun captureMap(name: String) {
+    java.io.File(compose.activity.cacheDir, "$name.png").outputStream().use {
+      compose
+          .onRoot()
+          .captureToImage()
+          .asAndroidBitmap()
+          .compress(Bitmap.CompressFormat.PNG, 100, it)
+    }
   }
 
   private fun hasTestTagPrefix(prefix: String) =

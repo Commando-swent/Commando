@@ -21,8 +21,11 @@ fun PositionSharingCard(
     state: PositionSharingState,
     onToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    discovery: DiscoverySharingState = DiscoverySharingState.UNAVAILABLE,
+    onDiscoveryToggle: (Boolean) -> Unit = {},
 ) {
   val title = stringResource(R.string.position_sharing_title)
+  val discoveryTitle = stringResource(R.string.live_map_consent_title)
   val message =
       when (state) {
         PositionSharingState.Off -> R.string.position_sharing_off
@@ -39,30 +42,56 @@ fun PositionSharingCard(
             }
       }
   OutlinedCard(modifier.fillMaxWidth().testTag(PositionSharingTestTags.SHARING)) {
-    Row(
-        Modifier.padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Column(Modifier.weight(1f)) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleSmall,
+    Column {
+      Row(
+          Modifier.padding(16.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        Column(Modifier.weight(1f)) {
+          Text(
+              title,
+              style = MaterialTheme.typography.titleSmall,
+          )
+          Text(stringResource(message), style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(
+            state == PositionSharingState.Starting ||
+                state == PositionSharingState.Live ||
+                state == PositionSharingState.Stopping ||
+                state == PositionSharingState.Failed(SharingFailureReason.STOP),
+            onToggle,
+            enabled = state != PositionSharingState.Stopping,
+            modifier =
+                Modifier.testTag(PositionSharingTestTags.SHARING_TOGGLE).semantics {
+                  contentDescription = title
+                },
         )
-        Text(stringResource(message), style = MaterialTheme.typography.bodySmall)
       }
-      Switch(
-          state == PositionSharingState.Starting ||
-              state == PositionSharingState.Live ||
-              state == PositionSharingState.Stopping ||
-              state == PositionSharingState.Failed(SharingFailureReason.STOP),
-          onToggle,
-          enabled = state != PositionSharingState.Stopping,
-          modifier =
-              Modifier.testTag(PositionSharingTestTags.SHARING_TOGGLE).semantics {
-                contentDescription = title
-              },
-      )
+      Row(
+          Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(12.dp),
+      ) {
+        Column(Modifier.weight(1f)) {
+          Text(discoveryTitle, style = MaterialTheme.typography.titleSmall)
+          Text(
+              stringResource(R.string.live_map_consent_hint),
+              style = MaterialTheme.typography.bodySmall,
+          )
+        }
+        Switch(
+            discovery == DiscoverySharingState.DISCOVERABLE,
+            onDiscoveryToggle,
+            enabled =
+                state == PositionSharingState.Live &&
+                    discovery != DiscoverySharingState.UNAVAILABLE,
+            modifier =
+                Modifier.testTag(PositionSharingTestTags.DISCOVERY_TOGGLE).semantics {
+                  contentDescription = discoveryTitle
+                },
+        )
+      }
     }
   }
 }
@@ -70,5 +99,6 @@ fun PositionSharingCard(
 /** Shared semantics for opt-in and lifecycle tests. */
 object PositionSharingTestTags {
   const val SHARING = "live_position_sharing"
+  const val DISCOVERY_TOGGLE = "live_discovery_toggle"
   const val SHARING_TOGGLE = "live_position_toggle"
 }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="live_map_context">Carte du campus en direct</string>
+    <string name="live_map_commando">Commando %1$d</string>
+    <string name="live_map_loading">Vérification de vos commandes actives…</string>
+    <string name="live_map_error">La carte est indisponible. Réessayez pour actualiser vos commandes et les commandos à proximité.</string>
+    <string name="live_map_retry">Réessayer</string>
+    <string name="live_map_tracking">Vos livraisons</string>
+    <string name="live_map_discovery">Commandos à proximité</string>
+    <string name="live_map_filters">Vérifiez vos filtres pour découvrir les commandos à proximité.</string>
+    <string name="live_map_empty">Aucun commando à proximité ne partage sa position.</string>
+    <string name="live_map_all">Afficher tous les commandos</string>
+    <string name="live_map_position_missing">Position indisponible — les détails restent accessibles.</string>
+    <string name="live_map_order">Commande %1$s</string>
+    <string name="live_map_trip">%1$s · %2$s</string>
+    <string name="live_map_consent_title">Apparaître dans la découverte à proximité</string>
+    <string name="live_map_consent_hint">Permettre aux utilisateurs connectés de vous découvrir. Disponible avant le départ lorsque le partage est actif ; désactivé par défaut.</string>
+</resources>

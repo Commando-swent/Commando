@@ -21,6 +21,7 @@ import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.RecordingRatings
 import com.commando.app.model.*
 import java.time.Instant
+import kotlinx.coroutines.flow.*
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -78,6 +79,15 @@ class NearbyTripNavigationTest {
             FakeAuthRepository(AuthUser("requester")),
             trips,
             productRepository = StubProductRepository(),
+            positionRepositoryFactory = {
+              object :
+                  CommandoPositionRepository by FakeCommandoPositionRepository(
+                      MutableStateFlow("requester")
+                  ) {
+                override fun observeDiscovery(ownerId: String, tripId: String) =
+                    flowOf(CommandoPosition(point.latitude, point.longitude, 20.0, now))
+              }
+            },
             ratingRepositoryFactory = { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
         )
@@ -92,9 +102,9 @@ class NearbyTripNavigationTest {
     compose
         .onNodeWithTag(TripMapTestTags.CLEAR_FILTER)
         .assert(hasText(point.name, substring = true))
-    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + far.id).assertDoesNotExist()
-    compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + near.id).performClick()
-    compose.onNodeWithTag(MapTestTags.DETAILS).performScrollTo().performClick()
+    compose.onNodeWithTag(LiveMapTags.TRIP + far.id).assertDoesNotExist()
+    compose.onNodeWithTag(LiveMapTags.MARKER + near.ownerId).performClick()
+    compose.onNodeWithTag(LiveMapTags.TRIP + near.id).performScrollTo().performClick()
     compose.onNodeWithText(near.store.name).assertIsDisplayed()
     compose.runOnIdle { assertEquals(listOf(near.ownerId), ratingIds) }
     compose.onNodeWithTag(TripMapTestTags.HEADER).assertDoesNotExist()

@@ -2,6 +2,7 @@ package com.android.sample.ui.map
 
 // AI assistance: OpenAI Codex. Reusable map components from Figma section 421:2073.
 // Claude Code (search feedback states).
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -134,6 +135,7 @@ internal fun MapDiscoveryHeader(
     refreshEnabled: Boolean,
     modifier: Modifier = Modifier,
     tracking: Boolean = false,
+    @StringRes titleRes: Int? = null,
 ) {
   MapFloatingSurface(
       modifier.testTag(TripMapTestTags.HEADER),
@@ -147,7 +149,9 @@ internal fun MapDiscoveryHeader(
       Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(
             stringResource(
-                if (tracking) R.string.order_tracking_title else R.string.trip_map_discovery_title
+                titleRes
+                    ?: if (tracking) R.string.order_tracking_title
+                    else R.string.trip_map_discovery_title
             ),
             style = MaterialTheme.typography.titleMedium,
             fontSize = 21.sp,

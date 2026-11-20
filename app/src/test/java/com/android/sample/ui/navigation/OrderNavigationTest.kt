@@ -21,10 +21,10 @@ import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeTestTags
+import com.android.sample.ui.map.LiveMapTags
 import com.android.sample.ui.map.MapTestTags
 import com.android.sample.ui.map.OrderTrackingTestTags
 import com.android.sample.ui.map.PositionSharingTestTags
-import com.android.sample.ui.map.TripMapTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.orders.RatingDialogTestTags
@@ -111,7 +111,9 @@ class OrderNavigationTest {
             credentials,
             orderRepositoryFactory = factory,
             ratingRepositoryFactory = ratings,
-            positionRepositoryFactory = positions?.let { { _ -> it } },
+            positionRepositoryFactory = {
+              positions ?: FakeCommandoPositionRepository(MutableStateFlow(auth.currentUser?.uid))
+            },
             locationProvider = source,
         )
       }
@@ -289,6 +291,7 @@ class OrderNavigationTest {
 
   @Test
   fun emptyMapHasNoSyntheticMarkersOrTripLookupsAndReturnsToList() {
+    factoryCalls = 1 // This scenario has no active orders; active tracking has its own tests.
     val lookups = mutableListOf<String>()
     show(
         object : TripRepository by trips {
@@ -300,7 +303,7 @@ class OrderNavigationTest {
     )
     click(AppTestTags.TRIPS_BUTTON)
     click(NavigationTestTags.OPEN_MAP)
-    compose.onNodeWithTag(TripMapTestTags.STATUS).assertIsDisplayed()
+    compose.onNodeWithTag(LiveMapTags.SUMMARY).assertIsDisplayed()
     compose.onNodeWithTag(MapTestTags.MARKER_PREFIX + "sample-migros").assertDoesNotExist()
     compose.onNodeWithTag(MapTestTags.DETAILS).assertDoesNotExist()
     assertTrue(lookups.isEmpty())

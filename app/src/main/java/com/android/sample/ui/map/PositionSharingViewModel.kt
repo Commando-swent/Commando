@@ -38,6 +38,13 @@ enum class SharingFailureReason {
   NO_TRIP,
 }
 
+/** Separate consent is available only while publishing an eligible upcoming trip. */
+enum class DiscoverySharingState {
+  UNAVAILABLE,
+  PRIVATE,
+  DISCOVERABLE,
+}
+
 /**
  * Publishes only with explicit consent. Eligibility is rechecked each publication cycle; failures
  * stop sharing until the user retries. [createRepository] is lazy to avoid pre-consent backend
@@ -56,10 +63,14 @@ class PositionSharingViewModel(
   private val repository: CommandoPositionRepository by lazy(createRepository)
   private val mutableState = MutableStateFlow<PositionSharingState>(PositionSharingState.Off)
   val uiState = mutableState.asStateFlow()
+  private val mutableDiscovery = MutableStateFlow(DiscoverySharingState.UNAVAILABLE)
+  val discoveryState = mutableDiscovery.asStateFlow()
   private val session = SessionGuard(currentUserId)
   private val transitions = Mutex()
   private var worker: Job? = null
   private var dirty = false
+  private var discoveryConsent = false
+  private var sharedTripId: String? = null
 
   init {
     viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) stop().await() } }
@@ -70,6 +81,7 @@ class PositionSharingViewModel(
     viewModelScope.launch {
       transitions.withLock {
         if (session.hasEnded() || session.initialUserId == null) return@withLock
+        discoveryConsent = false
         worker?.cancelAndJoin()
         worker = null
         if (!permissionGranted) {
@@ -77,6 +89,26 @@ class PositionSharingViewModel(
           mutableState.value = PositionSharingState.Failed(SharingFailureReason.PERMISSION)
           return@withLock
         }
+        mutableState.value = PositionSharingState.Starting
+        worker = viewModelScope.launch { publishWhileActive() }
+      }
+    }
+  }
+
+  /** Changing audience is explicit and replaces the former publication before restarting. */
+  fun setDiscoveryEnabled(enabled: Boolean) {
+    viewModelScope.launch {
+      transitions.withLock {
+        if (
+            session.hasEnded() ||
+                mutableState.value != PositionSharingState.Live ||
+                mutableDiscovery.value == DiscoverySharingState.UNAVAILABLE
+        )
+            return@withLock
+        worker?.cancelAndJoin()
+        worker = null
+        if (dirty) return@withLock
+        discoveryConsent = enabled
         mutableState.value = PositionSharingState.Starting
         worker = viewModelScope.launch { publishWhileActive() }
       }
@@ -92,10 +124,12 @@ class PositionSharingViewModel(
   }
 
   private suspend fun stopPublishing(): Boolean = transitions.withLock {
+    discoveryConsent = false
     worker?.cancelAndJoin()
     worker = null
     if (dirty) cleanup()
     else {
+      mutableDiscovery.value = DiscoverySharingState.UNAVAILABLE
       mutableState.value = PositionSharingState.Off
       true
     }
@@ -158,13 +192,27 @@ class PositionSharingViewModel(
             clock.instant().minusMillis(now - fix.elapsedRealtimeMillis),
         )
     dirty = true
-    repository.publish(trip.id, position)
+    val eligible = trip.status == TripStatus.PUBLISHED && trip.scheduledAt > clock.instant()
+    // Consent belongs to the shared trip and must never follow an automatic trip switch.
+    if (!eligible || trip.id != sharedTripId) discoveryConsent = false
+    val discoverable = eligible && discoveryConsent
+    if (discoverable) mutableDiscovery.value = DiscoverySharingState.DISCOVERABLE
+    if (discoverable) repository.publishForDiscovery(trip.id, position)
+    else repository.publish(trip.id, position)
+    sharedTripId = trip.id
+    mutableDiscovery.value =
+        when {
+          !eligible -> DiscoverySharingState.UNAVAILABLE
+          discoverable -> DiscoverySharingState.DISCOVERABLE
+          else -> DiscoverySharingState.PRIVATE
+        }
     currentCoroutineContext().ensureActive()
     mutableState.value = PositionSharingState.Live
   }
 
   private suspend fun cleanup(): Boolean {
     if (!dirty) {
+      mutableDiscovery.value = DiscoverySharingState.UNAVAILABLE
       mutableState.value = PositionSharingState.Off
       return true
     }
@@ -172,6 +220,7 @@ class PositionSharingViewModel(
     return try {
       withTimeout(DELETE_TIMEOUT_MILLIS) { repository.stopSharing() }
       dirty = false
+      mutableDiscovery.value = DiscoverySharingState.UNAVAILABLE
       mutableState.value = PositionSharingState.Off
       true
     } catch (_: Exception) {

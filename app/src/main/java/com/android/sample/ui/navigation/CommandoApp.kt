@@ -266,7 +266,14 @@ private fun AuthenticatedApp(
             mode = appUiState.mode,
             tripState = tripState,
             onRetry = onRetry,
-            sharingControl = { PositionSharingCard(sharing.state, sharing.toggle) },
+            sharingControl = {
+              PositionSharingCard(
+                  sharing.state,
+                  sharing.toggle,
+                  discovery = sharing.discovery,
+                  onDiscoveryToggle = sharing.toggleDiscovery,
+              )
+            },
             onFindTrip = { navController.navigate(CommandoScreens.AvailableTrips.name) },
             onManageTrip = { tripId ->
               navController.navigate(CommandoScreens.tripDetailsRoute(tripId)) {
@@ -318,6 +325,7 @@ private fun AuthenticatedApp(
           orders = orders,
           positions = positions,
           locationFilter = locationFilter,
+          userId = userId,
       )
       composable(
           route = CommandoScreens.OrderChat.route,

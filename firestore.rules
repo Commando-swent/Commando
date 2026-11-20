@@ -246,7 +246,11 @@ service cloud.firestore {
                     && request.resource.data.status in ["ACCEPTED", "REJECTED"]
                     && hasOrderEvent(orderId, "ORDER_" + request.resource.data.status, resource.data.requesterId))
                   || (resource.data.status == "ACCEPTED"
-                    && request.resource.data.status == "READY_FOR_HANDOFF")))
+                    && request.resource.data.status == "READY_FOR_HANDOFF")
+                  // Commando cancellation (#388) publishes its trusted cancellation time.
+                  || (resource.data.status == "ACCEPTED"
+                    && request.resource.data.status == "CANCELLED"
+                    && hasOrderEvent(orderId, "ORDER_CANCELLED", resource.data.requesterId))))
             || (resource.data.status == "PENDING"
               && resource.data.requesterId == request.auth.uid
               && request.resource.data.status == "CANCELLED")
@@ -391,9 +395,9 @@ service cloud.firestore {
         && (data.type == "ORDER_PLACED"
           ? (!exists(path) && order.status == "PENDING" && order.createdAt == request.time
             && request.auth.uid == order.requesterId && data.recipientId == trip.ownerId)
-          : (exists(path) && get(path).data.status == "PENDING"
-            && data.type in ["ORDER_ACCEPTED", "ORDER_REJECTED"]
-            && data.type == "ORDER_" + order.status
+          : (exists(path) && data.type == "ORDER_" + order.status
+            && ((get(path).data.status == "PENDING" && data.type in ["ORDER_ACCEPTED", "ORDER_REJECTED"])
+              || (get(path).data.status == "ACCEPTED" && data.type == "ORDER_CANCELLED"))
             && request.auth.uid == trip.ownerId && data.recipientId == order.requesterId));
     }
 

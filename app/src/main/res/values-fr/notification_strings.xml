@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- AI assistance: OpenAI Codex. -->
+<!-- AI assistance: OpenAI Codex; order cancellation strings (#401): Claude Code. -->
 <resources>
     <string name="notifications_title">Notifications</string>
     <string name="notifications_preferences">Préférences de notifications</string>
@@ -20,6 +20,8 @@
     <string name="notifications_placed_body">Une nouvelle commande a été passée sur votre trajet.</string>
     <string name="notifications_accepted_body">Le commando a accepté votre commande.</string>
     <string name="notifications_rejected_body">Le commando a refusé votre commande.</string>
+    <string name="notifications_cancelled">Commande annulée</string>
+    <string name="notifications_cancelled_body">Le commando a annulé votre commande acceptée.</string>
     <string name="notifications_read">Lue</string>
     <string name="notifications_unread">Non lue</string>
     <string name="notifications_order_reference">Commande · %1$s</string>

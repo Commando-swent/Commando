@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), Commando cancellation (#401): Claude
+// Code.
 import com.commando.app.model.*
 import com.commando.app.model.OrderDecision.ACCEPT
 import com.commando.app.model.OrderDecision.REJECT
@@ -449,6 +450,49 @@ class OrderRepositoryFirestoreTest {
     assertEquals(before, source.writes)
   }
 
+  /** Creates order "b" as alice on first use, then stores it with [status]. */
+  private suspend fun storedWith(status: OrderStatus): Order {
+    if ("b" !in source.documents) repository.createOrder(draft)
+    val original = source.documents.getValue("b")
+    source.documents["b"] = original.copy(data = original.data + ("status" to status.name))
+    return checkNotNull(source.documents.getValue("b").toOrder())
+  }
+
+  @Test
+  fun commandoCancellationWritesOnlyForAcceptedOrders() = runTest {
+    for (status in OrderStatus.entries) {
+      val stored = storedWith(status)
+      uid = "owner"
+      val before = source.writes
+      val expected =
+          if (status in listOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED))
+              OrderResult.Success(stored.copy(status = OrderStatus.CANCELLED))
+          else error(OrderError.AlreadyDecided(stored))
+      repeat(2) { assertEquals(expected, repository.cancelAcceptedOrder("b")) }
+      assertEquals(before + if (status == OrderStatus.ACCEPTED) 1 else 0, source.writes)
+    }
+  }
+
+  @Test
+  fun commandoCancellationIsDeniedToRequesterOutsiderAndSignedOutUsers() = runTest {
+    val accepted = storedWith(OrderStatus.ACCEPTED)
+    for (caller in listOf("alice", "outsider", null)) {
+      uid = caller
+      val denied = if (caller == null) OrderError.NotAuthenticated else OrderError.PermissionDenied
+      assertEquals(error(denied), repository.cancelAcceptedOrder("b"))
+    }
+    assertEquals(accepted, source.documents.getValue("b").toOrder())
+  }
+
+  @Test
+  fun commandoCancellationMapsAThrownStorageFailureAndRejectsInvalidIds() = runTest {
+    storedWith(OrderStatus.ACCEPTED)
+    uid = "owner"
+    source.confirmationFails = true
+    assertEquals(error(OrderError.Unknown), repository.cancelAcceptedOrder("b"))
+    assertEquals(error(OrderError.InvalidData), repository.cancelAcceptedOrder("a/b"))
+  }
+
   private fun sourceError(code: Code): Nothing = throw FirebaseFirestoreException("test", code)
 
   @Test
@@ -659,6 +703,9 @@ class OrderRepositoryFirestoreTest {
 
     override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
         transition(id, ownerId, "ACCEPTED", "READY_FOR_HANDOFF")
+
+    override suspend fun cancelAccepted(id: String, ownerId: String): OrderFirestoreDocument =
+        transition(id, ownerId, "ACCEPTED", "CANCELLED")
 
     override suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument {
       beforeRead()

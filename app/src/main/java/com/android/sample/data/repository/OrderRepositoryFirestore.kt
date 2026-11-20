@@ -1,17 +1,31 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
-import com.commando.app.model.*
+import com.commando.app.model.NotificationEventType
+import com.commando.app.model.Order
+import com.commando.app.model.OrderDecision
+import com.commando.app.model.OrderDraft
+import com.commando.app.model.OrderStatus
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.*
+import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
+import com.google.firebase.firestore.Transaction
+import com.google.firebase.firestore.WriteBatch
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
@@ -101,8 +115,8 @@ internal constructor(
               }
             }
             .catch { error ->
-              if (error is CancellationException) throw error
-              emit(failure((error as? Exception)?.toOrderError() ?: OrderError.Unknown))
+              if (error is CancellationException || error !is Exception) throw error
+              emit(failure(error.toOrderError()))
             }
     )
   }

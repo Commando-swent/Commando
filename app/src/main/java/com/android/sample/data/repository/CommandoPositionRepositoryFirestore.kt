@@ -88,7 +88,14 @@ class CommandoPositionRepositoryFirestore(
               if (metadata?.get("enabled") == true && metadata.get("tripId") == tripId)
                   documents(positions.document(ownerId), uid)
                       .map { it?.toCommandoPosition() }
-                      .catch { emit(null) }
+                      .catch { error ->
+                        if (
+                            error is FirebaseFirestoreException &&
+                                error.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+                        ) {
+                          emit(null)
+                        } else throw error
+                      }
               else flowOf(null)
             }
             .freshPositions(clock)

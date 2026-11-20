@@ -248,6 +248,143 @@ class CommandoPositionListenerTest {
     assertEquals(fix, seen.last())
   }
 
+  private val consentSnapshots = slot<EventListener<DocumentSnapshot>>()
+  private val consentRegistration = mockk<ListenerRegistration>(relaxed = true)
+
+  private fun enableDiscovery() {
+    val discovery = mockk<CollectionReference>()
+    val consent = mockk<DocumentReference>()
+    every { reference.collection("discovery") } returns discovery
+    every { discovery.document("consent") } returns consent
+    every {
+      consent.addSnapshotListener(
+          any<Executor>(),
+          MetadataChanges.INCLUDE,
+          capture(consentSnapshots),
+      )
+    } returns consentRegistration
+  }
+
+  private fun consentSnapshot(enabled: Boolean = true, tripId: String = "trip") =
+      snapshot().also {
+        every { it.get("enabled") } returns enabled
+        every { it.get("tripId") } returns tripId
+      }
+
+  @Test
+  fun discoveryRejectsInvalidOwnerAndTripBeforeSubscribing() = runTest {
+    for ((owner, trip) in
+        listOf("" to "trip", "bad/owner" to "trip", "owner" to "", "owner" to "bad/trip")) {
+      assertTrue(
+          runCatching { repo.observeDiscovery(owner, trip).collect() }.exceptionOrNull()
+              is IllegalArgumentException
+      )
+    }
+    verify(exactly = 0) {
+      reference.addSnapshotListener(
+          any<Executor>(),
+          any<MetadataChanges>(),
+          any<EventListener<DocumentSnapshot>>(),
+      )
+    }
+  }
+
+  @Test
+  fun discoveryWaitsForExactConfirmedConsentAndRecoversAfterRevocation() = runTest {
+    enableDiscovery()
+    val seen = mutableListOf<CommandoPosition?>()
+    val observation = backgroundScope.launch {
+      repo.observeDiscovery("owner", "trip").collect { seen += it }
+    }
+    runCurrent()
+    for (metadata in
+        listOf(
+            null,
+            consentSnapshot(false),
+            consentSnapshot(tripId = "other"),
+            snapshot(cache = true),
+            snapshot(pending = true),
+        )) {
+      consentSnapshots.captured.onEvent(metadata, null)
+      runCurrent()
+      assertNull(seen.last())
+    }
+    consentSnapshots.captured.onEvent(consentSnapshot(), null)
+    runCurrent()
+    snapshots.captured.onEvent(snapshot(), null)
+    runCurrent()
+    assertEquals(fix, seen.last())
+    snapshots.captured.onEvent(
+        null,
+        FirebaseFirestoreException("Revoked", FirebaseFirestoreException.Code.PERMISSION_DENIED),
+    )
+    runCurrent()
+    assertNull(seen.last())
+    assertTrue(observation.isActive)
+    // A new server revision must restart the revoked coordinate listener even when opt-out
+    // coalesces.
+    consentSnapshots.captured.onEvent(consentSnapshot(), null)
+    runCurrent()
+    snapshots.captured.onEvent(snapshot(), null)
+    runCurrent()
+    assertEquals(fix, seen.last())
+    observation.cancelAndJoin()
+    verify(exactly = 2) { registration.remove() }
+    verify(exactly = 1) { consentRegistration.remove() }
+    verify(exactly = 3) { auth.removeAuthStateListener(any()) }
+  }
+
+  @Test
+  fun discoveryPropagatesTransportFailureAndReleasesBothObservations() = runTest {
+    enableDiscovery()
+    val failure = CompletableDeferred<Throwable>()
+    val observation = backgroundScope.launch {
+      try {
+        repo.observeDiscovery("owner", "trip").collect()
+      } catch (error: FirebaseFirestoreException) {
+        failure.complete(error)
+      }
+    }
+    runCurrent()
+    consentSnapshots.captured.onEvent(consentSnapshot(), null)
+    runCurrent()
+    val unavailable =
+        FirebaseFirestoreException("Unavailable", FirebaseFirestoreException.Code.UNAVAILABLE)
+    snapshots.captured.onEvent(null, unavailable)
+    runCurrent()
+    assertSame(unavailable, failure.await())
+    assertTrue(observation.isCompleted)
+    verify(exactly = 1) {
+      registration.remove()
+      consentRegistration.remove()
+    }
+    verify(exactly = 2) { auth.removeAuthStateListener(any()) }
+  }
+
+  @Test
+  fun discoveryDoesNotHideSessionTerminationAsAnUnavailablePosition() = runTest {
+    enableDiscovery()
+    val failure = CompletableDeferred<Throwable>()
+    backgroundScope.launch {
+      try {
+        repo.observeDiscovery("owner", "trip").collect()
+      } catch (error: SecurityException) {
+        failure.complete(error)
+      }
+    }
+    runCurrent()
+    consentSnapshots.captured.onEvent(consentSnapshot(), null)
+    runCurrent()
+    authenticated = null
+    snapshots.captured.onEvent(null, null)
+    runCurrent()
+    assertTrue(failure.isCompleted)
+    verify(exactly = 1) {
+      registration.remove()
+      consentRegistration.remove()
+    }
+  }
+
   private fun snapshot(cache: Boolean = false, pending: Boolean = false): DocumentSnapshot {
     val metadata = mockk<SnapshotMetadata>()
     every { metadata.isFromCache } returns cache

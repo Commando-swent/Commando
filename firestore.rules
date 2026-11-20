@@ -103,7 +103,9 @@ service cloud.firestore {
         && request.resource.data.capturedAt <= request.time
         && request.resource.data.capturedAt > request.time - duration.value(120, 's')
         && (resource == null || request.resource.data.capturedAt >= resource.data.capturedAt)
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/commandoPositions/$(ownerId)/discovery/consent).data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/commandoPositions/$(ownerId)/discovery/consent).data.tripId == request.resource.data.tripId;
       allow delete: if isAuthenticated() && request.auth.uid == ownerId;
       allow get: if isAuthenticated()
         && (request.auth.uid == ownerId || canTrackSharedTrip() || canDiscover());
@@ -117,6 +119,10 @@ service cloud.firestore {
           && request.resource.data.keys().hasAll(["enabled", "tripId", "updatedAt"])
           && request.resource.data.keys().hasOnly(["enabled", "tripId", "updatedAt"])
           && request.resource.data.enabled is bool && request.resource.data.tripId is string
+          && request.resource.data.tripId.matches('[^/]+')
+          && ownsTrip(request.resource.data.tripId)
+          && getAfter(/databases/$(database)/documents/commandoPositions/$(ownerId)).data.tripId == request.resource.data.tripId
+          && getAfter(/databases/$(database)/documents/commandoPositions/$(ownerId)).data.updatedAt == request.time
           && request.resource.data.updatedAt == request.time;
         allow delete: if isAuthenticated() && request.auth.uid == ownerId;
       }

@@ -33,3 +33,12 @@ val IllustrationCream = Color(0xFFEDE6D0)
 
 // Star tint from the rating dialog masters.
 val RatingAmber = Color(0xFFE3A552)
+
+// Scoped chat tokens from the Sprint 6 Figma frames.
+val ChatGradientTop = Color(0xFF0D1907)
+val ChatGradientMiddle = Color(0xFF1C300F)
+val ChatSurface = Color(0xFF35412B)
+val ChatOutline = Color(0xFF566047)
+val ChatAvatarContainer = Color(0xFF4D3A1E)
+val ChatAvatarOutline = Color(0xFFF0C58A)
+val ChatAvatarText = Color(0xFFF8DDB4)

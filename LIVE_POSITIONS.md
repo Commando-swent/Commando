@@ -77,6 +77,8 @@ unconfirmed metadata, never a confirmed empty list. Cached/pending snapshots can
 select discovery. #270 supplies the repository feeds and discovery authorization; #369 supplies
 the ViewModel mode selection and grouping. #272 supplies foreground wiring, controls and navigation.
 The repository/security PR closes #270; the separate ViewModel PR closes #369.
+Upcoming-trip feeds also expire departures using the repository clock, even when no
+Firestore snapshot changes; unconfirmed or replacement snapshots cancel the old timer.
 
 `LiveMapViewModel.start/stop` own listener lifetimes. Tracking retains closed-trip orders
 and every order link. Discovery starts only with confirmed orders and no active ones,
@@ -91,6 +93,8 @@ authenticated users. Each publication advances that revision so rapid opt-out/op
 can restart a permission-revoked listener even if intermediate snapshots coalesce. Coordinate
 reads require enabled consent for the exact shared trip, still PUBLISHED and future.
 Ordinary `publish` atomically disables discovery; stopping deletes both documents.
+Rules require both position and consent to carry the same owned trip and the current
+server write time, rejecting standalone publication or consent writes.
 Collection scans remain denied. Nearby means the shared 500 m radius from the selected
 delivery point, or EPFL centre when absent; shared store/time/handoff filters also apply.
 This is a presentation filter, not a geographic access restriction. Rules remain local

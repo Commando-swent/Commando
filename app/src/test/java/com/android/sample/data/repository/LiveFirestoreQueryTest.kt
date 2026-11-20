@@ -70,6 +70,24 @@ class LiveFirestoreQueryTest {
     }
   }
 
+  @Test
+  fun sdkFailurePropagatesAndRemovesBothListeners() = runTest {
+    var failure: Throwable? = null
+    backgroundScope.launch {
+      query.observeServerDocuments(db, "viewer").catch { failure = it }.collect()
+    }
+    runCurrent()
+    val denied =
+        FirebaseFirestoreException("Denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    snapshots.captured.onEvent(null, denied)
+    runCurrent()
+    assertSame(denied, failure)
+    verify(exactly = 1) {
+      registration.remove()
+      auth.removeAuthStateListener(sessions.captured)
+    }
+  }
+
   @Test fun quietLogoutClosesTheQueryAndReleasesBothListeners() = assertLogout(false)
 
   @Test fun snapshotAfterLogoutCannotEmitPreviousSessionData() = assertLogout(true)

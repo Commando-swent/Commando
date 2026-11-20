@@ -8,13 +8,16 @@ import com.commando.app.model.*
 import com.google.firebase.Timestamp
 import io.mockk.every
 import io.mockk.mockk
+import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.*
@@ -81,6 +84,83 @@ class LiveRepositoryFeedTest {
     updates.value = listOf(FirestoreDocument("late", emptyMap()))
     runCurrent()
     assertEquals(TripResult.Error(TripError.PermissionDenied), seen.last())
+  }
+
+  @Test
+  fun quietServerTripFeedDropsDeparturesAndCancelsExpiryForUnconfirmedSnapshots() = runTest {
+    val source = mockk<TripFirestoreDataSource>()
+    val snapshots =
+        MutableStateFlow<List<TripFirestoreDocument>?>(
+            listOf(tripDocument("first", 1000), tripDocument("second", 2000))
+        )
+    every { source.observeUpcomingTrips(any(), any(), "viewer") } returns snapshots
+    val repository =
+        TripRepositoryFirestore(
+            source,
+            FakeAuthRepository(AuthUser("viewer")),
+            { now.plusMillis(testScheduler.currentTime) },
+        )
+    val seen = mutableListOf<TripResult<List<Trip>>?>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeUpcomingTrips().collect { seen += it }
+    }
+    runCurrent()
+    assertEquals(listOf("first", "second"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    advanceTimeBy(1000)
+    runCurrent()
+    assertEquals(listOf("second"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    snapshots.value = null
+    runCurrent()
+    val count = seen.size
+    advanceTimeBy(1000)
+    runCurrent()
+    assertNull(seen.last())
+    assertEquals(count, seen.size)
+    // A later confirmed snapshot must be filtered against the current clock as well.
+    snapshots.value = listOf(tripDocument("second", 2000), tripDocument("third", 3000))
+    runCurrent()
+    assertEquals(listOf("third"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    advanceTimeBy(1000)
+    runCurrent()
+    assertEquals(TripResult.Success(emptyList<Trip>()), seen.last())
+  }
+
+  @Test
+  fun quietFakeTripFeedDropsADepartureWithoutAnyRepositoryMutation() = runTest {
+    val repository =
+        FakeTripRepository("owner", now = { now.plusMillis(testScheduler.currentTime) })
+    repository.publishTrip(
+        NewTrip(
+            TripLocations.stores.first(),
+            now.plusSeconds(1),
+            TripLocations.handoffPoints.first(),
+        )
+    )
+    val seen = mutableListOf<TripResult<List<Trip>>>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeUpcomingTrips().collect { seen += it }
+    }
+    runCurrent()
+    assertEquals(1, (seen.last() as TripResult.Success).data.size)
+    advanceTimeBy(1000)
+    runCurrent()
+    assertTrue((seen.last() as TripResult.Success).data.isEmpty())
+  }
+
+  private fun tripDocument(id: String, departureMillis: Long): TripFirestoreDocument {
+    val location = mapOf("name" to "EPFL", "latitude" to 46.52, "longitude" to 6.56)
+    return FirestoreDocument(
+        id,
+        mapOf(
+            "ownerId" to "owner",
+            "store" to location,
+            "handoffLocation" to location,
+            "status" to "PUBLISHED",
+            "scheduledAt" to Timestamp(now.plusMillis(departureMillis)),
+            "createdAt" to Timestamp(now),
+            "updatedAt" to Timestamp(now),
+        ),
+    )
   }
 
   @Test
@@ -167,6 +247,79 @@ class LiveRepositoryFeedTest {
         listOf(OrderResult.Error(OrderError.NotAuthenticated)),
         orders.observeMyOrders().toList(),
     )
+  }
+
+  @Test
+  fun serverFeedFailuresRemainErrorsAndNeverBecomeConfirmedEmptyLists() = runTest {
+    for (error in listOf(IOException("offline"), IllegalStateException("unexpected"))) {
+      val tripSource = mockk<TripFirestoreDataSource>()
+      every { tripSource.observeUpcomingTrips(any(), any(), "viewer") } returns flow { throw error }
+      val trips =
+          TripRepositoryFirestore(tripSource, FakeAuthRepository(AuthUser("viewer")), { now })
+      val expectedTrip = if (error is IOException) TripError.NetworkError else TripError.Unknown
+      assertEquals(listOf(TripResult.Error(expectedTrip)), trips.observeUpcomingTrips().toList())
+      val orderSource = mockk<OrderFirestoreDataSource>()
+      every { orderSource.observeMine("viewer") } returns flow { throw error }
+      val orders = OrderRepositoryFirestore(orderSource, { "viewer" })
+      val expectedOrder = OrderError.Unknown
+      assertEquals(listOf(OrderResult.Error(expectedOrder)), orders.observeMyOrders().toList())
+    }
+  }
+
+  @Test
+  fun liveFeedsPreserveCancellationAndFatalFailures() = runTest {
+    for (error in listOf(CancellationException("cancelled"), AssertionError("fatal"))) {
+      val tripSource = mockk<TripFirestoreDataSource>()
+      every { tripSource.observeUpcomingTrips(any(), any(), "viewer") } returns flow { throw error }
+      val trips =
+          TripRepositoryFirestore(tripSource, FakeAuthRepository(AuthUser("viewer")), { now })
+      val tripFailure = runCatching { trips.observeUpcomingTrips().toList() }.exceptionOrNull()
+      assertEquals(error.javaClass, tripFailure?.javaClass)
+      assertEquals(error.message, tripFailure?.message)
+      val orderSource = mockk<OrderFirestoreDataSource>()
+      every { orderSource.observeMine("viewer") } returns flow { throw error }
+      val orders = OrderRepositoryFirestore(orderSource, { "viewer" })
+      val orderFailure = runCatching { orders.observeMyOrders().toList() }.exceptionOrNull()
+      assertEquals(error.javaClass, orderFailure?.javaClass)
+      assertEquals(error.message, orderFailure?.message)
+    }
+  }
+
+  @Test
+  fun expiryRejectsClosedTripsAndReplacementSnapshotsCancelOldDeadlines() = runTest {
+    val trip =
+        discoveryTrip(
+            "trip",
+            TripLocations.stores.first(),
+            TripLocations.handoffPoints.first(),
+            now.plusMillis(1000),
+            "owner",
+            now,
+        )
+    val snapshots = MutableStateFlow<TripResult<List<Trip>>?>(TripResult.Success(listOf(trip)))
+    val seen = mutableListOf<TripResult<List<Trip>>?>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      snapshots
+          .expireUpcomingTrips { now.plusMillis(testScheduler.currentTime) }
+          .collect { seen += it }
+    }
+    runCurrent()
+    snapshots.value =
+        TripResult.Success(
+            listOf(
+                trip.copy(status = TripStatus.IN_PROGRESS),
+                trip.copy(id = "later", scheduledAt = now.plusMillis(2000)),
+            )
+        )
+    runCurrent()
+    val count = seen.size
+    advanceTimeBy(1000)
+    runCurrent()
+    assertEquals(count, seen.size)
+    assertEquals(listOf("later"), (seen.last() as TripResult.Success).data.map(Trip::id))
+    advanceTimeBy(1000)
+    runCurrent()
+    assertEquals(TripResult.Success(emptyList<Trip>()), seen.last())
   }
 
   @Test

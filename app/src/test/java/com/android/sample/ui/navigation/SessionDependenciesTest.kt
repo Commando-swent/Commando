@@ -13,7 +13,6 @@ import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.map.OrderTrackingTestTags
 import com.android.sample.ui.notifications.NotificationTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.OrderDetailsTestTags
@@ -27,6 +26,7 @@ import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.ui.map.OrderTrackingTestTags
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest

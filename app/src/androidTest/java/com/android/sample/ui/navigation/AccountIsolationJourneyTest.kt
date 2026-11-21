@@ -23,8 +23,6 @@ import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.AvailableTripsScreenTestTags
-import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -35,6 +33,8 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.ui.trips.AvailableTripsScreenTestTags
+import com.commando.app.ui.trips.CreateTripScreenTestTags
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID

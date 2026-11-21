@@ -35,10 +35,10 @@ import com.android.sample.R
 import com.android.sample.ui.chat.OrderChatEntry
 import com.android.sample.ui.theme.RatingAmber
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.formatTripDeparture
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.RatingError
 import com.commando.app.model.*
+import com.commando.app.ui.trips.formatTripDeparture
 import java.time.Instant
 
 /** Stable action selectors, independent of the presentation language. */

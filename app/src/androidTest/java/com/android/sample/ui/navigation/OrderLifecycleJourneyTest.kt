@@ -15,10 +15,8 @@ import com.android.sample.model.authentication.AuthRepositoryFirebase
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.catalogue.CatalogueTestTags
-import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -31,6 +29,8 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.ui.home.HomeTestTags
+import com.commando.app.ui.trips.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import java.time.LocalDate

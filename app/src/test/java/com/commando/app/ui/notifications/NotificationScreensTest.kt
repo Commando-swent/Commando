@@ -9,9 +9,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
-import com.android.sample.data.repository.*
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import java.time.Instant

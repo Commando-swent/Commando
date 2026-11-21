@@ -1,8 +1,6 @@
 package com.commando.app.data.repository
 
 // AI assistance: Claude Code for trip transition tests (#233).
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
@@ -11,6 +9,8 @@ import com.commando.app.model.TripStatus
 import com.commando.app.model.TripStatus.*
 import com.commando.app.model.TripTransition
 import com.commando.app.model.TripTransition.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code

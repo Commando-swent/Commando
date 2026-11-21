@@ -8,14 +8,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.auth.AuthTestTags
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.profile.ProfileEditTestTags
-import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
@@ -24,12 +18,18 @@ import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProductResult
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.AuthTestTags
+import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.catalogue.CatalogueTestTags
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.LiveMapTags
 import com.commando.app.ui.map.TripMapTestTags
 import com.commando.app.ui.orders.MyOrdersTestTags
 import com.commando.app.ui.orders.ReviewOrderTags
+import com.commando.app.ui.profile.ProfileEditTestTags
+import com.commando.app.ui.profile.ProfileTestTags
 import com.commando.app.ui.trips.AvailableTripsScreenTestTags
 import com.commando.app.ui.trips.CreateTripScreenTestTags
 import com.commando.app.ui.trips.MyTripsTestTags
@@ -124,7 +124,7 @@ class AppJourneyTest {
 
     // Start signed out and enter through the real login form.
     compose
-        .onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.LOGIN)
+        .onNodeWithTag(com.commando.app.ui.auth.WelcomeTestTags.LOGIN)
         .performScrollTo()
         .performClick()
     compose.onNodeWithTag(NavigationTestTags.LOGIN_SCREEN).assertIsDisplayed()
@@ -216,7 +216,7 @@ class AppJourneyTest {
     compose.onAllNodes(orderCard).assertCountEquals(1)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.commando.app.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     compose.onAllNodes(orderCard).assertCountEquals(0)
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertDoesNotExist()
   }

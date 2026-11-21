@@ -3,7 +3,6 @@ package com.commando.app.ui.orders
 // AI assistance: OpenAI Codex (shared session guard).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.ui.session.SessionGuard
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
@@ -23,6 +22,7 @@ import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.isActiveForTracking
 import com.commando.app.model.normalizeRatingComment
+import com.commando.app.ui.session.SessionGuard
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive

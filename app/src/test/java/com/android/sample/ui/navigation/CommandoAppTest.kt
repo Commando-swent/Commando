@@ -35,17 +35,6 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.model.authentication.AuthException
-import com.android.sample.model.authentication.AuthRepository
-import com.android.sample.model.authentication.AuthRepositoryProvider
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.model.authentication.ProfileUpdateResult
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
-import com.android.sample.ui.auth.WelcomeTestTags
-import com.android.sample.ui.profile.ProfileEditTestTags
-import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
@@ -64,12 +53,23 @@ import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
 import com.commando.app.model.TripStatus
+import com.commando.app.model.authentication.AuthException
+import com.commando.app.model.authentication.AuthRepository
+import com.commando.app.model.authentication.AuthRepositoryProvider
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.model.authentication.ProfileUpdateResult
+import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.auth.GoogleSignInNotConfiguredException
+import com.commando.app.ui.auth.WelcomeTestTags
 import com.commando.app.ui.catalogue.CatalogueTestTags
 import com.commando.app.ui.catalogue.StubProductRepository
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.LiveMapTags
 import com.commando.app.ui.map.MapTestTags
 import com.commando.app.ui.map.TripMapTestTags
+import com.commando.app.ui.profile.ProfileEditTestTags
+import com.commando.app.ui.profile.ProfileTestTags
 import com.commando.app.ui.trips.AvailableTripsScreenTestTags
 import com.commando.app.ui.trips.CreateTripScreenTestTags
 import com.commando.app.ui.trips.MyTripsTestTags
@@ -172,7 +172,7 @@ class CommandoAppTest {
     compose.onNodeWithTag(ProfileTestTags.FULL_NAME).assertTextEquals("Alice Smith")
     compose.onNodeWithTag(ProfileTestTags.HELP).performScrollTo().performClick()
     compose.runOnIdle { repository.signOut() }
-    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.commando.app.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertDoesNotExist()
   }
@@ -457,7 +457,7 @@ class CommandoAppTest {
     val repository = FakeAuthRepository(alice)
     showCatalogueForSession(repository)
     compose.runOnIdle { repository.signOut() }
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.runOnIdle { assertNull(repository.currentUser) }
     assertTripScreensAbsent()
     pressBack()
@@ -504,7 +504,7 @@ class CommandoAppTest {
     compose.onTripCard(firstTrip.id).performClick()
     assertTripDetails(firstTrip)
     compose.runOnIdle { repository.signOut() }
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithText(firstTrip.store.name).assertDoesNotExist()
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
@@ -610,7 +610,7 @@ class CommandoAppTest {
     compose.runOnIdle { assertEquals(4, trips.upcomingLoads) }
 
     compose.runOnIdle { repository.signOut() }
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     click(HomeTestTags.TRIP_ACTION)
@@ -757,7 +757,7 @@ class CommandoAppTest {
 
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithText("bob store").assertDoesNotExist()
     compose.runOnIdle { assertEquals(listOf(alice.uid, bob.uid), requestedUids) }
     repository.signInWithEmail("", "")
@@ -940,7 +940,7 @@ class CommandoAppTest {
     click(AppTestTags.COMMANDO_MODE)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     repository.signInWithEmailResult = Result.success(alice)
     repository.signInWithEmail("", "")
     compose.onNodeWithTag(AppTestTags.REQUESTER_MODE).assertIsSelected()
@@ -1001,7 +1001,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     assertProfile("Alice Smith", "alice@example.com", "AS")
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
     assertNull(repository.currentUser)
     pressBack()
@@ -1019,7 +1019,7 @@ class CommandoAppTest {
     show(repository)
     click(AppTestTags.PROFILE_BUTTON)
     compose.runOnIdle { repository.signOut() }
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
   }
 
@@ -1037,7 +1037,7 @@ class CommandoAppTest {
     compose.runOnIdle { assertEquals(0, picker.clearCalls) }
     repository.signOutResult = Result.success(Unit)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 
@@ -1089,7 +1089,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     assertProfile("Alice Smith", "alice@example.com", "AS")
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(NavigationTestTags.SIGN_UP_SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(NavigationTestTags.PROFILE_SCREEN).assertDoesNotExist()
     compose.onNodeWithText("Alice Smith").assertDoesNotExist()
@@ -1247,7 +1247,7 @@ class CommandoAppTest {
     assertEquals(alice, repository.currentUser)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
     compose.onNodeWithTag("auth_email").assertTextEquals("", "Your university email")
     pressBack()
@@ -1317,7 +1317,7 @@ class CommandoAppTest {
     assertEquals(alice, repository.currentUser)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
 
@@ -1362,7 +1362,7 @@ class CommandoAppTest {
     show(repository, picker)
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
     assertNull(repository.currentUser)
     compose.runOnIdle { assertEquals(1, picker.clearCalls) }
   }
@@ -1376,7 +1376,7 @@ class CommandoAppTest {
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
     try {
-      assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+      assertScreen(com.commando.app.ui.auth.WelcomeTestTags.SCREEN)
       compose.runOnIdle {
         assertNull(repository.currentUser)
         assertEquals(1, picker.clearCalls)

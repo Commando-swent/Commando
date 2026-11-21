@@ -4,9 +4,9 @@ package com.android.sample.emulator.auth
 import android.os.Bundle
 import androidx.credentials.CustomCredential
 import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
-import com.android.sample.model.authentication.AuthException
-import com.android.sample.model.authentication.AuthRepositoryFirebase
-import com.android.sample.model.authentication.AuthUser
+import com.commando.app.model.authentication.AuthException
+import com.commando.app.model.authentication.AuthRepositoryFirebase
+import com.commando.app.model.authentication.AuthUser
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException

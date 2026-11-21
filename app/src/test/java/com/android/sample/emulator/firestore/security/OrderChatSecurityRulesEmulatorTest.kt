@@ -2,7 +2,7 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex.
 import android.os.Looper
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderChatRepositoryFirestore
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderResult

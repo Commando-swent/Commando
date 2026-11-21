@@ -8,9 +8,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
@@ -25,6 +22,9 @@ import com.commando.app.model.OrderStatus
 import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.orders.IncomingOrdersTestTags
 import com.commando.app.ui.trips.AvailableTripsScreenTestTags

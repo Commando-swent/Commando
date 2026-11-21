@@ -2,13 +2,13 @@ package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
 // AI assistance: Claude Code for the trip transition (#233).
-import com.android.sample.model.authentication.AuthRepository
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
+import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.model.blocksTripCompletion
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue

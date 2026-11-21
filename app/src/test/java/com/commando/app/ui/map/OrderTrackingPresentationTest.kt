@@ -1,7 +1,7 @@
 package com.commando.app.ui.map
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.CommandoPosition
 import java.time.Instant
 import org.junit.Assert.*

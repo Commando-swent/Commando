@@ -4,7 +4,7 @@ package com.commando.app.ui.map
 import android.content.Context
 import android.content.res.Configuration
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Test

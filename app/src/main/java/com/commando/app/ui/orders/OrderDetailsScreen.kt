@@ -31,7 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.RatingError
 import com.commando.app.model.*

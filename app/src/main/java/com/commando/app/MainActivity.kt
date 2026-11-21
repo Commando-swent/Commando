@@ -20,13 +20,13 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.WindowCompat
-import com.android.sample.resources.C
 import com.commando.app.data.repository.ProfilePhotoRepositoryFirestore
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.authentication.AuthRepositoryProvider
+import com.commando.app.resources.C
 import com.commando.app.ui.home.HomeScreen
 import com.commando.app.ui.home.HomeTripUiState
 import com.commando.app.ui.navigation.AppMode

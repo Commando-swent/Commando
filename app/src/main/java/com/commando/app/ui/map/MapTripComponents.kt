@@ -25,7 +25,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.ui.map.MapTestTags as Tags
 
 /** Floating card from Figma 424:2673 / 424:3003, shared by real trips and previews. */

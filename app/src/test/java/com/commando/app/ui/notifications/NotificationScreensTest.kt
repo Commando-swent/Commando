@@ -156,7 +156,7 @@ class NotificationScreensTest {
     node(NotificationTestTags.DECISIONS).assertIsEnabled()
     compose
         .onNodeWithText(
-            compose.activity.getString(com.android.sample.R.string.notifications_refresh_error)
+            compose.activity.getString(com.commando.app.R.string.notifications_refresh_error)
         )
         .performScrollTo()
         .assertIsDisplayed()

@@ -3,7 +3,7 @@ package com.commando.app.ui.orders
 // AI assistance: OpenAI Codex (#232).
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository

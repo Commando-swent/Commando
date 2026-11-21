@@ -51,7 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.MAX_SEARCH_QUERY_LENGTH
 import com.commando.app.data.repository.MIN_SEARCH_TERM_LENGTH
 import com.commando.app.data.repository.ProductError

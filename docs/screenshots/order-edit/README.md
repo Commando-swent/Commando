@@ -14,8 +14,8 @@ Captured on a Pixel 10a emulator running Android 17 (API 37), at 1080 × 2424, u
 The [manual capture fixture](CaptureFixture.kt) renders the production Compose components and captures the Android window, including system bars. With an Android emulator connected:
 
 ```sh
-cp docs/screenshots/order-edit/CaptureFixture.kt app/src/androidTest/java/com/android/sample/EditOrderReviewCaptureTest.kt
-./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.android.sample.EditOrderReviewCaptureTest
+cp docs/screenshots/order-edit/CaptureFixture.kt app/src/androidTest/java/com/commando/app/EditOrderReviewCaptureTest.kt
+./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.commando.app.EditOrderReviewCaptureTest
 ```
 
 The Android Gradle test runner may uninstall the app after completion. To retain the files for export, install both generated APKs and run the same class through `adb shell am instrument`; the PNGs are written to the target app's `files` directory. Remove the temporary Android-test source after capture. The fixture is documentation tooling and is not part of the default CI test suite.

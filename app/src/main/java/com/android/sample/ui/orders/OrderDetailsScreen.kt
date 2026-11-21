@@ -1,6 +1,7 @@
 package com.android.sample.ui.orders
 
-// AI assistance: Claude Code (#147); OpenAI Codex (cancellation dialog and KDoc).
+// AI assistance: Claude Code (#147, Commando cancellation #402); OpenAI Codex (cancellation dialog
+// and KDoc).
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -73,7 +74,8 @@ object OrderDetailsTestTags {
  * @param onDecision Requests an eligible owner's Accept/Reject decision.
  * @param onMarkReadyForHandoff Requests an eligible owner's handoff-readiness transition.
  * @param onEdit Opens the requester editing flow when the persisted order and trip are eligible.
- * @param onCancel Requests cancellation only after the requester confirms the dialog.
+ * @param onCancel Requests cancellation only after the requester (pending order) or the trip owner
+ *   (accepted order) confirms the dialog.
  * @param notice Optional contextual feedback rendered below the safe header in the scroll area.
  * @param onConfirmReceipt Requests receipt confirmation for the eligible requester.
  * @param onChat Opens the selected conversation; pending orders display a locked entry.
@@ -224,8 +226,9 @@ private fun OrderStatusActions(
     onCancel: () -> Unit,
     onConfirmReceipt: () -> Unit,
 ) {
+  val canCancel = state.canCancel || state.canCancelAccepted
   var confirmCancellation by
-      rememberSaveable(state.order.id, state.viewerId, state.canCancel) { mutableStateOf(false) }
+      rememberSaveable(state.order.id, state.viewerId, canCancel) { mutableStateOf(false) }
   val message =
       when (val mutation = state.mutation) {
         OrderMutationState.Saved -> R.string.order_decision_saved
@@ -254,7 +257,7 @@ private fun OrderStatusActions(
       }
     }
   }
-  if (state.canCancel) {
+  if (canCancel) {
     OutlinedButton(
         onClick = { confirmCancellation = true },
         enabled = !state.isSaving,
@@ -290,11 +293,18 @@ private fun OrderStatusActions(
         Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
   }
-  if (confirmCancellation && state.canCancel && !state.isSaving) {
+  if (confirmCancellation && canCancel && !state.isSaving) {
+    val dialogMessage =
+        if (state.canCancelAccepted)
+            stringResource(
+                R.string.order_cancel_accepted_dialog_message,
+                COMMANDO_CANCELLATION_GRACE.toMinutes(),
+            )
+        else stringResource(R.string.order_cancel_dialog_message)
     AlertDialog(
         onDismissRequest = { confirmCancellation = false },
         title = { Text(stringResource(R.string.order_cancel_dialog_title)) },
-        text = { Text(stringResource(R.string.order_cancel_dialog_message)) },
+        text = { Text(dialogMessage) },
         confirmButton = {
           Button(
               onClick = {

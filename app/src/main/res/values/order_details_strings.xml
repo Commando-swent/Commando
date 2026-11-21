@@ -45,6 +45,7 @@
     <string name="order_cancel_action">Cancel order</string>
     <string name="order_cancel_dialog_title">Cancel this order?</string>
     <string name="order_cancel_dialog_message">This action cannot be undone. The commando will no longer be able to accept this order.</string>
+    <string name="order_cancel_accepted_dialog_message">This action cannot be undone and the requester will be notified. Cancelling within %1$d minutes of accepting has no effect on your reliability; later cancellations lower it.</string>
     <string name="order_cancel_confirm">Cancel order</string>
     <string name="order_cancel_keep">Keep order</string>
     <string name="order_details_session_ended">This session has ended. Sign in again to view your orders.</string>

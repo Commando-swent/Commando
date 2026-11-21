@@ -1,14 +1,6 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.OrderError
-import com.android.sample.data.repository.OrderFirestoreDataSource
-import com.android.sample.data.repository.OrderFirestoreDocument
-import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.OrderRepositoryFirestore
-import com.android.sample.data.repository.OrderResult
-import com.android.sample.data.repository.firestoreFields
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.trips.discoveryTrip

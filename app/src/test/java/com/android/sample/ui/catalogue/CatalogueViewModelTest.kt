@@ -1,13 +1,13 @@
 package com.android.sample.ui.catalogue
 
-import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
-import com.android.sample.data.repository.ProductError
-import com.android.sample.data.repository.ProductRepository
-import com.android.sample.data.repository.ProductResult
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.orders.ReviewOrderViewModel
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.MAX_SEARCH_QUERY_LENGTH
+import com.commando.app.data.repository.ProductError
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.FavouriteProducts
 import com.commando.app.model.Location

@@ -2,8 +2,6 @@ package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
 // AI assistance: Claude Code for the trip transition (#233).
-import com.android.sample.data.repository.isDocumentId
-import com.android.sample.data.repository.isValid
 import com.android.sample.model.authentication.AuthRepository
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip

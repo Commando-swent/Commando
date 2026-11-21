@@ -1,7 +1,6 @@
 package com.commando.app.data.repository
 
 // AI assistance: Claude Code.
-import com.android.sample.data.repository.successData
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.model.*
 import com.commando.app.model.OrderStatus.ACCEPTED

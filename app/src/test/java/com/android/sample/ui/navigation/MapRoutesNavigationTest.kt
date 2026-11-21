@@ -23,6 +23,7 @@ import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.*
 import java.time.Instant

@@ -8,10 +8,6 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.FakeRatingRepository
-import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.OrderResult
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -25,7 +21,11 @@ import com.android.sample.ui.trips.TripEarningsTestTags
 import com.android.sample.ui.trips.TripOwnerTestTags
 import com.android.sample.ui.trips.TripSearchTestTags
 import com.android.sample.ui.trips.discoveryTrip
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
 import com.commando.app.model.Location
 import com.commando.app.model.Order

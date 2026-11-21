@@ -3,6 +3,10 @@ package com.android.sample.emulator.firestore.security
 // AI assistance: Claude Code.
 import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthRepositoryFirebase
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepositoryFirestore
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ShoppingChecklistRepositoryFirestore
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult

@@ -35,10 +35,6 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.RatingError
-import com.android.sample.data.repository.RatingRepository
-import com.android.sample.data.repository.RatingResult
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
@@ -69,7 +65,11 @@ import com.android.sample.ui.trips.assertTripCard
 import com.android.sample.ui.trips.discoveryTrip
 import com.android.sample.ui.trips.onTripCard
 import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.SavedTripSearchRepository
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
 import com.commando.app.data.repository.TripError

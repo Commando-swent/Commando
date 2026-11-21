@@ -1,8 +1,6 @@
 package com.commando.app.data.repository
 
 // AI assistance: Claude Code for trip transitions; OpenAI Codex for live feeds.
-import com.android.sample.data.repository.isDocumentId
-import com.android.sample.data.repository.isValid
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus

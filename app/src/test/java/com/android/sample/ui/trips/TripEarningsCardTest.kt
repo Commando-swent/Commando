@@ -5,7 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.android.sample.data.repository.OrderError
+import com.commando.app.data.repository.OrderError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripEarnings

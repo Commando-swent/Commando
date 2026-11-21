@@ -9,8 +9,6 @@ import androidx.credentials.Credential
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.orders.IncomingOrdersTestTags
-import com.android.sample.ui.orders.ShoppingChecklistTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
@@ -23,6 +21,8 @@ import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.orders.IncomingOrdersTestTags
+import com.commando.app.ui.orders.ShoppingChecklistTestTags
 import com.commando.app.ui.trips.MyTripsTestTags
 import java.time.Instant
 import kotlinx.coroutines.runBlocking

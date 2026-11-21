@@ -10,13 +10,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.createGraph
 import androidx.navigation.navArgument
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.ui.orders.OrderDetailsUiState
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.orders.OrderDetailsUiState
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows

@@ -7,7 +7,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.sample.model.authentication.AuthRepository
-import com.android.sample.ui.orders.SessionOrderViewModel
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.CommandoPositionRepositoryFirestore
 import com.commando.app.data.repository.NotificationRepository
@@ -20,6 +19,7 @@ import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.ShoppingChecklistRepositoryFirestore
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripRepositoryFirestore
+import com.commando.app.ui.orders.SessionOrderViewModel
 
 /** The repositories of one signed-in account, all bound to the same session identity. */
 internal class SessionDependencies(

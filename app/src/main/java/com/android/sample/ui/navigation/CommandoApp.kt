@@ -38,9 +38,6 @@ import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.ui.auth.AndroidGoogleCredentialClient
 import com.android.sample.ui.auth.AuthMode
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.chat.OrderChatHost
-import com.android.sample.ui.chat.OrderChatViewModel
-import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileViewModel
@@ -57,10 +54,13 @@ import com.commando.app.data.repository.RatingRepositoryFirestore
 import com.commando.app.data.repository.SavedTripSearchRepository
 import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.TripRepository
+import com.commando.app.ui.chat.OrderChatHost
+import com.commando.app.ui.chat.OrderChatViewModel
 import com.commando.app.ui.home.HomeScreen
 import com.commando.app.ui.home.HomeTripUiState
 import com.commando.app.ui.home.HomeViewModel
 import com.commando.app.ui.map.PositionSharingCard
+import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.trips.SavedTripSearchViewModel
 import com.commando.app.ui.trips.TripLocationFilterViewModel
 import kotlinx.coroutines.launch

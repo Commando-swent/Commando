@@ -18,9 +18,6 @@ import com.android.sample.model.authentication.AuthRepositoryFirebase
 import com.android.sample.ui.auth.AuthTestTags
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.WelcomeTestTags
-import com.android.sample.ui.catalogue.CatalogueTestTags
-import com.android.sample.ui.orders.MyOrdersTestTags
-import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeOrderRepository
@@ -33,6 +30,9 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.ui.catalogue.CatalogueTestTags
+import com.commando.app.ui.orders.MyOrdersTestTags
+import com.commando.app.ui.orders.ReviewOrderTags
 import com.commando.app.ui.trips.AvailableTripsScreenTestTags
 import com.commando.app.ui.trips.CreateTripScreenTestTags
 import java.time.Instant

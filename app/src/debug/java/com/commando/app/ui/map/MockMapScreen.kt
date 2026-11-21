@@ -20,8 +20,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
 import com.android.sample.R
-import com.android.sample.ui.navigation.NavigationTestTags
 import com.commando.app.ui.map.MapTestTags as Tags
+import com.commando.app.ui.navigation.NavigationTestTags
 
 @Composable
 fun MockMapScreen(

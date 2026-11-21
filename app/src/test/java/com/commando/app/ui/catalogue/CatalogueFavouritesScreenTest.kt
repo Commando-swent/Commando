@@ -15,7 +15,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.ProductError
 import com.commando.app.data.repository.ProductResult
@@ -23,6 +22,7 @@ import com.commando.app.model.FavouriteProducts
 import com.commando.app.model.Product
 import com.commando.app.model.Trip
 import com.commando.app.ui.orders.OrderDraftState
+import com.commando.app.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule

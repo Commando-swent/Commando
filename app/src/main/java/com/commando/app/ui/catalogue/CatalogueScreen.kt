@@ -52,7 +52,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.MAX_SEARCH_QUERY_LENGTH
 import com.commando.app.data.repository.MIN_SEARCH_TERM_LENGTH
 import com.commando.app.data.repository.ProductError
@@ -65,6 +64,7 @@ import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.ui.components.formatTripTime
 import com.commando.app.ui.orders.money
+import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.flow.first

@@ -16,8 +16,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.model.Product
+import com.commando.app.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule

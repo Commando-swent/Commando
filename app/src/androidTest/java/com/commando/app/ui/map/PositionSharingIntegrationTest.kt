@@ -11,8 +11,6 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
-import com.android.sample.ui.navigation.*
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.location.*
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeCommandoPositionRepository
@@ -23,8 +21,10 @@ import com.commando.app.model.*
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.home.*
+import com.commando.app.ui.navigation.*
 import com.commando.app.ui.orders.MyOrdersTestTags
 import com.commando.app.ui.orders.OrderDetailsTestTags
+import com.commando.app.ui.theme.SampleAppTheme
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow

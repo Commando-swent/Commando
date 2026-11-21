@@ -10,9 +10,9 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.ui.navigation.*
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.model.authentication.AuthException
+import com.commando.app.ui.navigation.*
+import com.commando.app.ui.theme.SampleAppTheme
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule

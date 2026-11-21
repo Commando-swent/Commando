@@ -5,9 +5,6 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.ui.navigation.AppTestTags
-import com.android.sample.ui.navigation.CommandoApp
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.TripFirestoreDataSource
 import com.commando.app.data.repository.TripFirestoreDocument
 import com.commando.app.data.repository.TripRepositoryFirestore
@@ -15,6 +12,9 @@ import com.commando.app.data.repository.TripTransitionWrite
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.navigation.AppTestTags
+import com.commando.app.ui.navigation.CommandoApp
+import com.commando.app.ui.theme.SampleAppTheme
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference

@@ -6,7 +6,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
-import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.ui.theme.SampleAppTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

@@ -9,14 +9,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.data.repository.FakeTripRepository
-import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripResult
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.io.File
 import java.time.Instant
@@ -130,7 +130,7 @@ class HomeCurrentTripTest {
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
     compose.onNodeWithTag(HomeTestTags.CURRENT_TRIP).assertIsDisplayed()
     compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
-    trips.forcedError = com.android.sample.data.repository.TripError.NetworkError
+    trips.forcedError = com.commando.app.data.repository.TripError.NetworkError
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     compose.onNodeWithTag(HomeTestTags.RETRY).assertIsDisplayed()
     trips.forcedError = null

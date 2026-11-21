@@ -2,10 +2,10 @@ package com.android.sample.ui.catalogue
 
 // AI assistance: OpenAI Codex and Claude Code.
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.ui.orders.OrderDraftState
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.Product
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -4,9 +4,9 @@ package com.android.sample.emulator.firestore.adapter
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.data.repository.ProductResult
-import com.android.sample.data.repository.parseEmulatorHostAndPort
 import com.android.sample.data.repository.productSearchPrefixes
 import com.android.sample.data.repository.successData
+import com.commando.app.data.repository.parseEmulatorHostAndPort
 import com.commando.app.model.Product
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions

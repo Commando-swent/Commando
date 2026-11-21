@@ -18,7 +18,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.data.repository.TripError
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
 

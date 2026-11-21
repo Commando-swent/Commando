@@ -6,20 +6,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android.sample.data.repository.CommandoPositionRepository
-import com.android.sample.data.repository.CommandoPositionRepositoryFirestore
 import com.android.sample.data.repository.NotificationRepository
 import com.android.sample.data.repository.NotificationRepositoryFirestore
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderRepositoryFirestore
-import com.android.sample.data.repository.SavedTripSearchRepository
-import com.android.sample.data.repository.SavedTripSearchRepositoryLocal
 import com.android.sample.data.repository.ShoppingChecklistRepository
 import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
-import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripRepositoryFirestore
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.ui.orders.SessionOrderViewModel
+import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.CommandoPositionRepositoryFirestore
+import com.commando.app.data.repository.SavedTripSearchRepository
+import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripRepositoryFirestore
 
 /** The repositories of one signed-in account, all bound to the same session identity. */
 internal class SessionDependencies(

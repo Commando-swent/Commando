@@ -3,11 +3,11 @@ package com.android.sample.ui.trips
 // AI assistance: Claude Code.
 import androidx.lifecycle.SavedStateHandle
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.repository.FakeTripRepository
-import com.android.sample.data.repository.TripError
-import com.android.sample.data.repository.TripResult
 import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.TripMapViewModel
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.CriteriaProblem
 import com.commando.app.model.DeparturePeriod
 import com.commando.app.model.Location

@@ -4,7 +4,7 @@ package com.android.sample.ui.map
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import com.android.sample.R
-import com.android.sample.data.location.DeviceLocationResult
+import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.model.canIdentifyNearbyTrips
 
 /** Stable semantics for the device-location overlay. */

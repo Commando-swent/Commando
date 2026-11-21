@@ -40,8 +40,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
-import com.android.sample.data.location.DeviceLocationResult
 import com.android.sample.ui.components.formatTripTime
+import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.model.CommandoPosition
 import com.commando.app.model.DeviceLocation
 import com.commando.app.model.HANDOFF_RADIUS_METERS

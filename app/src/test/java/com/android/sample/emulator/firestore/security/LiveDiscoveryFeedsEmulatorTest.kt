@@ -4,6 +4,9 @@ package com.android.sample.emulator.firestore.security
 import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.data.repository.CommandoPositionRepositoryFirestore
+import com.commando.app.data.repository.TripRepositoryFirestore
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*

@@ -3,9 +3,9 @@ package com.android.sample.ui.map
 // AI assistance: OpenAI Codex; Claude Code (search criteria).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.TripRepository
 import com.android.sample.ui.session.SessionGuard
 import com.android.sample.ui.trips.FilteredTripFeed
+import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.Location
 import com.commando.app.model.TripFeed
 import com.commando.app.model.TripSearchCriteria

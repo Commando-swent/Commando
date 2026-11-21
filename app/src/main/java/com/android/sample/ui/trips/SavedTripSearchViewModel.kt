@@ -3,9 +3,9 @@ package com.android.sample.ui.trips
 // AI assistance: Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.SavedTripSearchRepository
-import com.android.sample.data.repository.TripError
-import com.android.sample.data.repository.TripResult
+import com.commando.app.data.repository.SavedTripSearchRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.SavedTripSearch
 import com.commando.app.model.TripSearchCriteria
 import kotlin.coroutines.cancellation.CancellationException

@@ -7,8 +7,8 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
-import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripResult
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Trip
 
 /** Shared lookups and repository wrapper for the trip discovery tests; see [discoveryTrip]. */

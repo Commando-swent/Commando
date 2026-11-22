@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; accepted-order cancel action (#402): Claude Code.
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -191,7 +191,8 @@ class OrderLifecycleJourneyTest {
           pending.copy(status = OrderStatus.ACCEPTED),
           (orders.getOrderById(pending.id) as OrderResult.Success).data,
       )
-      assertActions(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF)
+      // The trip owner may now also cancel the accepted order (#402).
+      assertActions(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF, OrderDetailsTestTags.CANCEL)
       back() // Incoming Orders owns the shopping-checklist entry point.
       click(IncomingOrdersTestTags.OPEN_CHECKLIST)
       val purchasedTag = ShoppingChecklistTestTags.ITEM_PREFIX + product.id

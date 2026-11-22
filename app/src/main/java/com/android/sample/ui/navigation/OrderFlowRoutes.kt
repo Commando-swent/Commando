@@ -106,6 +106,12 @@ internal fun NavGraphBuilder.orderFlowRoutes(
                 onViewOrders = { openOrders() },
                 tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
                 isDemo = orders.isDemo,
+                onBrowseTrips = {
+                  navController.navigate(CommandoScreens.AvailableTrips.name) {
+                    popUpTo(CommandoScreens.AvailableTrips.name) { inclusive = true }
+                    launchSingleTop = true
+                  }
+                },
             )
         // Reuse Trip Details for the loading and failure states of the same lookup.
         else ->

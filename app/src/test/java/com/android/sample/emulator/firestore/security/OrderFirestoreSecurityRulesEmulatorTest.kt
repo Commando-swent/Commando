@@ -202,7 +202,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       val ownerId = owner.auth.currentUser!!.uid
       val ownerOrders = OrderRepositoryFirestore({ ownerId }, owner.firestore)
       val draft = OrderDraft(trip, listOf(OrderItem("milk", "Milk", 220, 1)))
-      assertEquals(OrderResult.Error(OrderError.InvalidData), ownerOrders.createOrder(draft))
+      assertEquals(OrderResult.Error(OrderError.OwnTrip), ownerOrders.createOrder(draft))
       val requesterOrders =
           OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
       val saved = (requesterOrders.createOrder(draft) as OrderResult.Success).data

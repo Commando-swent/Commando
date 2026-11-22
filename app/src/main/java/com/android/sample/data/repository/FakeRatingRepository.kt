@@ -168,6 +168,7 @@ class FakeRatingRepository(
         OrderError.NotAuthenticated -> RatingError.NotAuthenticated
         OrderError.NotFound -> RatingError.NotFound
         OrderError.PermissionDenied -> RatingError.PermissionDenied
+        OrderError.OwnTrip,
         OrderError.InvalidData -> RatingError.InvalidData
         is OrderError.AlreadyDecided,
         OrderError.Unknown -> RatingError.Unknown

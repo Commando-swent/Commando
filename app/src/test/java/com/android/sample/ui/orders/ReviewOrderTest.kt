@@ -1,5 +1,6 @@
 package com.android.sample.ui.orders
 
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.data.repository.*
@@ -13,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w412dp-h917dp-mdpi")
@@ -24,7 +26,7 @@ class ReviewOrderTest {
   private val events = mutableListOf<String>()
   private val store = Location("Migros", 46.52, 6.57)
   private val spot = Location("EPFL", 46.52, 6.56)
-  private val time = Instant.EPOCH
+  private val time = Instant.parse("2030-01-01T12:00:00Z")
   private val trip = Trip("trip-1", "owner", store, time, spot, TripStatus.PUBLISHED, time, time)
 
   private fun show(repository: OrderRepository = fake, displayedTrip: Trip = trip) {
@@ -39,8 +41,59 @@ class ReviewOrderTest {
             { events.add("back") },
             { events.add("catalogue") },
             events::add,
+            onBrowseTrips = { events.add("browse") },
+            tripSubtitle =
+                com.android.sample.ui.trips.formatTripDeparture(
+                    displayedTrip.scheduledAt,
+                    androidx.compose.ui.platform.LocalConfiguration.current.locales[0],
+                ),
         )
       }
+    }
+  }
+
+  private fun captureOwnTripError(locale: String) {
+    val file = java.io.File("build/reports/own-trip-error/$locale.png")
+    file.parentFile?.mkdirs()
+    file.outputStream().use {
+      compose
+          .onRoot()
+          .captureToImage()
+          .asAndroidBitmap()
+          .compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+    }
+  }
+
+  @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Config(qualifiers = "fr-rCH-w412dp-h917dp-mdpi")
+  fun ownTripRestrictionIsLocalizedInFrench() {
+    fake.forcedError = OrderError.OwnTrip
+    show()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose
+        .onNodeWithTag(ReviewOrderTags.ERROR)
+        .assertTextEquals("Vous ne pouvez pas commander sur votre propre trajet.")
+    captureOwnTripError("fr")
+  }
+
+  @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Config(qualifiers = "en-rUS-w412dp-h917dp-mdpi")
+  fun ownTripErrorExplainsRestrictionAndBrowsePreservesDraft() {
+    fake.forcedError = OrderError.OwnTrip
+    show()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose
+        .onNodeWithTag(ReviewOrderTags.ERROR)
+        .assertTextEquals("You cannot order from your own trip.")
+    captureOwnTripError("en")
+    compose.onNodeWithTag(ReviewOrderTags.BROWSE).assertIsDisplayed().performClick()
+    compose.runOnIdle {
+      assertEquals(listOf("browse"), events)
+      assertEquals(2, shared.draft.value.items.single().quantity)
+      assertEquals(150, shared.draft.value.commissionCents)
+      assertNull(vm.uiState.value.order)
     }
   }
 

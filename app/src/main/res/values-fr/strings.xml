@@ -515,4 +515,5 @@
     <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
     <string name="rating_success">Note envoyée.</string>
     <string name="rating_already">Cette commande a déjà été évaluée.</string>
+    <string name="order_own_trip_error">Vous ne pouvez pas commander sur votre propre trajet.</string>
 </resources>

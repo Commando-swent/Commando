@@ -122,6 +122,31 @@ class CatalogueNavigationTest {
   }
 
   @Test
+  fun ownTripRejectionReturnsToDiscoveryWithTheBasketRetained() {
+    show()
+    openCatalogue(migrosTrip)
+    click(CatalogueTestTags.add(oat.id))
+    click(CatalogueTestTags.increase(oat.id))
+    click(CatalogueTestTags.CONTINUE)
+    compose.runOnIdle { (orders as FakeOrderRepository).forcedError = OrderError.OwnTrip }
+    click(ReviewOrderTags.SUBMIT)
+    compose.onNodeWithTag(ReviewOrderTags.ERROR).assertExists()
+    compose.onNodeWithTag(ReviewOrderTags.BROWSE).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).assertExists()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertDoesNotExist()
+    openCatalogueFromDiscovery()
+    compose
+        .onNodeWithTag(CatalogueTestTags.SUMMARY)
+        .assertTextContains("CHF 4.40", substring = true)
+    compose.runOnIdle { assertEquals(0, createdOrders) }
+  }
+
+  private fun openCatalogueFromDiscovery() {
+    compose.onNodeWithText(migrosTrip.store.name).performClick()
+    compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
+  }
+
+  @Test
   fun requesterSelectsProductsReviewsThemAndSubmitsTheOrderOnce() {
     show()
     openCatalogue(migrosTrip)

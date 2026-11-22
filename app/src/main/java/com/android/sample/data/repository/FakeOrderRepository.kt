@@ -265,11 +265,8 @@ class FakeOrderRepository(
       null -> null
       is OrderResult.Error -> result.error
       is OrderResult.Success ->
-          if (
-              result.data.id != tripId ||
-                  result.data.ownerId == userId ||
-                  result.data.status != TripStatus.PUBLISHED
-          )
+          if (result.data.id == tripId && result.data.ownerId == userId) OrderError.OwnTrip
+          else if (result.data.id != tripId || result.data.status != TripStatus.PUBLISHED)
               OrderError.InvalidData
           else null
     }

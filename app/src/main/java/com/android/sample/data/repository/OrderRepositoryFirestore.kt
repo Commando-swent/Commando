@@ -64,13 +64,9 @@ internal constructor(
     }
     val trip = source.getTrip(input.tripId) ?: return failure(OrderError.NotFound)
     if (!sameSession(uid)) return failure(OrderError.NotAuthenticated)
+    if (trip["ownerId"] == uid) return failure(OrderError.OwnTrip)
     val departure = trip["scheduledAt"] as? Timestamp
-    if (
-        trip["ownerId"] == uid ||
-            trip["status"] != "PUBLISHED" ||
-            departure == null ||
-            departure.toInstant() <= now()
-    ) {
+    if (trip["status"] != "PUBLISHED" || departure == null || departure.toInstant() <= now()) {
       return failure(OrderError.InvalidData)
     }
     val id = pending.getOrPut(key, newId)

@@ -91,7 +91,7 @@ class OrderRepositoryFirestoreTest {
   @Test
   fun rejectsTripOwnerBeforeWritingButAllowsAnotherRequester() = runTest {
     uid = "owner"
-    assertEquals(error(OrderError.InvalidData), repository.createOrder(draft))
+    assertEquals(error(OrderError.OwnTrip), repository.createOrder(draft))
     assertEquals(0, source.writes)
     assertTrue(source.documents.isEmpty())
     uid = "alice"

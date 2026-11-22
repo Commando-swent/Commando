@@ -36,6 +36,7 @@ object ReviewOrderTags {
   const val SUBMIT = "order_submit"
   const val ERROR = "order_error"
   const val TOTAL = "order_total"
+  const val BROWSE = "order_browse_trips"
 }
 
 /** Connects the shared review ViewModel to its trip and navigation callbacks. */
@@ -48,6 +49,7 @@ fun ReviewOrderRoute(
     onViewOrders: (String) -> Unit,
     tripSubtitle: String? = null,
     isDemo: Boolean = false,
+    onBrowseTrips: () -> Unit = onBack,
 ) {
   val observed by viewModel.uiState.collectAsState()
   val state = observed.copy(tripMatches = observed.tripMatches && trip.id == observed.draft.tripId)
@@ -72,7 +74,7 @@ fun ReviewOrderRoute(
       ReviewItems(state, viewModel::changeQuantity, viewModel::updateCommission, onAddProducts)
       if (state.draft.items.isNotEmpty()) ReviewTotals(state)
     }
-    ReviewFooter(state, isDemo, onAddProducts, onViewOrders, viewModel::submit)
+    ReviewFooter(state, isDemo, onAddProducts, onViewOrders, viewModel::submit, onBrowseTrips)
   }
 }
 
@@ -117,6 +119,7 @@ private fun ReviewError(state: ReviewOrderState) {
 private fun ReviewOrderState.errorMessage(): Int =
     when {
       !tripMatches -> R.string.order_invalid_error
+      error == OrderError.OwnTrip -> R.string.order_own_trip_error
       error == OrderError.NotAuthenticated -> R.string.order_session_error
       error is OrderError.AlreadyDecided -> R.string.order_edit_conflict
       editing && (error == OrderError.InvalidData || error == OrderError.PermissionDenied) ->
@@ -198,6 +201,7 @@ private fun ReviewTotals(state: ReviewOrderState) {
 @StringRes
 private fun ReviewOrderState.actionTitle(): Int =
     when {
+      error == OrderError.OwnTrip -> R.string.my_orders_browse_trips
       error is OrderError.AlreadyDecided -> R.string.order_view_saved
       order != null && editing -> R.string.order_view_saved
       order != null -> R.string.order_view
@@ -218,6 +222,7 @@ private fun ReviewFooter(
     onAddProducts: () -> Unit,
     onViewOrders: (String) -> Unit,
     onSubmit: () -> Unit,
+    onBrowseTrips: () -> Unit,
 ) {
   val c = MaterialTheme.colorScheme
   val order = state.order
@@ -237,6 +242,7 @@ private fun ReviewFooter(
     Button(
         onClick = {
           when {
+            error == OrderError.OwnTrip -> onBrowseTrips()
             error is OrderError.AlreadyDecided -> onViewOrders(error.persistedOrder.id)
             order != null -> onViewOrders(order.id)
             empty -> onAddProducts()
@@ -244,7 +250,13 @@ private fun ReviewFooter(
           }
         },
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(56.dp).testTag(ReviewOrderTags.SUBMIT),
+        modifier =
+            Modifier.fillMaxWidth()
+                .height(56.dp)
+                .testTag(
+                    if (error == OrderError.OwnTrip) ReviewOrderTags.BROWSE
+                    else ReviewOrderTags.SUBMIT
+                ),
         shape = RoundedCornerShape(28.dp),
         colors =
             ButtonDefaults.buttonColors(

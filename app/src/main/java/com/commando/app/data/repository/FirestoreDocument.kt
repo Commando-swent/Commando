@@ -17,7 +17,7 @@ internal data class FirestoreDocument(val id: String, val data: Map<String, Any?
 
 /** Reads a field of type [T], returning null for missing or incompatible stored values. */
 internal inline fun <reified T> Map<String, Any?>.field(name: String): T? =
-    get(name).let { if (it is T) it else null }
+    this[name].let { if (it is T) it else null }
 
 /**
  * Materializes this snapshot without changing its read source, existence or authorization policy.

@@ -100,7 +100,7 @@ internal constructor(
           currentCoroutineContext().ensureActive()
           return false
         }
-    val ranked = (version as? Number)?.toDouble() == SEARCH_RANK_VERSION.toDouble()
+    val ranked = version is Number && version.toDouble() == SEARCH_RANK_VERSION.toDouble()
     if (ranked) rankedStores += storeId
     return ranked
   }
@@ -375,9 +375,9 @@ internal class FirebaseProductFirestoreDataSource(private val firestore: Firebas
 }
 
 private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
-  val id = (data[FIELD_ID] as? String)?.takeIf { it.isGlobalProductIdOf(storeId) } ?: return null
-  val name = (data[FIELD_NAME] as? String)?.trim()?.takeIf(String::isNotEmpty) ?: return null
-  val priceCents = (data[FIELD_PRICE] as? Number)?.toPriceCents() ?: return null
+  val id = data.field<String>(FIELD_ID)?.takeIf { it.isGlobalProductIdOf(storeId) } ?: return null
+  val name = data.field<String>(FIELD_NAME)?.trim()?.takeIf(String::isNotEmpty) ?: return null
+  val priceCents = data.field<Number>(FIELD_PRICE)?.toPriceCents() ?: return null
   // The query already skips removed products; this check keeps the mapper safe on its own. A
   // Timestamp marks a removed product and any other non-null value is malformed.
   if (data[FIELD_REMOVED_AT] != null) return null
@@ -394,14 +394,14 @@ private fun ProductFirestoreDocument.toProduct(storeId: String): Product? {
       priceCents = priceCents,
       imageUrl = imageUrl,
       // Display only: a missing or malformed size hides the size, never the product.
-      sizeText = (data[FIELD_SIZE_TEXT] as? String)?.trim()?.takeIf(String::isNotEmpty),
-      category = (data[FIELD_CATEGORY] as? String)?.trim()?.takeIf(String::isNotEmpty),
-      categoryPath = (data[FIELD_CATEGORY_PATH] as? String)?.trim()?.takeIf(String::isNotEmpty),
+      sizeText = data.field<String>(FIELD_SIZE_TEXT)?.trim()?.takeIf(String::isNotEmpty),
+      category = data.field<String>(FIELD_CATEGORY)?.trim()?.takeIf(String::isNotEmpty),
+      categoryPath = data.field<String>(FIELD_CATEGORY_PATH)?.trim()?.takeIf(String::isNotEmpty),
   )
 }
 
 private fun FirestoreDocument.toFavouriteProductId(storeId: String): String? {
-  val productId = data[FIELD_PRODUCT_ID] as? String ?: return null
+  val productId = data.field<String>(FIELD_PRODUCT_ID) ?: return null
   return productId.takeIf {
     id == productId &&
         data.keys == setOf(FIELD_PRODUCT_ID, FIELD_STORE_ID) &&

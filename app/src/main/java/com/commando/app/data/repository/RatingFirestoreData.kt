@@ -45,15 +45,15 @@ internal fun RatingTransaction.context(
     submitting: Boolean = false,
 ): RatingContext {
   val order = get("orders", id)?.data ?: throw RatingFailure(RatingError.NotFound)
-  val tripId = order["tripId"] as? String
-  val requester = order["requesterId"] as? String
+  val tripId = order.field<String>("tripId")
+  val requester = order.field<String>("requesterId")
   requireRating(tripId?.isDocumentId() == true && !requester.isNullOrBlank())
   if (submitting) {
     requireRating(requester == uid, RatingError.PermissionDenied)
     requireRating(order["status"] == OrderStatus.DELIVERED.name, RatingError.OrderNotDelivered)
   }
   val trip = get("trips", tripId!!)?.data ?: throw RatingFailure(RatingError.NotFound)
-  val owner = trip["ownerId"] as? String
+  val owner = trip.field<String>("ownerId")
   requireRating(!owner.isNullOrBlank())
   requireRating(uid == requester || uid == owner, RatingError.PermissionDenied)
   requireRating(!submitting || requester != owner, RatingError.PermissionDenied)
@@ -76,19 +76,19 @@ internal fun FirestoreDocument?.summary(id: String): Pair<Int, Long> {
       this.id == id &&
           count in 1..Int.MAX_VALUE.toLong() &&
           total in count..count * RATING_SCORES.last &&
-          (data["lastOrderId"] as? String)?.isDocumentId() == true,
+          data.field<String>("lastOrderId")?.isDocumentId() == true,
   )
   return count.toInt() to total
 }
 
 /** Rejects malformed persisted feedback rather than supplying identity or score defaults. */
 internal fun FirestoreDocument.rating(): Rating {
-  val trip = data["tripId"] as? String ?: invalidRating()
-  val requester = data["requesterId"] as? String ?: invalidRating()
-  val owner = data["commandoId"] as? String ?: invalidRating()
+  val trip = data.field<String>("tripId") ?: invalidRating()
+  val requester = data.field<String>("requesterId") ?: invalidRating()
+  val owner = data.field<String>("commandoId") ?: invalidRating()
   val score = data["score"].integer() ?: invalidRating()
   val comment = data["comment"]
-  val created = data["createdAt"] as? Timestamp ?: invalidRating()
+  val created = data.field<Timestamp>("createdAt") ?: invalidRating()
   requireRating(
       data["orderId"] == id &&
           trip.isDocumentId() &&

@@ -25,6 +25,7 @@ import com.commando.app.model.RatingSummary
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
+import java.io.IOException
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -1407,6 +1408,31 @@ class OrderDetailsViewModelTest {
     assertEquals(1, late.returns)
     assertEquals(ratings.saved, (vm.uiState.value as OrderDetailsUiState.Content).submittedRating)
     assertTrue(vm.ratingState.value.submitted && !vm.ratingState.value.visible)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
+  fun thrownRatingSavePreservesDeliveryAndReconcilesBeforeRetrying() = runTest {
+    val ratings = TestRatings().apply { save = { throw IOException("Response lost") } }
+    val vm = confirmedRatingVm(ratings)
+    val persisted = ratings.saved.copy(comment = "Useful delivery")
+    vm.selectScore(persisted.score)
+    vm.updateComment(persisted.comment!!)
+    vm.submitRating()
+    advanceUntilIdle()
+    assertEquals(RatingError.Unknown, vm.ratingState.value.error)
+    assertTrue(vm.ratingState.value.visible)
+    assertTrue(!vm.ratingState.value.submitting)
+    assertEquals(persisted.comment, vm.ratingState.value.comment)
+    val content = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(OrderStatus.DELIVERED, content.order.status)
+    assertEquals(OrderMutationState.Saved, content.mutation)
+    ratings.read = { RatingResult.Success(persisted) }
+    vm.submitRating()
+    advanceUntilIdle()
+    assertTrue(vm.ratingState.value.submitted)
+    assertEquals(persisted, (vm.uiState.value as OrderDetailsUiState.Content).submittedRating)
+    assertEquals(1, ratings.inputs.size)
     vm.viewModelScope.cancel()
   }
 

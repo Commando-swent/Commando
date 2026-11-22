@@ -5,7 +5,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.android.sample.R
-import com.android.sample.data.repository.TripRepository
+import com.commando.app.data.repository.TripRepository
 
 /**
  * Restores edit identity from navigation, never from a transient UI flag. On recreation it reloads

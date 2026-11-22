@@ -2,6 +2,10 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query tests (#147), closed-trip creation (#233): Claude
 // Code.
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision

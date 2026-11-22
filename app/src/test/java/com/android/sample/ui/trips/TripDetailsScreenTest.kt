@@ -15,7 +15,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.RatingError
-import com.android.sample.data.repository.TripError
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.RatingSummary
 import com.commando.app.model.Trip

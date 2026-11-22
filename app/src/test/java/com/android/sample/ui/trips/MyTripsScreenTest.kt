@@ -3,9 +3,9 @@ package com.android.sample.ui.trips
 // AI assistance: Claude Code.
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.android.sample.data.repository.FakeTripRepository
-import com.android.sample.data.repository.TripError
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus

@@ -21,7 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.data.repository.TripError
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripLocations

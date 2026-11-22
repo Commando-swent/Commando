@@ -31,8 +31,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
-import com.android.sample.data.location.DeviceLocationProvider
-import com.android.sample.data.repository.CommandoPositionRepository
 import com.android.sample.data.repository.NotificationRepository
 import com.android.sample.data.repository.OrderChatRepository
 import com.android.sample.data.repository.OrderChatRepositoryFirestore
@@ -41,9 +39,7 @@ import com.android.sample.data.repository.ProductRepository
 import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.data.repository.RatingRepository
 import com.android.sample.data.repository.RatingRepositoryFirestore
-import com.android.sample.data.repository.SavedTripSearchRepository
 import com.android.sample.data.repository.ShoppingChecklistRepository
-import com.android.sample.data.repository.TripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthRepositoryProvider
@@ -63,6 +59,10 @@ import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
 import com.android.sample.ui.trips.SavedTripSearchViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
+import com.commando.app.data.location.DeviceLocationProvider
+import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.SavedTripSearchRepository
+import com.commando.app.data.repository.TripRepository
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */

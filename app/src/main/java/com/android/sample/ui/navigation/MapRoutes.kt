@@ -18,10 +18,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.android.sample.R
-import com.android.sample.data.location.AndroidDeviceLocationProvider
-import com.android.sample.data.location.DeviceLocationProvider
-import com.android.sample.data.repository.CommandoPositionRepository
-import com.android.sample.data.repository.TripRepository
 import com.android.sample.ui.map.DiscoverySharingState
 import com.android.sample.ui.map.LiveMapHost
 import com.android.sample.ui.map.LiveMapViewModel
@@ -35,6 +31,10 @@ import com.android.sample.ui.map.TripMapUiState
 import com.android.sample.ui.map.rememberPositionSharingControl
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
+import com.commando.app.data.location.AndroidDeviceLocationProvider
+import com.commando.app.data.location.DeviceLocationProvider
+import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.TripRepository
 import kotlinx.coroutines.launch
 
 /** Registers the trip map, which shares its filters with the trip list, and order tracking. */

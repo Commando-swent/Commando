@@ -2,6 +2,7 @@ package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.model.*
+import com.commando.app.data.repository.runFirestoreOperation
 import com.commando.app.model.OrderStatus
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*

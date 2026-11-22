@@ -18,8 +18,8 @@ import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.RatingError
-import com.android.sample.data.repository.TripError
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.*
 import java.time.Instant
 import java.time.ZoneId

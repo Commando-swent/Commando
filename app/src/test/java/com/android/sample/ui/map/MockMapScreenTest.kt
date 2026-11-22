@@ -13,10 +13,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.data.repository.TripError
 import com.android.sample.ui.map.MapTestTags as Tags
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.TripError
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule

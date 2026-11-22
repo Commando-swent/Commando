@@ -14,8 +14,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android.sample.data.location.AndroidDeviceLocationProvider
-import com.android.sample.data.location.DeviceLocationProvider
+import com.commando.app.data.location.AndroidDeviceLocationProvider
+import com.commando.app.data.location.DeviceLocationProvider
 
 /**
  * Slot-only permission/lifecycle bridge; it owns no layout root or visual modifier. Acquisition

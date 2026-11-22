@@ -1,6 +1,7 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.commando.app.data.repository.FirestoreDocument
 import com.commando.app.model.*
 import com.google.firebase.Timestamp
 

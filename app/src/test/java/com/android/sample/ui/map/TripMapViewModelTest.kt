@@ -4,13 +4,13 @@ package com.android.sample.ui.map
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.repository.FakeTripRepository
-import com.android.sample.data.repository.TripError
-import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripResult
 import com.android.sample.ui.trips.AvailableTripsUiState
 import com.android.sample.ui.trips.AvailableTripsViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripLocations

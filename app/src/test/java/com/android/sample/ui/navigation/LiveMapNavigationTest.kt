@@ -14,6 +14,8 @@ import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.RecordingRatings
 import com.android.sample.ui.trips.discoveryTrip
+import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.flow.*

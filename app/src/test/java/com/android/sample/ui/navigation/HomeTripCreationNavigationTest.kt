@@ -5,13 +5,13 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.CreateTripScreenTestTags
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus

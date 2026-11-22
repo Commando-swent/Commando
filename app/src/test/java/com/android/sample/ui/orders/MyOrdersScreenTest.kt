@@ -14,10 +14,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderError
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.formatTripDeparture
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem

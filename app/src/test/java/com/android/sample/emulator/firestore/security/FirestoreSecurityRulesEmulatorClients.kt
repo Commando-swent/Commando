@@ -2,7 +2,7 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: Claude Code for updateDocumentAsOwner (#233).
 
-import com.android.sample.data.repository.parseEmulatorHostAndPort
+import com.commando.app.data.repository.parseEmulatorHostAndPort
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp

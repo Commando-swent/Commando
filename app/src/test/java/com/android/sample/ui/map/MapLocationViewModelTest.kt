@@ -3,8 +3,8 @@ package com.android.sample.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.location.DeviceLocationProvider
-import com.android.sample.data.location.DeviceLocationResult
+import com.commando.app.data.location.DeviceLocationProvider
+import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.model.DeviceLocation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred

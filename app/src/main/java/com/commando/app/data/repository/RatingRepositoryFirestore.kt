@@ -87,10 +87,10 @@ internal constructor(
       original: FirebaseFirestoreException,
   ): Nothing {
     guard()
-    val existing =
+    val alreadyRated =
         try {
           source.transaction { transaction ->
-            transaction.readRating(orderId, uid, submitting = true)
+            transaction.readRating(orderId, uid, submitting = true) != null
           }
         } catch (cancelled: CancellationException) {
           throw cancelled
@@ -99,7 +99,7 @@ internal constructor(
           throw original
         }
     guard()
-    if (existing != null) throw RatingFailure(RatingError.AlreadyRated)
+    if (alreadyRated) throw RatingFailure(RatingError.AlreadyRated)
     throw original
   }
 

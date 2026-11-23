@@ -2,7 +2,11 @@ package com.android.sample.ui.trips
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.*
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.model.RatingSummary
 
 /** Records summary lookups and optional responses for ViewModel and navigation tests. */

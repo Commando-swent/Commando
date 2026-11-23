@@ -23,11 +23,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.ui.components.SkeletonCard
 import com.android.sample.ui.components.StateCard
 import com.android.sample.ui.components.TripDepartureRow
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.Location
 import com.commando.app.model.Order

@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
-import com.android.sample.data.repository.OrderError
+import com.commando.app.data.repository.OrderError
 import com.commando.app.model.MAX_ORDER_PRODUCTS
 import com.commando.app.model.OrderItem
 import com.commando.app.model.Trip

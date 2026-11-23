@@ -1,7 +1,6 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.data.repository.isDocumentId
 import com.commando.app.model.CommandoPosition
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow

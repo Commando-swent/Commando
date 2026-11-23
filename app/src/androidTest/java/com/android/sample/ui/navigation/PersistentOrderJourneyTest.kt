@@ -17,7 +17,14 @@ import com.android.sample.ui.catalogue.CatalogueTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.AvailableTripsScreenTestTags
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepositoryFirestore
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductResult
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*

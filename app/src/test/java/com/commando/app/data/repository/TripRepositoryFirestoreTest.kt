@@ -1,7 +1,6 @@
 package com.commando.app.data.repository
 
 // AI assistance: Claude Code for trip transition tests (#233).
-import com.android.sample.data.repository.successData
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.commando.app.data.repository.TripError.*

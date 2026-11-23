@@ -52,12 +52,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
-import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
-import com.android.sample.data.repository.MIN_SEARCH_TERM_LENGTH
-import com.android.sample.data.repository.ProductError
 import com.android.sample.ui.components.formatTripTime
 import com.android.sample.ui.orders.money
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.MAX_SEARCH_QUERY_LENGTH
+import com.commando.app.data.repository.MIN_SEARCH_TERM_LENGTH
+import com.commando.app.data.repository.ProductError
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.MAX_ORDER_PRODUCTS

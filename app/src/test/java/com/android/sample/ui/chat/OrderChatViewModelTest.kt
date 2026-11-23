@@ -5,7 +5,16 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderChatRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
+import com.commando.app.data.repository.context
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*

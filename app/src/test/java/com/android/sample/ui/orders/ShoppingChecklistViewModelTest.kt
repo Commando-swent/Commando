@@ -3,6 +3,12 @@ package com.android.sample.ui.orders
 // AI assistance: Claude Code.
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeShoppingChecklistRepository
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred

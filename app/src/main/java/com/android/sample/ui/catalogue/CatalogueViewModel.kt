@@ -3,15 +3,15 @@ package com.android.sample.ui.catalogue
 // AI assistance: Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.MAX_PRODUCT_QUERY_LIMIT
-import com.android.sample.data.repository.MAX_SEARCH_QUERY_LENGTH
-import com.android.sample.data.repository.ProductError
-import com.android.sample.data.repository.ProductRepository
-import com.android.sample.data.repository.ProductResult
-import com.android.sample.data.repository.TripError
-import com.android.sample.data.repository.TripRepository
-import com.android.sample.data.repository.TripResult
 import com.android.sample.ui.orders.OrderDraftState
+import com.commando.app.data.repository.MAX_PRODUCT_QUERY_LIMIT
+import com.commando.app.data.repository.MAX_SEARCH_QUERY_LENGTH
+import com.commando.app.data.repository.ProductError
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductResult
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.MAX_ORDER_PRODUCTS
 import com.commando.app.model.OrderDraft
 import com.commando.app.model.OrderItem

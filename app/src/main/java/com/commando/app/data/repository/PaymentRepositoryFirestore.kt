@@ -71,7 +71,7 @@ internal class FirebasePaymentDataSource(private val firestore: FirebaseFirestor
 
 /** Strict field reads reject coerced money and unknown enum values instead of repairing records. */
 private inline fun <reified T> Map<String, Any?>.paymentField(name: String): T =
-    get(name).let { if (it is T) it else throw PaymentFailure(PaymentError.INVALID_DATA) }
+    field<T>(name) ?: throw PaymentFailure(PaymentError.INVALID_DATA)
 
 private inline fun <reified T : Enum<T>> Map<String, Any?>.paymentEnum(name: String): T =
     enumValues<T>().firstOrNull { it.name == paymentField<String>(name) }

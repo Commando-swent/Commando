@@ -1,11 +1,11 @@
 package com.android.sample.emulator.firestore.security
 
 // AI assistance: Claude Code.
-import com.android.sample.data.repository.ProductError
-import com.android.sample.data.repository.ProductRepositoryFirestore
-import com.android.sample.data.repository.ProductResult
-import com.android.sample.data.repository.productSearchPrefixes
-import com.android.sample.data.repository.successData
+import com.commando.app.data.repository.ProductError
+import com.commando.app.data.repository.ProductRepositoryFirestore
+import com.commando.app.data.repository.ProductResult
+import com.commando.app.data.repository.productSearchPrefixes
+import com.commando.app.data.repository.successData
 import com.commando.app.model.Product
 import com.commando.app.model.ProductPage
 import com.google.firebase.firestore.FieldPath

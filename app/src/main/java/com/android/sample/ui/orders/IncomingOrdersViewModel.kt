@@ -3,9 +3,9 @@ package com.android.sample.ui.orders
 // AI assistance: Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.OrderError
-import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.OrderResult
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.Order
 import com.commando.app.model.itemCount
 import com.commando.app.model.totalCents

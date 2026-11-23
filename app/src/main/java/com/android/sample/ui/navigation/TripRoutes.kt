@@ -13,8 +13,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.RatingRepository
 import com.android.sample.ui.trips.AvailableTripsScreen
 import com.android.sample.ui.trips.AvailableTripsViewModel
 import com.android.sample.ui.trips.CreateTripScreen
@@ -30,6 +28,8 @@ import com.android.sample.ui.trips.TripEarningsViewModel
 import com.android.sample.ui.trips.TripLocationFilterViewModel
 import com.android.sample.ui.trips.TripRatingUiState
 import com.android.sample.ui.trips.TripRatingViewModel
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.TripLocations
 

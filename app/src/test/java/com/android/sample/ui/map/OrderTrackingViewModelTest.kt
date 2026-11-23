@@ -5,7 +5,10 @@ import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
 import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult

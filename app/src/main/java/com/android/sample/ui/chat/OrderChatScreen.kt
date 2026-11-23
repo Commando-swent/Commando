@@ -27,11 +27,10 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.android.sample.R
-import com.android.sample.data.repository.OrderError
-import com.android.sample.model.*
 import com.android.sample.ui.orders.OrderStatusBadge
 import com.android.sample.ui.orders.orderStatusLabel
 import com.android.sample.ui.theme.*
+import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

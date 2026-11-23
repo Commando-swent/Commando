@@ -2,9 +2,9 @@ package com.android.sample.ui.orders
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModel
-import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.OrderRepository
 import com.android.sample.model.authentication.AuthRepository
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.OrderRepository
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDraft
 import kotlinx.coroutines.flow.map

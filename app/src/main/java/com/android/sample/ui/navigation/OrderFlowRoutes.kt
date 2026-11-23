@@ -10,8 +10,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.android.sample.data.repository.ProductRepository
-import com.android.sample.data.repository.ProductRepositoryFirestore
 import com.android.sample.ui.catalogue.CatalogueRoute
 import com.android.sample.ui.catalogue.CatalogueViewModel
 import com.android.sample.ui.orders.OrderFlowDraft
@@ -22,6 +20,8 @@ import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
 import com.android.sample.ui.trips.formatTripDeparture
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductRepositoryFirestore
 import com.commando.app.data.repository.TripRepository
 
 /**

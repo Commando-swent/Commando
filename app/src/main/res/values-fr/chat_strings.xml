@@ -16,4 +16,8 @@
     </plurals>
     <string name="chat_locked_pending">La discussion s’ouvre après acceptation de la commande.</string>
     <string name="chat_message_partner">Contacter : %1$s</string>
+    <string name="chat_delay_action">Signaler un retard</string>
+    <string name="chat_delay_minutes">Retard en minutes</string>
+    <string name="chat_delay_range">Saisissez 1 à %1$d minutes</string>
+    <string name="chat_delay_message">Retard : environ %1$d minutes</string>
 </resources>

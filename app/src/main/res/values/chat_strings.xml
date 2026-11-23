@@ -15,4 +15,8 @@
     </plurals>
     <string name="chat_locked_pending">Chat opens when the order is accepted.</string>
     <string name="chat_message_partner">Message %1$s</string>
+    <string name="chat_delay_action">Report delay</string>
+    <string name="chat_delay_minutes">Delay in minutes</string>
+    <string name="chat_delay_range">Enter 1–%1$d minutes</string>
+    <string name="chat_delay_message">Delay: about %1$d minutes</string>
 </resources>

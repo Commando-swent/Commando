@@ -38,6 +38,7 @@ class OrderChatScreenTest {
   private var backs = 0
   private var retries = 0
   private var sends = 0
+  private val delays = mutableListOf<Int>()
 
   private fun show() = compose.setContent {
     SampleAppTheme {
@@ -47,11 +48,93 @@ class OrderChatScreenTest {
           { retries++ },
           { state = state.copy(draft = it) },
           { sends++ },
+          onDelay = { delays += it },
       )
     }
   }
 
   private fun tag(tag: String) = compose.onNodeWithTag(tag)
+
+  // Match the existing search-dialog tests: Robolectric loops on wide Material text dialogs.
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h917dp-mdpi")
+  fun ownerDelayDialogValidatesDurationAndRequesterSeesTranslatedNotice() {
+    state = state.copy(context = state.context!!.copy(viewerId = state.context!!.trip.ownerId))
+    show()
+    tag(OrderChatTestTags.DELAY).performClick()
+    tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.DELAY_INPUT).performTextInput("0")
+    tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.DELAY_INPUT).performTextReplacement("15")
+    screenshot("delay-dialog")
+    tag(OrderChatTestTags.DELAY_SEND).assertIsEnabled().performClick()
+    assertEquals(listOf(15), delays)
+    compose.runOnIdle {
+      val context = state.context!!
+      state =
+          state.copy(
+              context = context.copy(viewerId = context.order.requesterId),
+              chat =
+                  state.chat!!.copy(
+                      messages =
+                          listOf(
+                              ChatMessage(
+                                  "delay",
+                                  context.trip.ownerId,
+                                  "",
+                                  context.order.createdAt,
+                                  15,
+                              )
+                          )
+                  ),
+          )
+    }
+    tag(OrderChatTestTags.DELAY).assertDoesNotExist()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.chat_delay_message, 15))
+        .assertIsDisplayed()
+    screenshot("delay-received")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h917dp-mdpi")
+  fun frenchDelayNoticeAndOwnerDialogRemainLocalized() {
+    val context = state.context!!
+    state =
+        state.copy(
+            context = context.copy(viewerId = context.trip.ownerId),
+            chat =
+                state.chat!!.copy(
+                    messages =
+                        listOf(
+                            ChatMessage(
+                                "delay-fr",
+                                context.trip.ownerId,
+                                "",
+                                context.order.createdAt,
+                                20,
+                            )
+                        )
+                ),
+        )
+    show()
+    compose.onNodeWithText("Retard : environ 20 minutes").assertIsDisplayed()
+    screenshot("delay-fr")
+    tag(OrderChatTestTags.DELAY).performClick()
+    for (invalid in listOf("letters", (MAX_CHAT_DELAY_MINUTES + 1).toString(), "-1")) {
+      tag(OrderChatTestTags.DELAY_INPUT).performTextReplacement(invalid)
+      tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.profile_edit_cancel)).performClick()
+    assertTrue(delays.isEmpty())
+    tag(OrderChatTestTags.DELAY_INPUT).assertDoesNotExist()
+    compose.runOnIdle { state = state.copy(sendError = OrderError.Unknown) }
+    tag(OrderChatTestTags.DELAY).assertIsNotEnabled()
+    compose.runOnIdle {
+      state = state.copy(chat = state.chat!!.copy(status = OrderStatus.DELIVERED))
+    }
+    tag(OrderChatTestTags.DELAY).assertDoesNotExist()
+  }
 
   @Test
   fun conversationInputValidationAndCallbacks() {

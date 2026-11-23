@@ -25,6 +25,80 @@ class OrderChatSecurityRulesEmulatorTest {
   private val sent = OrderResult.Success(Unit)
 
   @Test
+  fun delayNoticeUsesPersistedOwnerAndSurvivesTerminalRetry() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val id = seed(owner, requester)
+      val ownerRepo = repo(owner)
+      val requesterRepo = repo(requester)
+      assertFailure(OrderError.PermissionDenied, requesterRepo.sendDelayNotice(id, "forged", 10))
+      val data =
+          mapOf(
+              "senderId" to requester.auth.currentUser!!.uid,
+              "text" to "",
+              "createdAt" to FieldValue.serverTimestamp(),
+              "delayMinutes" to 10,
+          )
+      val messages = requester.firestore.collection("orders").document(id).collection("messages")
+      assertPermissionDenied { messages.document("raw-forged").set(data).await() }
+      val ownerMessages = owner.firestore.collection("orders").document(id).collection("messages")
+      for (invalid in listOf(0, MAX_CHAT_DELAY_MINUTES + 1, 1.5, "10")) {
+        assertPermissionDenied {
+          ownerMessages
+              .document(UUID.randomUUID().toString())
+              .set(
+                  data +
+                      mapOf("senderId" to owner.auth.currentUser!!.uid, "delayMinutes" to invalid)
+              )
+              .await()
+        }
+      }
+      listOf(
+              async { ownerRepo.sendDelayNotice(id, "delay", 10) },
+              async { ownerRepo.sendDelayNotice(id, "delay", 10) },
+          )
+          .awaitAll()
+          .forEach { assertEquals(sent, it) }
+      val notice =
+          (requesterRepo.observeChat(id).first() as OrderResult.Success).data.messages.single()
+      assertEquals(10, notice.delayMinutes)
+      assertEquals("", notice.text)
+      assertFailure(OrderError.InvalidData, ownerRepo.sendDelayNotice(id, "delay", 11))
+      for (invalid in listOf(0, MAX_CHAT_DELAY_MINUTES + 1, "10")) {
+        createDocumentAsOwner(
+            "orders/$id/messages",
+            "corrupt-delay",
+            mapOf(
+                "senderId" to owner.auth.currentUser!!.uid,
+                "text" to "",
+                "createdAt" to Timestamp.now(),
+                "delayMinutes" to invalid,
+            ),
+        )
+        assertFailure(OrderError.InvalidData, requesterRepo.observeChat(id).first())
+        deleteDocumentAsOwner("orders/$id/messages/corrupt-delay")
+      }
+      assertPermissionDenied {
+        ownerMessages
+            .document("mixed")
+            .set(
+                data +
+                    mapOf(
+                        "senderId" to owner.auth.currentUser!!.uid,
+                        "text" to "ambiguous",
+                    )
+            )
+            .await()
+      }
+
+      updateDocumentAsOwner("orders/$id", mapOf("status" to OrderStatus.DELIVERED.name))
+      assertEquals(sent, ownerRepo.sendDelayNotice(id, "delay", 10))
+      assertFailure(OrderError.PermissionDenied, ownerRepo.sendDelayNotice(id, "late", 1))
+      assertPermissionDenied { ownerMessages.document("delay").update("delayMinutes", 20).await() }
+      assertPermissionDenied { ownerMessages.document("delay").delete().await() }
+    }
+  }
+
+  @Test
   fun liveConversationRetriesTerminalHistoryAndEndedSession() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val id = seed(owner, requester)

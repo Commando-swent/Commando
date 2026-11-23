@@ -33,6 +33,7 @@ class OrderChatViewModelTest {
           OrderResult.Success(OrderChat(order.status, emptyList()))
       )
   private var observe: () -> Flow<OrderResult<OrderChat>> = { history }
+  private val delays = mutableListOf<Pair<String, Int>>()
   private val requests = mutableListOf<Pair<String, String>>()
   private var write: suspend (String, String) -> OrderResult<Unit> = { _, _ ->
     OrderResult.Success(Unit)
@@ -48,6 +49,15 @@ class OrderChatViewModelTest {
           } finally {
             subscriptions--
           }
+        }
+
+        override suspend fun sendDelayNotice(
+            orderId: String,
+            messageId: String,
+            minutes: Int,
+        ): OrderResult<Unit> {
+          delays += messageId to minutes
+          return write(messageId, "")
         }
 
         override suspend fun sendMessage(
@@ -101,6 +111,70 @@ class OrderChatViewModelTest {
   private fun TestScope.publish(status: OrderStatus, message: ChatMessage) {
     history.value = OrderResult.Success(OrderChat(status, listOf(message)))
     runCurrent()
+  }
+
+  @Test
+  fun delayRetryAndRestorationKeepTheSameIdAndPreserveTypedText() = runTest {
+    user.value = trip.ownerId
+    val saved = SavedStateHandle()
+    write = { _, _ -> OrderResult.Error(OrderError.Unknown) }
+    withModel(saved) { model ->
+      model.updateDraft("Keep my typed message")
+      for (minutes in listOf(0, MAX_CHAT_DELAY_MINUTES + 1)) model.sendDelay(minutes)
+      assertTrue(delays.isEmpty())
+      model.sendDelay(12)
+      runCurrent()
+      assertEquals(12, delays.single().second)
+      assertFalse(model.uiState.value.canSendDelay)
+    }
+    withModel(saved) { model ->
+      model.send()
+      runCurrent()
+      assertEquals(delays.first(), delays.last())
+      publish(OrderStatus.ACCEPTED, ChatMessage(delays.first().first, trip.ownerId, "", now, 12))
+      assertNull(model.uiState.value.sendError)
+      assertEquals("Keep my typed message", model.uiState.value.draft)
+      assertTrue(model.uiState.value.canSendDelay)
+      assertTrue(requests.isEmpty())
+    }
+  }
+
+  @Test
+  fun requesterAndTerminalOrderCannotReportDelay() = runTest {
+    withModel { model ->
+      model.sendDelay(5)
+      runCurrent()
+      assertTrue(delays.isEmpty())
+      user.value = trip.ownerId
+      runCurrent()
+      assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
+    }
+    history.value = OrderResult.Success(OrderChat(OrderStatus.DELIVERED, emptyList()))
+    withModel { model ->
+      model.sendDelay(5)
+      runCurrent()
+      assertTrue(delays.isEmpty())
+    }
+  }
+
+  @Test
+  fun confirmedDelayKeepsDraftAndDefinitiveFailureAllowsAnotherDuration() = runTest {
+    user.value = trip.ownerId
+    write = { _, _ -> OrderResult.Error(OrderError.PermissionDenied) }
+    withModel { model ->
+      model.updateDraft("typed")
+      model.sendDelay(3)
+      runCurrent()
+      assertEquals(OrderError.PermissionDenied, model.uiState.value.sendError)
+      assertTrue(model.uiState.value.canSendDelay)
+      write = { _, _ -> OrderResult.Success(Unit) }
+      model.send()
+      runCurrent()
+      assertEquals(3, delays.last().second)
+      assertNotEquals(delays.first().first, delays.last().first)
+      assertEquals("typed", model.uiState.value.draft)
+      assertNull(model.uiState.value.sendError)
+    }
   }
 
   @Test

@@ -90,6 +90,30 @@ class FakeOrderChatRepositoryTest {
     assertEquals(OrderResult.Error(OrderError.PermissionDenied), owner.observeChat("order").first())
   }
 
+  @Test
+  fun onlyOwnerCanSendCanonicalDelayWithIdempotentTerminalRetry() = runTest {
+    assertFailure(OrderError.PermissionDenied, repo.sendDelayNotice("order", "delay", 10))
+    val owner = FakeOrderChatRepository(store, MutableStateFlow("owner"))
+    for (minutes in listOf(0, -1, MAX_CHAT_DELAY_MINUTES + 1)) {
+      assertFailure(OrderError.InvalidData, owner.sendDelayNotice("order", "delay", minutes))
+    }
+    assertFalse(isValidChatPayload("ambiguous", 10))
+    assertEquals(sent, owner.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
+    assertFailure(OrderError.InvalidData, owner.sendDelayNotice("order", "delay", 1))
+    assertFailure(OrderError.InvalidData, owner.sendMessage("order", "delay", "text"))
+    val message = (repo.observeChat("order").first() as OrderResult.Success).data.messages.single()
+    assertEquals(MAX_CHAT_DELAY_MINUTES, message.delayMinutes)
+    assertEquals("", message.text)
+    for (status in OrderStatus.entries.filter { it != OrderStatus.PENDING }) {
+      orders.value = mapOf("order" to orders.value.getValue("order").copy(status = status))
+      assertEquals(sent, owner.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
+      assertEquals(
+          if (status.canSendChat) sent else OrderResult.Error(OrderError.PermissionDenied),
+          owner.sendDelayNotice("order", status.name, 1),
+      )
+    }
+  }
+
   private fun assertFailure(error: OrderError, result: OrderResult<*>) =
       assertEquals(OrderResult.Error(error), result)
 }

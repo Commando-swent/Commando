@@ -39,6 +39,9 @@ import java.time.format.FormatStyle
 
 /** Stable selectors independent of text, locale and ordering of controls. */
 object OrderChatTestTags {
+  const val DELAY = "chat_delay"
+  const val DELAY_INPUT = "chat_delay_input"
+  const val DELAY_SEND = "chat_delay_send"
   const val SCREEN = "order_chat"
   const val BACK = "chat_back"
   const val INFO = "chat_info"
@@ -74,7 +77,14 @@ internal fun OrderChatHost(model: OrderChatViewModel, onBack: () -> Unit) {
     }
   }
   val state by model.uiState.collectAsState()
-  OrderChatScreen(state, onBack, model::start, model::updateDraft, model::send)
+  OrderChatScreen(
+      state,
+      onBack,
+      model::start,
+      model::updateDraft,
+      model::send,
+      onDelay = model::sendDelay,
+  )
 }
 
 /** Basic text conversation; callbacks own persistence and navigation, never this renderer. */
@@ -86,6 +96,7 @@ fun OrderChatScreen(
     onDraft: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    onDelay: (Int) -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -115,6 +126,7 @@ fun OrderChatScreen(
               null -> Spacer(Modifier.weight(1f))
               else -> {
                 Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state) }
+                ChatDelayComposer(state, onDelay)
                 ChatComposer(state, onDraft, onSend)
               }
             }
@@ -333,7 +345,10 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
         border = if (mine) null else BorderStroke(1.dp, ChatOutline),
     ) {
       Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
-        Text(message.text)
+        Text(
+            message.delayMinutes?.let { stringResource(R.string.chat_delay_message, it) }
+                ?: message.text
+        )
         Text(time, Modifier.align(Alignment.End), style = MaterialTheme.typography.bodySmall)
       }
     }

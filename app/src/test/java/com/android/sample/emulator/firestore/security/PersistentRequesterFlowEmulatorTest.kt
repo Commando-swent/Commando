@@ -12,6 +12,7 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import com.commando.app.ui.orders.*
+import com.google.firebase.auth.FirebaseAuth
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -100,13 +101,23 @@ class PersistentRequesterFlowEmulatorTest {
         assertEquals(OrderResult.Success(listOf(saved)), reloaded.repository.getMyOrders())
         assertEquals(OrderResult.Success(saved), reloaded.repository.getOrderById(saved.id))
         fresh.auth.signOut()
-        fresh.auth.signInAnonymously().await()
+        val otherUid = fresh.auth.signInAnonymously().await().user!!.uid
+        val tokenReady = CompletableDeferred<Unit>()
+        val tokenListener = FirebaseAuth.IdTokenListener { tokenAuth: FirebaseAuth ->
+          if (tokenAuth.currentUser?.uid == otherUid) tokenReady.complete(Unit)
+        }
+        fresh.auth.addIdTokenListener(tokenListener)
+        try {
+          tokenReady.await()
+        } finally {
+          fresh.auth.removeIdTokenListener(tokenListener)
+        }
         assertEquals(
             OrderResult.Error(OrderError.NotAuthenticated),
             reloaded.repository.getMyOrders(),
         )
         val other =
-            SessionOrderViewModel(reloadedAuth.currentUser!!.uid, reloadedAuth) {
+            SessionOrderViewModel(otherUid, reloadedAuth) {
               OrderRepositoryFirestore(it, fresh.firestore)
             }
         store.put("other", other)

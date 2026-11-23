@@ -16,14 +16,14 @@ import com.android.sample.ui.orders.OrderFlowDraft
 import com.android.sample.ui.orders.ReviewOrderRoute
 import com.android.sample.ui.orders.ReviewOrderViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
-import com.android.sample.ui.trips.TripDetailsScreen
-import com.android.sample.ui.trips.TripDetailsUiState
-import com.android.sample.ui.trips.TripDetailsViewModel
-import com.android.sample.ui.trips.formatTripDeparture
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProductRepositoryFirestore
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.storeIdFor
+import com.commando.app.ui.trips.TripDetailsScreen
+import com.commando.app.ui.trips.TripDetailsUiState
+import com.commando.app.ui.trips.TripDetailsViewModel
+import com.commando.app.ui.trips.formatTripDeparture
 
 /**
  * Registers Catalogue and Review Order. Both entries edit the same draft, kept in the authenticated

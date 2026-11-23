@@ -47,7 +47,7 @@ class ReviewOrderTest {
             events::add,
             onBrowseTrips = { events.add("browse") },
             tripSubtitle =
-                com.android.sample.ui.trips.formatTripDeparture(
+                com.commando.app.ui.trips.formatTripDeparture(
                     displayedTrip.scheduledAt,
                     androidx.compose.ui.platform.LocalConfiguration.current.locales[0],
                 ),

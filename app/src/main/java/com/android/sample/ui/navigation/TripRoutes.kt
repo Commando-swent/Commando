@@ -13,25 +13,25 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.android.sample.ui.trips.AvailableTripsScreen
-import com.android.sample.ui.trips.AvailableTripsViewModel
-import com.android.sample.ui.trips.CreateTripScreen
-import com.android.sample.ui.trips.CreateTripViewModel
-import com.android.sample.ui.trips.MyTripsScreen
-import com.android.sample.ui.trips.MyTripsViewModel
-import com.android.sample.ui.trips.SavedTripSearchViewModel
-import com.android.sample.ui.trips.SavedTripSearches
-import com.android.sample.ui.trips.TripDetailsScreen
-import com.android.sample.ui.trips.TripDetailsUiState
-import com.android.sample.ui.trips.TripDetailsViewModel
-import com.android.sample.ui.trips.TripEarningsViewModel
-import com.android.sample.ui.trips.TripLocationFilterViewModel
-import com.android.sample.ui.trips.TripRatingUiState
-import com.android.sample.ui.trips.TripRatingViewModel
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.TripLocations
+import com.commando.app.ui.trips.AvailableTripsScreen
+import com.commando.app.ui.trips.AvailableTripsViewModel
+import com.commando.app.ui.trips.CreateTripScreen
+import com.commando.app.ui.trips.CreateTripViewModel
+import com.commando.app.ui.trips.MyTripsScreen
+import com.commando.app.ui.trips.MyTripsViewModel
+import com.commando.app.ui.trips.SavedTripSearchViewModel
+import com.commando.app.ui.trips.SavedTripSearches
+import com.commando.app.ui.trips.TripDetailsScreen
+import com.commando.app.ui.trips.TripDetailsUiState
+import com.commando.app.ui.trips.TripDetailsViewModel
+import com.commando.app.ui.trips.TripEarningsViewModel
+import com.commando.app.ui.trips.TripLocationFilterViewModel
+import com.commando.app.ui.trips.TripRatingUiState
+import com.commando.app.ui.trips.TripRatingViewModel
 
 /**
  * The signed-in account as seen by the trip routes. [mode] is read when a destination composes, not

@@ -12,7 +12,6 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.orders.IncomingOrdersTestTags
 import com.android.sample.ui.orders.ShoppingChecklistTestTags
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.MyTripsTestTags
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeShoppingChecklistRepository
@@ -24,6 +23,7 @@ import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.trips.MyTripsTestTags
 import java.time.Instant
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals

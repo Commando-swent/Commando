@@ -3,10 +3,10 @@ package com.android.sample.ui.notifications
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.NotificationRepository
-import com.android.sample.data.repository.OrderError
-import com.android.sample.data.repository.OrderResult
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.data.repository.NotificationRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.NotificationPreferences
 import com.commando.app.model.OrderNotification
 import kotlinx.coroutines.CoroutineStart

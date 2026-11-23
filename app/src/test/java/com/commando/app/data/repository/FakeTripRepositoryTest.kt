@@ -1,6 +1,5 @@
 package com.commando.app.data.repository
 
-import com.android.sample.data.repository.successData
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.Trip

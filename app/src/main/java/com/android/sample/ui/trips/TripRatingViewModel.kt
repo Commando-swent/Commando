@@ -4,9 +4,9 @@ package com.android.sample.ui.trips
 import androidx.annotation.MainThread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.RatingError
-import com.android.sample.data.repository.RatingRepository
-import com.android.sample.data.repository.RatingResult
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.model.RatingSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart

@@ -11,8 +11,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.android.sample.R
-import com.android.sample.model.MAX_CHAT_DELAY_MINUTES
-import com.android.sample.model.canSendChat
+import com.commando.app.model.MAX_CHAT_DELAY_MINUTES
+import com.commando.app.model.canSendChat
 
 /** Owner-only delay input; the ViewModel and persisted rules also enforce role and range. */
 @Composable

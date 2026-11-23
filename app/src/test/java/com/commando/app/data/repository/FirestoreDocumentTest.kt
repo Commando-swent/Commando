@@ -6,6 +6,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -19,7 +20,11 @@ class FirestoreDocumentTest {
     every { snapshot.id } returns "storage-id"
     every { snapshot.data } returns fields
 
-    assertEquals(FirestoreDocument("storage-id", fields), snapshot.toFirestoreDocument())
+    val document = snapshot.toFirestoreDocument()
+    assertEquals(FirestoreDocument("storage-id", fields), document)
+    assertEquals("migros:milk", document.data.field<String>("id"))
+    assertNull(document.data.field<String>("bad"))
+    assertNull(document.data.field<String>("missing"))
   }
 
   @Test

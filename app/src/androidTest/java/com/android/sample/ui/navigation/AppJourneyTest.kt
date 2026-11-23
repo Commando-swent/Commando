@@ -28,7 +28,11 @@ import com.android.sample.ui.trips.MyTripsTestTags
 import com.android.sample.ui.trips.discoveryTrip
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductResult
 import com.commando.app.model.*
 import java.time.Instant
 import java.time.LocalDate

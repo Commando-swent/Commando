@@ -4,7 +4,6 @@ package com.commando.app.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.data.repository.context
 import com.commando.app.model.DeparturePeriod
 import com.commando.app.model.SavedTripSearch
 import com.commando.app.model.StoreFilter

@@ -3,6 +3,9 @@ package com.android.sample.ui.trips
 // AI assistance: OpenAI Codex.
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingResult
+import com.commando.app.data.repository.summary
 import com.commando.app.model.RatingSummary
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*

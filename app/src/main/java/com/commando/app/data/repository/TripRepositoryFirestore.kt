@@ -2,8 +2,6 @@ package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
 // AI assistance: Claude Code for the trip transition (#233).
-import com.android.sample.data.repository.isDocumentId
-import com.android.sample.data.repository.isValid
 import com.android.sample.model.authentication.AuthRepository
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
@@ -322,11 +320,11 @@ private fun Location.toFirestoreData(): Map<String, Any> =
     )
 
 private fun TripFirestoreDocument.toTrip(): Trip? {
-  val ownerId = data[FIELD_OWNER_ID] as? String ?: return null
+  val ownerId = data.field<String>(FIELD_OWNER_ID) ?: return null
   val store = data[FIELD_STORE].toLocation() ?: return null
   val scheduledAt = data[FIELD_SCHEDULED_AT].toInstant() ?: return null
   val handoffLocation = data[FIELD_HANDOFF_LOCATION].toLocation() ?: return null
-  val statusName = data[FIELD_STATUS] as? String ?: return null
+  val statusName = data.field<String>(FIELD_STATUS) ?: return null
   val status = TripStatus.entries.firstOrNull { it.name == statusName } ?: return null
   val createdAt = data[FIELD_CREATED_AT].toInstant() ?: return null
   val updatedAt = data[FIELD_UPDATED_AT].toInstant() ?: return null

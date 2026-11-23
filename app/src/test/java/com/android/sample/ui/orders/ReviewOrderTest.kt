@@ -153,22 +153,32 @@ class ReviewOrderTest {
   }
 
   @Test
-  fun creationFailuresShowSessionOrGenericFeedbackAndPreserveTheBasket() {
+  fun unauthenticatedCreationExplainsThatTheUserMustSignIn() =
+      assertCreationFailure(
+          OrderError.NotAuthenticated,
+          com.android.sample.R.string.order_session_error,
+      )
+
+  @Test
+  fun invalidCreationPreservesTheBasketAndOffersRecovery() =
+      assertCreationFailure(OrderError.InvalidData, com.android.sample.R.string.order_failure_help)
+
+  @Test
+  fun forbiddenCreationPreservesTheBasketAndOffersRecovery() =
+      assertCreationFailure(
+          OrderError.PermissionDenied,
+          com.android.sample.R.string.order_failure_help,
+      )
+
+  private fun assertCreationFailure(failure: OrderError, message: Int) {
+    fake.forcedError = failure
     show()
-    for (failure in
-        listOf(OrderError.NotAuthenticated, OrderError.InvalidData, OrderError.PermissionDenied)) {
-      compose.runOnIdle { fake.forcedError = failure }
-      compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
-      val message =
-          if (failure == OrderError.NotAuthenticated)
-              com.android.sample.R.string.order_session_error
-          else com.android.sample.R.string.order_failure_help
-      compose
-          .onNodeWithTag(ReviewOrderTags.ERROR)
-          .performScrollTo()
-          .assertTextEquals(org.robolectric.RuntimeEnvironment.getApplication().getString(message))
-      compose.runOnIdle { assertEquals(2, shared.draft.value.items.single().quantity) }
-    }
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose
+        .onNodeWithTag(ReviewOrderTags.ERROR)
+        .performScrollTo()
+        .assertTextEquals(org.robolectric.RuntimeEnvironment.getApplication().getString(message))
+    compose.runOnIdle { assertEquals(2, shared.draft.value.items.single().quantity) }
   }
 
   @Test

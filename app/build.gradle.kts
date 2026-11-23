@@ -199,6 +199,10 @@ val firebaseEmulatorTestPatterns =
 val firebaseEmulatorProfile = providers.gradleProperty("firebaseEmulatorProfile").orNull
 
 tasks.withType<Test> {
+  // Resolve Android runtime jars from Maven Central's canonical endpoint.
+  systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+  testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL }
+
   // Configure Jacoco for each tests
   configure<JacocoTaskExtension> {
     isIncludeNoLocationClasses = true

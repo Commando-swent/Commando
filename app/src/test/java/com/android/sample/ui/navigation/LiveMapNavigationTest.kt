@@ -8,12 +8,8 @@ import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.catalogue.StubProductRepository
-import com.android.sample.ui.home.HomeTestTags
-import com.android.sample.ui.map.*
 import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.RecordingRatings
-import com.android.sample.ui.trips.discoveryTrip
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -21,6 +17,10 @@ import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.*
+import com.commando.app.ui.home.HomeTestTags
+import com.commando.app.ui.map.*
+import com.commando.app.ui.trips.RecordingRatings
+import com.commando.app.ui.trips.discoveryTrip
 import java.time.Instant
 import kotlinx.coroutines.flow.*
 import org.junit.*

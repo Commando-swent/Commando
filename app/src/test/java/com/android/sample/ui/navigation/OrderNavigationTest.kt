@@ -18,11 +18,6 @@ import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.home.HomeTestTags
-import com.android.sample.ui.map.LiveMapTags
-import com.android.sample.ui.map.MapTestTags
-import com.android.sample.ui.map.OrderTrackingTestTags
-import com.android.sample.ui.map.PositionSharingTestTags
 import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.OrderDetailsTestTags
 import com.android.sample.ui.orders.RatingDialogTestTags
@@ -41,6 +36,11 @@ import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
+import com.commando.app.ui.home.HomeTestTags
+import com.commando.app.ui.map.LiveMapTags
+import com.commando.app.ui.map.MapTestTags
+import com.commando.app.ui.map.OrderTrackingTestTags
+import com.commando.app.ui.map.PositionSharingTestTags
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -135,11 +135,35 @@ class OrderChatViewModelTest {
       model.send()
       runCurrent()
       assertEquals(delays.first(), delays.last())
+      publish(OrderStatus.ACCEPTED, ChatMessage(delays.first().first, trip.ownerId, "", now, 13))
+      assertEquals(OrderError.Unknown, model.uiState.value.sendError)
+      assertEquals("Keep my typed message", model.uiState.value.draft)
       publish(OrderStatus.ACCEPTED, ChatMessage(delays.first().first, trip.ownerId, "", now, 12))
       assertNull(model.uiState.value.sendError)
       assertEquals("Keep my typed message", model.uiState.value.draft)
       assertTrue(model.uiState.value.canSendDelay)
       assertTrue(requests.isEmpty())
+    }
+  }
+
+  @Test
+  fun delayRequiresBothAnAuthorizedContextAndAnAvailableConversation() {
+    val context = ChatContext(order, trip, trip.ownerId)
+    val ready =
+        OrderChatUiState(
+            context = context,
+            chat = OrderChat(order.status, emptyList()),
+            loading = false,
+        )
+    assertTrue(ready.canSendDelay)
+    for (blocked in
+        listOf(
+            ready.copy(context = null),
+            ready.copy(chat = null),
+            ready.copy(sending = true),
+            ready.copy(sendError = OrderError.Unknown),
+        )) {
+      assertFalse(blocked.canSendDelay)
     }
   }
 
@@ -183,17 +207,24 @@ class OrderChatViewModelTest {
 
   @Test
   fun validDraftCannotSendBeforeLoadingOrAfterAccessFailure() = runTest {
+    user.value = trip.ownerId
     observe = { flow { awaitCancellation() } }
     withModel { model ->
       model.updateDraft("waiting for server permission")
       assertFalse(model.uiState.value.canSend)
+      assertFalse(model.uiState.value.canSendDelay)
+      model.sendDelay(5)
       model.send()
+      assertTrue(delays.isEmpty())
       assertTrue(requests.isEmpty())
       observe = { flowOf(OrderResult.Error(OrderError.PermissionDenied)) }
       startChat(model)
       assertEquals(OrderError.PermissionDenied, model.uiState.value.error)
       assertFalse(model.uiState.value.canSend)
+      assertFalse(model.uiState.value.canSendDelay)
+      model.sendDelay(5)
       model.send()
+      assertTrue(delays.isEmpty())
       assertTrue(requests.isEmpty())
     }
   }
@@ -201,6 +232,8 @@ class OrderChatViewModelTest {
   @Test
   fun invalidDraftsCannotBeSubmitted() = runTest {
     withModel(start = false) { model ->
+      model.sendDelay(5)
+      assertTrue(delays.isEmpty())
       model.send()
       assertTrue(requests.isEmpty())
       startChat(model)

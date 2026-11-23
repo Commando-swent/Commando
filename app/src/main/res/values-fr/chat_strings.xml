@@ -18,9 +18,10 @@
     <string name="chat_message_partner">Contacter : %1$s</string>
     <string name="chat_delay_action">Signaler un retard</string>
     <string name="chat_delay_minutes">Retard en minutes</string>
-    <string name="chat_delay_range">Saisissez 1 à %1$d minutes</string>
+    <string name="chat_delay_range">Entre 1 et %1$d</string>
     <plurals name="chat_delay_message">
         <item quantity="one">Retard : environ %1$d minute</item>
+        <item quantity="many">Retard : environ %1$d minutes</item>
         <item quantity="other">Retard : environ %1$d minutes</item>
     </plurals>
 </resources>

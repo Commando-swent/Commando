@@ -58,6 +58,7 @@ private fun RefundUiState.Content.message(): Int =
     when {
       processing -> R.string.refund_processing
       error == PaymentError.NOT_CAPTURED -> R.string.refund_payment_unconfirmed
+      error == PaymentError.INELIGIBLE -> R.string.order_status_conflict
       error != null -> R.string.refund_unavailable
       payment.status != PaymentStatus.CONFIRMED -> R.string.refund_payment_unconfirmed
       refund == null -> R.string.refund_not_requested

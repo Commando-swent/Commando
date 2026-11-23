@@ -74,7 +74,13 @@ class OrderRefundStatusTest {
     compose.onNodeWithTag(OrderRefundTestTags.REFRESH).assertDoesNotExist()
     compose.runOnIdle { state.value = RefundUiState.Unavailable(PaymentError.UNKNOWN) }
     compose.onNodeWithTag(OrderRefundTestTags.REFRESH).assertIsEnabled()
-    for (error in listOf(null, PaymentError.UNKNOWN, PaymentError.NOT_CAPTURED)) {
+    for ((error, message) in
+        mapOf(
+            null to R.string.refund_payment_unconfirmed,
+            PaymentError.UNKNOWN to R.string.refund_unavailable,
+            PaymentError.NOT_CAPTURED to R.string.refund_payment_unconfirmed,
+            PaymentError.INELIGIBLE to R.string.order_status_conflict,
+        )) {
       compose.runOnIdle {
         state.value =
             RefundUiState.Content(
@@ -83,9 +89,6 @@ class OrderRefundStatusTest {
                 error = error,
             )
       }
-      val message =
-          if (error == PaymentError.UNKNOWN) R.string.refund_unavailable
-          else R.string.refund_payment_unconfirmed
       compose
           .onNodeWithText(ApplicationProvider.getApplicationContext<Context>().getString(message))
           .assertExists()

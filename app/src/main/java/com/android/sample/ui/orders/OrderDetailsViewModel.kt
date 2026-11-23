@@ -202,10 +202,8 @@ class OrderDetailsViewModel(
   }
   val refundState = refunds?.state
 
-  /** Reloads persisted refund status without submitting another refund or cancellation. */
-  fun refreshRefund() {
-    refunds?.load()
-  }
+  /** Reloads order and refund status without another refund or cancellation. */
+  fun refreshRefund() = retry()
 
   private val ratingRepository: RatingRepository by lazy {
     checkNotNull(ratingRepositoryFactory) { "Rating repository factory is required" }

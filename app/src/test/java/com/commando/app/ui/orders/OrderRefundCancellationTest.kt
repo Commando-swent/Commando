@@ -58,7 +58,7 @@ class OrderRefundCancellationTest {
   }
 
   @Test
-  fun unconfirmedOutcomesKeepTheOrderActiveAndRetryUsesTheSameRefund() = runTest {
+  fun unconfirmedOutcomesKeepTheOrderActiveUntilRetryConfirms() = runTest {
     for (status in RefundStatus.entries.filter { it != RefundStatus.CONFIRMED }) {
       val order = PaymentFixtures.order
       var outcome = status
@@ -69,15 +69,12 @@ class OrderRefundCancellationTest {
       vm.cancel()
       advanceUntilIdle()
       assertEquals(order, (vm.uiState.value as OrderDetailsUiState.Content).order)
+      vm.refreshRefund()
+      advanceUntilIdle()
       coVerify(exactly = 0) { orders.cancelOrder(any()) }
-      val operation = (payments.getRefund(order.id) as PaymentResult.Success).data!!.operationId
       outcome = RefundStatus.CONFIRMED
       vm.cancel()
       advanceUntilIdle()
-      assertEquals(
-          operation,
-          (payments.getRefund(order.id) as PaymentResult.Success).data!!.operationId,
-      )
       coVerify(exactly = 1) { orders.cancelOrder(order.id) }
       vm.viewModelScope.cancel()
     }

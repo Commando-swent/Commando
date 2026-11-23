@@ -227,6 +227,37 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
     }
   }
 
+  @Test
+  fun paidOwnerCancellationCommitsItsEventOnlyAfterConfirmedRefund() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = seed(owner, requester, OrderStatus.ACCEPTED)
+      val orders = OrderRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          orders.cancelAcceptedOrder(order.id),
+      )
+      assertTrue(
+          repo(owner, RefundStatus.UNCERTAIN).refundForCancellation(order.id)
+              is PaymentResult.Success
+      )
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          orders.cancelAcceptedOrder(order.id),
+      )
+      assertTrue(repo(owner).refundForCancellation(order.id) is PaymentResult.Success)
+      assertEquals(
+          OrderStatus.CANCELLED,
+          (orders.cancelAcceptedOrder(order.id) as OrderResult.Success).data.status,
+      )
+      val event =
+          requester.firestore.collection("orderEvents").document("${order.id}_ORDER_CANCELLED")
+      val timestamp = event.get(Source.SERVER).await().getTimestamp("occurredAt")
+      assertNotNull(timestamp)
+      assertTrue(orders.cancelAcceptedOrder(order.id) is OrderResult.Success)
+      assertEquals(timestamp, event.get(Source.SERVER).await().getTimestamp("occurredAt"))
+    }
+  }
+
   private fun repo(
       client: EmulatorClient,
       status: RefundStatus = RefundStatus.CONFIRMED,

@@ -776,6 +776,39 @@ class FakeOrderRepositoryTest {
   }
 
   @Test
+  fun commandoCancellationChangesOnlyAcceptedOrdersAndIsIdempotent() = runTest {
+    userId = "commando"
+    for (status in OrderStatus.entries) {
+      val stored = order().copy(status = status)
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      val cancelled = stored.copy(status = OrderStatus.CANCELLED)
+      val expected =
+          if (status in listOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED))
+              OrderResult.Success(cancelled)
+          else failure(OrderError.AlreadyDecided(stored))
+      repeat(2) { assertEquals(expected, orders.cancelAcceptedOrder(stored.id)) }
+      assertEquals(expected.persisted(), orders.getOrderById(stored.id).data())
+    }
+  }
+
+  @Test
+  fun commandoCancellationIsDeniedToEveryoneButTheTripOwner() = runTest {
+    val accepted = order().copy(status = OrderStatus.ACCEPTED)
+    val selfOrder = accepted.copy(id = "self-order", requesterId = "commando")
+    val orders =
+        FakeOrderRepository({ userId }, listOf(accepted, selfOrder), tripRepository = trips())
+    for (caller in listOf("requester-demo", "outsider")) {
+      userId = caller
+      assertEquals(failure(OrderError.PermissionDenied), orders.cancelAcceptedOrder(accepted.id))
+    }
+    userId = null
+    assertEquals(failure(OrderError.NotAuthenticated), orders.cancelAcceptedOrder(accepted.id))
+    userId = "commando"
+    assertEquals(failure(OrderError.PermissionDenied), orders.cancelAcceptedOrder(selfOrder.id))
+    assertEquals(OrderResult.Success(accepted), orders.getOrderById(accepted.id))
+  }
+
+  @Test
   fun receiptConfirmationPreservesFieldsAndRepeatedResultsAreIndependentSnapshots() = runTest {
     val ready =
         order()

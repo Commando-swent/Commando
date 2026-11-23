@@ -1,7 +1,7 @@
 package com.android.sample.ui.orders
 
 // AI assistance: OpenAI Codex (requester cancellation).
-// AI assistance: Claude (Anthropic).
+// AI assistance: Claude (Anthropic), including the #401 test double.
 
 import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.data.repository.OrderError
@@ -385,6 +385,9 @@ class MyOrdersViewModelTest {
     override suspend fun createOrder(draft: OrderDraft): OrderResult<Order> = error("Not used")
 
     override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
+        error("Not used")
+
+    override suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order> =
         error("Not used")
 
     override suspend fun decideOrder(

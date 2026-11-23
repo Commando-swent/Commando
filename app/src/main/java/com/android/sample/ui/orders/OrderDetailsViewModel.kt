@@ -1,6 +1,6 @@
 package com.android.sample.ui.orders
 
-// AI assistance: OpenAI Codex (shared session guard).
+// AI assistance: OpenAI Codex (shared session guard); Commando cancellation (#402): Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.OrderError
@@ -142,6 +142,13 @@ sealed class OrderDetailsUiState {
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status == OrderStatus.PENDING
+
+    /**
+     * Owner-only presentation eligibility for cancelling an accepted order;
+     * [OrderRepository.cancelAcceptedOrder] enforces persisted ownership and status.
+     */
+    val canCancelAccepted: Boolean
+      get() = isEligibleOwner && order.status == OrderStatus.ACCEPTED
 
     /** Editing is requester-only and additionally requires an open trip. */
     val canEdit: Boolean
@@ -301,14 +308,19 @@ class OrderDetailsViewModel(
       }
 
   /**
-   * Submits a confirmed cancellation for the currently eligible requester.
+   * Submits a confirmed cancellation: a pending order for its requester, or an accepted order for
+   * the trip owner.
    *
    * The screen asks for confirmation before calling this action. Repeated taps while saving are
    * ignored. Only the repository result updates the displayed order; a recoverable failure keeps
    * the last confirmed content for retry, and a conflict displays the persisted winner. Results
    * arriving after the session ends are discarded.
    */
-  fun cancel() = saveOrder(isAllowed = { it.canCancel }) { orderRepository.cancelOrder(orderId) }
+  fun cancel() =
+      saveOrder(isAllowed = { it.canCancel || it.canCancelAccepted }) {
+        if (it.canCancelAccepted) orderRepository.cancelAcceptedOrder(orderId)
+        else orderRepository.cancelOrder(orderId)
+      }
 
   /**
    * Confirms receipt using repository-confirmed status, offering rating once after eligible

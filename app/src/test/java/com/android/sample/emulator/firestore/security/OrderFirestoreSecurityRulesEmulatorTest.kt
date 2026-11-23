@@ -1,6 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147), trip seeding (#233): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), trip seeding (#233), Commando
+// cancellation (#401): Claude Code.
 import com.android.sample.data.repository.*
 import com.commando.app.model.*
 import com.commando.app.model.OrderDecision.ACCEPT
@@ -986,6 +987,86 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         }
         .await()
   }
+
+  @Test
+  fun ownerCancelsAnAcceptedOrderAndPublishesItsTrustedCancellationTime() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = acceptedOrder(owner, requester)
+      val cancelled = order.copy(status = OrderStatus.CANCELLED)
+      repeat(2) {
+        assertEquals(OrderResult.Success(cancelled), orders(owner).cancelAcceptedOrder(order.id))
+      }
+      val acceptedAt = eventTime(requester, order.id, NotificationEventType.ORDER_ACCEPTED)
+      val cancelledAt = eventTime(requester, order.id, NotificationEventType.ORDER_CANCELLED)
+      assertTrue(isPenaltyFreeCancellation(acceptedAt, cancelledAt))
+      assertEquals(OrderResult.Success(cancelled), orders(requester).getOrderById(order.id))
+    }
+  }
+
+  @Test
+  fun commandoCancellationIsDeniedWithoutItsEventAndFromOtherStatuses() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = acceptedOrder(owner, requester)
+      val ref = owner.firestore.collection("orders").document(order.id)
+      assertPermissionDenied("cancellation without event") {
+        ref.update("status", "CANCELLED").await()
+      }
+      assertPermissionDenied("event for another recipient") {
+        writeDecision(owner, order.id, "CANCELLED", owner.auth.currentUser!!.uid)
+      }
+      orders(owner).markReadyForHandoff(order.id)
+      assertPermissionDenied("cancellation when ready") {
+        writeDecision(owner, order.id, "CANCELLED")
+      }
+      assertEquals(
+          OrderResult.Error(
+              OrderError.AlreadyDecided(order.copy(status = OrderStatus.READY_FOR_HANDOFF))
+          ),
+          orders(owner).cancelAcceptedOrder(order.id),
+      )
+      val pending = createOrder(requester, publish(owner))
+      assertPermissionDenied("cancellation when pending") {
+        writeDecision(owner, pending.id, "CANCELLED")
+      }
+    }
+  }
+
+  @Test
+  fun requesterOutsiderAndSignedOutUsersCannotCancelAnAcceptedOrder() = runTest {
+    withClients("owner" to true, "requester" to true, "outsider" to true, "signedOut" to false) {
+        (owner, requester, outsider, signedOut) ->
+      val order = acceptedOrder(owner, requester)
+      for (client in listOf(requester, outsider, signedOut)) {
+        val error =
+            if (client == signedOut) OrderError.NotAuthenticated else OrderError.PermissionDenied
+        assertEquals(OrderResult.Error(error), orders(client).cancelAcceptedOrder(order.id))
+        assertPermissionDenied("cancellation by ${client.app.name}") {
+          writeDecision(client, order.id, "CANCELLED", requester.auth.currentUser!!.uid)
+        }
+      }
+      assertEquals(OrderResult.Success(order), orders(owner).getOrderById(order.id))
+    }
+  }
+
+  private suspend fun acceptedOrder(owner: EmulatorClient, requester: EmulatorClient): Order {
+    val order = createOrder(requester, publish(owner))
+    val decided = orders(owner).decideOrder(order.id, ACCEPT, order.revision)
+    return (decided as OrderResult.Success).data
+  }
+
+  /** Server time of the [type] event of [orderId], read by its [recipient]. */
+  private suspend fun eventTime(
+      recipient: EmulatorClient,
+      orderId: String,
+      type: NotificationEventType,
+  ): Instant =
+      recipient.firestore
+          .collection("orderEvents")
+          .document(type.eventId(orderId))
+          .get(Source.SERVER)
+          .await()
+          .getTimestamp("occurredAt")!!
+          .toInstant()
 
   private fun event(id: String, recipient: String, type: String) =
       mapOf(

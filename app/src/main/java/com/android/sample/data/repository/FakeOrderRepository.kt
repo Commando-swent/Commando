@@ -188,6 +188,9 @@ class FakeOrderRepository(
   override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> =
       transitionOrder(orderId, OwnerOrderTransition.MARK_READY)
 
+  override suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OwnerOrderTransition.CANCEL_ACCEPTED)
+
   override suspend fun confirmReceipt(orderId: String): OrderResult<Order> = withSession { userId ->
     if (!orderId.isDocumentId()) return@withSession OrderResult.Error(OrderError.InvalidData)
     val order = orders[orderId] ?: return@withSession OrderResult.Error(OrderError.NotFound)

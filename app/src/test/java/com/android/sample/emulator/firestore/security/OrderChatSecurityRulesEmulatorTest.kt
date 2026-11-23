@@ -3,7 +3,13 @@ package com.android.sample.emulator.firestore.security
 // AI assistance: OpenAI Codex.
 import android.os.Looper
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.data.repository.OrderChatRepositoryFirestore
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.model.*
+import com.commando.app.model.CHAT_WINDOW_SIZE
+import com.commando.app.model.MAX_CHAT_TEXT_LENGTH
+import com.commando.app.model.OrderChat
 import com.commando.app.model.OrderStatus
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue

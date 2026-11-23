@@ -2,7 +2,7 @@ package com.android.sample.ui.navigation
 
 // AI assistance: OpenAI Codex.
 import androidx.test.platform.app.InstrumentationRegistry
-import com.android.sample.data.repository.productSearchTerms
+import com.commando.app.data.repository.productSearchTerms
 import com.commando.app.model.Product
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions

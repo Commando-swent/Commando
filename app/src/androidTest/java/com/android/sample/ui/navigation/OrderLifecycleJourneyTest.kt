@@ -19,9 +19,17 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.*
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepositoryFirestore
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ProductRepositoryFirestore
+import com.commando.app.data.repository.ShoppingChecklistRepositoryFirestore
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
+import com.commando.app.data.repository.context
 import com.commando.app.model.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source

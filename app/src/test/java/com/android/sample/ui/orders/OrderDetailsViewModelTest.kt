@@ -3,12 +3,12 @@ package com.android.sample.ui.orders
 // AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
 
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.OrderError
-import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.OrderResult
-import com.android.sample.data.repository.RatingError
-import com.android.sample.data.repository.RatingRepository
-import com.android.sample.data.repository.RatingResult
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult

@@ -2,6 +2,11 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.data.repository.*
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingRepositoryFirestore
+import com.commando.app.data.repository.RatingResult
+import com.commando.app.data.repository.rating
+import com.commando.app.data.repository.summary
 import com.commando.app.model.*
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source

@@ -7,7 +7,12 @@ import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.catalogue.CatalogueViewModel
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductResult
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers

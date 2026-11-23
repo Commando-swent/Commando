@@ -20,7 +20,11 @@ import com.android.sample.ui.orders.MyOrdersTestTags
 import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.RecordingRatings
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ProductResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.*
 import java.time.Duration

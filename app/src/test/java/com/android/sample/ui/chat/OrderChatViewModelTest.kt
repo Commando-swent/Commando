@@ -168,15 +168,28 @@ class OrderChatViewModelTest {
   }
 
   @Test
-  fun requesterAndTerminalOrderCannotReportDelay() = runTest {
+  fun requesterCannotReportDelay() = runTest {
     withModel { model ->
       model.sendDelay(5)
       runCurrent()
       assertTrue(delays.isEmpty())
+    }
+  }
+
+  @Test
+  fun accountChangeEndsTheDelaySession() = runTest {
+    withModel { model ->
       user.value = trip.ownerId
       runCurrent()
       assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
+      model.sendDelay(5)
+      assertTrue(delays.isEmpty())
     }
+  }
+
+  @Test
+  fun terminalOrderPreventsNewOwnerDelayNotices() = runTest {
+    user.value = trip.ownerId
     history.value = OrderResult.Success(OrderChat(OrderStatus.DELIVERED, emptyList()))
     withModel { model ->
       model.sendDelay(5)
@@ -186,7 +199,7 @@ class OrderChatViewModelTest {
   }
 
   @Test
-  fun confirmedDelayKeepsDraftAndDefinitiveFailureAllowsAnotherDuration() = runTest {
+  fun definitiveDelayFailureRetriesWithANewIdAndPreservesTextDraft() = runTest {
     user.value = trip.ownerId
     write = { _, _ -> OrderResult.Error(OrderError.PermissionDenied) }
     withModel { model ->

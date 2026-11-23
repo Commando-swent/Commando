@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
 import com.commando.app.model.*
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CancellationException
@@ -86,16 +87,18 @@ internal fun FirestoreDocument.toPayment() =
         data.paymentEnum("status"),
     )
 
-internal fun FirestoreDocument.toRefund() =
-    Refund(
-        data.paymentField("operationId"),
-        data.paymentField("orderId"),
-        data.paymentField("paymentId"),
-        data.paymentField("requesterId"),
-        data.paymentField("requestedBy"),
-        data.paymentField("amountCents"),
-        data.paymentEnum("status"),
-    )
+internal fun FirestoreDocument.toRefund(): Refund {
+  data.paymentField<Timestamp>("updatedAt")
+  return Refund(
+      data.paymentField("operationId"),
+      data.paymentField("orderId"),
+      data.paymentField("paymentId"),
+      data.paymentField("requesterId"),
+      data.paymentField("requestedBy"),
+      data.paymentField("amountCents"),
+      data.paymentEnum("status"),
+  )
+}
 
 internal fun Refund.firestoreFields(): Map<String, Any> =
     mapOf(

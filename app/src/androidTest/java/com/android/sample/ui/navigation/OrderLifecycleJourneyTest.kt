@@ -12,6 +12,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
 import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthRepositoryFirebase
+import com.android.sample.ui.auth.AuthTestTags
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.catalogue.CatalogueTestTags
@@ -332,9 +333,13 @@ class OrderLifecycleJourneyTest {
     compose
         .onNodeWithContentDescription(context.getString(R.string.auth_password))
         .performTextReplacement(password)
-    compose
-        .onNodeWithContentDescription(context.getString(R.string.auth_password))
-        .performImeAction()
+    compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+      compose
+          .onAllNodes(hasTestTag(AuthTestTags.SUBMIT) and isEnabled())
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     awaitTag(NavigationTestTags.HOME_SCREEN)
   }
 

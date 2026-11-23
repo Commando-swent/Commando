@@ -40,6 +40,7 @@ import com.android.sample.ui.trips.formatTripDeparture
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.RatingError
 import com.commando.app.model.*
+import com.commando.app.ui.orders.*
 import java.time.Instant
 
 /** Stable action selectors, independent of the presentation language. */
@@ -83,6 +84,8 @@ object OrderDetailsTestTags {
  * @param ratingState Transient receipt rating input and submission feedback.
  * @param onRatingScore Selects stars; [onRatingComment] edits the optional comment.
  * @param onRatingSubmit Submits or retries; [onRatingDismiss] closes idle feedback.
+ * @param refundState Persisted payment/refund feedback; null omits the optional integration.
+ * @param onRefreshRefund Reconciles stored refund status without issuing a new refund.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -103,6 +106,8 @@ fun OrderDetailsScreen(
     onRatingComment: (String) -> Unit = {},
     onRatingSubmit: () -> Unit = {},
     onRatingDismiss: () -> Unit = {},
+    refundState: RefundUiState? = null,
+    onRefreshRefund: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -166,6 +171,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
+          refundState?.let { OrderRefundStatus(it, onRefreshRefund) }
           if (onChat != null && state.isChatParticipant) OrderChatEntry(state, onChat)
           if (state.canRate) state.submittedRating?.let { SubmittedOrderRating(it) }
           if (ratingState.submitted || ratingState.error == RatingError.AlreadyRated) {
@@ -176,7 +182,11 @@ fun OrderDetailsScreen(
                 Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
           }
-          if (state.canEdit && onEdit != null) {
+          if (
+              state.canEdit &&
+                  onEdit != null &&
+                  (refundState == null || refundState == RefundUiState.Hidden)
+          ) {
             OutlinedButton(
                 onClick = onEdit,
                 enabled = !state.isSaving,
@@ -185,7 +195,14 @@ fun OrderDetailsScreen(
               Text(stringResource(R.string.order_edit))
             }
           }
-          OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel, onConfirmReceipt)
+          OrderStatusActions(
+              state,
+              onDecision,
+              onMarkReadyForHandoff,
+              onCancel,
+              onConfirmReceipt,
+              refundReserved = (refundState as? RefundUiState.Content)?.refund != null,
+          )
         }
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
@@ -225,6 +242,7 @@ private fun OrderStatusActions(
     onMarkReadyForHandoff: () -> Unit,
     onCancel: () -> Unit,
     onConfirmReceipt: () -> Unit,
+    refundReserved: Boolean,
 ) {
   val canCancel = state.canCancel || state.canCancelAccepted
   var confirmCancellation by
@@ -243,14 +261,14 @@ private fun OrderStatusActions(
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
       OutlinedButton(
           onClick = { onDecision(OrderDecision.REJECT) },
-          enabled = !state.isSaving,
+          enabled = !state.isSaving && !refundReserved,
           modifier = Modifier.weight(1f).testTag(OrderDetailsTestTags.REJECT),
       ) {
         Text(stringResource(R.string.order_decision_reject))
       }
       Button(
           onClick = { onDecision(OrderDecision.ACCEPT) },
-          enabled = !state.isSaving,
+          enabled = !state.isSaving && !refundReserved,
           modifier = Modifier.weight(1f).testTag(OrderDetailsTestTags.ACCEPT),
       ) {
         Text(stringResource(R.string.order_decision_accept))
@@ -271,7 +289,7 @@ private fun OrderStatusActions(
   if (state.canMarkReadyForHandoff) {
     Button(
         onClick = onMarkReadyForHandoff,
-        enabled = !state.isSaving,
+        enabled = !state.isSaving && !refundReserved,
         modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF),
     ) {
       Text(stringResource(R.string.order_mark_ready_for_handoff))

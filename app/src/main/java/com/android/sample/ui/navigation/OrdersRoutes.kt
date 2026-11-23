@@ -23,6 +23,7 @@ import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.orders.ShoppingChecklistScreen
 import com.android.sample.ui.orders.ShoppingChecklistViewModel
+import com.commando.app.data.repository.PaymentRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.TripRepository
@@ -43,6 +44,7 @@ internal fun NavGraphBuilder.ordersRoutes(
     userId: String,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     onBrowseTrips: () -> Unit,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)? = null,
 ) {
   composable(route = CommandoScreens.MyOrders.name) { entry ->
     val model: MyOrdersViewModel =
@@ -74,14 +76,18 @@ internal fun NavGraphBuilder.ordersRoutes(
               orders::currentUserId,
               orders.sessionChanges,
               ratingRepositoryFactory = ratingRepositoryFactory,
+              paymentRepositoryFactory = paymentRepositoryFactory,
           )
         }
     RefreshOrderAfterChat(entry, model)
     val state by model.uiState.collectAsState()
     val ratingState by model.ratingState.collectAsState()
+    val refundState = model.refundState?.collectAsState()?.value
     OrderDetailsScreen(
         state = state,
         ratingState = ratingState,
+        refundState = refundState,
+        onRefreshRefund = model::refreshRefund,
         onRatingScore = model::selectScore,
         onRatingComment = model::updateComment,
         onRatingSubmit = model::submitRating,

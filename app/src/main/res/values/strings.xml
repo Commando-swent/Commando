@@ -44,4 +44,15 @@
         <item quantity="other">Position captured %1$d seconds ago</item>
     </plurals>
     <string name="order_tracking_retry">Retry tracking</string>
+    <string name="refund_title">Refund</string>
+    <string name="refund_loading">Checking refund status…</string>
+    <string name="refund_processing">Processing the refund. Cancellation is not complete yet.</string>
+    <string name="refund_unavailable">Refund status could not be verified. Refresh its status.</string>
+    <string name="refund_payment_unconfirmed">The payment is not confirmed. Refresh its status before cancelling.</string>
+    <string name="refund_confirmed">Simulated refund confirmed: %1$s.</string>
+    <string name="refund_pending">Refund pending. Cancellation is not complete yet.</string>
+    <string name="refund_failed">The refund failed. You can retry cancellation.</string>
+    <string name="refund_uncertain">The refund result is uncertain. Refresh its status or retry cancellation safely.</string>
+    <string name="refund_not_requested">No refund has been requested. Cancellation will first refund the captured payment.</string>
+    <string name="refund_refresh">Refresh refund status</string>
 </resources>

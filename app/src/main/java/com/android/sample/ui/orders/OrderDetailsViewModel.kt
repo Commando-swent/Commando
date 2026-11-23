@@ -7,6 +7,7 @@ import com.android.sample.ui.session.SessionGuard
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.PaymentRepository
 import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingResult
@@ -23,6 +24,7 @@ import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.isActiveForTracking
 import com.commando.app.model.normalizeRatingComment
+import com.commando.app.ui.orders.OrderRefundController
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -180,6 +182,7 @@ class OrderDetailsViewModel(
     private val currentUserId: () -> String? = { null },
     sessionChanges: Flow<String?> = emptyFlow(),
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<OrderDetailsUiState>(OrderDetailsUiState.Loading)
   val uiState: StateFlow<OrderDetailsUiState> = mutableState.asStateFlow()
@@ -193,6 +196,17 @@ class OrderDetailsViewModel(
   private var ratingReadGeneration = 0L
 
   private val session = SessionGuard(currentUserId)
+  private val refunds = paymentRepositoryFactory?.let { factory ->
+    val identity = { if (session.hasEnded()) null else session.initialUserId }
+    OrderRefundController(orderId, factory(identity), identity, viewModelScope)
+  }
+  val refundState = refunds?.state
+
+  /** Reloads persisted refund status without submitting another refund or cancellation. */
+  fun refreshRefund() {
+    refunds?.load()
+  }
+
   private val ratingRepository: RatingRepository by lazy {
     checkNotNull(ratingRepositoryFactory) { "Rating repository factory is required" }
         .invoke { if (session.hasEnded()) null else session.initialUserId }
@@ -203,6 +217,7 @@ class OrderDetailsViewModel(
       sessionChanges.collect { userId ->
         if (session.hasEnded(userId)) {
           invalidateRatingRead()
+          refunds?.clear()
           mutableState.value = OrderDetailsUiState.SessionEnded
           mutableRating.value = RatingDialogState()
         }
@@ -239,6 +254,7 @@ class OrderDetailsViewModel(
         if (!endSessionIfChanged()) {
           mutableState.value = state
           loadSubmittedRating()
+          refunds?.load()
         }
       } finally {
         isLoading = false
@@ -249,6 +265,7 @@ class OrderDetailsViewModel(
   private fun endSessionIfChanged(): Boolean {
     if (session.hasEnded()) {
       invalidateRatingRead()
+      refunds?.clear()
       mutableState.value = OrderDetailsUiState.SessionEnded
       mutableRating.value = RatingDialogState()
       return true
@@ -318,6 +335,8 @@ class OrderDetailsViewModel(
    */
   fun cancel() =
       saveOrder(isAllowed = { it.canCancel || it.canCancelAccepted }) {
+        if (refunds?.beforeCancellation() == false)
+            return@saveOrder OrderResult.Error(OrderError.Unknown)
         if (it.canCancelAccepted) orderRepository.cancelAcceptedOrder(orderId)
         else orderRepository.cancelOrder(orderId)
       }

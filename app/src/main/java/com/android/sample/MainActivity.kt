@@ -30,6 +30,7 @@ import com.android.sample.ui.navigation.AppScaffold
 import com.android.sample.ui.navigation.CommandoApp
 import com.android.sample.ui.navigation.CommandoScreens
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.PaymentRepositoryFirestore
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
@@ -55,6 +56,7 @@ class MainActivity : AppCompatActivity() {
           CommandoApp(
               repository = auth,
               photoRepository = photos,
+              paymentRepositoryFactory = { PaymentRepositoryFirestore(it) },
               onLanguageSelected = { language ->
                 AppCompatDelegate.setApplicationLocales(
                     LocaleListCompat.forLanguageTags(language.tag)

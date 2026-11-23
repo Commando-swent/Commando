@@ -516,4 +516,15 @@
     <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
     <string name="rating_success">Note envoyée.</string>
     <string name="rating_already">Cette commande a déjà été évaluée.</string>
+    <string name="refund_title">Remboursement</string>
+    <string name="refund_loading">Vérification du remboursement…</string>
+    <string name="refund_processing">Remboursement en cours. L’annulation n’est pas encore terminée.</string>
+    <string name="refund_unavailable">Le remboursement n’a pas pu être vérifié. Actualisez son statut.</string>
+    <string name="refund_payment_unconfirmed">Le paiement n’est pas confirmé. Actualisez son statut avant d’annuler.</string>
+    <string name="refund_confirmed">Remboursement simulé confirmé : %1$s.</string>
+    <string name="refund_pending">Remboursement en attente. L’annulation n’est pas encore terminée.</string>
+    <string name="refund_failed">Le remboursement a échoué. Vous pouvez réessayer l’annulation.</string>
+    <string name="refund_uncertain">Le résultat du remboursement est incertain. Actualisez son statut ou réessayez l’annulation sans risque de doublon.</string>
+    <string name="refund_not_requested">Aucun remboursement demandé. L’annulation remboursera d’abord le paiement confirmé.</string>
+    <string name="refund_refresh">Actualiser le remboursement</string>
 </resources>

@@ -1,6 +1,11 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
+import com.commando.app.data.repository.FirestoreDocument
+import com.commando.app.data.repository.FirestoreFailure
+import com.commando.app.data.repository.observeServerDocuments
+import com.commando.app.data.repository.toFirestoreDocument
+import com.commando.app.data.repository.toFirestoreFailure
 import com.commando.app.model.NotificationEventType
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision

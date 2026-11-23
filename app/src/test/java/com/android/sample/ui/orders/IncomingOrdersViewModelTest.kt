@@ -2,10 +2,10 @@ package com.android.sample.ui.orders
 
 // AI assistance: Claude Code; OpenAI Codex (cancellation regression tests).
 import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.OrderError
 import com.android.sample.data.repository.OrderRepository
 import com.android.sample.data.repository.OrderResult
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem

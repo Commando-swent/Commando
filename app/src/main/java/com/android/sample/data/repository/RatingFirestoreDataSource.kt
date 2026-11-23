@@ -1,6 +1,8 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.commando.app.data.repository.FirestoreDocument
+import com.commando.app.data.repository.toFirestoreDocument
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.tasks.await

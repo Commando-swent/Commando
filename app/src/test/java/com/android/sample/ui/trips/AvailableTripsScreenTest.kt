@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.data.repository.TripError
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.CriteriaProblem
 import com.commando.app.model.HANDOFF_RADIUS_METERS
 import com.commando.app.model.Location

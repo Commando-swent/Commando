@@ -20,7 +20,7 @@ import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.*
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.data.location.*
+import com.commando.app.data.location.*
 import com.commando.app.model.DeviceLocation
 import kotlinx.coroutines.awaitCancellation
 import org.junit.Assert.*

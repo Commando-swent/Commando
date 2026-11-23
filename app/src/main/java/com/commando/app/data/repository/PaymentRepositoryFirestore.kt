@@ -1,6 +1,5 @@
 package com.commando.app.data.repository
 
-import com.android.sample.data.repository.toOrder
 import com.commando.app.model.*
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -10,7 +9,7 @@ import kotlinx.coroutines.tasks.await
 /** Server transactions reuse the shared policy; [currentUserId] must be bound to one session. */
 class PaymentRepositoryFirestore(
     currentUserId: () -> String?,
-    firestore: FirebaseFirestore,
+    firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
 ) :
     PaymentRepository by TransactionalPaymentRepository(
         FirebasePaymentDataSource(firestore),

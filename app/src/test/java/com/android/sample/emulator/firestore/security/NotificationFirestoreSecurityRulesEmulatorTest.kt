@@ -2,8 +2,12 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex; cancellation preference case (#401): Claude Code.
 import com.android.sample.data.repository.*
-import com.android.sample.data.repository.NotificationFirestoreData as Schema
 import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
+import com.commando.app.data.repository.NotificationFirestoreData as Schema
+import com.commando.app.data.repository.NotificationRepositoryFirestore
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.notificationUser
 import com.commando.app.model.*
 import com.commando.app.model.NotificationEventType.*
 import com.google.firebase.Timestamp

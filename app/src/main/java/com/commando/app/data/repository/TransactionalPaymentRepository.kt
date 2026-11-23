@@ -1,7 +1,5 @@
 package com.commando.app.data.repository
 
-import com.android.sample.data.repository.isDocumentId
-import com.android.sample.data.repository.isValid
 import com.commando.app.model.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext

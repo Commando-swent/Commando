@@ -1,10 +1,10 @@
 package com.android.sample.emulator.firestore.security
 
 // AI assistance: Claude Code.
-import com.android.sample.data.repository.OrderError
-import com.android.sample.data.repository.OrderResult
-import com.android.sample.data.repository.ShoppingChecklistRepositoryFirestore
-import com.android.sample.data.repository.documentKey
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ShoppingChecklistRepositoryFirestore
+import com.commando.app.data.repository.documentKey
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus

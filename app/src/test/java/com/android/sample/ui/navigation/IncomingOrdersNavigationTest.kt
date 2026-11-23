@@ -6,10 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
-import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.FakeRatingRepository
-import com.android.sample.data.repository.FakeShoppingChecklistRepository
-import com.android.sample.data.repository.OrderRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -17,7 +13,11 @@ import com.android.sample.ui.orders.IncomingOrdersTestTags
 import com.android.sample.ui.orders.ShoppingChecklistTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
+import com.commando.app.data.repository.FakeShoppingChecklistRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderRepository
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem

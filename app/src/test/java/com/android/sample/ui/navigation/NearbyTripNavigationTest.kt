@@ -21,6 +21,7 @@ import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.RecordingRatings
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.*
 import java.time.Instant

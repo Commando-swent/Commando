@@ -14,7 +14,6 @@ import androidx.compose.ui.unit.dp
 import androidx.credentials.Credential
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.android.sample.data.repository.FakeOrderRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
@@ -23,6 +22,7 @@ import com.android.sample.ui.navigation.CommandoApp
 import com.android.sample.ui.navigation.NavigationTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import java.io.File
 import org.junit.Assert.assertEquals

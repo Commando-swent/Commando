@@ -9,12 +9,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.TripLocations
+import com.commando.app.ui.home.HomeTestTags
+import com.commando.app.ui.trips.CreateTripScreenTestTags
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.runBlocking

@@ -32,8 +32,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.ui.components.SkeletonCard
-import com.android.sample.ui.components.StateCard
+import com.commando.app.ui.components.SkeletonCard
+import com.commando.app.ui.components.StateCard
 
 /** Test tags of the incoming-orders screen. */
 object IncomingOrdersTestTags {

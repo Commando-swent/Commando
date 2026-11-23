@@ -5,7 +5,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sample.data.repository.TripError
+import com.commando.app.data.repository.TripError
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test

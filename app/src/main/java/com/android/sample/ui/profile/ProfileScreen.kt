@@ -34,7 +34,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.android.sample.R
 import com.android.sample.data.repository.FakeOrderRepository
-import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
@@ -45,6 +44,7 @@ import com.android.sample.ui.navigation.CommandoApp
 import com.android.sample.ui.navigation.CommandoScreens
 import com.android.sample.ui.navigation.NavigationTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeTripRepository
 
 /** Displays repository-backed state; navigation and sign-out remain owned by the app root. */
 @Composable

@@ -16,6 +16,7 @@ import com.android.sample.ui.navigation.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.MyTripsTestTags
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.*
 import kotlinx.coroutines.flow.*
 import org.junit.Assert.*

@@ -3,8 +3,8 @@ package com.android.sample.ui.trips
 // AI assistance: OpenAI Codex (shared feed classification); Claude Code (search criteria).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.TripError
-import com.android.sample.data.repository.TripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.CriteriaProblem
 import com.commando.app.model.Location
 import com.commando.app.model.Trip

@@ -1,5 +1,7 @@
 package com.android.sample
 
+import com.commando.app.data.repository.FakeTripRepository
+
 // AI assistance: OpenAI Codex (review screenshot capture).
 
 import android.graphics.Bitmap

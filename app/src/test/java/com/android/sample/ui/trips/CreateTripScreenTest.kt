@@ -5,9 +5,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sample.data.repository.FakeTripRepository
-import com.android.sample.data.repository.TripError
-import com.android.sample.data.repository.TripResult
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Trip
 import com.commando.app.model.TripLocations
 import java.time.Clock

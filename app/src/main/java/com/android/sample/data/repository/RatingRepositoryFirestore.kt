@@ -1,6 +1,8 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.commando.app.data.repository.FirestoreFailure
+import com.commando.app.data.repository.toFirestoreFailure
 import com.commando.app.model.*
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore

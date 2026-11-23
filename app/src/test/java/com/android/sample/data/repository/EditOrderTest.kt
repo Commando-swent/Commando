@@ -1,6 +1,10 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex (#232).
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred

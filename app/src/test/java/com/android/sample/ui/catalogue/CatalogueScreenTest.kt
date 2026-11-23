@@ -36,12 +36,12 @@ import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
-import com.android.sample.data.repository.FakeTripRepository
 import com.android.sample.data.repository.ProductError
 import com.android.sample.data.repository.ProductResult
 import com.android.sample.ui.components.formatTripTime
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.MAX_ORDER_PRODUCTS
 import com.commando.app.model.OrderItem
 import com.commando.app.model.Product

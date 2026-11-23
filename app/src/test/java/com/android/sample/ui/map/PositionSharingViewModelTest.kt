@@ -3,8 +3,13 @@ package com.android.sample.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.location.*
 import com.android.sample.data.repository.*
+import com.commando.app.data.location.*
+import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.time.Clock
 import java.time.Instant

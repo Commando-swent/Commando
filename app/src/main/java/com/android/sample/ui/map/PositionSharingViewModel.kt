@@ -4,9 +4,12 @@ package com.android.sample.ui.map
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.location.*
 import com.android.sample.data.repository.*
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.data.location.*
+import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.time.Clock
 import kotlinx.coroutines.*

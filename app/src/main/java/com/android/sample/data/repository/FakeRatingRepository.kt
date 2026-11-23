@@ -1,6 +1,9 @@
 package com.android.sample.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
 import com.commando.app.model.NewRating
 import com.commando.app.model.Order

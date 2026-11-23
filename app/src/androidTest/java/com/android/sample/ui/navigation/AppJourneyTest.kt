@@ -26,6 +26,9 @@ import com.android.sample.ui.trips.AvailableTripsScreenTestTags
 import com.android.sample.ui.trips.CreateTripScreenTestTags
 import com.android.sample.ui.trips.MyTripsTestTags
 import com.android.sample.ui.trips.discoveryTrip
+import com.commando.app.data.repository.CommandoPositionRepository
+import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.*
 import java.time.Instant
 import java.time.LocalDate

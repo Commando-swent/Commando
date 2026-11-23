@@ -19,6 +19,9 @@ import com.android.sample.ui.home.HomeTestTags
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import com.android.sample.ui.trips.*
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripRepositoryFirestore
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source

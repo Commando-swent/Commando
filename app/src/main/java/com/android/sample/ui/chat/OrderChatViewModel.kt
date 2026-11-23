@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.util.UUID
 import kotlinx.coroutines.*

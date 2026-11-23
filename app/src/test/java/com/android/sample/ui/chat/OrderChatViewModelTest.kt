@@ -6,6 +6,10 @@ import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
 import com.android.sample.model.*
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*

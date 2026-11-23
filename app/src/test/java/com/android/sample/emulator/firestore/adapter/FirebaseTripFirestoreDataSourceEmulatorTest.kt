@@ -1,12 +1,12 @@
 package com.android.sample.emulator.firestore.adapter
 
-import com.android.sample.data.repository.FirebaseTripFirestoreDataSource
-import com.android.sample.data.repository.TripRepositoryFirestore
-import com.android.sample.data.repository.TripResult
-import com.android.sample.data.repository.parseEmulatorHostAndPort
-import com.android.sample.data.repository.successData
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.data.repository.FirebaseTripFirestoreDataSource
+import com.commando.app.data.repository.TripRepositoryFirestore
+import com.commando.app.data.repository.TripResult
+import com.commando.app.data.repository.parseEmulatorHostAndPort
+import com.commando.app.data.repository.successData
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.Trip

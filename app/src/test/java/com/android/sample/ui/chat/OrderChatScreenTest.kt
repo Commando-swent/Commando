@@ -91,9 +91,21 @@ class OrderChatScreenTest {
     }
     tag(OrderChatTestTags.DELAY).assertDoesNotExist()
     compose
-        .onNodeWithText(compose.activity.getString(R.string.chat_delay_message, 15))
+        .onNodeWithText(
+            compose.activity.resources.getQuantityString(R.plurals.chat_delay_message, 15, 15)
+        )
         .assertIsDisplayed()
     screenshot("delay-received")
+    compose.runOnIdle {
+      state =
+          state.copy(
+              chat =
+                  state.chat!!.copy(
+                      messages = state.chat!!.messages.map { it.copy(delayMinutes = 1) }
+                  )
+          )
+    }
+    compose.onNodeWithText("Delay: about 1 minute").assertIsDisplayed()
   }
 
   @Test

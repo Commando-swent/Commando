@@ -346,7 +346,7 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
     ) {
       Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
         Text(
-            message.delayMinutes?.let { stringResource(R.string.chat_delay_message, it) }
+            message.delayMinutes?.let { pluralStringResource(R.plurals.chat_delay_message, it, it) }
                 ?: message.text
         )
         Text(time, Modifier.align(Alignment.End), style = MaterialTheme.typography.bodySmall)

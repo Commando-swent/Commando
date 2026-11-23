@@ -34,6 +34,7 @@ data class OrderChatUiState(
     val draft: String = "",
     val sending: Boolean = false,
     val sendError: OrderError? = null,
+    val failedDelayMinutes: Int? = null,
 ) {
   /** Unknown outcomes keep the submitted text immutable until the server reconciles it. */
   val canEditDraft: Boolean
@@ -44,7 +45,8 @@ data class OrderChatUiState(
         !loading &&
             error == null &&
             canEditDraft &&
-            context?.let { it.viewerId == it.trip.ownerId } == true &&
+            context?.let { it.viewerId == it.trip.ownerId && it.trip.status.canReportDelay } ==
+                true &&
             chat?.status?.canSendChat == true
 
   val canSend: Boolean
@@ -90,6 +92,7 @@ class OrderChatViewModel(
         OrderChatUiState(
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
+            failedDelayMinutes = saved[DELAY],
         )
     viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) endSession() } }
   }
@@ -155,6 +158,7 @@ class OrderChatViewModel(
         OrderChatUiState(
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
+            failedDelayMinutes = saved[DELAY],
         )
   }
 
@@ -164,7 +168,7 @@ class OrderChatViewModel(
         return
     saved[DELAY] = null
     saved[DRAFT] = text
-    mutableState.update { it.copy(draft = text, sendError = null) }
+    mutableState.update { it.copy(draft = text, sendError = null, failedDelayMinutes = null) }
   }
 
   /** Reuses the saved ID/text on retry; busy taps and new sends in read-only states are ignored. */
@@ -194,9 +198,9 @@ class OrderChatViewModel(
     )
         return
     val id = existing ?: UUID.randomUUID().toString()
-    val text = if (minutes == null) saved.get<String>(DRAFT).orEmpty() else ""
+    val text = if (minutes == null) saved.get<String>(DRAFT).orEmpty() else CHAT_DELAY_FALLBACK
     saved[OUTBOUND] = id
-    mutableState.update { it.copy(sending = true, sendError = null) }
+    mutableState.update { it.copy(sending = true, sendError = null, failedDelayMinutes = null) }
     sender = viewModelScope.launch {
       val result =
           try {
@@ -220,11 +224,15 @@ class OrderChatViewModel(
       val error = (result as OrderResult.Error).error
       if (error == OrderError.NotAuthenticated) endSession()
       else {
+        val failedDelay = saved.get<Int>(DELAY)
         // Only Unknown may represent a committed write whose acknowledgement was lost.
         if (error != OrderError.Unknown) {
           saved[OUTBOUND] = null
+          saved[DELAY] = null
         }
-        mutableState.update { it.copy(sending = false, sendError = error) }
+        mutableState.update {
+          it.copy(sending = false, sendError = error, failedDelayMinutes = failedDelay)
+        }
       }
     }
   }
@@ -235,14 +243,22 @@ class OrderChatViewModel(
             it.id == id &&
                 it.senderId == session.initialUserId &&
                 it.delayMinutes == saved.get<Int>(DELAY) &&
-                it.text == if (it.delayMinutes == null) saved.get<String>(DRAFT) else ""
+                it.text ==
+                    if (it.delayMinutes == null) saved.get<String>(DRAFT) else CHAT_DELAY_FALLBACK
           } == true
 
   private fun completeSend() {
     saved[OUTBOUND] = null
     if (saved.get<Int>(DELAY) == null) saved[DRAFT] = ""
     saved[DELAY] = null
-    mutableState.update { it.copy(draft = saved[DRAFT] ?: "", sending = false, sendError = null) }
+    mutableState.update {
+      it.copy(
+          draft = saved[DRAFT] ?: "",
+          sending = false,
+          sendError = null,
+          failedDelayMinutes = null,
+      )
+    }
   }
 
   private fun invalidSession(): Boolean {

@@ -290,7 +290,9 @@ service cloud.firestore {
               && data.text.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000)
             || ('delayMinutes' in data && data.delayMinutes is int
               && data.delayMinutes >= 1 && data.delayMinutes <= 240
-              && data.text == "" && ownsOrderTrip(chatOrder()));
+              && data.text == "The commando is running late." && ownsOrderTrip(chatOrder())
+              && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status
+                in ["PUBLISHED", "IN_PROGRESS"]);
         }
         allow create: if chatParticipant()
           && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status

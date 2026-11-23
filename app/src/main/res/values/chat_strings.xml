@@ -16,10 +16,13 @@
     <string name="chat_locked_pending">Chat opens when the order is accepted.</string>
     <string name="chat_message_partner">Message %1$s</string>
     <string name="chat_delay_action">Report delay</string>
-    <string name="chat_delay_minutes">Delay in minutes</string>
+    <string name="chat_delay_minutes">Minutes late</string>
     <string name="chat_delay_range">Range: 1–%1$d</string>
     <plurals name="chat_delay_message">
         <item quantity="one">Delay: about %1$d minute</item>
         <item quantity="other">Delay: about %1$d minutes</item>
     </plurals>
+    <string name="chat_delay_invalid">Enter a whole number of minutes late, from 1 to %1$d.</string>
+    <string name="chat_delay_failed">Could not send the %1$d-minute delay notice. Retry delay notice.</string>
+    <string name="chat_delay_notice">Delay notice</string>
 </resources>

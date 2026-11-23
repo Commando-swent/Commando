@@ -64,6 +64,11 @@ class OrderChatScreenTest {
     tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
     tag(OrderChatTestTags.DELAY_INPUT).performTextInput("0")
     tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    compose
+        .onNodeWithText(
+            compose.activity.getString(R.string.chat_delay_invalid, MAX_CHAT_DELAY_MINUTES)
+        )
+        .assertExists()
     tag(OrderChatTestTags.DELAY_INPUT).performTextReplacement("15")
     screenshot("delay-dialog")
     tag(OrderChatTestTags.DELAY_SEND).assertIsEnabled().performClick()
@@ -93,6 +98,12 @@ class OrderChatScreenTest {
         .onNodeWithText(
             compose.activity.resources.getQuantityString(R.plurals.chat_delay_message, 15, 15)
         )
+        .assertIsDisplayed()
+    compose
+        .onNodeWithContentDescription(compose.activity.getString(R.string.chat_delay_notice))
+        .assertExists()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.chat_delay_notice))
         .assertIsDisplayed()
     screenshot("delay-received")
     compose.runOnIdle {
@@ -144,6 +155,67 @@ class OrderChatScreenTest {
     compose.runOnIdle {
       state = state.copy(chat = state.chat!!.copy(status = OrderStatus.DELIVERED))
     }
+    tag(OrderChatTestTags.DELAY).assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h917dp-mdpi")
+  fun deliveryWhileDialogIsOpenRemovesThePendingAction() {
+    state = state.copy(context = state.context!!.copy(viewerId = state.context!!.trip.ownerId))
+    show()
+    tag(OrderChatTestTags.DELAY).performClick()
+    tag(OrderChatTestTags.DELAY_INPUT).performTextInput("5")
+    compose.runOnIdle {
+      state = state.copy(chat = state.chat!!.copy(status = OrderStatus.DELIVERED))
+    }
+    tag(OrderChatTestTags.DELAY_SEND).assertDoesNotExist()
+    assertTrue(delays.isEmpty())
+  }
+
+  @Test
+  fun failedDelayHasItsOwnFeedbackAndRetryAction() {
+    state =
+        state.copy(
+            context = state.context!!.copy(viewerId = state.context!!.trip.ownerId),
+            draft = "typed",
+            sendError = OrderError.PermissionDenied,
+            failedDelayMinutes = 5,
+        )
+    show()
+    tag(OrderChatTestTags.RETRY_SEND)
+        .assertTextContains(compose.activity.getString(R.string.chat_delay_failed, 5))
+        .performClick()
+    assertEquals(listOf(5), delays)
+    assertEquals(0, sends)
+    compose.runOnIdle { state = state.copy(sendError = OrderError.Unknown) }
+    tag(OrderChatTestTags.RETRY_SEND).performClick()
+    assertEquals(1, sends)
+    assertEquals(1, delays.size)
+    compose.runOnIdle { state = state.copy(sending = true) }
+    tag(OrderChatTestTags.RETRY_SEND).assertIsNotEnabled()
+    compose.runOnIdle {
+      state =
+          state.copy(
+              sending = false,
+              sendError = OrderError.PermissionDenied,
+              chat = state.chat!!.copy(status = OrderStatus.DELIVERED),
+          )
+    }
+    tag(OrderChatTestTags.RETRY_SEND).assertIsNotEnabled()
+  }
+
+  @Test
+  fun cancelledTripCannotOpenADelayDialog() {
+    val context = state.context!!
+    state =
+        state.copy(
+            context =
+                context.copy(
+                    viewerId = context.trip.ownerId,
+                    trip = context.trip.copy(status = TripStatus.CANCELLED),
+                )
+        )
+    show()
     tag(OrderChatTestTags.DELAY).assertDoesNotExist()
   }
 

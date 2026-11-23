@@ -32,7 +32,7 @@ class OrderChatRepositoryFirestore(
   ): OrderResult<Unit> = send(orderId, messageId, text, null)
 
   override suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int) =
-      send(orderId, messageId, "", minutes)
+      send(orderId, messageId, CHAT_DELAY_FALLBACK, minutes)
 
   private suspend fun send(
       orderId: String,
@@ -96,7 +96,11 @@ class OrderChatRepositoryFirestore(
       if (delay != null) {
         val tripId = storedOrder.getString("tripId") ?: throw failure(Code.DATA_LOSS)
         val trip = transaction.get(firestore.collection("trips").document(tripId))
-        if (trip.getString("ownerId") != uid) throw failure(Code.PERMISSION_DENIED)
+        if (
+            trip.getString("ownerId") != uid ||
+                !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay
+        )
+            throw failure(Code.PERMISSION_DENIED)
       }
       guard(uid)
       transaction.set(

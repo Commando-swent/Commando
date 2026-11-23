@@ -140,10 +140,16 @@ class OrderChatViewModelTest {
       model.send()
       runCurrent()
       assertEquals(delays.first(), delays.last())
-      publish(OrderStatus.ACCEPTED, ChatMessage(delays.first().first, trip.ownerId, "", now, 13))
+      publish(
+          OrderStatus.ACCEPTED,
+          ChatMessage(delays.first().first, trip.ownerId, CHAT_DELAY_FALLBACK, now, 13),
+      )
       assertEquals(OrderError.Unknown, model.uiState.value.sendError)
       assertEquals("Keep my typed message", model.uiState.value.draft)
-      publish(OrderStatus.ACCEPTED, ChatMessage(delays.first().first, trip.ownerId, "", now, 12))
+      publish(
+          OrderStatus.ACCEPTED,
+          ChatMessage(delays.first().first, trip.ownerId, CHAT_DELAY_FALLBACK, now, 12),
+      )
       assertNull(model.uiState.value.sendError)
       assertEquals("Keep my typed message", model.uiState.value.draft)
       assertTrue(model.uiState.value.canSendDelay)
@@ -164,6 +170,7 @@ class OrderChatViewModelTest {
     for (blocked in
         listOf(
             ready.copy(context = null),
+            ready.copy(context = context.copy(trip = trip.copy(status = TripStatus.CANCELLED))),
             ready.copy(chat = null),
             ready.copy(sending = true),
             ready.copy(sendError = OrderError.Unknown),
@@ -204,7 +211,7 @@ class OrderChatViewModelTest {
   }
 
   @Test
-  fun definitiveDelayFailureRetriesWithANewIdAndPreservesTextDraft() = runTest {
+  fun definitiveDelayFailureDoesNotReplaceTheNextTextSend() = runTest {
     user.value = trip.ownerId
     write = { _, _ -> OrderResult.Error(OrderError.PermissionDenied) }
     withModel { model ->
@@ -216,10 +223,28 @@ class OrderChatViewModelTest {
       write = { _, _ -> OrderResult.Success(Unit) }
       model.send()
       runCurrent()
-      assertEquals(3, delays.last().second)
-      assertNotEquals(delays.first().first, delays.last().first)
-      assertEquals("typed", model.uiState.value.draft)
+      assertEquals(1, delays.size)
+      assertEquals("typed", requests.single().second)
+      assertNotEquals(delays.single().first, requests.single().first)
+      assertEquals("", model.uiState.value.draft)
       assertNull(model.uiState.value.sendError)
+    }
+  }
+
+  @Test
+  fun definitiveDelayFailureAllowsANewDurationWithANewIdentity() = runTest {
+    user.value = trip.ownerId
+    write = { _, _ -> OrderResult.Error(OrderError.PermissionDenied) }
+    withModel { model ->
+      model.sendDelay(3)
+      runCurrent()
+      assertEquals(3, model.uiState.value.failedDelayMinutes)
+      write = { _, _ -> OrderResult.Success(Unit) }
+      model.sendDelay(8)
+      runCurrent()
+      assertEquals(listOf(3, 8), delays.map { it.second })
+      assertNotEquals(delays.first().first, delays.last().first)
+      assertNull(model.uiState.value.failedDelayMinutes)
     }
   }
 

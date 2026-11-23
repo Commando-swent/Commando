@@ -114,7 +114,7 @@ class FakeOrderChatRepositoryTest {
     assertEquals(sent, ownerRepo.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
     val message = (repo.observeChat("order").first() as OrderResult.Success).data.messages.single()
     assertEquals(MAX_CHAT_DELAY_MINUTES, message.delayMinutes)
-    assertEquals("", message.text)
+    assertEquals(CHAT_DELAY_FALLBACK, message.text)
   }
 
   @Test
@@ -142,6 +142,20 @@ class FakeOrderChatRepositoryTest {
           if (status.canSendChat) sent else OrderResult.Error(OrderError.PermissionDenied),
           ownerRepo.sendDelayNotice("order", status.name, 1),
       )
+    }
+  }
+
+  @Test
+  fun delayNoticesRequireAnActiveTripButCommittedRetriesRemainReadOnly() = runTest {
+    for (status in TripStatus.entries) {
+      orders.value = mapOf("order" to orders.value.getValue("order").copy(tripStatus = status))
+      assertEquals(
+          if (status.canReportDelay) sent else OrderResult.Error(OrderError.PermissionDenied),
+          ownerRepo.sendDelayNotice("order", status.name, 10),
+      )
+      assertEquals(sent, ownerRepo.sendMessage("order", "text-${status.name}", "hello"))
+      if (!status.canReportDelay)
+          assertEquals(sent, ownerRepo.sendDelayNotice("order", TripStatus.PUBLISHED.name, 10))
     }
   }
 

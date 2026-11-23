@@ -126,7 +126,7 @@ fun OrderChatScreen(
               else -> {
                 Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state) }
                 ChatDelayComposer(state, onDelay)
-                ChatComposer(state, onDraft, onSend)
+                ChatComposer(state, onDraft, onSend, onDelay)
               }
             }
         else ->
@@ -332,11 +332,13 @@ private fun ChatHistory(state: OrderChatUiState) {
 @Composable
 private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
   val colors = MaterialTheme.colorScheme
+  val noticeLabel = stringResource(R.string.chat_delay_notice)
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     Surface(
         Modifier.align(if (mine) Alignment.CenterEnd else Alignment.CenterStart)
             .widthIn(max = maxWidth * 0.86f)
-            .testTag(OrderChatTestTags.MESSAGE + message.id),
+            .testTag(OrderChatTestTags.MESSAGE + message.id)
+            .semantics { if (message.delayMinutes != null) contentDescription = noticeLabel },
         shape =
             RoundedCornerShape(19.dp, 19.dp, if (mine) 4.dp else 19.dp, if (mine) 19.dp else 4.dp),
         color = if (mine) colors.primaryContainer else ChatSurface,
@@ -344,6 +346,11 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
         border = if (mine) null else BorderStroke(1.dp, ChatOutline),
     ) {
       Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
+        if (message.delayMinutes != null)
+            Text(
+                noticeLabel,
+                style = MaterialTheme.typography.labelMedium,
+            )
         Text(
             message.delayMinutes?.let { pluralStringResource(R.plurals.chat_delay_message, it, it) }
                 ?: message.text
@@ -355,7 +362,12 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
 }
 
 @Composable
-private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onSend: () -> Unit) {
+private fun ChatComposer(
+    state: OrderChatUiState,
+    onDraft: (String) -> Unit,
+    onSend: () -> Unit,
+    onDelay: (Int) -> Unit,
+) {
   val colors = MaterialTheme.colorScheme
   val sendDescription = stringResource(R.string.chat_send)
   Surface(color = colors.surfaceContainerLow) {
@@ -379,11 +391,24 @@ private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onS
           }
       if (state.sendError != null)
           TextButton(
-              onSend,
-              Modifier.align(Alignment.End).testTag(OrderChatTestTags.RETRY_SEND),
-              enabled = !state.sending,
+              onClick = {
+                val minutes = state.failedDelayMinutes
+                if (minutes != null && state.sendError != OrderError.Unknown) onDelay(minutes)
+                else onSend()
+              },
+              modifier = Modifier.align(Alignment.End).testTag(OrderChatTestTags.RETRY_SEND),
+              enabled =
+                  !state.sending &&
+                      (state.failedDelayMinutes == null ||
+                          state.sendError == OrderError.Unknown ||
+                          state.canSendDelay),
           ) {
-            Text(stringResource(R.string.chat_send_failed), color = colors.error)
+            Text(
+                state.failedDelayMinutes?.let { stringResource(R.string.chat_delay_failed, it) }
+                    ?: stringResource(R.string.chat_send_failed),
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                color = colors.error,
+            )
           }
       if (state.chat?.status?.canSendChat == true) {
         Row(

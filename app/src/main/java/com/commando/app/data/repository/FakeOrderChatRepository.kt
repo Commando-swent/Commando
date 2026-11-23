@@ -12,7 +12,12 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Trusted fake order context, supplied from test/development fixtures rather than chat input. */
-data class FakeChatOrder(val requesterId: String, val ownerId: String, val status: OrderStatus)
+data class FakeChatOrder(
+    val requesterId: String,
+    val ownerId: String,
+    val status: OrderStatus,
+    val tripStatus: TripStatus = TripStatus.PUBLISHED,
+)
 
 /** Share one store between participants; updating orders also updates live send eligibility. */
 class FakeOrderChatStore(val orders: StateFlow<Map<String, FakeChatOrder>>) {
@@ -39,7 +44,7 @@ class FakeOrderChatRepository(
   ): OrderResult<Unit> = send(orderId, messageId, text, null)
 
   override suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int) =
-      send(orderId, messageId, "", minutes)
+      send(orderId, messageId, CHAT_DELAY_FALLBACK, minutes)
 
   private suspend fun send(
       orderId: String,
@@ -65,8 +70,10 @@ class FakeOrderChatRepository(
                   previous.text != text ||
                   previous.delayMinutes != delay) -> OrderResult.Error(OrderError.InvalidData)
           previous != null -> OrderResult.Success(Unit)
-          delay != null && store.orders.value.getValue(orderId).ownerId != uid ->
-              OrderResult.Error(OrderError.PermissionDenied)
+          delay != null &&
+              store.orders.value.getValue(orderId).let {
+                it.ownerId != uid || !it.tripStatus.canReportDelay
+              } -> OrderResult.Error(OrderError.PermissionDenied)
           !store.orders.value.getValue(orderId).status.canSendChat ->
               OrderResult.Error(OrderError.PermissionDenied)
           else -> {

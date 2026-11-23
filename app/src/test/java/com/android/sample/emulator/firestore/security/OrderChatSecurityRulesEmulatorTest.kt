@@ -40,7 +40,7 @@ class OrderChatSecurityRulesEmulatorTest {
       val data =
           mapOf(
               "senderId" to requester.auth.currentUser!!.uid,
-              "text" to "",
+              "text" to CHAT_DELAY_FALLBACK,
               "createdAt" to FieldValue.serverTimestamp(),
               "delayMinutes" to 10,
           )
@@ -67,7 +67,7 @@ class OrderChatSecurityRulesEmulatorTest {
       val notice =
           (requesterRepo.observeChat(id).first() as OrderResult.Success).data.messages.single()
       assertEquals(10, notice.delayMinutes)
-      assertEquals("", notice.text)
+      assertEquals(CHAT_DELAY_FALLBACK, notice.text)
       assertFailure(OrderError.InvalidData, ownerRepo.sendDelayNotice(id, "delay", 11))
       for (invalid in listOf(0, MAX_CHAT_DELAY_MINUTES + 1, "10")) {
         createDocumentAsOwner(
@@ -75,7 +75,7 @@ class OrderChatSecurityRulesEmulatorTest {
             "corrupt-delay",
             mapOf(
                 "senderId" to owner.auth.currentUser!!.uid,
-                "text" to "",
+                "text" to CHAT_DELAY_FALLBACK,
                 "createdAt" to Timestamp.now(),
                 "delayMinutes" to invalid,
             ),
@@ -101,6 +101,39 @@ class OrderChatSecurityRulesEmulatorTest {
       assertFailure(OrderError.PermissionDenied, ownerRepo.sendDelayNotice(id, "late", 1))
       assertPermissionDenied { ownerMessages.document("delay").update("delayMinutes", 20).await() }
       assertPermissionDenied { ownerMessages.document("delay").delete().await() }
+    }
+  }
+
+  @Test
+  fun tripClosureAllowsCoordinationButTerminalTripsRejectNewDelays() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val id = seed(owner, requester)
+      val repository = repo(owner)
+      val messages = owner.firestore.collection("orders").document(id).collection("messages")
+      assertEquals(sent, repository.sendDelayNotice(id, "confirmed", 5))
+      for (status in TripStatus.entries) {
+        updateDocumentAsOwner("trips/$id", mapOf("status" to status.name))
+        assertEquals(
+            if (status.canReportDelay) sent else OrderResult.Error(OrderError.PermissionDenied),
+            repository.sendDelayNotice(id, status.name, 10),
+        )
+        if (!status.canReportDelay) {
+          assertPermissionDenied {
+            messages
+                .document("raw-${status.name}")
+                .set(
+                    mapOf(
+                        "senderId" to owner.auth.currentUser!!.uid,
+                        "text" to CHAT_DELAY_FALLBACK,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "delayMinutes" to 10,
+                    )
+                )
+                .await()
+          }
+          assertEquals(sent, repository.sendDelayNotice(id, "confirmed", 5))
+        }
+      }
     }
   }
 

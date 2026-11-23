@@ -9,6 +9,8 @@ const val MAX_CHAT_TEXT_LENGTH = 1000
 const val CHAT_WINDOW_SIZE = 100L
 /** Delay notices are whole minutes from 1 to 240; mirrored in the Firestore rules. */
 const val MAX_CHAT_DELAY_MINUTES = 240
+/** Readable by older clients; updated clients localize the structured duration. */
+const val CHAT_DELAY_FALLBACK = "The commando is running late."
 
 /** Immutable server-confirmed message; ID belongs to the order's messages subcollection. */
 data class ChatMessage(
@@ -16,7 +18,10 @@ data class ChatMessage(
     val senderId: String,
     val text: String,
     val createdAt: Instant,
-    /** Null is legacy/plain text; a delay notice has empty text and a validated duration. */
+    /**
+     * Null is legacy/plain text; a delay notice has readable fallback text and a validated
+     * duration.
+     */
     val delayMinutes: Int? = null,
 )
 
@@ -33,4 +38,8 @@ fun String.isValidChatText(): Boolean = isNotBlank() && length <= MAX_CHAT_TEXT_
 /** Canonical variants prevent ambiguous text-plus-delay messages and preserve legacy text. */
 fun isValidChatPayload(text: String, delayMinutes: Int?): Boolean =
     if (delayMinutes == null) text.isValidChatText()
-    else text.isEmpty() && delayMinutes in 1..MAX_CHAT_DELAY_MINUTES
+    else text == CHAT_DELAY_FALLBACK && delayMinutes in 1..MAX_CHAT_DELAY_MINUTES
+
+/** Closing a trip to new orders does not prevent coordinating existing accepted orders. */
+val TripStatus.canReportDelay: Boolean
+  get() = this == TripStatus.PUBLISHED || this == TripStatus.IN_PROGRESS

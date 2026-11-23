@@ -527,18 +527,22 @@ private fun ResultsLabel(content: CatalogueContent.Loaded) {
                 count,
                 content.query.uppercase(),
             )
-        content.category != null ->
-            stringResource(
-                if (more) R.string.catalogue_category_products_more
-                else R.string.catalogue_category_products,
-                categoryLabel(content.category).uppercase(),
-                count,
-            )
         else ->
-            stringResource(
-                if (more) R.string.catalogue_all_products_more else R.string.catalogue_all_products,
-                count,
-            )
+            when (val category = content.category) {
+              null ->
+                  stringResource(
+                      if (more) R.string.catalogue_all_products_more
+                      else R.string.catalogue_all_products,
+                      count,
+                  )
+              else ->
+                  stringResource(
+                      if (more) R.string.catalogue_category_products_more
+                      else R.string.catalogue_category_products,
+                      categoryLabel(category).uppercase(),
+                      count,
+                  )
+            }
       }
   )
 }

@@ -8,12 +8,37 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Transaction
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
+import io.mockk.verify
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 
 class PaymentFirestoreDataTest {
+  @Test
+  fun defaultClientDoesNotReadAgainAfterTheSessionEnds() = runTest {
+    mockkStatic(FirebaseFirestore::class)
+    try {
+      val firestore = mockk<FirebaseFirestore>()
+      every { FirebaseFirestore.getInstance() } returns firestore
+      every { firestore.runTransaction(any<Transaction.Function<Payment?>>()) } returns
+          Tasks.forException(IllegalStateException())
+      var uid: String? = "requester"
+      val repository = PaymentRepositoryFirestore({ uid })
+      assertEquals(PaymentResult.Error(PaymentError.UNKNOWN), repository.getPayment("order"))
+      uid = null
+      assertEquals(
+          PaymentResult.Error(PaymentError.NOT_AUTHENTICATED),
+          repository.getPayment("order"),
+      )
+      verify(exactly = 1) { firestore.runTransaction(any<Transaction.Function<Payment?>>()) }
+    } finally {
+      unmockkStatic(FirebaseFirestore::class)
+    }
+  }
+
   private val capture =
       mapOf<String, Any?>(
           "orderId" to "order",

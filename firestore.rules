@@ -224,7 +224,7 @@ service cloud.firestore {
 
     function hasNoPayment(orderId) {
       let path = /databases/$(database)/documents/payments/$(orderId);
-      return !exists(path) || get(path).data.status == "FAILED";
+      return !existsAfter(path) || getAfter(path).data.status == "FAILED";
     }
 
     function refundMatchesPayment(orderId, refund, payment, order) {
@@ -239,7 +239,7 @@ service cloud.firestore {
       return hasNoPayment(orderId) ? !existsAfter(path)
         : existsAfter(path) && getAfter(path).data.status == "CONFIRMED"
           && refundMatchesPayment(orderId, getAfter(path).data,
-            get(/databases/$(database)/documents/payments/$(orderId)).data, order);
+            getAfter(/databases/$(database)/documents/payments/$(orderId)).data, order);
     }
 
     function paymentParticipant(orderId) {

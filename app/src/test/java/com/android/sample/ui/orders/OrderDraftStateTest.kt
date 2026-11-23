@@ -87,6 +87,25 @@ class OrderDraftStateTest {
   }
 
   @Test
+  fun unsupportedStoresCannotTransferABasket() {
+    val shared = OrderDraftState("own-trip")
+    shared.addItem(milk)
+    shared.prepareTripRecovery(null)
+    shared.startTrip("alternative")
+    shared.recoverForTrip("alternative", null)
+    assertTrue(shared.draft.value.items.isEmpty())
+  }
+
+  @Test
+  fun editingAnExistingOrderCannotArmTripRecovery() {
+    val shared = OrderDraftState("trip", com.commando.app.model.OrderDraft("trip", listOf(milk)), 3)
+    shared.prepareTripRecovery("migros")
+    shared.startTrip("alternative")
+    shared.recoverForTrip("alternative", "migros")
+    assertTrue(shared.draft.value.items.isEmpty())
+  }
+
+  @Test
   fun invalidEditsPreserveTheDraft() {
     val shared = OrderDraftState("trip-1")
     shared.addItem(milk)

@@ -19,6 +19,7 @@ import com.commando.app.ui.orders.ReviewOrderViewModel
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -186,6 +187,113 @@ class CatalogueViewModelTest {
 
   private fun request(query: String = "", cursor: String? = null, store: String = "migros") =
       StubProductRepository.Request(store, query, cursor, 50)
+
+  @Test
+  fun malformedProductsAreFilteredFromBothTabsAndCannotEnterTheBasket() = runTest {
+    val invalid =
+        listOf(
+            milk.copy(id = ""),
+            milk.copy(id = "migros:unnamed", name = " "),
+            milk.copy(id = "migros:negative", priceCents = -1),
+            coopMilk,
+        )
+    products.result = ProductResult.Success(listOf(milk) + invalid)
+    products.favourites =
+        ProductResult.Success(FavouriteProducts(listOf(milk) + invalid, emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(listOf(milk), loaded(vm))
+    vm.selectTab(CatalogueTab.FAVOURITES)
+    assertEquals(listOf(milk), (vm.uiState.value.favourites as FavouritesContent.Loaded).products)
+    invalid.forEach { vm.add(it.id) }
+    advanceUntilIdle()
+    assertTrue(vm.uiState.value.items.isEmpty())
+  }
+
+  @Test
+  fun savedButUnavailableProductsRemainFavouritesAndCountTowardsTheTab() = runTest {
+    products.favouriteGate = CompletableDeferred()
+    products.favourites =
+        ProductResult.Success(FavouriteProducts(listOf(milk), listOf("migros:gone")))
+    val vm = viewModel()
+    runCurrent()
+    assertFalse(vm.uiState.value.isFavourite(milk.id))
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    val state = vm.uiState.value
+    assertEquals(2, (state.favourites as FavouritesContent.Loaded).count)
+    assertTrue(state.isFavourite(milk.id))
+    assertTrue(state.isFavourite("migros:gone"))
+    assertFalse(state.isFavourite("missing"))
+  }
+
+  @Test
+  fun cancelledCategoryMetadataDoesNotHideTheCatalogueOrBlockItsBasket() = runTest {
+    val repository =
+        object : ProductRepository by products {
+          override suspend fun getCategories(storeId: String): ProductResult<List<String>> =
+              throw CancellationException("metadata cancelled")
+        }
+    val vm = CatalogueViewModel(migrosTrip.id, trips, repository, OrderDraftState(migrosTrip.id), 0)
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(listOf(milk, bread), loaded(vm))
+    assertTrue(vm.uiState.value.categories.isEmpty())
+    vm.add(milk.id)
+    advanceUntilIdle()
+    assertEquals(1, vm.uiState.value.quantityOf(milk.id))
+    assertTrue(vm.uiState.value.canContinue)
+  }
+
+  @Test
+  fun categoryTransportFailureDoesNotHideProductsAndTheNextSearchRecoversMetadata() = runTest {
+    var attempts = 0
+    val repository =
+        object : ProductRepository by products {
+          override suspend fun getCategories(storeId: String): ProductResult<List<String>> {
+            if (attempts++ == 0) throw IllegalStateException("offline")
+            return ProductResult.Success(listOf("Dairy"))
+          }
+        }
+    val vm = CatalogueViewModel(migrosTrip.id, trips, repository, OrderDraftState(migrosTrip.id), 0)
+    advanceUntilIdle()
+    assertEquals(listOf(milk, bread), loaded(vm))
+    assertTrue(vm.uiState.value.categories.isEmpty())
+    vm.onQueryChange("oat")
+    advanceUntilIdle()
+    assertEquals(listOf(milk), loaded(vm))
+    assertEquals(listOf("Dairy"), vm.uiState.value.categories)
+    assertEquals(2, attempts)
+  }
+
+  @Test
+  fun cancelledPagePreservesLoadedProductsAndANewSearchCanRecover() = runTest {
+    products.result = ProductResult.Success(migrosProducts(0..60))
+    val vm = viewModel(searchDebounceMillis = 0)
+    advanceUntilIdle()
+    products.thrown = CancellationException("page cancelled")
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(migrosProducts(0..49), loaded(vm))
+    assertNull(content(vm).loadMoreError)
+    products.thrown = null
+    vm.onQueryChange("Product 60")
+    advanceUntilIdle()
+    assertEquals(migrosProducts(60..60), loaded(vm))
+    assertFalse(content(vm).isLoadingMore)
+  }
+
+  @Test
+  fun callbacksForAnUnselectedProductNeverCreateOrSubtractItems() = runTest {
+    val vm = viewModel()
+    advanceUntilIdle()
+    vm.increment(milk.id)
+    vm.decrement(milk.id)
+    vm.add("missing")
+    advanceUntilIdle()
+    assertTrue(vm.uiState.value.items.isEmpty())
+    assertFalse(vm.uiState.value.canContinue)
+  }
 
   @Test
   fun migrosTripSearchesTheFirstMigrosPageWithABlankQuery() = runTest {

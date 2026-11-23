@@ -26,6 +26,7 @@ import com.commando.app.ui.orders.OrderDraftState
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -84,6 +85,34 @@ class CatalogueCategoryScreenTest {
     compose.waitForIdle()
     assertEquals(null, products.requests.last().category)
     compose.onNodeWithTag(CatalogueTestTags.row(milk.id)).assertIsDisplayed()
+  }
+
+  @Test
+  fun unknownDepartmentsFollowKnownOnesInLocalizedAlphabeticalOrder() {
+    products.categories = ProductResult.Success(listOf("Zebra", fruit, "Aardvark", OTHER_CATEGORY))
+    show()
+    fun left(category: String) =
+        compose
+            .onNodeWithTag(CatalogueTestTags.category(category))
+            .fetchSemanticsNode()
+            .boundsInRoot
+            .left
+    assertTrue(left(fruit) < left("Aardvark"))
+    assertTrue(left("Aardvark") < left("Zebra"))
+    assertTrue(left("Zebra") < left(OTHER_CATEGORY))
+  }
+
+  @Test
+  fun categoryAndSearchHeadingsIndicateThatMoreMatchingProductsExist() {
+    products.result =
+        ProductResult.Success(
+            List(61) { Product("migros:$it", "migros", "Fruit $it", 100, category = fruit) }
+        )
+    show()
+    compose.onNodeWithTag(CatalogueTestTags.category(fruit)).performClick()
+    compose.onNodeWithText("FRUIT & VEG · 50+").assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement("Fruit")
+    compose.onNodeWithText("50+ RESULTS FOR “FRUIT”").assertIsDisplayed()
   }
 
   @Test

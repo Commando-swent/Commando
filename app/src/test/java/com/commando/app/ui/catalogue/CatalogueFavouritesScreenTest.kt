@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsEqualTo
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -30,6 +31,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "en-rUS-w412dp-h917dp-mdpi")
@@ -94,6 +96,7 @@ class CatalogueFavouritesScreenTest {
   }
 
   @Test
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
   fun favouritesTabShowsLoadingPermissionErrorsAndUnavailableOnlyLists() {
     val coop = catalogueTrip("trip-coop", "Coop Lausanne")
     var state by
@@ -138,6 +141,7 @@ class CatalogueFavouritesScreenTest {
         .assertIsDisplayed()
     compose.onNodeWithText("FAVOURITES ·", substring = true).assertDoesNotExist()
     compose.onNodeWithText("NOT AVAILABLE · 1").assertIsDisplayed()
+    compose.onNodeWithTag(CatalogueTestTags.PRODUCT_LIST).captureToImage()
     compose.onNodeWithTag(CatalogueTestTags.favourite("coop:gone")).assertIsNotEnabled()
   }
 

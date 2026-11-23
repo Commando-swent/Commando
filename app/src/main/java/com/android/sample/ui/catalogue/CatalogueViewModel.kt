@@ -401,6 +401,7 @@ class CatalogueViewModel(
   /** Loads category and favourite metadata once beside the first page for a supported trip. */
   private fun onTripLoaded(trip: Trip) {
     val storeId = storeIdFor(trip.store.name)
+    draft.recoverForTrip(trip.id, storeId)
     mutableState.update {
       it.copy(
           trip = trip,

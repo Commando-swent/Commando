@@ -46,6 +46,7 @@ class CatalogueNavigationTest {
   private val auth = FakeAuthRepository(alice)
   private val time = Instant.parse("2030-01-01T12:00:00Z")
   private val migrosTrip = publishedTrip("trip / % 雪", "Migros EPFL", 3600)
+  private val alternative = publishedTrip("alternative-migros", "Migros Renens", 5400)
   // The Coop store a trip owner picks when creating the trip.
   private val coopTrip =
       publishedTrip("trip-coop", "Coop Ecublens", 7200)
@@ -54,7 +55,11 @@ class CatalogueNavigationTest {
   private val bread = Product("migros:bread", "migros", "Wholemeal bread", 340)
   private val coopMilk = Product("coop:milk", "coop", "Coop milk", 180)
   private val trips =
-      FakeTripRepository("alice", now = { time }, initialTrips = listOf(migrosTrip, coopTrip))
+      FakeTripRepository(
+          "alice",
+          now = { time },
+          initialTrips = listOf(migrosTrip, coopTrip, alternative),
+      )
   // The ViewModel keeps only the chain of the selected trip, so one stub serves both catalogues.
   private val products = StubProductRepository(ProductResult.Success(listOf(oat, bread, coopMilk)))
   private val credentials =
@@ -122,28 +127,43 @@ class CatalogueNavigationTest {
   }
 
   @Test
-  fun ownTripRejectionReturnsToDiscoveryWithTheBasketRetained() {
+  fun ownTripRejectionReturnsToDiscoveryWithTheBasketRetained() = runTest {
     show()
     openCatalogue(migrosTrip)
     click(CatalogueTestTags.add(oat.id))
     click(CatalogueTestTags.increase(oat.id))
     click(CatalogueTestTags.CONTINUE)
+    compose
+        .onNodeWithTag(ReviewOrderTags.COMMISSION)
+        .performScrollTo()
+        .performTextReplacement("1.50")
     compose.runOnIdle { (orders as FakeOrderRepository).forcedError = OrderError.OwnTrip }
     click(ReviewOrderTags.SUBMIT)
     compose.onNodeWithTag(ReviewOrderTags.ERROR).assertExists()
     compose.onNodeWithTag(ReviewOrderTags.BROWSE).assertIsDisplayed().performClick()
     compose.onNodeWithTag(NavigationTestTags.OPEN_MAP).assertExists()
     compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertDoesNotExist()
-    openCatalogueFromDiscovery()
+    compose.onNodeWithText(alternative.store.name).performClick()
+    compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
     compose
         .onNodeWithTag(CatalogueTestTags.SUMMARY)
         .assertTextContains("CHF 4.40", substring = true)
-    compose.runOnIdle { assertEquals(0, createdOrders) }
-  }
-
-  private fun openCatalogueFromDiscovery() {
-    compose.onNodeWithText(migrosTrip.store.name).performClick()
-    compose.onNodeWithText("Add items to this run").performScrollTo().performClick()
+    click(CatalogueTestTags.CONTINUE)
+    compose.onNodeWithTag(ReviewOrderTags.COMMISSION).performScrollTo().assertTextContains("1.50")
+    compose
+        .onNodeWithTag(ReviewOrderTags.TOTAL)
+        .performScrollTo()
+        .assertTextContains("CHF 5.90", substring = true)
+    compose.runOnIdle {
+      assertEquals(0, createdOrders)
+      (orders as FakeOrderRepository).forcedError = null
+    }
+    click(ReviewOrderTags.SUBMIT)
+    compose.onNodeWithText("Your order is sent").assertIsDisplayed()
+    val submitted = (requireNotNull(orders).getMyOrders() as OrderResult.Success).data.single()
+    assertEquals(alternative.id, submitted.tripId)
+    assertEquals(listOf(OrderItem(oat.id, oat.name, 220, 2)), submitted.items)
+    assertEquals(150, submitted.commissionCents)
   }
 
   @Test

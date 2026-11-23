@@ -117,15 +117,17 @@ private fun ReviewError(state: ReviewOrderState) {
 /** Maps review failures to the existing localized creation and editing messages. */
 @StringRes
 private fun ReviewOrderState.errorMessage(): Int =
-    when {
-      !tripMatches -> R.string.order_invalid_error
-      error == OrderError.OwnTrip -> R.string.order_own_trip_error
-      error == OrderError.NotAuthenticated -> R.string.order_session_error
-      error is OrderError.AlreadyDecided -> R.string.order_edit_conflict
-      editing && (error == OrderError.InvalidData || error == OrderError.PermissionDenied) ->
-          R.string.order_edit_unavailable
-      else -> R.string.order_failure_help
-    }
+    if (!tripMatches) R.string.order_invalid_error
+    else
+        when (error) {
+          OrderError.OwnTrip -> R.string.order_own_trip_error
+          OrderError.NotAuthenticated -> R.string.order_session_error
+          is OrderError.AlreadyDecided -> R.string.order_edit_conflict
+          OrderError.InvalidData,
+          OrderError.PermissionDenied ->
+              if (editing) R.string.order_edit_unavailable else R.string.order_failure_help
+          else -> R.string.order_failure_help
+        }
 
 /** Shows the selected trip using its existing subtitle and handoff presentation. */
 @Composable
@@ -200,17 +202,20 @@ private fun ReviewTotals(state: ReviewOrderState) {
 /** Resolves the primary action label, giving persisted conflict recovery priority. */
 @StringRes
 private fun ReviewOrderState.actionTitle(): Int =
-    when {
-      error == OrderError.OwnTrip -> R.string.my_orders_browse_trips
-      error is OrderError.AlreadyDecided -> R.string.order_view_saved
-      order != null && editing -> R.string.order_view_saved
-      order != null -> R.string.order_view
-      draft.items.isEmpty() -> R.string.order_add
-      saving -> R.string.order_saving
+    when (error) {
+      OrderError.OwnTrip -> R.string.my_orders_browse_trips
+      is OrderError.AlreadyDecided -> R.string.order_view_saved
       else ->
-          when (error) {
-            null -> if (editing) R.string.order_save_changes else R.string.order_submit
-            else -> R.string.order_retry
+          when {
+            order != null && editing -> R.string.order_view_saved
+            order != null -> R.string.order_view
+            draft.items.isEmpty() -> R.string.order_add
+            saving -> R.string.order_saving
+            else ->
+                when (error) {
+                  null -> if (editing) R.string.order_save_changes else R.string.order_submit
+                  else -> R.string.order_retry
+                }
           }
     }
 

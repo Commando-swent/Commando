@@ -20,6 +20,20 @@ class OrderDraftState(
               ?: OrderDraft(tripId.also { require(it.isNotBlank()) }, emptyList())
       )
   val draft = mutableDraft.asStateFlow()
+  private var recovery: Pair<String, OrderDraft>? = null
+
+  /** Retains a new-order basket for the next compatible trip chosen after own-trip rejection. */
+  fun prepareTripRecovery(storeId: String?) {
+    recovery = if (storeId != null && expectedRevision == null) storeId to draft.value else null
+  }
+
+  /** Resolves recovery once the catalogue knows the destination chain; other chains stay empty. */
+  fun recoverForTrip(tripId: String, storeId: String?) {
+    if (draft.value.tripId != tripId) return
+    val pending = recovery ?: return
+    recovery = null
+    if (pending.first == storeId) mutableDraft.value = pending.second.copy(tripId = tripId)
+  }
 
   /** Reopening the same trip preserves selection; switching trips starts an empty draft. */
   fun startTrip(tripId: String) {
@@ -57,6 +71,7 @@ class OrderDraftState(
   }
 
   fun clear() {
+    recovery = null
     mutableDraft.update { OrderDraft(it.tripId, emptyList()) }
   }
 

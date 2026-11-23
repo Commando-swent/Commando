@@ -23,6 +23,7 @@ import com.android.sample.ui.trips.TripDetailsScreen
 import com.android.sample.ui.trips.TripDetailsUiState
 import com.android.sample.ui.trips.TripDetailsViewModel
 import com.android.sample.ui.trips.formatTripDeparture
+import com.commando.app.model.storeIdFor
 
 /**
  * Registers Catalogue and Review Order. Both entries edit the same draft, kept in the authenticated
@@ -107,6 +108,7 @@ internal fun NavGraphBuilder.orderFlowRoutes(
                 tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
                 isDemo = orders.isDemo,
                 onBrowseTrips = {
+                  draft.prepareTripRecovery(storeIdFor(state.trip.store.name))
                   navController.navigate(CommandoScreens.AvailableTrips.name) {
                     popUpTo(CommandoScreens.AvailableTrips.name) { inclusive = true }
                     launchSingleTop = true

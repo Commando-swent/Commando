@@ -1,6 +1,5 @@
 package com.android.sample.emulator.firestore.security
 
-import com.android.sample.data.repository.firestoreFields
 import com.commando.app.data.repository.*
 import com.commando.app.model.*
 import com.commando.app.testing.PaymentFixtures

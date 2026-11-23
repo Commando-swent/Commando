@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
 import com.commando.app.model.*
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CancellationException
@@ -70,7 +71,7 @@ internal class FirebasePaymentDataSource(private val firestore: FirebaseFirestor
 
 /** Strict field reads reject coerced money and unknown enum values instead of repairing records. */
 private inline fun <reified T> Map<String, Any?>.paymentField(name: String): T =
-    get(name).let { if (it is T) it else throw PaymentFailure(PaymentError.INVALID_DATA) }
+    field<T>(name) ?: throw PaymentFailure(PaymentError.INVALID_DATA)
 
 private inline fun <reified T : Enum<T>> Map<String, Any?>.paymentEnum(name: String): T =
     enumValues<T>().firstOrNull { it.name == paymentField<String>(name) }
@@ -86,16 +87,18 @@ internal fun FirestoreDocument.toPayment() =
         data.paymentEnum("status"),
     )
 
-internal fun FirestoreDocument.toRefund() =
-    Refund(
-        data.paymentField("operationId"),
-        data.paymentField("orderId"),
-        data.paymentField("paymentId"),
-        data.paymentField("requesterId"),
-        data.paymentField("requestedBy"),
-        data.paymentField("amountCents"),
-        data.paymentEnum("status"),
-    )
+internal fun FirestoreDocument.toRefund(): Refund {
+  data.paymentField<Timestamp>("updatedAt")
+  return Refund(
+      data.paymentField("operationId"),
+      data.paymentField("orderId"),
+      data.paymentField("paymentId"),
+      data.paymentField("requesterId"),
+      data.paymentField("requestedBy"),
+      data.paymentField("amountCents"),
+      data.paymentEnum("status"),
+  )
+}
 
 internal fun Refund.firestoreFields(): Map<String, Any> =
     mapOf(

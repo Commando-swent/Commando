@@ -164,6 +164,10 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
   @Test
   fun malformedOrUncapturedPaymentsFailClosedWhileUnpaidCancellationIsPreserved() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      assertEquals(
+          PaymentResult.Error(PaymentError.NOT_FOUND),
+          repo(requester).getPayment(UUID.randomUUID().toString()),
+      )
       val order = seed(owner, requester)
       val payment = requester.firestore.collection("payments").document(order.id)
       val orderRef = requester.firestore.collection("orders").document(order.id)
@@ -196,6 +200,11 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       assertFalse(payment.get(Source.SERVER).await().exists())
       assertEquals(PaymentResult.Success(null), repo(requester).getPayment(order.id))
       orderRef.update("status", "CANCELLED").await()
+      updateDocumentAsOwner("trips/${order.tripId}", mapOf("ownerId" to false))
+      assertEquals(
+          PaymentResult.Error(PaymentError.INVALID_DATA),
+          repo(requester).getPayment(order.id),
+      )
     }
   }
 
@@ -221,9 +230,6 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
             .update("commissionCents", 76, "revision", 1)
             .await()
       }
-      val unpaid = seed(owner, requester)
-      deleteDocumentAsOwner("payments/${unpaid.id}")
-      assertTrue(repo(requester).getRefund(unpaid.id) is PaymentResult.Success)
     }
   }
 

@@ -3,6 +3,7 @@ package com.commando.app.data.repository
 import com.commando.app.model.*
 import com.commando.app.testing.PaymentFixtures
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Transaction
@@ -66,10 +67,8 @@ class PaymentFirestoreDataTest {
 
   @Test
   fun refundDecoderRejectsMissingFieldsAndUnknownOutcome() {
-    val fields = PaymentFixtures.refund().firestoreFields()
-    for (name in fields.keys - "updatedAt") assertInvalid {
-      FirestoreDocument("order", fields - name).toRefund()
-    }
+    val fields = PaymentFixtures.refund().firestoreFields() + ("updatedAt" to Timestamp(0, 0))
+    for (name in fields.keys) assertInvalid { FirestoreDocument("order", fields - name).toRefund() }
     for (change in
         listOf("amountCents" to 325.0, "status" to "NEW", "requestedBy" to false)) assertInvalid {
       FirestoreDocument("order", fields + change).toRefund()

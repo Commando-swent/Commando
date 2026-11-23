@@ -231,6 +231,9 @@ service cloud.firestore {
       return paymentMatchesOrder(orderId, payment, order)
         && refund.operationId == "refund-" + orderId && refund.paymentId == orderId
         && refund.orderId == orderId && refund.requesterId == order.requesterId
+        && refund.updatedAt is timestamp && refund.updatedAt <= request.time
+        && refund.requestedBy in [order.requesterId,
+          get(/databases/$(database)/documents/trips/$(order.tripId)).data.ownerId]
         && refund.amountCents is int && refund.amountCents == payment.amountCents;
     }
 

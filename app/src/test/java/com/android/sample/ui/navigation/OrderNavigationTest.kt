@@ -31,7 +31,13 @@ import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*

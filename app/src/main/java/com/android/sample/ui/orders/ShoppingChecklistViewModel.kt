@@ -3,10 +3,10 @@ package com.android.sample.ui.orders
 // AI assistance: Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.OrderError
-import com.android.sample.data.repository.OrderRepository
-import com.android.sample.data.repository.OrderResult
-import com.android.sample.data.repository.ShoppingChecklistRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.model.ShoppingChecklistItem
 import com.commando.app.model.buildShoppingChecklist
 import kotlinx.coroutines.Job

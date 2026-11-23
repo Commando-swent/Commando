@@ -14,7 +14,12 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.NotificationRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.*
 import java.time.Instant
 import org.junit.Assert.*

@@ -6,6 +6,9 @@ import com.android.sample.data.repository.*
 import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
 import com.android.sample.model.authentication.AuthRepositoryFirebase
 import com.android.sample.ui.orders.*
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepositoryFirestore
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*

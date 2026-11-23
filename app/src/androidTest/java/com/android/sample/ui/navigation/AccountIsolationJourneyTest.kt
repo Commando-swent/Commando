@@ -307,7 +307,7 @@ class AccountIsolationJourneyTest {
    * results replace the row, so each step taps again only while the previous count is shown.
    */
   private fun addToBasket(product: Product, quantity: Int) {
-    awaitTag(CatalogueTestTags.SEARCH)
+    awaitEnabled(CatalogueTestTags.SEARCH)
     compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement(product.name)
     (1..quantity).forEach { target ->
       val button =

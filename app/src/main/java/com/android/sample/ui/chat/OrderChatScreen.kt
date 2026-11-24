@@ -337,8 +337,7 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
     Surface(
         Modifier.align(if (mine) Alignment.CenterEnd else Alignment.CenterStart)
             .widthIn(max = maxWidth * 0.86f)
-            .testTag(OrderChatTestTags.MESSAGE + message.id)
-            .semantics { if (message.delayMinutes != null) contentDescription = noticeLabel },
+            .testTag(OrderChatTestTags.MESSAGE + message.id),
         shape =
             RoundedCornerShape(19.dp, 19.dp, if (mine) 4.dp else 19.dp, if (mine) 19.dp else 4.dp),
         color = if (mine) colors.primaryContainer else ChatSurface,
@@ -404,8 +403,9 @@ private fun ChatComposer(
                           state.canSendDelay),
           ) {
             Text(
-                state.failedDelayMinutes?.let { stringResource(R.string.chat_delay_failed, it) }
-                    ?: stringResource(R.string.chat_send_failed),
+                state.failedDelayMinutes?.let {
+                  pluralStringResource(R.plurals.chat_delay_failed, it, it)
+                } ?: stringResource(R.string.chat_send_failed),
                 Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 color = colors.error,
             )

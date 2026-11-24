@@ -101,7 +101,10 @@ class OrderChatScreenTest {
         .assertIsDisplayed()
     compose
         .onNodeWithContentDescription(compose.activity.getString(R.string.chat_delay_notice))
-        .assertExists()
+        .assertDoesNotExist()
+    compose
+        .onAllNodesWithText(compose.activity.getString(R.string.chat_delay_notice))
+        .assertCountEquals(1)
     compose
         .onNodeWithText(compose.activity.getString(R.string.chat_delay_notice))
         .assertIsDisplayed()
@@ -183,7 +186,9 @@ class OrderChatScreenTest {
         )
     show()
     tag(OrderChatTestTags.RETRY_SEND)
-        .assertTextContains(compose.activity.getString(R.string.chat_delay_failed, 5))
+        .assertTextContains(
+            compose.activity.resources.getQuantityString(R.plurals.chat_delay_failed, 5, 5)
+        )
         .performClick()
     assertEquals(listOf(5), delays)
     assertEquals(0, sends)
@@ -202,6 +207,23 @@ class OrderChatScreenTest {
           )
     }
     tag(OrderChatTestTags.RETRY_SEND).assertIsNotEnabled()
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h917dp-mdpi")
+  fun frenchFailedDelayUsesSingularAndPluralDurations() {
+    state =
+        state.copy(
+            context = state.context!!.copy(viewerId = state.context!!.trip.ownerId),
+            sendError = OrderError.PermissionDenied,
+            failedDelayMinutes = 1,
+        )
+    show()
+    tag(OrderChatTestTags.RETRY_SEND)
+        .assertTextContains("Échec de l’envoi du retard de 1 minute. Réessayer cet avis.")
+    compose.runOnIdle { state = state.copy(failedDelayMinutes = 2) }
+    tag(OrderChatTestTags.RETRY_SEND)
+        .assertTextContains("Échec de l’envoi du retard de 2 minutes. Réessayer cet avis.")
   }
 
   @Test

@@ -12,7 +12,9 @@ import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.*
+import java.io.IOException
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Rule
@@ -64,6 +66,52 @@ class ReviewOrderEditTest {
   private fun show(repository: OrderRepository) {
     model = ReviewOrderViewModel(repository, shared, "saved")
     compose.setContent { SampleAppTheme { ReviewOrderRoute(model, trip, {}, {}, opened::add) } }
+  }
+
+  private fun failFirstEditWith(failure: Exception): OrderRepository =
+      object : OrderRepository by fake {
+        private var first = true
+
+        override suspend fun editOrder(
+            orderId: String,
+            draft: OrderDraft,
+            expectedRevision: Int,
+        ): OrderResult<Order> {
+          if (first) {
+            first = false
+            throw failure
+          }
+          return fake.editOrder(orderId, draft, expectedRevision)
+        }
+      }
+
+  @Test
+  fun unexpectedEditExceptionKeepsDraftAndAllowsRetry() {
+    show(failFirstEditWith(IOException("Transport unavailable")))
+    val draft = shared.draft.value
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose.waitUntil { !model.uiState.value.saving }
+    assertEquals(OrderError.Unknown, model.uiState.value.error)
+    assertEquals(draft, shared.draft.value)
+    assertNull(model.uiState.value.order)
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsEnabled().performClick()
+    compose.waitUntil { model.uiState.value.order != null }
+    assertEquals(order.id, model.uiState.value.order!!.id)
+  }
+
+  @Test
+  fun cancelledEditKeepsDraftWithoutDisplayingFailureAndCanBeRetried() {
+    show(failFirstEditWith(CancellationException("Request cancelled")))
+    val draft = shared.draft.value
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose.waitUntil { !model.uiState.value.saving }
+    assertEquals(draft, shared.draft.value)
+    assertNull(model.uiState.value.error)
+    assertNull(model.uiState.value.order)
+    compose.onNodeWithTag(ReviewOrderTags.ERROR).assertDoesNotExist()
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsEnabled().performClick()
+    compose.waitUntil { model.uiState.value.order != null }
+    assertEquals(order.id, model.uiState.value.order!!.id)
   }
 
   @Test

@@ -49,6 +49,30 @@ class ReviewOrderTest {
   }
 
   @Test
+  fun staleQuantityActionCannotRestoreARemovedItemOrChangeOtherItems() {
+    show()
+    compose.runOnIdle {
+      shared.addItem(OrderItem("bread", "Bread", 300, 1))
+      shared.updateQuantity("milk", 0)
+      val remaining = shared.draft.value
+      vm.changeQuantity("milk", 1)
+      assertEquals(remaining, shared.draft.value)
+    }
+  }
+
+  @Test
+  fun quantityIncreaseCannotOverflowAndInvalidTotalBlocksSubmission() {
+    show()
+    compose.runOnIdle {
+      shared.updateQuantity("milk", Int.MAX_VALUE)
+      vm.changeQuantity("milk", 1)
+      assertEquals(Int.MAX_VALUE, shared.draft.value.items.single().quantity)
+    }
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertIsNotEnabled()
+    assertNull(vm.uiState.value.productsCents)
+  }
+
+  @Test
   fun oversizedDraftCannotReachRepositoryAndCanBeCorrectedWithoutLosingItems() {
     repeat(MAX_ORDER_PRODUCTS) { shared.addItem(OrderItem("p$it", "Product $it", 100, 1)) }
     var calls = 0

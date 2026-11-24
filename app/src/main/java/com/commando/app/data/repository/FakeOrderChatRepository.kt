@@ -6,14 +6,18 @@ import com.commando.app.model.CHAT_WINDOW_SIZE
 import com.commando.app.model.ChatMessage
 import com.commando.app.model.OrderChat
 import com.commando.app.model.OrderStatus
-import com.commando.app.model.isValidChatText
 import java.time.Clock
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /** Trusted fake order context, supplied from test/development fixtures rather than chat input. */
-data class FakeChatOrder(val requesterId: String, val ownerId: String, val status: OrderStatus)
+data class FakeChatOrder(
+    val requesterId: String,
+    val ownerId: String,
+    val status: OrderStatus,
+    val tripStatus: TripStatus = TripStatus.PUBLISHED,
+)
 
 /** Share one store between participants; updating orders also updates live send eligibility. */
 class FakeOrderChatStore(val orders: StateFlow<Map<String, FakeChatOrder>>) {
@@ -37,25 +41,43 @@ class FakeOrderChatRepository(
       orderId: String,
       messageId: String,
       text: String,
+  ): OrderResult<Unit> = send(orderId, messageId, text, null)
+
+  override suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int) =
+      send(orderId, messageId, CHAT_DELAY_FALLBACK, minutes)
+
+  private suspend fun send(
+      orderId: String,
+      messageId: String,
+      text: String,
+      delay: Int?,
   ): OrderResult<Unit> =
       store.mutex.withLock {
         val uid =
             currentUserId.value?.takeIf { it.isDocumentId() }
                 ?: return OrderResult.Error(OrderError.NotAuthenticated)
-        if (!orderId.isDocumentId() || !messageId.isDocumentId() || !text.isValidChatText())
+        if (
+            !orderId.isDocumentId() || !messageId.isDocumentId() || !isValidChatPayload(text, delay)
+        )
             return OrderResult.Error(OrderError.InvalidData)
         val accessError = access(orderId, uid)
         if (accessError != null) return OrderResult.Error(accessError)
         val messages = store.messages.value[orderId].orEmpty()
         val previous = messages.find { it.id == messageId }
         when {
-          previous != null && (previous.senderId != uid || previous.text != text) ->
-              OrderResult.Error(OrderError.InvalidData)
+          previous != null &&
+              (previous.senderId != uid ||
+                  previous.text != text ||
+                  previous.delayMinutes != delay) -> OrderResult.Error(OrderError.InvalidData)
           previous != null -> OrderResult.Success(Unit)
+          delay != null &&
+              store.orders.value.getValue(orderId).let {
+                it.ownerId != uid || !it.tripStatus.canReportDelay
+              } -> OrderResult.Error(OrderError.PermissionDenied)
           !store.orders.value.getValue(orderId).status.canSendChat ->
               OrderResult.Error(OrderError.PermissionDenied)
           else -> {
-            store.append(orderId, ChatMessage(messageId, uid, text, clock.instant()))
+            store.append(orderId, ChatMessage(messageId, uid, text, clock.instant(), delay))
             OrderResult.Success(Unit)
           }
         }

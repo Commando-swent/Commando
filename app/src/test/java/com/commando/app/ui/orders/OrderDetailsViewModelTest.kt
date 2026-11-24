@@ -1,6 +1,7 @@
 package com.commando.app.ui.orders
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), Commando cancellation (#401, #402):
+// Claude Code.
 
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.repository.OrderError
@@ -25,6 +26,7 @@ import com.commando.app.model.RatingSummary
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
+import java.io.IOException
 import java.time.Instant
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -47,6 +49,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -154,6 +157,81 @@ class OrderDetailsViewModelTest {
       assertTrue(!recovered.canCancel && !recovered.isSaving)
       assertEquals(2, orders.cancellations)
     }
+  }
+
+  private val accepted = order.copy(status = OrderStatus.ACCEPTED)
+
+  /** Loads [shown] for [viewer] and returns its ViewModel once idle. */
+  private fun TestScope.loaded(shown: Order, viewer: String): OrderDetailsViewModel {
+    orders.lookup = { OrderResult.Success(shown) }
+    return OrderDetailsViewModel(order.id, orders, trips, { viewer }).also { advanceUntilIdle() }
+  }
+
+  @Test
+  fun ownerCancelsAnAcceptedOrderThroughTheCommandoOperation() = runTest {
+    val cancelled = accepted.copy(status = OrderStatus.CANCELLED)
+    orders.decision = { OrderResult.Success(cancelled) }
+    val vm = loaded(accepted, trip.ownerId)
+    val initial = vm.uiState.value as OrderDetailsUiState.Content
+    assertTrue(initial.canCancelAccepted && !initial.canCancel)
+    vm.cancel()
+    advanceUntilIdle()
+    val saved = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(cancelled, saved.order)
+    assertEquals(OrderMutationState.Saved, saved.mutation)
+    assertFalse(saved.canCancelAccepted)
+    assertEquals(1 to 0, orders.acceptedCancellations to orders.cancellations)
+  }
+
+  @Test
+  fun ownerCancellationKeepsTheOrderOnFailureAndShowsAPersistedConflict() = runTest {
+    orders.decision = { throw IllegalStateException("offline") }
+    val vm = loaded(accepted, trip.ownerId)
+    vm.cancel()
+    advanceUntilIdle()
+    val failed = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(OrderMutationState.Failed(OrderError.Unknown), failed.mutation)
+    assertTrue(failed.order == accepted && failed.canCancelAccepted)
+    val ready = accepted.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    orders.decision = { OrderResult.Error(OrderError.AlreadyDecided(ready)) }
+    vm.cancel()
+    advanceUntilIdle()
+    val conflict = vm.uiState.value as OrderDetailsUiState.Content
+    assertTrue(conflict.order == ready && !conflict.canCancelAccepted)
+  }
+
+  @Test
+  fun onlyTheTripOwnerMayCancelAnAcceptedOrder() = runTest {
+    val requesterView = loaded(accepted, accepted.requesterId)
+    assertFalse((requesterView.uiState.value as OrderDetailsUiState.Content).canCancelAccepted)
+    requesterView.cancel()
+    val ready = loaded(accepted.copy(status = OrderStatus.READY_FOR_HANDOFF), trip.ownerId)
+    assertFalse((ready.uiState.value as OrderDetailsUiState.Content).canCancelAccepted)
+    ready.cancel()
+    advanceUntilIdle()
+    assertEquals(0 to 0, orders.acceptedCancellations to orders.cancellations)
+  }
+
+  @Test
+  fun accountChangeDuringOwnerCancellationDiscardsTheLateResult() = runTest {
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(trip.ownerId)
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.lookup = { OrderResult.Success(accepted) }
+    orders.decision = { gate.await() }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { session.value }, session)
+    advanceUntilIdle()
+    vm.cancel()
+    runCurrent()
+    session.value = "another-commando"
+    runCurrent()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    gate.complete(OrderResult.Success(accepted.copy(status = OrderStatus.CANCELLED)))
+    advanceUntilIdle()
+    vm.cancel()
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    assertEquals(1, orders.acceptedCancellations)
+    vm.viewModelScope.cancel()
   }
 
   @Test
@@ -1410,6 +1488,31 @@ class OrderDetailsViewModelTest {
     vm.viewModelScope.cancel()
   }
 
+  @Test
+  fun thrownRatingSavePreservesDeliveryAndReconcilesBeforeRetrying() = runTest {
+    val ratings = TestRatings().apply { save = { throw IOException("Response lost") } }
+    val vm = confirmedRatingVm(ratings)
+    val persisted = ratings.saved.copy(comment = "Useful delivery")
+    vm.selectScore(persisted.score)
+    vm.updateComment(persisted.comment!!)
+    vm.submitRating()
+    advanceUntilIdle()
+    assertEquals(RatingError.Unknown, vm.ratingState.value.error)
+    assertTrue(vm.ratingState.value.visible)
+    assertTrue(!vm.ratingState.value.submitting)
+    assertEquals(persisted.comment, vm.ratingState.value.comment)
+    val content = vm.uiState.value as OrderDetailsUiState.Content
+    assertEquals(OrderStatus.DELIVERED, content.order.status)
+    assertEquals(OrderMutationState.Saved, content.mutation)
+    ratings.read = { RatingResult.Success(persisted) }
+    vm.submitRating()
+    advanceUntilIdle()
+    assertTrue(vm.ratingState.value.submitted)
+    assertEquals(persisted, (vm.uiState.value as OrderDetailsUiState.Content).submittedRating)
+    assertEquals(1, ratings.inputs.size)
+    vm.viewModelScope.cancel()
+  }
+
   private fun TestScope.confirmedRatingVm(
       ratings: TestRatings,
       session: kotlinx.coroutines.flow.MutableStateFlow<String?> =
@@ -1606,6 +1709,13 @@ class OrderDetailsViewModelTest {
 
     override suspend fun markReadyForHandoff(orderId: String): OrderResult<Order> {
       readyIds += orderId
+      return decision()
+    }
+
+    var acceptedCancellations = 0
+
+    override suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order> {
+      acceptedCancellations++
       return decision()
     }
 

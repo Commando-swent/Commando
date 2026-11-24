@@ -212,6 +212,28 @@ class OrderDetailsViewModelTest {
   }
 
   @Test
+  fun accountChangeDuringOwnerCancellationDiscardsTheLateResult() = runTest {
+    val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(trip.ownerId)
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    orders.lookup = { OrderResult.Success(accepted) }
+    orders.decision = { gate.await() }
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { session.value }, session)
+    advanceUntilIdle()
+    vm.cancel()
+    runCurrent()
+    session.value = "another-commando"
+    runCurrent()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    gate.complete(OrderResult.Success(accepted.copy(status = OrderStatus.CANCELLED)))
+    advanceUntilIdle()
+    vm.cancel()
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+    assertEquals(1, orders.acceptedCancellations)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
   fun accountChangeDuringCancellationDiscardsLateSuccessAndPreventsRetry() = runTest {
     val session = kotlinx.coroutines.flow.MutableStateFlow<String?>(order.requesterId)
     val gate = CompletableDeferred<OrderResult<Order>>()

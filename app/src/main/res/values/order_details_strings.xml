@@ -46,8 +46,8 @@
     <string name="order_cancel_dialog_title">Cancel this order?</string>
     <string name="order_cancel_dialog_message">This action cannot be undone. The commando will no longer be able to accept this order.</string>
     <plurals name="order_cancel_accepted_dialog_message">
-        <item quantity="one">This action cannot be undone and the requester will be notified. Cancelling within %d minute of accepting has no effect on your reliability; later cancellations lower it.</item>
-        <item quantity="other">This action cannot be undone and the requester will be notified. Cancelling within %d minutes of accepting has no effect on your reliability; later cancellations lower it.</item>
+        <item quantity="one">This action cannot be undone and the requester will be notified. Cancelling within %d minute of accepting is free of penalty.</item>
+        <item quantity="other">This action cannot be undone and the requester will be notified. Cancelling within %d minutes of accepting is free of penalty.</item>
     </plurals>
     <string name="order_cancel_confirm">Cancel order</string>
     <string name="order_cancel_keep">Keep order</string>

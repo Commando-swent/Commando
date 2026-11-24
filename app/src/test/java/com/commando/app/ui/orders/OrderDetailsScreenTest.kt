@@ -1,6 +1,6 @@
 package com.commando.app.ui.orders
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; Commando cancellation (#402): Claude Code.
 
 import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
@@ -302,6 +302,30 @@ class OrderDetailsScreenTest {
   }
 
   @Test
+  fun tripOwnerConfirmsCancellingAnAcceptedOrderWithTheGracePeriodExplained() {
+    val accepted = order.copy(status = OrderStatus.ACCEPTED)
+    show(OrderDetailsUiState.Content(accepted, trip, viewerId = trip.ownerId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithText("within 10 minutes of accepting", substring = true).assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.runOnIdle { assertEquals(1, cancellations) }
+  }
+
+  @Test
+  fun cancellationDialogIsHiddenWhileAnotherSaveIsInProgress() {
+    val accepted =
+        OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId)
+    show(accepted)
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertExists()
+    compose.runOnIdle { state.value = accepted.copy(mutation = OrderMutationState.Saving) }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertDoesNotExist()
+    compose.runOnIdle { state.value = accepted }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertExists()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+  }
+
+  @Test
   @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
   fun cancellationRemainsReachableWithLargeTextAndUsesConfirmedStatus() {
     val content = OrderDetailsUiState.Content(order, trip, order.requesterId)
@@ -329,7 +353,7 @@ class OrderDetailsScreenTest {
   }
 
   @Test
-  fun cancellationIsAvailableOnlyToThePendingOrdersRequester() {
+  fun cancellationIsAvailableOnlyToThePendingRequesterAndTheAcceptedOrdersTripOwner() {
     show()
     for (viewer in listOf(null, trip.ownerId, "outsider", order.requesterId)) for (status in
         OrderStatus.entries) {
@@ -337,8 +361,10 @@ class OrderDetailsScreenTest {
         state.value = OrderDetailsUiState.Content(order.copy(status = status), trip, viewer)
       }
       val action = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
-      if (viewer == order.requesterId && status == OrderStatus.PENDING) action.assertExists()
-      else action.assertDoesNotExist()
+      val eligible =
+          (viewer == order.requesterId && status == OrderStatus.PENDING) ||
+              (viewer == trip.ownerId && status == OrderStatus.ACCEPTED)
+      if (eligible) action.assertExists() else action.assertDoesNotExist()
     }
   }
 

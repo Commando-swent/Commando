@@ -94,6 +94,71 @@ class FakeOrderChatRepositoryTest {
     assertEquals(OrderResult.Error(OrderError.PermissionDenied), owner.observeChat("order").first())
   }
 
+  private val ownerRepo = FakeOrderChatRepository(store, MutableStateFlow("owner"))
+
+  @Test
+  fun requesterCannotReportDelay() = runTest {
+    assertFailure(OrderError.PermissionDenied, repo.sendDelayNotice("order", "delay", 10))
+  }
+
+  @Test
+  fun delayPayloadRejectsInvalidDurationsAndMixedText() = runTest {
+    for (minutes in listOf(0, -1, MAX_CHAT_DELAY_MINUTES + 1)) {
+      assertFailure(OrderError.InvalidData, ownerRepo.sendDelayNotice("order", "delay", minutes))
+    }
+    assertFalse(isValidChatPayload("ambiguous", 10))
+  }
+
+  @Test
+  fun ownerDelayIsVisibleToRequesterWithCanonicalPayload() = runTest {
+    assertEquals(sent, ownerRepo.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
+    val message = (repo.observeChat("order").first() as OrderResult.Success).data.messages.single()
+    assertEquals(MAX_CHAT_DELAY_MINUTES, message.delayMinutes)
+    assertEquals(CHAT_DELAY_FALLBACK, message.text)
+  }
+
+  @Test
+  fun messageIdentityCannotChangeDurationOrKind() = runTest {
+    assertEquals(sent, ownerRepo.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
+    assertFailure(OrderError.InvalidData, ownerRepo.sendDelayNotice("order", "delay", 1))
+    assertFailure(OrderError.InvalidData, ownerRepo.sendMessage("order", "delay", "text"))
+  }
+
+  @Test
+  fun committedDelayRetriesNeverAppendAnotherMessageAfterTerminalTransitions() = runTest {
+    assertEquals(sent, ownerRepo.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
+    for (status in OrderStatus.entries.filter { it != OrderStatus.PENDING }) {
+      orders.value = mapOf("order" to orders.value.getValue("order").copy(status = status))
+      assertEquals(sent, ownerRepo.sendDelayNotice("order", "delay", MAX_CHAT_DELAY_MINUTES))
+    }
+    assertEquals(1, (repo.observeChat("order").first() as OrderResult.Success).data.messages.size)
+  }
+
+  @Test
+  fun newDelayNoticesFollowOrderLifecycle() = runTest {
+    for (status in OrderStatus.entries) {
+      orders.value = mapOf("order" to orders.value.getValue("order").copy(status = status))
+      assertEquals(
+          if (status.canSendChat) sent else OrderResult.Error(OrderError.PermissionDenied),
+          ownerRepo.sendDelayNotice("order", status.name, 1),
+      )
+    }
+  }
+
+  @Test
+  fun delayNoticesRequireAnActiveTripButCommittedRetriesRemainReadOnly() = runTest {
+    for (status in TripStatus.entries) {
+      orders.value = mapOf("order" to orders.value.getValue("order").copy(tripStatus = status))
+      assertEquals(
+          if (status.canReportDelay) sent else OrderResult.Error(OrderError.PermissionDenied),
+          ownerRepo.sendDelayNotice("order", status.name, 10),
+      )
+      assertEquals(sent, ownerRepo.sendMessage("order", "text-${status.name}", "hello"))
+      if (!status.canReportDelay)
+          assertEquals(sent, ownerRepo.sendDelayNotice("order", TripStatus.PUBLISHED.name, 10))
+    }
+  }
+
   private fun assertFailure(error: OrderError, result: OrderResult<*>) =
       assertEquals(OrderResult.Error(error), result)
 }

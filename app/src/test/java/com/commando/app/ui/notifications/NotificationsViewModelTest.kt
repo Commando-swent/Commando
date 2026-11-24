@@ -402,6 +402,31 @@ class NotificationsViewModelTest {
   }
 
   @Test
+  fun tapsBeforeLoadingAndOnUnknownOrReadEntriesNeverWrite() = runTest {
+    val vm = model()
+    vm.markAsRead(notice.event.id)
+    vm.updatePreferences(NotificationPreferences(false, false))
+    vm.retryReadUpdate()
+    vm.retryPreferenceUpdate()
+    advanceUntilIdle()
+    assertTrue(repository.markedIds.isEmpty())
+    assertTrue(repository.savedSettings.isEmpty())
+    repository.entries = listOf(notice.copy(isRead = true))
+    vm.refreshInbox()
+    vm.refreshPreferences()
+    advanceUntilIdle()
+    vm.markAsRead("missing")
+    vm.markAsRead(notice.event.id)
+    vm.updatePreferences(repository.settings)
+    vm.retryReadUpdate()
+    vm.retryPreferenceUpdate()
+    advanceUntilIdle()
+    assertTrue(repository.markedIds.isEmpty())
+    assertTrue(repository.savedSettings.isEmpty())
+    assertEquals(NotificationPageState.Content(repository.entries), vm.inbox.value)
+  }
+
+  @Test
   fun missingSessionDoesNotLoadAnyProtectedData() = runTest {
     identity.value = null
     val vm = model()

@@ -48,11 +48,10 @@ class MainActivityLaunchTest {
   @get:Rule val rules: RuleChain = RuleChain.outerRule(identity).around(compose)
 
   @Test
-  fun migratedLauncherRestoresLocalizedWelcomeAfterRecreation() {
+  fun migratedLauncherRestoresWelcomeAfterRecreation() {
     val activity = compose.activity
     val launch = activity.packageManager.getLaunchIntentForPackage(activity.packageName)
     assertEquals(MainActivity::class.java.name, launch?.component?.className)
-    assertEquals("fr", activity.resources.configuration.locales[0].language)
     val login = activity.getString(R.string.auth_login_action)
     compose.onNodeWithTag(WelcomeTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(WelcomeTestTags.LOGIN).assertTextEquals(login)

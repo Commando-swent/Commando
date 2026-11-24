@@ -33,6 +33,7 @@ than the lifecycle transitions below, remain denied.
 | PENDING | Cancel | CANCELLED | Order requester |
 | ACCEPTED | Mark ready for handoff | READY_FOR_HANDOFF | Associated trip owner |
 | READY_FOR_HANDOFF | Confirm receipt | DELIVERED | Order requester |
+| ACCEPTED | Cancel accepted order (#388) | CANCELLED | Associated trip owner |
 
 READY_FOR_HANDOFF and DELIVERED are implemented by #194. No other transition is valid. A repeated request whose stored status is
 already the requested target is idempotent and returns Success without writing. If a competing or
@@ -129,3 +130,28 @@ requirement. Checking writes the product's document and unchecking deletes it, s
 other products, there is no product limit, and unchecking before any save is a no-op. Rules allow
 reads and writes only to the owner of `trips/{tripId}`, with exact fields, a key matching the
 product ID's hash, a positive integer quantity and a server timestamp.
+
+## Structured chat delay notices
+
+Delay notices reuse `orders/{orderId}/messages/{messageId}` with immutable `senderId`, `createdAt`, `text` and `delayMinutes` (whole minutes late, 1–240). The structured duration drives localized rendering; the fixed readable `text` fallback keeps older text-only clients useful.
+
+Only the persisted trip owner can create a notice for an `ACCEPTED` or `READY_FOR_HANDOFF` order on a `PUBLISHED` or `IN_PROGRESS` trip. Closing a trip to new orders permits coordination; `CANCELLED` and `COMPLETED` trips reject new notices. Participant history remains readable, and identical committed same-ID retries do not write again.
+
+Unknown send outcomes retain the original ID and duration for reconciliation. Definitive failures discard both; a subsequent text send uses the typed draft, while the delay-specific retry explicitly submits the failed duration with a new ID.
+
+## Commando cancellation of accepted orders — #388 / #401
+
+AI assistance: Claude Code.
+
+`cancelAcceptedOrder(id)` reuses the owner transition infrastructure (`OwnerOrderTransition.CANCEL_ACCEPTED`):
+only the associated trip owner, excluding self-orders, changes ACCEPTED to CANCELLED. Authorized repeats
+at CANCELLED return Success without writing; every other status returns AlreadyDecided(persistedOrder).
+The transition commits atomically with an `orderEvents/{id}_ORDER_CANCELLED` event addressed to the
+requester, and the rules require that event (`hasOrderEvent`) exactly like Accept/Reject.
+
+Trusted times come from the server, never from the device: the acceptance time is the `occurredAt` of the
+existing `ORDER_ACCEPTED` event and the cancellation time is the `occurredAt` of `ORDER_CANCELLED`.
+`isPenaltyFreeCancellation(acceptedAt, cancelledAt)` classifies a cancellation strictly within
+`COMMANDO_CANCELLATION_GRACE` (10 minutes) as penalty-free; the reliability score (#387) consumes it.
+The inbox shows the event to the requester as an order decision. READY_FOR_HANDOFF and later cannot be
+cancelled. Refunds (#385) are out of scope while no payment exists on main.

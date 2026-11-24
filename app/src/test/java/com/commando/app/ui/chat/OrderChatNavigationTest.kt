@@ -76,6 +76,12 @@ class OrderChatNavigationTest {
                       }
                     }
 
+                override suspend fun sendDelayNotice(
+                    orderId: String,
+                    messageId: String,
+                    minutes: Int,
+                ): OrderResult<Unit> = OrderResult.Success(Unit)
+
                 override suspend fun sendMessage(
                     orderId: String,
                     messageId: String,

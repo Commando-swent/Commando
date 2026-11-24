@@ -1,6 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; cancellation preference case (#401): Claude Code.
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.NotificationFirestoreData as Schema
 import com.commando.app.data.repository.NotificationRepositoryFirestore
@@ -187,7 +187,8 @@ class NotificationFirestoreSecurityRulesEmulatorTest {
   fun eachPreferenceFiltersOnlyItsOwnCategory() = runTest {
     for ((preferences, visible) in
         listOf(
-            NotificationPreferences(false, true) to setOf(ORDER_ACCEPTED, ORDER_REJECTED),
+            NotificationPreferences(false, true) to
+                setOf(ORDER_ACCEPTED, ORDER_REJECTED, ORDER_CANCELLED),
             NotificationPreferences(true, false) to setOf(ORDER_PLACED),
         )) {
       withClients("recipient" to true) { (client) ->

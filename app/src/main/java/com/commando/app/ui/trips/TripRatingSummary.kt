@@ -14,8 +14,8 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
-import com.android.sample.ui.profile.ProfileAvatar
 import com.android.sample.ui.theme.RatingAmber
+import com.commando.app.ui.profile.ProfileAvatar
 
 /** Stable selectors for the creator's rating summary and its independent retry action. */
 object TripRatingTestTags {

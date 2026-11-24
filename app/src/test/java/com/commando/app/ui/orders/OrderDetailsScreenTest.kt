@@ -1,0 +1,899 @@
+package com.commando.app.ui.orders
+
+// AI assistance: OpenAI Codex; Commando cancellation (#402): Claude Code.
+
+import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.android.sample.R
+import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.TripError
+import com.commando.app.model.*
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.Locale
+import java.util.TimeZone
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34], qualifiers = "en-rUS")
+class OrderDetailsScreenTest {
+  private val rating = mutableStateOf(RatingDialogState(visible = true))
+  private var submissions = 0
+
+  private fun showRating() {
+    compose.setContent {
+      SampleAppTheme {
+        OrderDetailsScreen(
+            OrderDetailsUiState.Content(order.copy(status = OrderStatus.DELIVERED), trip),
+            {},
+            {},
+            ratingState = rating.value,
+            onRatingScore = { rating.value = rating.value.copy(score = it) },
+            onRatingComment = { rating.value = rating.value.copy(comment = it) },
+            onRatingSubmit = {
+              submissions++
+              rating.value = rating.value.copy(submitting = true)
+            },
+            onRatingDismiss = { rating.value = rating.value.copy(visible = false) },
+        )
+      }
+    }
+  }
+
+  @Test
+  fun ratingDialogValidatesScoreAndCommentBeforeSubmission() {
+    showRating()
+    val submit = compose.onNodeWithTag(RatingDialogTestTags.SUBMIT)
+    val comment = compose.onNodeWithTag(RatingDialogTestTags.COMMENT)
+    submit.assertIsNotEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.STAR_PREFIX + 4).performClick().assertIsSelected()
+    comment.performTextInput("x".repeat(251))
+    submit.assertIsNotEnabled()
+    comment.performTextReplacement("Friendly delivery")
+    submit.assertIsEnabled()
+  }
+
+  @Test
+  fun ratingSubmissionDisablesInputsAndRetryPreservesValuesUntilDismissal() {
+    rating.value = rating.value.copy(score = 4, comment = "Friendly delivery")
+    showRating()
+    val submit = compose.onNodeWithTag(RatingDialogTestTags.SUBMIT)
+    val comment = compose.onNodeWithTag(RatingDialogTestTags.COMMENT)
+    submit.performScrollTo().assertIsEnabled().performClick()
+    submit.assertIsNotEnabled().performClick()
+    comment.assertIsNotEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.STAR_PREFIX + 1).assertIsNotEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.CANCEL).assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, submissions)
+      rating.value =
+          rating.value.copy(
+              submitting = false,
+              error = RatingError.Unknown,
+          )
+    }
+    comment.assertTextContains("Friendly delivery")
+    val failureMessage =
+        ApplicationProvider.getApplicationContext<Context>().getString(R.string.rating_failure)
+    compose.onNodeWithText(failureMessage).assertExists()
+    compose.onNodeWithText(string(R.string.rating_retry)).assertExists()
+    submit.assertIsEnabled()
+    compose.onNodeWithTag(RatingDialogTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+  }
+
+  @Test
+  fun terminalRatingErrorOffersOnlyCloseAndKeepsDeliveryConfirmed() {
+    rating.value = rating.value.copy(score = 4, error = RatingError.InvalidData)
+    showRating()
+    compose.onNodeWithText(string(R.string.rating_unavailable)).assertExists()
+    compose.onNodeWithTag(RatingDialogTestTags.SUBMIT).assertDoesNotExist()
+    compose.onNodeWithTag(RatingDialogTestTags.COMMENT).assertIsNotEnabled()
+    compose.onNodeWithText(string(R.string.rating_close)).performScrollTo().performClick()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+    assertEquals(0, submissions)
+  }
+
+  @Test
+  fun completedRatingMessagesUseTheirCorrespondingResourcesWithoutReopeningDialog() {
+    showRating()
+    for ((feedback, message) in
+        listOf(
+            RatingDialogState(submitted = true) to R.string.rating_success,
+            RatingDialogState(error = RatingError.AlreadyRated) to R.string.rating_already,
+        )) {
+      compose.runOnIdle { rating.value = feedback }
+      compose.onNodeWithText(string(message)).performScrollTo().assertIsDisplayed()
+      compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    }
+  }
+
+  private fun string(id: Int) = ApplicationProvider.getApplicationContext<Context>().getString(id)
+
+  @Test
+  fun submittedRatingRendersReadOnlyStarsAndOptionalComment() {
+    val saved =
+        Rating(order.id, trip.id, order.requesterId, trip.ownerId, 4, "Friendly delivery", time)
+    val content =
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.DELIVERED),
+            trip,
+            order.requesterId,
+            submittedRating = saved,
+        )
+    show(content)
+    for (score in RATING_SCORE_RANGE) {
+      compose.runOnIdle { state.value = content.copy(submittedRating = saved.copy(score = score)) }
+      val description =
+          ApplicationProvider.getApplicationContext<Context>()
+              .getString(R.string.rating_star, score, RATING_SCORE_RANGE.last)
+      compose
+          .onNodeWithTag(OrderDetailsTestTags.RATING_SCORE)
+          .performScrollTo()
+          .assertIsDisplayed()
+          .assertContentDescriptionEquals(description)
+          .assert(hasClickAction().not())
+      val stars = "★".repeat(score) + "☆".repeat(5 - score)
+      val value =
+          ApplicationProvider.getApplicationContext<Context>()
+              .getString(R.string.rating_value, score, 5)
+      compose.onNodeWithText(stars, useUnmergedTree = true).assertIsDisplayed()
+      compose.onNodeWithText(value, useUnmergedTree = true).assertIsDisplayed()
+    }
+    compose
+        .onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertTextEquals(saved.comment!!)
+    for (comment in listOf(null, "", " \t\n")) {
+      compose.runOnIdle {
+        state.value = content.copy(submittedRating = saved.copy(comment = comment))
+      }
+      compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).assertDoesNotExist()
+      compose.onNodeWithTag(OrderDetailsTestTags.SUBMITTED_RATING).assertExists()
+    }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+  }
+
+  @Test
+  fun deliveredOrderWithoutFeedbackHasNoRatingCardOrDialog() {
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.DELIVERED),
+            trip,
+            order.requesterId,
+        )
+    )
+    compose.onNodeWithTag(OrderDetailsTestTags.SUBMITTED_RATING).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_SCORE).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).assertDoesNotExist()
+    compose.onNodeWithTag(RatingDialogTestTags.DIALOG).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    backWorks()
+  }
+
+  @Test
+  fun endingSessionRemovesDisplayedRating() {
+    val saved =
+        Rating(order.id, trip.id, order.requesterId, trip.ownerId, 4, "Private feedback", time)
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.DELIVERED),
+            trip,
+            order.requesterId,
+            submittedRating = saved,
+        )
+    )
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).performScrollTo().assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose.onNodeWithTag(OrderDetailsTestTags.SUBMITTED_RATING).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.RATING_COMMENT).assertDoesNotExist()
+    compose.onNodeWithText(saved.comment!!).assertDoesNotExist()
+    backWorks()
+  }
+
+  @Test
+  fun editingIsOnlyOfferedToTheRequesterOnAPendingOpenTrip() {
+    var edits = 0
+    val content =
+        mutableStateOf(
+            OrderDetailsUiState.Content(
+                order,
+                trip.copy(status = TripStatus.PUBLISHED),
+                "requester",
+            )
+        )
+    compose.setContent {
+      SampleAppTheme { OrderDetailsScreen(content.value, {}, {}, onEdit = { edits++ }) }
+    }
+    compose.onNodeWithTag(OrderDetailsTestTags.EDIT).performScrollTo().performClick()
+    assertEquals(1, edits)
+    compose.runOnIdle { content.value = content.value.copy(mutation = OrderMutationState.Saving) }
+    compose.onNodeWithTag(OrderDetailsTestTags.EDIT).assertIsNotEnabled()
+    for (next in
+        listOf(
+            content.value.copy(viewerId = "commando"),
+            content.value.copy(trip = trip),
+            content.value.copy(order = order.copy(status = OrderStatus.ACCEPTED)),
+        )) {
+      compose.runOnIdle { content.value = next }
+      compose.onNodeWithTag(OrderDetailsTestTags.EDIT).assertDoesNotExist()
+    }
+  }
+
+  @get:Rule val compose = createComposeRule()
+  private lateinit var originalTimeZone: TimeZone
+  private val time = Instant.parse("2026-10-13T16:30:00Z")
+  private val trip =
+      Trip(
+          "trip",
+          "commando",
+          Location("Stored store", 46.52, 6.57),
+          time,
+          Location("Stored handoff", 46.51, 6.58),
+          TripStatus.COMPLETED,
+          time,
+          time,
+      )
+  private val order =
+      Order(
+          "order",
+          trip.id,
+          "requester",
+          listOf(
+              OrderItem("milk", "Stored oat milk", 220, 2),
+              OrderItem("bread", "Stored bread", 180, 3),
+          ),
+          405,
+          OrderStatus.PENDING,
+          time,
+      )
+  private val state = mutableStateOf<OrderDetailsUiState>(OrderDetailsUiState.Content(order, trip))
+  private var backs = 0
+  private var retries = 0
+  private var readyRequests = 0
+  private var cancellations = 0
+  private var receiptRequests = 0
+  private val decisions = mutableListOf<OrderDecision>()
+
+  @Before
+  fun setUp() {
+    originalTimeZone = TimeZone.getDefault()
+    TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+  }
+
+  @Test
+  fun cancellationRequiresConfirmationAndCanBeDismissed() {
+    show(OrderDetailsUiState.Content(order, trip, viewerId = order.requesterId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithText("Cancel this order?").assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.KEEP_ORDER).performClick()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.runOnIdle { assertEquals(1, cancellations) }
+    compose.onNodeWithText("Cancel this order?").assertDoesNotExist()
+  }
+
+  @Test
+  fun tripOwnerConfirmsCancellingAnAcceptedOrderWithTheGracePeriodExplained() {
+    val accepted = order.copy(status = OrderStatus.ACCEPTED)
+    show(OrderDetailsUiState.Content(accepted, trip, viewerId = trip.ownerId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithText("within 10 minutes of accepting", substring = true).assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.runOnIdle { assertEquals(1, cancellations) }
+  }
+
+  @Test
+  fun cancellationDialogIsHiddenWhileAnotherSaveIsInProgress() {
+    val accepted =
+        OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId)
+    show(accepted)
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertExists()
+    compose.runOnIdle { state.value = accepted.copy(mutation = OrderMutationState.Saving) }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertDoesNotExist()
+    compose.runOnIdle { state.value = accepted }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertExists()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun cancellationRemainsReachableWithLargeTextAndUsesConfirmedStatus() {
+    val content = OrderDetailsUiState.Content(order, trip, order.requesterId)
+    show(content, fontScale = 1.5f)
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    val cancel = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+    cancel.performScrollTo().assertIsDisplayed().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertIsDisplayed().performClick()
+    compose.runOnIdle {
+      assertEquals(1, cancellations)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    cancel.performScrollTo().assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, cancellations)
+      state.value =
+          content.copy(
+              order = order.copy(status = OrderStatus.CANCELLED),
+              mutation = OrderMutationState.Saved,
+          )
+    }
+    cancel.assertDoesNotExist()
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun cancellationIsAvailableOnlyToThePendingRequesterAndTheAcceptedOrdersTripOwner() {
+    show()
+    for (viewer in listOf(null, trip.ownerId, "outsider", order.requesterId)) for (status in
+        OrderStatus.entries) {
+      compose.runOnIdle {
+        state.value = OrderDetailsUiState.Content(order.copy(status = status), trip, viewer)
+      }
+      val action = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+      val eligible =
+          (viewer == order.requesterId && status == OrderStatus.PENDING) ||
+              (viewer == trip.ownerId && status == OrderStatus.ACCEPTED)
+      if (eligible) action.assertExists() else action.assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun interactiveCancellationPreviewSupportsKeepingAndConfirmingWithoutFirebase() {
+    compose.setContent { OrderCancellationPendingPreview() }
+    val cancel = compose.onNodeWithTag(OrderDetailsTestTags.CANCEL)
+    cancel.performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.KEEP_ORDER).performClick()
+    compose.onNodeWithText("PENDING").assertIsDisplayed()
+    cancel.performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).performClick()
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+    cancel.assertDoesNotExist()
+  }
+
+  @Test
+  fun cancelledPreviewKeepsTheOrderContentAndOffersNoFurtherCancellation() {
+    compose.setContent { OrderCancellationConfirmedPreview() }
+    compose.onNodeWithText("CANCELLED").assertIsDisplayed()
+    compose.onNodeWithText("Migros EPFL").assertIsDisplayed()
+    compose.onNodeWithText("2 × Milk").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+  }
+
+  @Test
+  fun sessionEndRemovesAnOpenCancellationDialogWithoutSubmitting() {
+    show(OrderDetailsUiState.Content(order, trip, order.requesterId))
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+  }
+
+  @After
+  fun tearDown() {
+    TimeZone.setDefault(originalTimeZone)
+  }
+
+  private fun departure() =
+      DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+          .withLocale(Locale.US)
+          .withZone(ZoneId.of("UTC"))
+          .format(time)
+
+  private fun show(initial: OrderDetailsUiState = state.value, fontScale: Float? = null) {
+    state.value = initial
+    compose.setContent {
+      val density = LocalDensity.current
+      CompositionLocalProvider(
+          LocalDensity provides Density(density.density, fontScale ?: density.fontScale)
+      ) {
+        SampleAppTheme {
+          OrderDetailsScreen(
+              state.value,
+              onBack = { backs++ },
+              onRetry = { retries++ },
+              onDecision = { decisions += it },
+              onMarkReadyForHandoff = { readyRequests++ },
+              onCancel = { cancellations++ },
+              onConfirmReceipt = { receiptRequests++ },
+          )
+        }
+      }
+    }
+  }
+
+  private fun backWorks() {
+    compose
+        .onNodeWithContentDescription("Back")
+        .assertIsDisplayed()
+        .assertHasClickAction()
+        .performClick()
+    compose.runOnIdle { assertEquals(1, backs) }
+  }
+
+  private fun assertProtectedContentAbsent() {
+    for (text in
+        listOf(
+            "Stored oat milk",
+            "Stored bread",
+            "Stored store",
+            "Stored handoff",
+            departure(),
+            "CHF 4.05",
+            "PENDING",
+        )) {
+      compose.onAllNodesWithText(text, substring = true).assertCountEquals(0)
+    }
+  }
+
+  @Test
+  fun ownerActionsDispatchBothDecisionsAndSavingDisablesThem() {
+    val content = OrderDetailsUiState.Content(order, trip, viewerId = trip.ownerId)
+    show(content)
+    compose.onNodeWithTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF).assertDoesNotExist()
+    compose.onNodeWithText("Accept").performScrollTo().assertIsEnabled().performClick()
+    compose.onNodeWithText("Reject").performScrollTo().assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(listOf(OrderDecision.ACCEPT, OrderDecision.REJECT), decisions)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    compose.onNodeWithText("Accept").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithText("Reject").performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithText("Saving order status\u2026").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle {
+      state.value =
+          content.copy(
+              order = order.copy(status = OrderStatus.ACCEPTED),
+              mutation = OrderMutationState.Saved,
+          )
+    }
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+    compose.onNodeWithText("Reject").assertDoesNotExist()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("ACCEPTED").assertExists()
+  }
+
+  @Test
+  fun requesterUnrelatedAndFinalizedOwnerContentHaveNoDecisionActions() {
+    show()
+    for (content in
+        listOf(
+            OrderDetailsUiState.Content(order, trip, "requester"),
+            OrderDetailsUiState.Content(order, trip, "stranger"),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.ACCEPTED),
+                trip,
+                "requester",
+            ),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.ACCEPTED),
+                trip,
+                "stranger",
+            ),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.REJECTED),
+                trip,
+                trip.ownerId,
+            ),
+            OrderDetailsUiState.Content(order.copy(requesterId = trip.ownerId), trip, trip.ownerId),
+        )) {
+      compose.runOnIdle { state.value = content }
+      compose.onNodeWithText("Accept").assertDoesNotExist()
+      compose.onNodeWithText("Reject").assertDoesNotExist()
+      compose.onNodeWithTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  fun conflictShowsLatestStatusAndFeedbackWhileFailureKeepsActions() {
+    val content = OrderDetailsUiState.Content(order, trip, trip.ownerId)
+    show(content.copy(mutation = OrderMutationState.Failed(OrderError.Unknown)))
+    compose
+        .onNodeWithText("Could not update the order status. Check your connection and try again.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    compose.onNodeWithText("Accept").performScrollTo().assertIsEnabled()
+    val persisted = order.copy(status = OrderStatus.REJECTED)
+    compose.runOnIdle {
+      state.value =
+          content.copy(
+              order = persisted,
+              mutation = OrderMutationState.Failed(OrderError.AlreadyDecided(persisted)),
+          )
+    }
+    compose
+        .onNodeWithText("This order changed. Review its latest details before trying again.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    compose.onNodeWithText("REJECTED").assertExists()
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+  }
+
+  @Test
+  fun contentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
+    assertReadOnlyContent(OrderStatus.PENDING, "PENDING")
+  }
+
+  @Test
+  fun acceptedContentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
+    assertReadOnlyContent(OrderStatus.ACCEPTED, "ACCEPTED")
+  }
+
+  @Test
+  fun rejectedContentDisplaysStoredFieldsAndHasOnlyBackAsAnAction() {
+    assertReadOnlyContent(OrderStatus.REJECTED, "REJECTED")
+  }
+
+  @Test
+  fun acceptedOwnerCanRequestReadinessAndSavingDisablesTheAction() {
+    val content =
+        OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId)
+    show(content)
+    val ready = compose.onNodeWithTag(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF)
+    ready.performScrollTo().assertIsDisplayed().assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, readyRequests)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    ready.performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag(OrderDetailsTestTags.ACCEPT).assertDoesNotExist()
+    compose.onNodeWithTag(OrderDetailsTestTags.REJECT).assertDoesNotExist()
+  }
+
+  @Test
+  fun readyForHandoffOwnerContentDisplaysStatusWithoutDecisionActions() {
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+            trip,
+            viewerId = trip.ownerId,
+        )
+    )
+    compose.onNodeWithText("READY FOR HANDOFF").assertIsDisplayed()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+    compose.onNodeWithText("Reject").assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun readyForHandoffStatusUsesFrenchLabel() {
+    show(OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId))
+    compose
+        .onNodeWithText("Marquer comme prête à être remise")
+        .performScrollTo()
+        .assertIsDisplayed()
+    compose.runOnIdle {
+      state.value =
+          OrderDetailsUiState.Content(order.copy(status = OrderStatus.READY_FOR_HANDOFF), trip)
+    }
+    compose.onNodeWithText("PRÊTE À ÊTRE REMISE").assertIsDisplayed()
+  }
+
+  @Test
+  fun receiptActionDispatchesDisablesWhileSavingAndDisappearsAfterDelivery() {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    val content = OrderDetailsUiState.Content(ready, trip, order.requesterId)
+    show(content)
+    val action = compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT)
+    action.performScrollTo().assertIsEnabled().performClick()
+    compose.runOnIdle {
+      assertEquals(1, receiptRequests)
+      state.value = content.copy(mutation = OrderMutationState.Saving)
+    }
+    action.performScrollTo().assertIsNotEnabled().performClick()
+    compose.runOnIdle { assertEquals(1, receiptRequests) }
+    compose.onNodeWithText("Saving order status\u2026").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle {
+      state.value =
+          content.copy(
+              order = ready.copy(status = OrderStatus.DELIVERED),
+              mutation = OrderMutationState.Saved,
+          )
+    }
+    action.assertDoesNotExist()
+    compose.onNodeWithText("DELIVERED").assertIsDisplayed()
+    compose.onNodeWithText("Order status updated.").performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun receiptActionIsHiddenForOwnersOutsidersAndNonReadyRequesterOrders() {
+    show()
+    for (content in
+        listOf(
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+                trip,
+                trip.ownerId,
+            ),
+            OrderDetailsUiState.Content(
+                order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+                trip,
+                "other",
+            ),
+            OrderDetailsUiState.Content(order.copy(status = OrderStatus.READY_FOR_HANDOFF), trip),
+        ) +
+            listOf(
+                    OrderStatus.PENDING,
+                    OrderStatus.ACCEPTED,
+                    OrderStatus.REJECTED,
+                    OrderStatus.DELIVERED,
+                )
+                .map {
+                  OrderDetailsUiState.Content(order.copy(status = it), trip, order.requesterId)
+                }) {
+      compose.runOnIdle { state.value = content }
+      compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun receiptActionAndDeliveredStatusUseFrenchLabels() {
+    val ready = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    show(OrderDetailsUiState.Content(ready, trip, order.requesterId))
+    compose.onNodeWithText("Confirmer la réception").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle {
+      state.value = OrderDetailsUiState.Content(ready.copy(status = OrderStatus.DELIVERED), trip)
+    }
+    compose.onNodeWithText("LIVRÉE").assertIsDisplayed()
+  }
+
+  private fun assertReadOnlyContent(status: OrderStatus, label: String) {
+    show(OrderDetailsUiState.Content(order.copy(status = status), trip))
+    for (text in
+        listOf(
+            "Stored store",
+            departure(),
+            "Stored handoff",
+            "2 × Stored oat milk",
+            "3 × Stored bread",
+            "CHF 4.05",
+        )) {
+      compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+    }
+    compose.onAllNodesWithText(label).assertCountEquals(1)
+    compose.onNodeWithText(label).assertIsDisplayed()
+    // Exhaustive action checks also exclude editing, Accept/Reject and submission controls.
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    compose.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.SetText)).assertCountEquals(0)
+    backWorks()
+  }
+
+  @Test
+  fun loadingHasAccessibleProgressWithoutProtectedContent() {
+    show(OrderDetailsUiState.Loading)
+    compose
+        .onNodeWithContentDescription("Loading order details")
+        .assertIsDisplayed()
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.ProgressBarRangeInfo,
+                ProgressBarRangeInfo.Indeterminate,
+            )
+        )
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+    assertProtectedContentAbsent()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+    backWorks()
+  }
+
+  @Test
+  fun notFoundOffersBackWithoutRetryOrProtectedContent() {
+    show(OrderDetailsUiState.NotFound)
+    compose.onNodeWithText("This order could not be found.").assertIsDisplayed()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+    assertProtectedContentAbsent()
+    backWorks()
+  }
+
+  @Test
+  fun endedSessionRemovesSavingContentAndOffersOnlyBack() {
+    show(
+        OrderDetailsUiState.Content(order, trip, trip.ownerId, mutation = OrderMutationState.Saving)
+    )
+    compose.onNodeWithText("Saving order status\u2026").performScrollTo().assertIsDisplayed()
+    compose.runOnIdle { state.value = OrderDetailsUiState.SessionEnded }
+    compose
+        .onNodeWithText("This session has ended. Sign in again to view your orders.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertProtectedContentAbsent()
+    compose.onNodeWithText("Accept").assertDoesNotExist()
+    compose.onNodeWithText("Reject").assertDoesNotExist()
+    compose.onNodeWithText("Saving order status\u2026").assertDoesNotExist()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    backWorks()
+  }
+
+  @Test
+  fun authenticationFailureExplainsHowToRecoverWithoutProtectedContent() {
+    show(OrderDetailsUiState.Error.OrderFailure(OrderError.NotAuthenticated))
+    compose
+        .onNodeWithText("Authentication is required. Sign in again to view this order.")
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertProtectedContentAbsent()
+    compose.onNodeWithText("Retry").assertDoesNotExist()
+    compose.onAllNodes(hasClickAction()).assertCountEquals(1)
+    backWorks()
+  }
+
+  @Test
+  fun orderFailureOffersWorkingRetryAndBack() {
+    assertErrorActions(
+        OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied),
+        "You don't have permission to access or modify this order.",
+    )
+  }
+
+  @Test
+  fun unknownOrderFailureKeepsWorkingRetry() {
+    assertErrorActions(OrderDetailsUiState.Error.OrderFailure(OrderError.Unknown))
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun permissionFailureUsesGeneralFrenchMessage() {
+    show(OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied))
+    compose
+        .onNodeWithText(
+            "Vous n'avez pas l'autorisation de consulter ou de modifier cette commande."
+        )
+        .performScrollTo()
+        .assertIsDisplayed()
+    assertProtectedContentAbsent()
+  }
+
+  @Test
+  fun tripFailureOffersWorkingRetryAndBack() {
+    assertErrorActions(OrderDetailsUiState.Error.TripFailure(TripError.NetworkError))
+  }
+
+  private fun assertErrorActions(
+      error: OrderDetailsUiState.Error,
+      message: String = "Something went wrong while loading this order.",
+  ) {
+    show(error)
+    compose.onNodeWithText(message).assertIsDisplayed()
+    assertProtectedContentAbsent()
+    compose.runOnIdle {
+      assertEquals(0, retries)
+      assertEquals(0, backs)
+    }
+    compose
+        .onNodeWithText("Retry")
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    compose.runOnIdle {
+      assertEquals(1, retries)
+      assertEquals(0, backs)
+    }
+    backWorks()
+  }
+
+  @Test
+  fun switchingFromContentToNonContentStatesRemovesProtectedInformation() {
+    show()
+    for ((next, message) in
+        listOf(
+            OrderDetailsUiState.Loading to null,
+            OrderDetailsUiState.NotFound to "This order could not be found.",
+            OrderDetailsUiState.Error.OrderFailure(OrderError.PermissionDenied) to
+                "You don't have permission to access or modify this order.",
+        )) {
+      compose.runOnIdle { state.value = OrderDetailsUiState.Content(order, trip) }
+      compose.onNodeWithText("2 × Stored oat milk").performScrollTo().assertIsDisplayed()
+      compose.onNodeWithText("Stored handoff").performScrollTo().assertIsDisplayed()
+      compose.runOnIdle { state.value = next }
+      assertProtectedContentAbsent()
+      if (message != null) compose.onNodeWithText(message).performScrollTo().assertIsDisplayed()
+      else
+          compose
+              .onNodeWithContentDescription("Loading order details")
+              .performScrollTo()
+              .assertIsDisplayed()
+    }
+    backWorks()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun longNamesAndLargeTextInShortViewportKeepContentAndBackReachable() {
+    val name = "Stored wholegrain bread with sunflower seeds and a very long product description"
+    val store = "Stored supermarket at the far end of the university shopping district"
+    val handoff = "Stored handoff beside the main entrance of the university learning center"
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(items = listOf(OrderItem("long", name, 180, 12))),
+            trip.copy(
+                store = trip.store.copy(name = store),
+                handoffLocation = trip.handoffLocation.copy(name = handoff),
+            ),
+        ),
+        fontScale = 1.5f,
+    )
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    compose.onNodeWithContentDescription("Back").assertIsDisplayed()
+    for (text in listOf(store, handoff)) {
+      compose.onNodeWithText(text).performScrollTo().assertIsDisplayed()
+    }
+    compose.onNodeWithText("12 × $name").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("CHF 4.05").performScrollTo().assertIsDisplayed()
+    backWorks()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun shortViewportAndLargeTextKeepReceiptActionAndBackReachable() {
+    show(
+        OrderDetailsUiState.Content(
+            order.copy(status = OrderStatus.READY_FOR_HANDOFF),
+            trip,
+            viewerId = order.requesterId,
+        ),
+        fontScale = 1.5f,
+    )
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    compose
+        .onNodeWithTag(OrderDetailsTestTags.CONFIRM_RECEIPT)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    compose.runOnIdle { assertEquals(1, receiptRequests) }
+    backWorks()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
+  fun shortViewportKeepsErrorRetryAndBackReachable() {
+    show(OrderDetailsUiState.Error.TripFailure(TripError.Unknown), fontScale = 1.5f)
+    compose.onRoot().assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(320.dp)
+    compose.onNodeWithContentDescription("Back").assertIsDisplayed()
+    compose
+        .onNodeWithText("Retry")
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertIsEnabled()
+        .performClick()
+    compose.runOnIdle { assertEquals(1, retries) }
+    backWorks()
+  }
+}

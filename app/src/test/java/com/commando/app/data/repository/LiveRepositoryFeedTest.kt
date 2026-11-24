@@ -1,9 +1,9 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.trips.discoveryTrip
 import com.google.firebase.Timestamp
 import io.mockk.every

@@ -6,13 +6,13 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.TripLocations
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.trips.CreateTripScreenTestTags
 import java.time.LocalDate

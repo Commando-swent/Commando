@@ -1,5 +1,6 @@
 package com.commando.app.data.repository
 
+// AI assistance: Claude Code for idempotent publication tests (#394).
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.Trip
@@ -310,6 +311,44 @@ class FakeTripRepositoryTest {
     assertTrue(
         repository.publishTrip(newTripAt(currentTime.plusSeconds(3_600))) is TripResult.Success
     )
+  }
+
+  @Test
+  fun publishTrip_withStoredId_returnsItOrFailsWithoutOverwriting() = runTest {
+    val stored = trip("trip-1", status = TripStatus.IN_PROGRESS)
+    val foreign = trip("trip-2", ownerId = "someone-else")
+    val departed = trip("trip-3", scheduledAt = currentTime.minusSeconds(1))
+    val repository = createRepository(listOf(stored, foreign, departed))
+    val sameIntent = newTripAt(stored.scheduledAt)
+
+    assertEquals(TripResult.Success(stored), repository.publishTrip("trip-1", sameIntent))
+    assertEquals(
+        TripResult.Success(departed),
+        repository.publishTrip("trip-3", newTripAt(departed.scheduledAt)),
+    )
+    assertEquals(
+        TripResult.Error(TripError.PermissionDenied),
+        repository.publishTrip("trip-2", sameIntent),
+    )
+    listOf(
+            sameIntent.copy(store = handoff),
+            sameIntent.copy(scheduledAt = stored.scheduledAt.plusSeconds(1)),
+            sameIntent.copy(handoffLocation = store),
+        )
+        .forEach {
+          assertEquals(
+              TripResult.Error(TripError.InvalidData),
+              repository.publishTrip("trip-1", it),
+          )
+        }
+    assertEquals(
+        TripResult.Error(TripError.InvalidData),
+        repository.publishTrip("  ", sameIntent),
+    )
+
+    assertEquals(TripResult.Success(stored), repository.getTripById("trip-1"))
+    assertEquals(TripResult.Success(foreign), repository.getTripById("trip-2"))
+    assertEquals(listOf(stored, departed), repository.getMyTrips().successData())
   }
 
   private fun createRepository() =

@@ -1,6 +1,6 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code, including the publication intent ID (#394).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.repository.TripError
@@ -14,6 +14,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -38,6 +39,11 @@ class CreateTripViewModel(
   }
 
   private val touchedFields = mutableSetOf<Field>()
+  /**
+   * The trip ID and trip of an attempt whose outcome is unknown. Retries resend exactly this
+   * intent, never a new ID per tap, and edits wait until the server settles it.
+   */
+  private var pending: Pair<String, NewTrip>? = null
   private val mutableState = MutableStateFlow(CreateTripUiState())
   val uiState: StateFlow<CreateTripUiState> = mutableState.asStateFlow()
 
@@ -53,19 +59,26 @@ class CreateTripViewModel(
   fun publish() {
     val state = uiState.value
     if (state.isPublishing || state.publishedTrip != null) return
-    touchedFields += Field.entries
-    val checked = validate(state.copy(publishError = null), clock.instant())
-    val newTrip = checked.toNewTrip()
-    if (newTrip == null) {
-      mutableState.value = checked
-      return
-    }
+    // An uncertain attempt is resent as it was, even once its departure has passed.
+    val (tripId, newTrip) =
+        pending
+            ?: run {
+              touchedFields += Field.entries
+              val checked = validate(state.copy(publishError = null), clock.instant())
+              val newTrip = checked.toNewTrip()
+              if (newTrip == null) {
+                mutableState.value = checked
+                return
+              }
+              UUID.randomUUID().toString() to newTrip
+            }
     // Set before launching so two taps in the same frame cannot publish twice.
-    mutableState.value = checked.copy(isPublishing = true, canPublish = false)
+    mutableState.value = state.copy(isPublishing = true, canPublish = false, publishError = null)
+    pending = tripId to newTrip
     viewModelScope.launch {
       val result =
           try {
-            repository.publishTrip(newTrip)
+            repository.publishTrip(tripId, newTrip)
           } catch (cancelled: CancellationException) {
             // Rethrow only if this coroutine was cancelled; a repository timeout is a failure.
             currentCoroutineContext().ensureActive()
@@ -78,7 +91,12 @@ class CreateTripViewModel(
   }
 
   private fun onPublishResult(result: TripResult<Trip>) {
-    val state = uiState.value.copy(isPublishing = false)
+    // Only a network or unknown failure may hide a server commit, so only those keep the ID.
+    val uncertain =
+        result is TripResult.Error &&
+            (result.error == TripError.NetworkError || result.error == TripError.Unknown)
+    if (!uncertain) pending = null
+    val state = uiState.value.copy(isPublishing = false, hasUncertainPublication = pending != null)
     mutableState.value =
         when (result) {
           is TripResult.Success -> state.copy(publishedTrip = result.data, canPublish = false)
@@ -88,7 +106,7 @@ class CreateTripViewModel(
 
   private fun edit(field: Field, change: CreateTripUiState.() -> CreateTripUiState) {
     val state = uiState.value
-    if (state.isPublishing || state.publishedTrip != null) return
+    if (state.isPublishing || state.publishedTrip != null || pending != null) return
     touchedFields += field
     mutableState.value = validate(state.change().copy(publishError = null), clock.instant())
   }
@@ -108,7 +126,9 @@ class CreateTripViewModel(
         timeError = shown(Field.TIME),
         handoffLocationError = shown(Field.HANDOFF_LOCATION),
         canPublish =
-            errors.values.all { it == null } && !state.isPublishing && state.publishedTrip == null,
+            (pending != null || errors.values.all { it == null }) &&
+                !state.isPublishing &&
+                state.publishedTrip == null,
     )
   }
 

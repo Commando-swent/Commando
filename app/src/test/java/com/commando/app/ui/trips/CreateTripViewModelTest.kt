@@ -1,6 +1,6 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code, including publication intent ID and lock tests (#394).
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
@@ -197,7 +197,7 @@ class CreateTripViewModelTest {
 
       assertEquals(
           "$error/$exception",
-          VALID_STATE.copy(publishError = error),
+          VALID_STATE.copy(publishError = error, hasUncertainPublication = error in UNCERTAIN),
           viewModel.uiState.value,
       )
     }
@@ -205,7 +205,7 @@ class CreateTripViewModelTest {
 
   @Test
   fun retryAfterFailure_publishesAndAnEditClearsTheError() = runTest {
-    repository = RecordingRepository(result = TripResult.Error(TripError.NetworkError))
+    repository = RecordingRepository(result = TripResult.Error(TripError.InvalidData))
     val viewModel = createViewModel()
     viewModel.fillValidForm()
     viewModel.publish()
@@ -240,7 +240,106 @@ class CreateTripViewModelTest {
     advanceUntilIdle()
 
     assertEquals(1, repository.published.size)
-    assertEquals(VALID_STATE.copy(publishError = TripError.NetworkError), viewModel.uiState.value)
+    assertEquals(
+        VALID_STATE.copy(publishError = TripError.NetworkError, hasUncertainPublication = true),
+        viewModel.uiState.value,
+    )
+  }
+
+  @Test
+  fun retryAfterUncertainFailure_ignoresEditsAndResendsTheIntentEvenAfterDeparture() = runTest {
+    val failures =
+        listOf(
+            TripError.NetworkError to null,
+            TripError.Unknown to null,
+            TripError.Unknown to IllegalStateException("down"),
+        )
+    failures.forEach { (error, exception) ->
+      repository = RecordingRepository(result = TripResult.Error(error), exception = exception)
+      val clock = MutableClock(NOW)
+      val viewModel = createViewModel(clock)
+      viewModel.fillValidForm()
+      viewModel.publish()
+      advanceUntilIdle()
+      val locked = viewModel.uiState.value
+      viewModel.setStore(OTHER_STORE)
+      viewModel.setDate(TOMORROW.plusDays(1))
+      viewModel.setTime(LocalTime.of(9, 0))
+      viewModel.setHandoffLocation(OTHER_HANDOFF)
+      assertTrue(locked.hasUncertainPublication && locked.canPublish)
+      assertEquals("Edits wait for the uncertain attempt", locked, viewModel.uiState.value)
+
+      repository.exception = null
+      repository.result = TripResult.Success(PUBLISHED_TRIP)
+      clock.instant = NEW_TRIP.scheduledAt.plusSeconds(60) // Past departure: no re-validation.
+      viewModel.publish()
+      advanceUntilIdle()
+
+      assertEquals("$error/$exception", 2, repository.tripIds.size)
+      assertEquals("$error/$exception", 1, repository.tripIds.distinct().size)
+      assertEquals(listOf(NEW_TRIP, NEW_TRIP), repository.published)
+      assertEquals(PUBLISHED_TRIP, viewModel.uiState.value.publishedTrip)
+      assertFalse(viewModel.uiState.value.hasUncertainPublication)
+    }
+  }
+
+  @Test
+  fun definitiveFailureAfterUncertainOne_unlocksTheFormAndStartsANewIntent() = runTest {
+    repository = RecordingRepository(result = TripResult.Error(TripError.NetworkError))
+    val viewModel = createViewModel()
+    viewModel.fillValidForm()
+    viewModel.publish()
+    advanceUntilIdle()
+    repository.result = TripResult.Error(TripError.InvalidData)
+    viewModel.publish()
+    advanceUntilIdle()
+
+    assertFalse(viewModel.uiState.value.hasUncertainPublication)
+    viewModel.setHandoffLocation(OTHER_HANDOFF)
+    repository.result = TripResult.Success(PUBLISHED_TRIP)
+    viewModel.publish()
+    advanceUntilIdle()
+
+    assertEquals(OTHER_HANDOFF, repository.published[2].handoffLocation)
+    assertEquals(repository.tripIds[0], repository.tripIds[1])
+    assertNotEquals(repository.tripIds[1], repository.tripIds[2])
+  }
+
+  @Test
+  fun retryAfterDefinitiveFailure_usesANewTripId() = runTest {
+    listOf(TripError.InvalidData, TripError.PermissionDenied).forEach { error ->
+      repository = RecordingRepository(result = TripResult.Error(error))
+      val viewModel = createViewModel()
+      viewModel.fillValidForm()
+      viewModel.publish()
+      advanceUntilIdle()
+
+      repository.result = TripResult.Success(PUBLISHED_TRIP)
+      viewModel.publish()
+      advanceUntilIdle()
+
+      assertEquals("$error", 2, repository.tripIds.distinct().size)
+      assertEquals(PUBLISHED_TRIP, viewModel.uiState.value.publishedTrip)
+    }
+  }
+
+  @Test
+  fun eachViewModelIntentAndRepeatedTaps_useOneTripIdPerIntent() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    repository = RecordingRepository(gate = gate)
+    val first = createViewModel().apply { fillValidForm() }
+    first.publish()
+    first.publish()
+    runCurrent()
+    first.publish()
+    gate.complete(Unit)
+    advanceUntilIdle()
+    createViewModel().apply { fillValidForm() }.publish()
+    advanceUntilIdle()
+
+    assertEquals(2, repository.tripIds.size)
+    assertEquals(2, repository.tripIds.distinct().size)
+    assertTrue(repository.tripIds.all { it.isNotBlank() })
   }
 
   private fun createViewModel(clock: Clock = Clock.fixed(NOW, ZONE)) =
@@ -259,12 +358,15 @@ class CreateTripViewModelTest {
   /** Records published trips; returns [result], or throws [exception], after [gate] opens. */
   private class RecordingRepository(
       var result: TripResult<Trip> = TripResult.Success(PUBLISHED_TRIP),
-      private val exception: Throwable? = null,
+      var exception: Throwable? = null,
       private val gate: CompletableDeferred<Unit>? = null,
   ) : TripRepository {
     val published = mutableListOf<NewTrip>()
 
-    override suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> {
+    val tripIds = mutableListOf<String>()
+
+    override suspend fun publishTrip(tripId: String, newTrip: NewTrip): TripResult<Trip> {
+      tripIds += tripId
       published += newTrip
       gate?.await()
       exception?.let { throw it }
@@ -295,6 +397,7 @@ class CreateTripViewModelTest {
     val TODAY: LocalDate = LocalDate.of(2026, 10, 5)
     val TOMORROW: LocalDate = TODAY.plusDays(1)
     val LOCAL_NOW: LocalTime = LocalTime.of(12, 0)
+    val UNCERTAIN = setOf(TripError.NetworkError, TripError.Unknown)
     val ALL_ERRORS =
         listOf(
             TripError.NotFound,

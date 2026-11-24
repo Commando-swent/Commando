@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transitions; OpenAI Codex for live feed expiry.
+// AI assistance: Claude Code for trip transitions and idempotent publication (#394); OpenAI Codex
+// for live feed expiry.
 import com.commando.app.model.NewTrip
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
@@ -8,6 +9,7 @@ import com.commando.app.model.TripTransition
 import com.commando.app.model.blocksTripCompletion
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -19,7 +21,20 @@ interface TripRepository {
     error("Live trips unsupported")
   }
 
-  suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip>
+  /** Publishes [newTrip] as a new intent, under a fresh trip ID. */
+  suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> =
+      publishTrip(UUID.randomUUID().toString(), newTrip)
+
+  /**
+   * Publishes [newTrip] under the caller's [tripId], at most once. The caller creates one ID per
+   * publication intent and reuses it on every retry, never a new ID per attempt. A trip already
+   * stored under [tripId] by the current user with the same store, departure and handoff is
+   * returned as stored now, without writing, even after its departure. Any other stored trip is
+   * left unchanged: PermissionDenied for another owner, InvalidData for different fields. Offline
+   * publication fails instead of being queued. NetworkError, Unknown or cancellation may follow a
+   * server commit: reconcile by retrying with the same ID.
+   */
+  suspend fun publishTrip(tripId: String, newTrip: NewTrip): TripResult<Trip>
 
   suspend fun getTripById(tripId: String): TripResult<Trip>
 

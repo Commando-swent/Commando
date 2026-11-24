@@ -14,10 +14,6 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import com.android.sample.model.authentication.AuthException
-import com.android.sample.ui.notifications.NotificationInboxScreen
-import com.android.sample.ui.notifications.NotificationPreferencesScreen
-import com.android.sample.ui.notifications.NotificationsViewModel
-import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.EditProfileScreen
 import com.android.sample.ui.profile.ProfileHelpScreen
@@ -27,6 +23,10 @@ import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.commando.app.data.repository.NotificationRepository
+import com.commando.app.ui.notifications.NotificationInboxScreen
+import com.commando.app.ui.notifications.NotificationPreferencesScreen
+import com.commando.app.ui.notifications.NotificationsViewModel
+import com.commando.app.ui.orders.SessionOrderViewModel
 
 /**
  * The app-level account actions Profile triggers: [signOut] reports a failure through

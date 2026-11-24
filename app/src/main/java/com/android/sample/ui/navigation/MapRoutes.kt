@@ -18,7 +18,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.android.sample.R
-import com.android.sample.ui.orders.SessionOrderViewModel
 import com.commando.app.data.location.AndroidDeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.repository.CommandoPositionRepository
@@ -34,6 +33,7 @@ import com.commando.app.ui.map.PositionSharingViewModel
 import com.commando.app.ui.map.TripMapScreen
 import com.commando.app.ui.map.TripMapUiState
 import com.commando.app.ui.map.rememberPositionSharingControl
+import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.trips.TripLocationFilterViewModel
 import kotlinx.coroutines.launch
 

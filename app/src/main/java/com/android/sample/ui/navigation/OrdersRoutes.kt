@@ -13,19 +13,19 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.android.sample.ui.orders.IncomingOrdersScreen
-import com.android.sample.ui.orders.IncomingOrdersViewModel
-import com.android.sample.ui.orders.MyOrdersScreen
-import com.android.sample.ui.orders.MyOrdersViewModel
-import com.android.sample.ui.orders.OrderDetailsScreen
-import com.android.sample.ui.orders.OrderDetailsUiState
-import com.android.sample.ui.orders.OrderDetailsViewModel
-import com.android.sample.ui.orders.SessionOrderViewModel
-import com.android.sample.ui.orders.ShoppingChecklistScreen
-import com.android.sample.ui.orders.ShoppingChecklistViewModel
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.TripRepository
+import com.commando.app.ui.orders.IncomingOrdersScreen
+import com.commando.app.ui.orders.IncomingOrdersViewModel
+import com.commando.app.ui.orders.MyOrdersScreen
+import com.commando.app.ui.orders.MyOrdersViewModel
+import com.commando.app.ui.orders.OrderDetailsScreen
+import com.commando.app.ui.orders.OrderDetailsUiState
+import com.commando.app.ui.orders.OrderDetailsViewModel
+import com.commando.app.ui.orders.SessionOrderViewModel
+import com.commando.app.ui.orders.ShoppingChecklistScreen
+import com.commando.app.ui.orders.ShoppingChecklistViewModel
 
 internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
 

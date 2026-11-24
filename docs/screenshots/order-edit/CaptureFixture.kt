@@ -18,7 +18,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.data.repository.*
 import com.commando.app.model.*
 import com.android.sample.model.authentication.*
-import com.android.sample.ui.orders.*
+import com.commando.app.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
 import java.io.File
 import java.time.Instant

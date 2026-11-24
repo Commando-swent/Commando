@@ -13,11 +13,6 @@ import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.catalogue.CatalogueTestTags
-import com.android.sample.ui.catalogue.SEARCH_DEBOUNCE_MILLIS
-import com.android.sample.ui.catalogue.StubProductRepository
-import com.android.sample.ui.orders.MyOrdersTestTags
-import com.android.sample.ui.orders.ReviewOrderTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -26,6 +21,11 @@ import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.ProductResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.*
+import com.commando.app.ui.catalogue.CatalogueTestTags
+import com.commando.app.ui.catalogue.SEARCH_DEBOUNCE_MILLIS
+import com.commando.app.ui.catalogue.StubProductRepository
+import com.commando.app.ui.orders.MyOrdersTestTags
+import com.commando.app.ui.orders.ReviewOrderTags
 import com.commando.app.ui.trips.RecordingRatings
 import java.time.Duration
 import java.time.Instant

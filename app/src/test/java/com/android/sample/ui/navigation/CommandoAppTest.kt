@@ -44,8 +44,6 @@ import com.android.sample.model.authentication.ProfileUpdateResult
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
 import com.android.sample.ui.auth.WelcomeTestTags
-import com.android.sample.ui.catalogue.CatalogueTestTags
-import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
@@ -66,6 +64,8 @@ import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.catalogue.CatalogueTestTags
+import com.commando.app.ui.catalogue.StubProductRepository
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.LiveMapTags
 import com.commando.app.ui.map.MapTestTags

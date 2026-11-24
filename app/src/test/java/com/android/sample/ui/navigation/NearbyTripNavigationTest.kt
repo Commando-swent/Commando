@@ -13,13 +13,13 @@ import androidx.test.core.app.ApplicationProvider
 import com.android.sample.data.repository.*
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.*
+import com.commando.app.ui.catalogue.StubProductRepository
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.*
 import com.commando.app.ui.trips.AvailableTripsScreenTestTags

@@ -13,7 +13,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderError
@@ -23,6 +22,7 @@ import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.theme.SampleAppTheme
 import com.commando.app.ui.trips.formatTripDeparture
 import java.time.Instant
 import java.time.ZoneId

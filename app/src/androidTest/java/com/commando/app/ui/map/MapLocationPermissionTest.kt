@@ -14,9 +14,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.*
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.location.*
 import com.commando.app.model.*
+import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 import java.util.regex.Pattern
 import org.junit.Assert.*

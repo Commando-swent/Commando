@@ -9,8 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.ui.navigation.*
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
@@ -18,6 +16,8 @@ import com.commando.app.model.*
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.navigation.*
+import com.commando.app.ui.theme.SampleAppTheme
 import java.io.File
 import java.time.Instant
 import kotlinx.coroutines.test.runTest

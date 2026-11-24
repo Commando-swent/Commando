@@ -3,8 +3,8 @@ package com.commando.app.ui.chat
 // AI assistance: OpenAI Codex. Preview fixtures never enter production repository wiring.
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.model.*
+import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 
 /** Reproducible preview data, also used by the renderer's JVM screenshot checks. */

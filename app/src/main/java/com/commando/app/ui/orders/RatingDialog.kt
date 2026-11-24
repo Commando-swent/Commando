@@ -21,9 +21,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.android.sample.R
-import com.android.sample.ui.theme.RatingAmber
 import com.commando.app.data.repository.RatingError
 import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
+import com.commando.app.ui.theme.RatingAmber
 
 /** Stable selectors for the modal and its actions, independent of language. */
 object RatingDialogTestTags {

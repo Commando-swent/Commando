@@ -17,12 +17,12 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.ProductResult
 import com.commando.app.model.Product
 import com.commando.app.model.Trip
 import com.commando.app.ui.orders.OrderDraftState
+import com.commando.app.ui.theme.SampleAppTheme
 import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull

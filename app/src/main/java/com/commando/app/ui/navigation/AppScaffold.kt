@@ -1,8 +1,7 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: OpenAI Codex. Shared bars from the Command'o Figma design.
-// Incoming-orders and checklist back bars (#147, #193), connectivity banner slot (#393): Claude
-// Code.
+// Incoming-orders and checklist back bars (#147, #193), connectivity banner (#393): Claude Code.
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

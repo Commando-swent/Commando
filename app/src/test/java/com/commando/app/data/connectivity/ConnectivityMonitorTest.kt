@@ -5,6 +5,9 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.test.core.app.ApplicationProvider
+import io.mockk.every
+import io.mockk.mockkObject
+import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -12,6 +15,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,6 +31,8 @@ class ConnectivityMonitorTest {
   private val manager = context.getSystemService(ConnectivityManager::class.java)
   private val shadow = shadowOf(manager)
   private val network = ShadowNetwork.newInstance(7)
+
+  @After fun unmock() = unmockkAll()
 
   private fun capabilities(vararg caps: Int): NetworkCapabilities =
       ShadowNetworkCapabilities.newInstance().also { c ->
@@ -105,6 +111,17 @@ class ConnectivityMonitorTest {
     runCurrent()
     assertEquals(1, shadow.networkCallbacks.size)
   }
+
+  @Test
+  fun disconnectWhileRegisteringIsReported() =
+      runTest(UnconfinedTestDispatcher()) {
+        startOnline(true)
+        mockkObject(manager)
+        every { manager.registerDefaultNetworkCallback(any()) } answers { startOnline(false) }
+        val monitor = AndroidConnectivityMonitor(context, backgroundScope)
+        collect(monitor, mutableListOf())
+        assertEquals(false, monitor.isOnline.value)
+      }
 
   @Test
   fun fakeMonitorEmitsWhatSetOnlineSets() = runTest {

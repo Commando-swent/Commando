@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
@@ -193,7 +194,8 @@ private fun AuthenticatedApp(
 ) {
   val appViewModel: AppViewModel = viewModel()
   // Routes pass this monitor to the ViewModels that need it; it says nothing about the server.
-  val isOnline by connectivity.isOnline.collectAsState()
+  // Stops collecting in the background, so the monitor can release its system callback.
+  val isOnline by connectivity.isOnline.collectAsStateWithLifecycle()
   // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
   val locationFilter: TripLocationFilterViewModel = viewModel()
   val savedSearchViewModel: SavedTripSearchViewModel = viewModel {

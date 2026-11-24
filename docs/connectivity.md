@@ -2,28 +2,24 @@
 
 <!-- AI assistance: Claude Code drafted this page (#393). -->
 
-`ConnectivityMonitor.isOnline` says whether the device has a validated internet connection. It is
-a hint for the UI, not a promise about the server.
+`ConnectivityMonitor.isOnline` says whether the device has a validated internet connection. It is a
+UI hint, not a promise about the server.
 
 ## Contract
 
-- `CommandoApp` creates one `AndroidConnectivityMonitor` per activity. It registers a single
-  system callback while someone collects, and survives rotation and account changes. It holds no
-  account data.
+- `CommandoApp` creates one `AndroidConnectivityMonitor` per activity, holding no account data. It
+  registers one system callback while the app is visible and releases it 5 s after it stops.
 - Signed-in screens get the shared banner from `AppScaffold`; do not add another one.
-- A ViewModel that needs the state takes `ConnectivityMonitor` (or its `isOnline` flow) as a
-  constructor parameter. Pass it from `AuthenticatedApp` to your route function (`tripRoutes`,
-  `ordersRoutes`, ...) as a `connectivity` parameter. Tests use `FakeConnectivityMonitor`.
+- A ViewModel that needs the state takes `ConnectivityMonitor` as a constructor parameter, passed from
+  `AuthenticatedApp` through its route function. Tests use `FakeConnectivityMonitor`.
 
 ## Rules for features
 
 - Offline, warn or disable server actions with an explanation; never rely on this signal alone.
-- Never treat `isOnline == true` as success: the server can still fail, so repositories keep their
-  own errors and timeouts.
-- Never treat a switch to offline as proof that a pending write failed.
+- `true` is never success, and a switch to `false` never proves a pending write failed:
+  repositories keep their own errors and timeouts.
 
 ## Limits
 
-- "Validated" comes from Android's own check: a captive portal or a blocked check shows offline even
-  if Firebase might work, and a network with Firebase down still shows online.
-- The banner covers signed-in screens only; sign-in screens rely on their own errors.
+- Android's check shows a captive portal or blocked check as offline, and Firebase being down as
+  online. Sign-in screens show no banner.

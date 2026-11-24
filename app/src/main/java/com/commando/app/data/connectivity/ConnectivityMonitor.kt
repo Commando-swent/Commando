@@ -16,40 +16,36 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.stateIn
 
 /**
- * Whether this device currently has a validated internet connection.
- *
- * This is a hint for the UI only: `true` does not mean Firestore is reachable or that a write
- * succeeded, and `false` does not mean an earlier write failed. Repositories keep their own error
- * handling, and only a server response confirms an operation.
+ * Whether the device has a validated internet connection: a UI hint only. `true` never means a
+ * write succeeded and `false` never means one failed; only a server response confirms an operation.
  */
 interface ConnectivityMonitor {
   val isOnline: StateFlow<Boolean>
 }
 
-/**
- * One system callback shared by every collector, registered only while someone collects and
- * released 5 s after the last one stops, so rotations do not re-register it.
- */
+/** One system callback shared by all collectors, released 5 s after the last one stops. */
 class AndroidConnectivityMonitor(context: Context, scope: CoroutineScope) : ConnectivityMonitor {
   private val manager = context.getSystemService(ConnectivityManager::class.java)
 
   override val isOnline: StateFlow<Boolean> = callbackFlow {
+    val lock = Any() // Orders the initial read with the callbacks, which run on another thread.
     val callback =
         object : ConnectivityManager.NetworkCallback() {
           override fun onCapabilitiesChanged(
               network: Network,
               capabilities: NetworkCapabilities,
           ) {
-            trySend(capabilities.isValidatedInternet())
+            synchronized(lock) { trySend(capabilities.isValidatedInternet()) }
           }
 
           override fun onLost(network: Network) {
-            trySend(false)
+            synchronized(lock) { trySend(false) }
           }
         }
-    // No callback fires while no network exists, so start from the current state.
-    trySend(isOnlineNow())
     manager.registerDefaultNetworkCallback(callback)
+    // Read only once registered: no callback fires while no network exists, and a disconnect during
+    // registration would otherwise leave an earlier `true` in place.
+    synchronized(lock) { trySend(isOnlineNow()) }
     awaitClose { manager.unregisterNetworkCallback(callback) }
   }
       .distinctUntilChanged()

@@ -3,6 +3,7 @@ package com.commando.app.ui.navigation
 // AI assistance: OpenAI Codex (real-trip map integration). Claude Code: connectivity banner (#393).
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsActions
@@ -33,6 +34,7 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
 import com.commando.app.data.connectivity.ConnectivityMonitor
@@ -84,6 +86,10 @@ import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.assertTripCard
 import com.commando.app.ui.trips.discoveryTrip
 import com.commando.app.ui.trips.onTripCard
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkAll
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -102,7 +108,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 import org.robolectric.shadows.ShadowToast
 
 private const val SEEDED_TRIP_ID = "known-trip"
@@ -194,6 +202,22 @@ class CommandoAppTest {
     compose.mainClock.advanceTimeByFrame()
     compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
     compose.onNodeWithTag(ConnectivityBannerTestTags.BACK_ONLINE).assertIsDisplayed()
+  }
+
+  @Test
+  fun stoppedAppReleasesConnectivityCallbackAndRefreshesOnReturn() {
+    val manager = compose.activity.application.getSystemService(ConnectivityManager::class.java)
+    show(FakeAuthRepository(alice))
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
+    compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+    ShadowLooper.idleMainLooper(6_000)
+    assertEquals(0, shadowOf(manager).networkCallbacks.size)
+    mockkObject(manager)
+    every { manager.getNetworkCapabilities(any()) } returns
+        mockk { every { hasCapability(any()) } returns true }
+    compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+    assertEquals(1, shadowOf(manager).networkCallbacks.size)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
   }
 
   @Test
@@ -1230,6 +1254,7 @@ class CommandoAppTest {
   @After
   fun resetProvider() {
     AuthRepositoryProvider.reset()
+    unmockkAll()
   }
 
   private fun fillEmailForm() {

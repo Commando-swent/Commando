@@ -14,16 +14,10 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.orders.MyOrdersTestTags
-import com.android.sample.ui.orders.OrderDetailsTestTags
-import com.android.sample.ui.orders.RatingDialogTestTags
 import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationResult
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
@@ -36,11 +30,17 @@ import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.LiveMapTags
 import com.commando.app.ui.map.MapTestTags
 import com.commando.app.ui.map.OrderTrackingTestTags
 import com.commando.app.ui.map.PositionSharingTestTags
+import com.commando.app.ui.orders.MyOrdersTestTags
+import com.commando.app.ui.orders.OrderDetailsTestTags
+import com.commando.app.ui.orders.RatingDialogTestTags
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -292,7 +292,7 @@ class OrderNavigationTest {
     card().assertIsDisplayed()
     click(AppTestTags.PROFILE_BUTTON)
     click(NavigationTestTags.SIGN_OUT_BUTTON)
-    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.commando.app.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     auth.signInWithEmailResult = Result.success(alice)
     auth.signInWithEmail("", "")
     click(AppTestTags.ORDERS_BUTTON)

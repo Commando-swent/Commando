@@ -6,7 +6,6 @@ import com.commando.app.model.CHAT_WINDOW_SIZE
 import com.commando.app.model.ChatMessage
 import com.commando.app.model.OrderChat
 import com.commando.app.model.OrderStatus
-import com.commando.app.model.isValidChatText
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
@@ -30,6 +29,16 @@ class OrderChatRepositoryFirestore(
       orderId: String,
       messageId: String,
       text: String,
+  ): OrderResult<Unit> = send(orderId, messageId, text, null)
+
+  override suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int) =
+      send(orderId, messageId, CHAT_DELAY_FALLBACK, minutes)
+
+  private suspend fun send(
+      orderId: String,
+      messageId: String,
+      text: String,
+      delay: Int?,
   ): OrderResult<Unit> {
     val context = currentCoroutineContext()
     context.ensureActive()
@@ -44,7 +53,7 @@ class OrderChatRepositoryFirestore(
           )
         }
     ) {
-      if (!orderId.isDocumentId() || !messageId.isDocumentId() || !text.isValidChatText())
+      if (!orderId.isDocumentId() || !messageId.isDocumentId() || !isValidChatPayload(text, delay))
           throw failure(Code.INVALID_ARGUMENT)
       val orderRef = order(orderId)
       val messageRef = orderRef.collection("messages").document(messageId)
@@ -52,7 +61,7 @@ class OrderChatRepositoryFirestore(
           .runTransaction { transaction ->
             context.ensureActive()
             guard(uid)
-            writeOnce(transaction, orderRef, messageRef, uid, text)
+            writeOnce(transaction, orderRef, messageRef, uid, text, delay)
             Unit
           }
           .await()
@@ -69,16 +78,30 @@ class OrderChatRepositoryFirestore(
       messageRef: DocumentReference,
       uid: String,
       text: String,
+      delay: Int?,
   ) {
     val storedOrder = transaction.get(orderRef)
     if (!storedOrder.exists()) throw failure(Code.NOT_FOUND)
     val previous = transaction.get(messageRef)
     if (previous.exists()) {
-      if (previous.getString("senderId") != uid || previous.getString("text") != text)
+      if (
+          previous.getString("senderId") != uid ||
+              previous.getString("text") != text ||
+              previous.getLong("delayMinutes") != delay?.toLong()
+      )
           throw failure(Code.INVALID_ARGUMENT)
     } else {
       val status = OrderStatus.valueOf(storedOrder.getString("status").orEmpty())
       if (!status.canSendChat) throw failure(Code.PERMISSION_DENIED)
+      if (delay != null) {
+        val tripId = storedOrder.getString("tripId") ?: throw failure(Code.DATA_LOSS)
+        val trip = transaction.get(firestore.collection("trips").document(tripId))
+        if (
+            trip.getString("ownerId") != uid ||
+                !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay
+        )
+            throw failure(Code.PERMISSION_DENIED)
+      }
       guard(uid)
       transaction.set(
           messageRef,
@@ -86,7 +109,7 @@ class OrderChatRepositoryFirestore(
               "senderId" to uid,
               "text" to text,
               "createdAt" to FieldValue.serverTimestamp(),
-          ),
+          ) + (delay?.let { mapOf("delayMinutes" to it) } ?: emptyMap()),
       )
     }
   }
@@ -122,15 +145,7 @@ class OrderChatRepositoryFirestore(
                   OrderResult.Success(
                       OrderChat(
                           status,
-                          history.documents.reversed().map { document ->
-                            ChatMessage(
-                                document.id,
-                                document.getString("senderId") ?: throw failure(Code.DATA_LOSS),
-                                document.getString("text") ?: throw failure(Code.DATA_LOSS),
-                                document.getTimestamp("createdAt")?.toInstant()
-                                    ?: throw failure(Code.DATA_LOSS),
-                            )
-                          },
+                          history.documents.reversed().map(::decodeMessage),
                       )
                   )
                 }
@@ -140,6 +155,27 @@ class OrderChatRepositoryFirestore(
             if (exception !is Exception) throw exception
             emit(OrderResult.Error(exception.toOrderError()))
           }
+
+  /** Reject malformed structured records instead of silently rendering them as plain text. */
+  private fun decodeMessage(document: DocumentSnapshot): ChatMessage {
+    val text = document.getString("text") ?: throw failure(Code.DATA_LOSS)
+    val rawDelay = document.get("delayMinutes")
+    val delay =
+        if (rawDelay == null) null
+        else {
+          if (rawDelay !is Long || rawDelay !in 1L..MAX_CHAT_DELAY_MINUTES.toLong())
+              throw failure(Code.DATA_LOSS)
+          rawDelay.toInt()
+        }
+    if (!isValidChatPayload(text, delay)) throw failure(Code.DATA_LOSS)
+    return ChatMessage(
+        document.id,
+        document.getString("senderId") ?: throw failure(Code.DATA_LOSS),
+        text,
+        document.getTimestamp("createdAt")?.toInstant() ?: throw failure(Code.DATA_LOSS),
+        delay,
+    )
+  }
 
   private fun <T : Any> watch(
       uid: String,

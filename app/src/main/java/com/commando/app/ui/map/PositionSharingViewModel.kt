@@ -4,13 +4,13 @@ package com.commando.app.ui.map
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.*
-import com.android.sample.ui.session.SessionGuard
 import com.commando.app.data.location.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.*
+import com.commando.app.ui.session.SessionGuard
 import java.time.Clock
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*

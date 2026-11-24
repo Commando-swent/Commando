@@ -13,16 +13,8 @@ import androidx.credentials.Credential
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthRepositoryFirebase
-import com.android.sample.ui.auth.AuthTestTags
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.auth.WelcomeTestTags
-import com.android.sample.ui.catalogue.CatalogueTestTags
-import com.android.sample.ui.orders.MyOrdersTestTags
-import com.android.sample.ui.orders.ReviewOrderTags
-import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -33,6 +25,14 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthRepositoryFirebase
+import com.commando.app.ui.auth.AuthTestTags
+import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.auth.WelcomeTestTags
+import com.commando.app.ui.catalogue.CatalogueTestTags
+import com.commando.app.ui.orders.MyOrdersTestTags
+import com.commando.app.ui.orders.ReviewOrderTags
+import com.commando.app.ui.profile.ProfileTestTags
 import com.commando.app.ui.trips.AvailableTripsScreenTestTags
 import com.commando.app.ui.trips.CreateTripScreenTestTags
 import java.time.Instant
@@ -313,7 +313,7 @@ class AccountIsolationJourneyTest {
    * results replace the row, so each step taps again only while the previous count is shown.
    */
   private fun addToBasket(product: Product, quantity: Int) {
-    awaitTag(CatalogueTestTags.SEARCH)
+    awaitEnabled(CatalogueTestTags.SEARCH)
     compose.onNodeWithTag(CatalogueTestTags.SEARCH).performTextReplacement(product.name)
     (1..quantity).forEach { target ->
       val button =

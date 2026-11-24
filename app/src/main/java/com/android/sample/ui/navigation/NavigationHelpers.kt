@@ -13,7 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
-import com.android.sample.ui.orders.SessionOrderViewModel
+import com.commando.app.ui.orders.SessionOrderViewModel
 
 /**
  * Calls [onResume] whenever the current destination resumes, including when it is first shown and

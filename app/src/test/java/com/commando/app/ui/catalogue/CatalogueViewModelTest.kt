@@ -1,0 +1,695 @@
+package com.commando.app.ui.catalogue
+
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.MAX_SEARCH_QUERY_LENGTH
+import com.commando.app.data.repository.ProductError
+import com.commando.app.data.repository.ProductRepository
+import com.commando.app.data.repository.ProductResult
+import com.commando.app.data.repository.TripError
+import com.commando.app.model.FavouriteProducts
+import com.commando.app.model.Location
+import com.commando.app.model.OrderItem
+import com.commando.app.model.Product
+import com.commando.app.model.ProductPage
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
+import com.commando.app.ui.orders.OrderDraftState
+import com.commando.app.ui.orders.ReviewOrderViewModel
+import java.time.Instant
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.*
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Deterministic search over [result], ignoring the store so chain filtering can be tested. Records
+ * each request; a request waits for the [gate] set when it was made, even if cancelled, like a data
+ * source that cannot be interrupted. [pageError] fails every page after the first.
+ */
+internal class StubProductRepository(
+    var result: ProductResult<List<Product>> = ProductResult.Success(emptyList())
+) : ProductRepository {
+  data class Request(
+      val storeId: String,
+      val query: String,
+      val cursor: String?,
+      val limit: Int,
+      val category: String? = null,
+  )
+
+  val requests = mutableListOf<Request>()
+  var gate: CompletableDeferred<Unit>? = null
+  var pageError: ProductError? = null
+  var thrown: Exception? = null
+
+  override suspend fun getProducts(storeId: String, limit: Int) = result
+
+  override suspend fun searchProducts(
+      storeId: String,
+      query: String,
+      cursor: String?,
+      limit: Int,
+      category: String?,
+  ): ProductResult<ProductPage> {
+    requests += Request(storeId, query, cursor, limit, category)
+    thrown?.let { throw it }
+    gate?.let { held -> suspendCoroutine { done -> held.invokeOnCompletion { done.resume(Unit) } } }
+    val all =
+        when (val current = result) {
+          is ProductResult.Error -> return current
+          is ProductResult.Success -> current.data
+        }
+    if (cursor != null)
+        pageError?.let {
+          return ProductResult.Error(it)
+        }
+    val words = query.lowercase().split(' ').filter { it.isNotBlank() }
+    val matches = all.filter { product ->
+      (category == null || product.category == category) &&
+          words.all { product.name.lowercase().contains(it) }
+    }
+    val start = cursor?.let { id -> matches.indexOfFirst { it.id == id } + 1 } ?: 0
+    val page = matches.drop(start).take(limit)
+    return ProductResult.Success(ProductPage(page, page.takeIf { it.size == limit }?.last()?.id))
+  }
+
+  var favourites: ProductResult<FavouriteProducts> =
+      ProductResult.Success(FavouriteProducts(emptyList(), emptyList()))
+  var favouriteResult: ProductResult<Unit> = ProductResult.Success(Unit)
+  /** Per-product write results, for overlapping writes that end differently. */
+  val favouriteResults = mutableMapOf<String, ProductResult<Unit>>()
+  var favouriteGate: CompletableDeferred<Unit>? = null
+  val favouriteRequests = mutableListOf<String>()
+  val favouriteChanges = mutableListOf<Triple<String, String, Boolean>>()
+  var favouriteThrown: Exception? = null
+
+  override suspend fun getFavouriteProducts(storeId: String): ProductResult<FavouriteProducts> {
+    favouriteRequests += storeId
+    favouriteGate?.await()
+    favouriteThrown?.let { throw it }
+    return favourites
+  }
+
+  var categories: ProductResult<List<String>> = ProductResult.Success(emptyList())
+  val categoryRequests = mutableListOf<String>()
+
+  override suspend fun getCategories(storeId: String): ProductResult<List<String>> {
+    categoryRequests += storeId
+    return categories
+  }
+
+  override suspend fun setFavourite(
+      storeId: String,
+      productId: String,
+      favourite: Boolean,
+  ): ProductResult<Unit> {
+    favouriteChanges += Triple(storeId, productId, favourite)
+    favouriteGate?.await()
+    favouriteThrown?.let { throw it }
+    return favouriteResults[productId] ?: favouriteResult
+  }
+}
+
+internal fun migrosProducts(range: IntRange) = range.map {
+  Product("migros:%03d".format(it), "migros", "Product $it", 100)
+}
+
+internal fun coopProducts(range: IntRange) = range.map {
+  Product("coop:%03d".format(it), "coop", "Coop $it", 150)
+}
+
+internal fun catalogueTrip(id: String, store: String) =
+    Trip(
+        id = id,
+        ownerId = "owner",
+        store = Location(store, 46.52, 6.57),
+        scheduledAt = Instant.parse("2026-10-14T15:30:00Z"),
+        handoffLocation = Location("EPFL", 46.52, 6.56),
+        status = TripStatus.PUBLISHED,
+        createdAt = Instant.EPOCH,
+        updatedAt = Instant.EPOCH,
+    )
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class CatalogueViewModelTest {
+  private val migrosTrip = catalogueTrip("trip-migros", "Migros EPFL")
+  private val coopTrip = catalogueTrip("trip-coop", "Coop Lausanne")
+  private val otherMigrosTrip = catalogueTrip("trip-migros-2", "Migros Renens")
+  private val milk = Product("migros:1", "migros", "Oat drink", 220)
+  private val bread = Product("migros:2", "migros", "Wholemeal bread", 340)
+  private val coopMilk = Product("coop:1", "coop", "Oat drink", 210)
+  private val trips =
+      FakeTripRepository(
+          "owner",
+          initialTrips =
+              listOf(
+                  migrosTrip,
+                  coopTrip,
+                  otherMigrosTrip,
+                  catalogueTrip("trip-volg", "Volg Ecublens"),
+              ),
+      )
+  private val products = StubProductRepository(ProductResult.Success(listOf(milk, bread, coopMilk)))
+
+  @Before
+  fun setUp() {
+    Dispatchers.setMain(StandardTestDispatcher())
+  }
+
+  @After
+  fun tearDown() {
+    Dispatchers.resetMain()
+  }
+
+  private fun viewModel(
+      tripId: String = migrosTrip.id,
+      draft: OrderDraftState = OrderDraftState(tripId),
+      searchDebounceMillis: Long = SEARCH_DEBOUNCE_MILLIS,
+  ) = CatalogueViewModel(tripId, trips, products, draft, searchDebounceMillis)
+
+  private fun content(vm: CatalogueViewModel) = vm.uiState.value.content as CatalogueContent.Loaded
+
+  private fun loaded(vm: CatalogueViewModel) = content(vm).products
+
+  private fun request(query: String = "", cursor: String? = null, store: String = "migros") =
+      StubProductRepository.Request(store, query, cursor, 50)
+
+  @Test
+  fun malformedProductsAreFilteredFromBothTabsAndCannotEnterTheBasket() = runTest {
+    val invalid =
+        listOf(
+            milk.copy(id = ""),
+            milk.copy(id = "migros:unnamed", name = " "),
+            milk.copy(id = "migros:negative", priceCents = -1),
+            coopMilk,
+        )
+    products.result = ProductResult.Success(listOf(milk) + invalid)
+    products.favourites =
+        ProductResult.Success(FavouriteProducts(listOf(milk) + invalid, emptyList()))
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(listOf(milk), loaded(vm))
+    vm.selectTab(CatalogueTab.FAVOURITES)
+    assertEquals(listOf(milk), (vm.uiState.value.favourites as FavouritesContent.Loaded).products)
+    invalid.forEach { vm.add(it.id) }
+    advanceUntilIdle()
+    assertTrue(vm.uiState.value.items.isEmpty())
+  }
+
+  @Test
+  fun savedButUnavailableProductsRemainFavouritesAndCountTowardsTheTab() = runTest {
+    products.favouriteGate = CompletableDeferred()
+    products.favourites =
+        ProductResult.Success(FavouriteProducts(listOf(milk), listOf("migros:gone")))
+    val vm = viewModel()
+    runCurrent()
+    assertFalse(vm.uiState.value.isFavourite(milk.id))
+    products.favouriteGate!!.complete(Unit)
+    advanceUntilIdle()
+    val state = vm.uiState.value
+    assertEquals(2, (state.favourites as FavouritesContent.Loaded).count)
+    assertTrue(state.isFavourite(milk.id))
+    assertTrue(state.isFavourite("migros:gone"))
+    assertFalse(state.isFavourite("missing"))
+  }
+
+  @Test
+  fun cancelledCategoryMetadataDoesNotHideTheCatalogueOrBlockItsBasket() = runTest {
+    val repository =
+        object : ProductRepository by products {
+          override suspend fun getCategories(storeId: String): ProductResult<List<String>> =
+              throw CancellationException("metadata cancelled")
+        }
+    val vm = CatalogueViewModel(migrosTrip.id, trips, repository, OrderDraftState(migrosTrip.id), 0)
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(listOf(milk, bread), loaded(vm))
+    assertTrue(vm.uiState.value.categories.isEmpty())
+    vm.add(milk.id)
+    advanceUntilIdle()
+    assertEquals(1, vm.uiState.value.quantityOf(milk.id))
+    assertTrue(vm.uiState.value.canContinue)
+  }
+
+  @Test
+  fun categoryTransportFailureDoesNotHideProductsAndTheNextSearchRecoversMetadata() = runTest {
+    var attempts = 0
+    val repository =
+        object : ProductRepository by products {
+          override suspend fun getCategories(storeId: String): ProductResult<List<String>> {
+            if (attempts++ == 0) throw IllegalStateException("offline")
+            return ProductResult.Success(listOf("Dairy"))
+          }
+        }
+    val vm = CatalogueViewModel(migrosTrip.id, trips, repository, OrderDraftState(migrosTrip.id), 0)
+    advanceUntilIdle()
+    assertEquals(listOf(milk, bread), loaded(vm))
+    assertTrue(vm.uiState.value.categories.isEmpty())
+    vm.onQueryChange("oat")
+    advanceUntilIdle()
+    assertEquals(listOf(milk), loaded(vm))
+    assertEquals(listOf("Dairy"), vm.uiState.value.categories)
+    assertEquals(2, attempts)
+  }
+
+  @Test
+  fun cancelledPagePreservesLoadedProductsAndANewSearchCanRecover() = runTest {
+    products.result = ProductResult.Success(migrosProducts(0..60))
+    val vm = viewModel(searchDebounceMillis = 0)
+    advanceUntilIdle()
+    products.thrown = CancellationException("page cancelled")
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(migrosProducts(0..49), loaded(vm))
+    assertNull(content(vm).loadMoreError)
+    products.thrown = null
+    vm.onQueryChange("Product 60")
+    advanceUntilIdle()
+    assertEquals(migrosProducts(60..60), loaded(vm))
+    assertFalse(content(vm).isLoadingMore)
+  }
+
+  @Test
+  fun callbacksForAnUnselectedProductNeverCreateOrSubtractItems() = runTest {
+    val vm = viewModel()
+    advanceUntilIdle()
+    vm.increment(milk.id)
+    vm.decrement(milk.id)
+    vm.add("missing")
+    advanceUntilIdle()
+    assertTrue(vm.uiState.value.items.isEmpty())
+    assertFalse(vm.uiState.value.canContinue)
+  }
+
+  @Test
+  fun migrosTripSearchesTheFirstMigrosPageWithABlankQuery() = runTest {
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(listOf(request()), products.requests)
+    assertEquals(migrosTrip, vm.uiState.value.trip)
+    assertEquals(listOf(milk, bread), loaded(vm))
+  }
+
+  @Test
+  fun coopTripLoadsTheCoopCatalogue() = runTest {
+    val vm = viewModel(coopTrip.id)
+    advanceUntilIdle()
+    assertEquals(listOf(request(store = "coop")), products.requests)
+    assertEquals(listOf(coopMilk), loaded(vm))
+  }
+
+  @Test
+  fun coopSearchAndPagesStayOnCoopAndDropProductsOfAnotherChain() = runTest {
+    // A Migros product inside a Coop page uses up the limit but is never shown.
+    products.result =
+        ProductResult.Success(coopProducts(0..48) + migrosProducts(0..0) + coopProducts(49..50))
+    val vm = viewModel(coopTrip.id)
+    advanceUntilIdle()
+    assertEquals(coopProducts(0..48), loaded(vm))
+
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(
+        listOf(request(store = "coop"), request(cursor = "migros:000", store = "coop")),
+        products.requests,
+    )
+    assertEquals(coopProducts(0..50), loaded(vm))
+    assertNull(content(vm).nextCursor)
+
+    vm.onQueryChange("Coop 50")
+    advanceUntilIdle()
+    assertEquals(request("Coop 50", store = "coop"), products.requests.last())
+    assertEquals(coopProducts(50..50), loaded(vm))
+  }
+
+  @Test
+  fun switchingFromAMigrosPageInFlightToCoopShowsOnlyCoopProducts() = runTest {
+    products.result = ProductResult.Success(coopProducts(0..1) + migrosProducts(0..59))
+    val draft = OrderDraftState(migrosTrip.id)
+    val migros = viewModel(draft = draft)
+    advanceUntilIdle()
+    migros.add("migros:001")
+    val late = CompletableDeferred<Unit>()
+    products.gate = late
+    migros.loadMore() // Still pending when the requester opens the Coop trip.
+    runCurrent()
+
+    products.gate = null
+    val coop = viewModel(coopTrip.id, draft)
+    advanceUntilIdle()
+    late.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(coopProducts(0..1), loaded(coop))
+    assertTrue(coop.uiState.value.items.isEmpty())
+    coop.add("coop:001")
+    coop.increment("coop:001")
+    assertEquals(coopTrip.id, draft.draft.value.tripId)
+    assertEquals(listOf(OrderItem("coop:001", "Coop 1", 150, 2)), draft.draft.value.items)
+  }
+
+  @Test
+  fun unsupportedStoreNeverFallsBackToAnotherCatalogue() = runTest {
+    val vm = viewModel("trip-volg")
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.UnsupportedStore("Volg Ecublens"), vm.uiState.value.content)
+    assertTrue(products.requests.isEmpty())
+
+    products.result = ProductResult.Error(ProductError.InvalidStore)
+    val rejected = viewModel()
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.UnsupportedStore("Migros EPFL"), rejected.uiState.value.content)
+  }
+
+  @Test
+  fun emptyCatalogueIsDistinctFromPermissionAndNetworkFailures() = runTest {
+    products.result = ProductResult.Success(emptyList())
+    val empty = viewModel()
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.Loaded(emptyList()), empty.uiState.value.content)
+
+    listOf(ProductError.PermissionDenied, ProductError.NetworkError, ProductError.Unknown).forEach {
+      products.result = ProductResult.Error(it)
+      val failed = viewModel()
+      advanceUntilIdle()
+      assertEquals(CatalogueContent.ProductsFailed(it), failed.uiState.value.content)
+    }
+  }
+
+  @Test
+  fun missingTripIsReportedWithoutQueryingProducts() = runTest {
+    val vm = viewModel("deleted-trip")
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.TripFailed(TripError.NotFound), vm.uiState.value.content)
+    assertTrue(products.requests.isEmpty())
+  }
+
+  @Test
+  fun retryShowsLoadingIgnoresRepeatsAndRecovers() = runTest {
+    products.result = ProductResult.Error(ProductError.NetworkError)
+    val vm = viewModel()
+    advanceUntilIdle()
+
+    products.result = ProductResult.Success(listOf(milk))
+    products.gate = CompletableDeferred()
+    vm.retry()
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.Loading, vm.uiState.value.content)
+    assertEquals(2, products.requests.size)
+
+    products.gate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(listOf(milk), loaded(vm))
+  }
+
+  @Test
+  fun selectionWritesProductSnapshotsToTheSharedDraft() = runTest {
+    val draft = OrderDraftState(migrosTrip.id)
+    val vm = viewModel(draft = draft)
+    advanceUntilIdle()
+
+    vm.add(milk.id)
+    vm.add(milk.id)
+    vm.add(bread.id)
+    vm.add(coopMilk.id) // Not in this trip's catalogue.
+    advanceUntilIdle()
+    assertEquals(
+        listOf(
+            OrderItem("migros:1", "Oat drink", 220, 2),
+            OrderItem("migros:2", "Wholemeal bread", 340, 1),
+        ),
+        draft.draft.value.items,
+    )
+    assertEquals(migrosTrip.id, draft.draft.value.tripId)
+    assertEquals(3L, vm.uiState.value.selectedCount)
+    assertEquals(780, vm.uiState.value.estimatedCents)
+    assertTrue(vm.uiState.value.canContinue)
+
+    vm.increment(milk.id)
+    vm.decrement(bread.id)
+    vm.decrement("unknown")
+    advanceUntilIdle()
+    assertEquals(listOf(OrderItem("migros:1", "Oat drink", 220, 3)), draft.draft.value.items)
+    repeat(3) { vm.decrement(milk.id) }
+    advanceUntilIdle()
+    assertTrue(draft.draft.value.items.isEmpty())
+    assertFalse(vm.uiState.value.canContinue)
+  }
+
+  @Test
+  fun typingIsDebouncedIntoOneServerSearchThatKeepsSelectedItems() = runTest {
+    val vm = viewModel()
+    advanceUntilIdle()
+    vm.add(bread.id)
+    val all = vm.uiState.value.content
+    listOf("o", "oa", "OAT").forEach {
+      vm.onQueryChange(it)
+      advanceTimeBy(SEARCH_DEBOUNCE_MILLIS - 1)
+    }
+    // Typing never flickers to the skeleton: earlier results stay until the search is sent, and
+    // they are not extended with another page meanwhile.
+    assertEquals(all, vm.uiState.value.content)
+    vm.loadMore()
+    assertEquals(1, products.requests.size)
+
+    val sent = CompletableDeferred<Unit>()
+    products.gate = sent
+    advanceTimeBy(2)
+    runCurrent()
+    assertEquals(CatalogueContent.Loading, vm.uiState.value.content)
+    products.gate = null
+    sent.complete(Unit)
+    runCurrent()
+    assertEquals(request("OAT"), products.requests.last())
+    assertEquals(CatalogueContent.Loaded(listOf(milk), "OAT"), vm.uiState.value.content)
+    assertEquals(1, vm.uiState.value.quantityOf(bread.id))
+
+    vm.onQueryChange(" OAT ") // Same search: no new request.
+    vm.clearSearch()
+    advanceUntilIdle()
+    assertEquals(listOf(request(), request("OAT"), request()), products.requests)
+    assertEquals(listOf(milk, bread), loaded(vm))
+    assertEquals(340, vm.uiState.value.estimatedCents)
+  }
+
+  @Test
+  fun failedSearchCanBeEditedOrRetriedAndUnsearchableQueriesAskForMoreLetters() = runTest {
+    val vm = viewModel(searchDebounceMillis = 0)
+    advanceUntilIdle()
+    products.result = ProductResult.Error(ProductError.NetworkError)
+    vm.onQueryChange("oat")
+    advanceUntilIdle()
+    assertEquals(
+        CatalogueContent.ProductsFailed(ProductError.NetworkError),
+        vm.uiState.value.content,
+    )
+    assertTrue(vm.uiState.value.canSearch)
+
+    products.result = ProductResult.Success(listOf(milk, bread))
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(request("oat"), products.requests.last())
+    assertEquals(listOf(milk), loaded(vm))
+
+    products.result = ProductResult.Error(ProductError.InvalidQuery)
+    vm.onQueryChange("a")
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.UnsearchableQuery("a"), vm.uiState.value.content)
+    assertFalse((vm.uiState.value.content as CatalogueContent.UnsearchableQuery).isTooLong)
+    assertTrue(vm.uiState.value.canSearch)
+
+    vm.onQueryChange("a".repeat(MAX_SEARCH_QUERY_LENGTH + 1))
+    advanceUntilIdle()
+    assertTrue((vm.uiState.value.content as CatalogueContent.UnsearchableQuery).isTooLong)
+  }
+
+  @Test
+  fun newSearchDropsAPendingPageAndItsLoadingRows() = runTest {
+    products.result = ProductResult.Success(migrosProducts(0..99))
+    val vm = viewModel()
+    advanceUntilIdle()
+    val held = CompletableDeferred<Unit>()
+    products.gate = held
+    vm.loadMore()
+    runCurrent()
+    assertTrue(content(vm).isLoadingMore)
+
+    vm.onQueryChange("product 99")
+    assertFalse(content(vm).isLoadingMore) // The page is cancelled; no stuck loading rows.
+    products.gate = null
+    held.complete(Unit)
+    advanceUntilIdle()
+    assertEquals("product 99", content(vm).query)
+    assertEquals(migrosProducts(99..99), loaded(vm))
+  }
+
+  @Test
+  fun loadMoreAppendsTheNextPageOnceWithoutDuplicates() = runTest {
+    // The second page repeats a product of the first one and is short, so it is the last.
+    val catalogue = migrosProducts(0..49) + migrosProducts(0..0) + migrosProducts(50..50)
+    products.result = ProductResult.Success(catalogue)
+    val vm = viewModel()
+    advanceUntilIdle()
+    assertEquals(50, loaded(vm).size)
+    assertTrue(content(vm).canLoadMore)
+
+    vm.add("migros:005")
+    vm.loadMore()
+    vm.loadMore()
+    assertTrue(content(vm).isLoadingMore)
+    assertEquals(50, loaded(vm).size) // Loaded products stay visible.
+    advanceUntilIdle()
+    assertEquals(listOf(request(), request(cursor = "migros:049")), products.requests)
+    assertEquals(migrosProducts(0..50), loaded(vm))
+    assertNull(content(vm).nextCursor)
+
+    vm.add("migros:050")
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(2, products.requests.size)
+    assertEquals(2L, vm.uiState.value.selectedCount)
+    assertEquals(200, vm.uiState.value.estimatedCents)
+  }
+
+  @Test
+  fun failedPageKeepsProductsRetriesItsCursorAndAFullLastPageEndsWithAnEmptyOne() = runTest {
+    products.result = ProductResult.Success(migrosProducts(0..99))
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.pageError = ProductError.NetworkError
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(50, loaded(vm).size)
+    assertEquals(ProductError.NetworkError, content(vm).loadMoreError)
+
+    products.pageError = null
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(request(cursor = "migros:049"), products.requests.last())
+    assertNull(content(vm).loadMoreError)
+    assertEquals("migros:099", content(vm).nextCursor)
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(migrosProducts(0..99), loaded(vm))
+    assertFalse(content(vm).canLoadMore)
+    assertEquals(4, products.requests.size)
+  }
+
+  @Test
+  fun unexpectedRepositoryExceptionsBecomeUnknownErrorsAndRetryKeepsLoadedProducts() = runTest {
+    products.result = ProductResult.Success(migrosProducts(0..60))
+    val vm = viewModel()
+    advanceUntilIdle()
+    products.thrown = IllegalStateException("boom")
+    vm.loadMore()
+    advanceUntilIdle()
+    assertEquals(ProductError.Unknown, content(vm).loadMoreError)
+    // A failed later page is retried with loadMore(); retry() never drops the loaded products.
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(migrosProducts(0..49), loaded(vm))
+    assertEquals(ProductError.Unknown, content(vm).loadMoreError)
+    assertEquals(2, products.requests.size)
+
+    vm.onQueryChange("oat")
+    advanceUntilIdle()
+    assertEquals(CatalogueContent.ProductsFailed(ProductError.Unknown), vm.uiState.value.content)
+  }
+
+  @Test
+  fun lateResultsOfAnOlderQueryOrPageNeverReplaceTheCurrentOnes() = runTest {
+    products.result = ProductResult.Success(migrosProducts(0..99))
+    val vm = viewModel(searchDebounceMillis = 0)
+    advanceUntilIdle()
+    val slow = CompletableDeferred<Unit>()
+    products.gate = slow
+    vm.loadMore()
+    advanceUntilIdle()
+    vm.onQueryChange("product 1") // Its first page is held too.
+    advanceUntilIdle()
+    products.gate = null
+    vm.onQueryChange("product 99")
+    advanceUntilIdle()
+    slow.complete(Unit) // Both older requests return late.
+    advanceUntilIdle()
+    assertEquals(request("product 99"), products.requests.last())
+    assertEquals(CatalogueContent.Loaded(migrosProducts(99..99), "product 99"), content(vm))
+  }
+
+  @Test
+  fun draftIsKeptForTheSameTripAndResetForAnotherTrip() = runTest {
+    val draft = OrderDraftState(migrosTrip.id)
+    draft.addItem(OrderItem(milk.id, milk.name, milk.priceCents, 2))
+    viewModel(draft = draft)
+    assertEquals(2, draft.draft.value.items.single().quantity)
+
+    val coop = viewModel(coopTrip.id, draft)
+    advanceUntilIdle()
+    assertEquals(coopTrip.id, draft.draft.value.tripId)
+    assertTrue(draft.draft.value.items.isEmpty())
+    assertTrue(coop.uiState.value.items.isEmpty())
+  }
+
+  @Test
+  fun twoTripsAtTheSameStoreNeverShareABasketOrLateResults() = runTest {
+    val draft = OrderDraftState(migrosTrip.id)
+    val first = viewModel(draft = draft)
+    advanceUntilIdle()
+    first.add(milk.id)
+    first.increment(milk.id)
+    val late = CompletableDeferred<Unit>()
+    products.gate = late
+    first.onQueryChange("bread") // Still pending when the requester switches trips.
+    advanceUntilIdle()
+
+    products.gate = null
+    val second = viewModel(otherMigrosTrip.id, draft)
+    advanceUntilIdle()
+    assertEquals(request(), products.requests.last())
+    assertTrue(second.uiState.value.items.isEmpty())
+    first.add(bread.id) // The previous trip's screen can no longer edit the draft.
+    second.add(bread.id)
+    late.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(otherMigrosTrip.id, draft.draft.value.tripId)
+    assertEquals(listOf(OrderItem(bread.id, bread.name, 340, 1)), draft.draft.value.items)
+    assertTrue(first.uiState.value.items.isEmpty())
+    assertEquals(listOf(milk, bread), loaded(second))
+  }
+
+  @Test
+  fun reviewOrderSeesCatalogueSelectionAndClearsItAfterSubmit() = runTest {
+    val draft = OrderDraftState(migrosTrip.id)
+    val catalogue = viewModel(draft = draft)
+    advanceUntilIdle()
+    catalogue.add(milk.id)
+    catalogue.increment(milk.id)
+
+    val review = ReviewOrderViewModel(FakeOrderRepository({ "requester" }), draft)
+    advanceUntilIdle()
+    assertEquals(listOf(OrderItem(milk.id, milk.name, 220, 2)), review.uiState.value.draft.items)
+
+    review.changeQuantity(milk.id, 1)
+    advanceUntilIdle()
+    assertEquals(3, catalogue.uiState.value.quantityOf(milk.id))
+
+    review.submit()
+    advanceUntilIdle()
+    assertNotNull(review.uiState.value.order)
+    assertTrue(catalogue.uiState.value.items.isEmpty())
+  }
+}

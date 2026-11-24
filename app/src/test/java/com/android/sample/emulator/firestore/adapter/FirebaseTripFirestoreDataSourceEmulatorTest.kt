@@ -1,7 +1,5 @@
 package com.android.sample.emulator.firestore.adapter
 
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
 import com.commando.app.data.repository.FirebaseTripFirestoreDataSource
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
@@ -11,6 +9,8 @@ import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp

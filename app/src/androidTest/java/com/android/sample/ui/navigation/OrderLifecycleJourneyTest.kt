@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; accepted-order cancel action (#402): Claude Code.
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -10,14 +10,8 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthRepositoryFirebase
-import com.android.sample.ui.auth.AuthTestTags
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.auth.WelcomeTestTags
-import com.android.sample.ui.catalogue.CatalogueTestTags
-import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -30,7 +24,13 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthRepositoryFirebase
+import com.commando.app.ui.auth.AuthTestTags
+import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.auth.WelcomeTestTags
+import com.commando.app.ui.catalogue.CatalogueTestTags
 import com.commando.app.ui.home.HomeTestTags
+import com.commando.app.ui.orders.*
 import com.commando.app.ui.trips.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
@@ -203,7 +203,8 @@ class OrderLifecycleJourneyTest {
           pending.copy(status = OrderStatus.ACCEPTED),
           (orders.getOrderById(pending.id) as OrderResult.Success).data,
       )
-      assertActions(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF)
+      // The trip owner may now also cancel the accepted order (#402).
+      assertActions(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF, OrderDetailsTestTags.CANCEL)
       back() // Incoming Orders owns the shopping-checklist entry point.
       click(IncomingOrdersTestTags.OPEN_CHECKLIST)
       val purchasedTag = ShoppingChecklistTestTags.ITEM_PREFIX + product.id
@@ -236,7 +237,7 @@ class OrderLifecycleJourneyTest {
       assertActions(OrderDetailsTestTags.CONFIRM_RECEIPT)
       assertEquals(OrderResult.Success(ready), orders.getOrderById(pending.id))
       click(OrderDetailsTestTags.CONFIRM_RECEIPT)
-      click(com.android.sample.ui.orders.RatingDialogTestTags.CANCEL)
+      click(com.commando.app.ui.orders.RatingDialogTestTags.CANCEL)
       assertStatus(OrderStatus.DELIVERED)
       back()
       openRequesterOrder(pending.id)

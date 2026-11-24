@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.android.sample.data.repository.OrderError
+import com.commando.app.data.repository.OrderError
 import com.commando.app.model.ShoppingChecklistItem
 import org.junit.Assert.assertEquals
 import org.junit.Rule

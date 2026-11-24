@@ -1,5 +1,12 @@
 package com.android.sample
 
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+
+import com.commando.app.data.repository.FakeTripRepository
+
 // AI assistance: OpenAI Codex (review screenshot capture).
 
 import android.graphics.Bitmap

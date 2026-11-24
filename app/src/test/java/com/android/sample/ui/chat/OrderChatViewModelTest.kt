@@ -5,7 +5,16 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
+import com.commando.app.data.repository.FakeOrderRepository
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.OrderChatRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
+import com.commando.app.data.repository.context
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*
@@ -33,6 +42,7 @@ class OrderChatViewModelTest {
           OrderResult.Success(OrderChat(order.status, emptyList()))
       )
   private var observe: () -> Flow<OrderResult<OrderChat>> = { history }
+  private val delays = mutableListOf<Pair<String, Int>>()
   private val requests = mutableListOf<Pair<String, String>>()
   private var write: suspend (String, String) -> OrderResult<Unit> = { _, _ ->
     OrderResult.Success(Unit)
@@ -48,6 +58,15 @@ class OrderChatViewModelTest {
           } finally {
             subscriptions--
           }
+        }
+
+        override suspend fun sendDelayNotice(
+            orderId: String,
+            messageId: String,
+            minutes: Int,
+        ): OrderResult<Unit> {
+          delays += messageId to minutes
+          return write(messageId, "")
         }
 
         override suspend fun sendMessage(
@@ -104,18 +123,151 @@ class OrderChatViewModelTest {
   }
 
   @Test
+  fun delayRetryAndRestorationKeepTheSameIdAndPreserveTypedText() = runTest {
+    user.value = trip.ownerId
+    val saved = SavedStateHandle()
+    write = { _, _ -> OrderResult.Error(OrderError.Unknown) }
+    withModel(saved) { model ->
+      model.updateDraft("Keep my typed message")
+      for (minutes in listOf(0, MAX_CHAT_DELAY_MINUTES + 1)) model.sendDelay(minutes)
+      assertTrue(delays.isEmpty())
+      model.sendDelay(12)
+      runCurrent()
+      assertEquals(12, delays.single().second)
+      assertFalse(model.uiState.value.canSendDelay)
+    }
+    withModel(saved) { model ->
+      model.send()
+      runCurrent()
+      assertEquals(delays.first(), delays.last())
+      publish(
+          OrderStatus.ACCEPTED,
+          ChatMessage(delays.first().first, trip.ownerId, CHAT_DELAY_FALLBACK, now, 13),
+      )
+      assertEquals(OrderError.Unknown, model.uiState.value.sendError)
+      assertEquals("Keep my typed message", model.uiState.value.draft)
+      publish(
+          OrderStatus.ACCEPTED,
+          ChatMessage(delays.first().first, trip.ownerId, CHAT_DELAY_FALLBACK, now, 12),
+      )
+      assertNull(model.uiState.value.sendError)
+      assertEquals("Keep my typed message", model.uiState.value.draft)
+      assertTrue(model.uiState.value.canSendDelay)
+      assertTrue(requests.isEmpty())
+    }
+  }
+
+  @Test
+  fun delayRequiresBothAnAuthorizedContextAndAnAvailableConversation() {
+    val context = ChatContext(order, trip, trip.ownerId)
+    val ready =
+        OrderChatUiState(
+            context = context,
+            chat = OrderChat(order.status, emptyList()),
+            loading = false,
+        )
+    assertTrue(ready.canSendDelay)
+    for (blocked in
+        listOf(
+            ready.copy(context = null),
+            ready.copy(context = context.copy(trip = trip.copy(status = TripStatus.CANCELLED))),
+            ready.copy(chat = null),
+            ready.copy(sending = true),
+            ready.copy(sendError = OrderError.Unknown),
+        )) {
+      assertFalse(blocked.canSendDelay)
+    }
+  }
+
+  @Test
+  fun requesterCannotReportDelay() = runTest {
+    withModel { model ->
+      model.sendDelay(5)
+      runCurrent()
+      assertTrue(delays.isEmpty())
+    }
+  }
+
+  @Test
+  fun accountChangeEndsTheDelaySession() = runTest {
+    withModel { model ->
+      user.value = trip.ownerId
+      runCurrent()
+      assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
+      model.sendDelay(5)
+      assertTrue(delays.isEmpty())
+    }
+  }
+
+  @Test
+  fun terminalOrderPreventsNewOwnerDelayNotices() = runTest {
+    user.value = trip.ownerId
+    history.value = OrderResult.Success(OrderChat(OrderStatus.DELIVERED, emptyList()))
+    withModel { model ->
+      model.sendDelay(5)
+      runCurrent()
+      assertTrue(delays.isEmpty())
+    }
+  }
+
+  @Test
+  fun definitiveDelayFailureDoesNotReplaceTheNextTextSend() = runTest {
+    user.value = trip.ownerId
+    write = { _, _ -> OrderResult.Error(OrderError.PermissionDenied) }
+    withModel { model ->
+      model.updateDraft("typed")
+      model.sendDelay(3)
+      runCurrent()
+      assertEquals(OrderError.PermissionDenied, model.uiState.value.sendError)
+      assertTrue(model.uiState.value.canSendDelay)
+      write = { _, _ -> OrderResult.Success(Unit) }
+      model.send()
+      runCurrent()
+      assertEquals(1, delays.size)
+      assertEquals("typed", requests.single().second)
+      assertNotEquals(delays.single().first, requests.single().first)
+      assertEquals("", model.uiState.value.draft)
+      assertNull(model.uiState.value.sendError)
+    }
+  }
+
+  @Test
+  fun definitiveDelayFailureAllowsANewDurationWithANewIdentity() = runTest {
+    user.value = trip.ownerId
+    write = { _, _ -> OrderResult.Error(OrderError.PermissionDenied) }
+    withModel { model ->
+      model.sendDelay(3)
+      runCurrent()
+      assertEquals(3, model.uiState.value.failedDelayMinutes)
+      write = { _, _ -> OrderResult.Success(Unit) }
+      model.sendDelay(8)
+      runCurrent()
+      assertEquals(listOf(3, 8), delays.map { it.second })
+      assertNotEquals(delays.first().first, delays.last().first)
+      assertNull(model.uiState.value.failedDelayMinutes)
+    }
+  }
+
+  @Test
   fun validDraftCannotSendBeforeLoadingOrAfterAccessFailure() = runTest {
+    user.value = trip.ownerId
     observe = { flow { awaitCancellation() } }
     withModel { model ->
       model.updateDraft("waiting for server permission")
       assertFalse(model.uiState.value.canSend)
+      assertFalse(model.uiState.value.canSendDelay)
+      model.sendDelay(5)
       model.send()
+      assertTrue(delays.isEmpty())
       assertTrue(requests.isEmpty())
       observe = { flowOf(OrderResult.Error(OrderError.PermissionDenied)) }
       startChat(model)
       assertEquals(OrderError.PermissionDenied, model.uiState.value.error)
       assertFalse(model.uiState.value.canSend)
+      assertFalse(model.uiState.value.canSendDelay)
+      model.sendDelay(5)
       model.send()
+      assertTrue(delays.isEmpty())
       assertTrue(requests.isEmpty())
     }
   }
@@ -123,6 +275,8 @@ class OrderChatViewModelTest {
   @Test
   fun invalidDraftsCannotBeSubmitted() = runTest {
     withModel(start = false) { model ->
+      model.sendDelay(5)
+      assertTrue(delays.isEmpty())
       model.send()
       assertTrue(requests.isEmpty())
       startChat(model)

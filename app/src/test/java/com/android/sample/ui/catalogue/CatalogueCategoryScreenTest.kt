@@ -17,10 +17,10 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
-import com.android.sample.data.repository.FakeTripRepository
-import com.android.sample.data.repository.ProductResult
 import com.android.sample.ui.orders.OrderDraftState
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.ProductResult
 import com.commando.app.model.Product
 import com.commando.app.model.Trip
 import java.util.Locale

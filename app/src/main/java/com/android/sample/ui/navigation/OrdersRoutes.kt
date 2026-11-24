@@ -13,9 +13,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.android.sample.data.repository.RatingRepository
-import com.android.sample.data.repository.ShoppingChecklistRepository
-import com.android.sample.data.repository.TripRepository
 import com.android.sample.ui.orders.IncomingOrdersScreen
 import com.android.sample.ui.orders.IncomingOrdersViewModel
 import com.android.sample.ui.orders.MyOrdersScreen
@@ -26,6 +23,9 @@ import com.android.sample.ui.orders.OrderDetailsViewModel
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.orders.ShoppingChecklistScreen
 import com.android.sample.ui.orders.ShoppingChecklistViewModel
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.ShoppingChecklistRepository
+import com.commando.app.data.repository.TripRepository
 
 internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
 

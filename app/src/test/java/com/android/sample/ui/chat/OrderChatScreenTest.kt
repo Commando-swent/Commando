@@ -14,10 +14,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.data.repository.OrderError
-import com.android.sample.model.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import java.io.File
 import org.junit.Assert.*
@@ -38,6 +37,7 @@ class OrderChatScreenTest {
   private var backs = 0
   private var retries = 0
   private var sends = 0
+  private val delays = mutableListOf<Int>()
 
   private fun show() = compose.setContent {
     SampleAppTheme {
@@ -47,11 +47,199 @@ class OrderChatScreenTest {
           { retries++ },
           { state = state.copy(draft = it) },
           { sends++ },
+          onDelay = { delays += it },
       )
     }
   }
 
   private fun tag(tag: String) = compose.onNodeWithTag(tag)
+
+  // Match the existing search-dialog tests: Robolectric loops on wide Material text dialogs.
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h917dp-mdpi")
+  fun ownerDelayDialogValidatesDurationAndRequesterSeesTranslatedNotice() {
+    state = state.copy(context = state.context!!.copy(viewerId = state.context!!.trip.ownerId))
+    show()
+    tag(OrderChatTestTags.DELAY).performClick()
+    tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.DELAY_INPUT).performTextInput("0")
+    tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    compose
+        .onNodeWithText(
+            compose.activity.getString(R.string.chat_delay_invalid, MAX_CHAT_DELAY_MINUTES)
+        )
+        .assertExists()
+    tag(OrderChatTestTags.DELAY_INPUT).performTextReplacement("15")
+    screenshot("delay-dialog")
+    tag(OrderChatTestTags.DELAY_SEND).assertIsEnabled().performClick()
+    assertEquals(listOf(15), delays)
+    compose.runOnIdle {
+      val context = state.context!!
+      state =
+          state.copy(
+              context = context.copy(viewerId = context.order.requesterId),
+              chat =
+                  state.chat!!.copy(
+                      messages =
+                          listOf(
+                              ChatMessage(
+                                  "delay",
+                                  context.trip.ownerId,
+                                  "",
+                                  context.order.createdAt,
+                                  15,
+                              )
+                          )
+                  ),
+          )
+    }
+    tag(OrderChatTestTags.DELAY).assertDoesNotExist()
+    compose
+        .onNodeWithText(
+            compose.activity.resources.getQuantityString(R.plurals.chat_delay_message, 15, 15)
+        )
+        .assertIsDisplayed()
+    compose
+        .onNodeWithContentDescription(compose.activity.getString(R.string.chat_delay_notice))
+        .assertDoesNotExist()
+    compose
+        .onAllNodesWithText(compose.activity.getString(R.string.chat_delay_notice))
+        .assertCountEquals(1)
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.chat_delay_notice))
+        .assertIsDisplayed()
+    screenshot("delay-received")
+    compose.runOnIdle {
+      state =
+          state.copy(
+              chat =
+                  state.chat!!.copy(
+                      messages = state.chat!!.messages.map { it.copy(delayMinutes = 1) }
+                  )
+          )
+    }
+    compose.onNodeWithText("Delay: about 1 minute").assertIsDisplayed()
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h917dp-mdpi")
+  fun frenchDelayNoticeAndOwnerDialogRemainLocalized() {
+    val context = state.context!!
+    state =
+        state.copy(
+            context = context.copy(viewerId = context.trip.ownerId),
+            chat =
+                state.chat!!.copy(
+                    messages =
+                        listOf(
+                            ChatMessage(
+                                "delay-fr",
+                                context.trip.ownerId,
+                                "",
+                                context.order.createdAt,
+                                20,
+                            )
+                        )
+                ),
+        )
+    show()
+    compose.onNodeWithText("Retard : environ 20 minutes").assertIsDisplayed()
+    screenshot("delay-fr")
+    tag(OrderChatTestTags.DELAY).performClick()
+    for (invalid in listOf("letters", (MAX_CHAT_DELAY_MINUTES + 1).toString(), "-1")) {
+      tag(OrderChatTestTags.DELAY_INPUT).performTextReplacement(invalid)
+      tag(OrderChatTestTags.DELAY_SEND).assertIsNotEnabled()
+    }
+    compose.onNodeWithText(compose.activity.getString(R.string.profile_edit_cancel)).performClick()
+    assertTrue(delays.isEmpty())
+    tag(OrderChatTestTags.DELAY_INPUT).assertDoesNotExist()
+    compose.runOnIdle { state = state.copy(sendError = OrderError.Unknown) }
+    tag(OrderChatTestTags.DELAY).assertIsNotEnabled()
+    compose.runOnIdle {
+      state = state.copy(chat = state.chat!!.copy(status = OrderStatus.DELIVERED))
+    }
+    tag(OrderChatTestTags.DELAY).assertDoesNotExist()
+  }
+
+  @Test
+  @Config(qualifiers = "en-rUS-w320dp-h917dp-mdpi")
+  fun deliveryWhileDialogIsOpenRemovesThePendingAction() {
+    state = state.copy(context = state.context!!.copy(viewerId = state.context!!.trip.ownerId))
+    show()
+    tag(OrderChatTestTags.DELAY).performClick()
+    tag(OrderChatTestTags.DELAY_INPUT).performTextInput("5")
+    compose.runOnIdle {
+      state = state.copy(chat = state.chat!!.copy(status = OrderStatus.DELIVERED))
+    }
+    tag(OrderChatTestTags.DELAY_SEND).assertDoesNotExist()
+    assertTrue(delays.isEmpty())
+  }
+
+  @Test
+  fun failedDelayHasItsOwnFeedbackAndRetryAction() {
+    state =
+        state.copy(
+            context = state.context!!.copy(viewerId = state.context!!.trip.ownerId),
+            draft = "typed",
+            sendError = OrderError.PermissionDenied,
+            failedDelayMinutes = 5,
+        )
+    show()
+    tag(OrderChatTestTags.RETRY_SEND)
+        .assertTextContains(
+            compose.activity.resources.getQuantityString(R.plurals.chat_delay_failed, 5, 5)
+        )
+        .performClick()
+    assertEquals(listOf(5), delays)
+    assertEquals(0, sends)
+    compose.runOnIdle { state = state.copy(sendError = OrderError.Unknown) }
+    tag(OrderChatTestTags.RETRY_SEND).performClick()
+    assertEquals(1, sends)
+    assertEquals(1, delays.size)
+    compose.runOnIdle { state = state.copy(sending = true) }
+    tag(OrderChatTestTags.RETRY_SEND).assertIsNotEnabled()
+    compose.runOnIdle {
+      state =
+          state.copy(
+              sending = false,
+              sendError = OrderError.PermissionDenied,
+              chat = state.chat!!.copy(status = OrderStatus.DELIVERED),
+          )
+    }
+    tag(OrderChatTestTags.RETRY_SEND).assertIsNotEnabled()
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w320dp-h917dp-mdpi")
+  fun frenchFailedDelayUsesSingularAndPluralDurations() {
+    state =
+        state.copy(
+            context = state.context!!.copy(viewerId = state.context!!.trip.ownerId),
+            sendError = OrderError.PermissionDenied,
+            failedDelayMinutes = 1,
+        )
+    show()
+    tag(OrderChatTestTags.RETRY_SEND)
+        .assertTextContains("Échec de l’envoi du retard de 1 minute. Réessayer cet avis.")
+    compose.runOnIdle { state = state.copy(failedDelayMinutes = 2) }
+    tag(OrderChatTestTags.RETRY_SEND)
+        .assertTextContains("Échec de l’envoi du retard de 2 minutes. Réessayer cet avis.")
+  }
+
+  @Test
+  fun cancelledTripCannotOpenADelayDialog() {
+    val context = state.context!!
+    state =
+        state.copy(
+            context =
+                context.copy(
+                    viewerId = context.trip.ownerId,
+                    trip = context.trip.copy(status = TripStatus.CANCELLED),
+                )
+        )
+    show()
+    tag(OrderChatTestTags.DELAY).assertDoesNotExist()
+  }
 
   @Test
   fun conversationInputValidationAndCallbacks() {

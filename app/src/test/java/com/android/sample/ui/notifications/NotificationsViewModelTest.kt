@@ -4,6 +4,9 @@ package com.android.sample.ui.notifications
 import androidx.lifecycle.viewModelScope
 import com.android.sample.MainDispatcherRule
 import com.android.sample.data.repository.*
+import com.commando.app.data.repository.NotificationRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.*
 import java.time.Instant
 import kotlinx.coroutines.*

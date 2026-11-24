@@ -5,8 +5,15 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
-import com.android.sample.model.*
 import com.android.sample.ui.session.SessionGuard
+import com.commando.app.data.repository.OrderChatRepository
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
+import com.commando.app.data.repository.context
 import com.commando.app.model.*
 import java.util.UUID
 import kotlinx.coroutines.*
@@ -27,10 +34,20 @@ data class OrderChatUiState(
     val draft: String = "",
     val sending: Boolean = false,
     val sendError: OrderError? = null,
+    val failedDelayMinutes: Int? = null,
 ) {
   /** Unknown outcomes keep the submitted text immutable until the server reconciles it. */
   val canEditDraft: Boolean
     get() = !sending && sendError != OrderError.Unknown
+
+  val canSendDelay: Boolean
+    get() =
+        !loading &&
+            error == null &&
+            canEditDraft &&
+            context?.let { it.viewerId == it.trip.ownerId && it.trip.status.canReportDelay } ==
+                true &&
+            chat?.status?.canSendChat == true
 
   val canSend: Boolean
     get() =
@@ -67,12 +84,15 @@ class OrderChatViewModel(
     if (session.initialUserId == null || saved.get<String>(USER) != session.initialUserId) {
       saved[DRAFT] = ""
       saved[OUTBOUND] = null
+      saved[DELAY] = null
     }
+    if (saved.get<String>(OUTBOUND) == null) saved[DELAY] = null
     saved[USER] = session.initialUserId
     mutableState.value =
         OrderChatUiState(
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
+            failedDelayMinutes = saved[DELAY],
         )
     viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) endSession() } }
   }
@@ -130,6 +150,7 @@ class OrderChatViewModel(
    */
   fun stop() {
     active = false
+    if (saved.get<String>(OUTBOUND) == null) saved[DELAY] = null
     observer?.cancel()
     timeout?.cancel()
     sender?.cancel()
@@ -137,6 +158,7 @@ class OrderChatViewModel(
         OrderChatUiState(
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
+            failedDelayMinutes = saved[DELAY],
         )
   }
 
@@ -144,23 +166,48 @@ class OrderChatViewModel(
   fun updateDraft(text: String) {
     if (invalidSession() || mutableState.value.sending || saved.get<String>(OUTBOUND) != null)
         return
+    saved[DELAY] = null
     saved[DRAFT] = text
-    mutableState.update { it.copy(draft = text, sendError = null) }
+    mutableState.update { it.copy(draft = text, sendError = null, failedDelayMinutes = null) }
   }
 
   /** Reuses the saved ID/text on retry; busy taps and new sends in read-only states are ignored. */
-  fun send() {
+  fun send() = sendPending()
+
+  /** Only the commando can report a delay; a typed message draft remains untouched. */
+  fun sendDelay(minutes: Int) {
+    if (
+        !active ||
+            invalidSession() ||
+            !mutableState.value.canSendDelay ||
+            minutes !in 1..MAX_CHAT_DELAY_MINUTES ||
+            saved.get<String>(OUTBOUND) != null
+    )
+        return
+    saved[DELAY] = minutes
+    sendPending()
+  }
+
+  private fun sendPending() {
     if (!active || invalidSession() || mutableState.value.sending) return
     val existing = saved.get<String>(OUTBOUND)
-    if (existing == null && !mutableState.value.canSend) return
+    val minutes = saved.get<Int>(DELAY)
+    if (
+        existing == null &&
+            !(if (minutes == null) mutableState.value.canSend else mutableState.value.canSendDelay)
+    )
+        return
     val id = existing ?: UUID.randomUUID().toString()
-    val text = saved.get<String>(DRAFT).orEmpty()
+    val text = if (minutes == null) saved.get<String>(DRAFT).orEmpty() else CHAT_DELAY_FALLBACK
     saved[OUTBOUND] = id
-    mutableState.update { it.copy(sending = true, sendError = null) }
+    mutableState.update { it.copy(sending = true, sendError = null, failedDelayMinutes = null) }
     sender = viewModelScope.launch {
       val result =
           try {
-            withTimeout(RESPONSE_TIMEOUT_MS) { messages.sendMessage(orderId, id, text) }
+            withTimeout(RESPONSE_TIMEOUT_MS) {
+              if (minutes == null) messages.sendMessage(orderId, id, text)
+              else messages.sendDelayNotice(orderId, id, minutes)
+            }
           } catch (_: Exception) {
             currentCoroutineContext().ensureActive()
             OrderResult.Error(OrderError.Unknown)
@@ -177,9 +224,15 @@ class OrderChatViewModel(
       val error = (result as OrderResult.Error).error
       if (error == OrderError.NotAuthenticated) endSession()
       else {
+        val failedDelay = saved.get<Int>(DELAY)
         // Only Unknown may represent a committed write whose acknowledgement was lost.
-        if (error != OrderError.Unknown) saved[OUTBOUND] = null
-        mutableState.update { it.copy(sending = false, sendError = error) }
+        if (error != OrderError.Unknown) {
+          saved[OUTBOUND] = null
+          saved[DELAY] = null
+        }
+        mutableState.update {
+          it.copy(sending = false, sendError = error, failedDelayMinutes = failedDelay)
+        }
       }
     }
   }
@@ -189,13 +242,23 @@ class OrderChatViewModel(
           mutableState.value.chat?.messages?.any {
             it.id == id &&
                 it.senderId == session.initialUserId &&
-                it.text == saved.get<String>(DRAFT)
+                it.delayMinutes == saved.get<Int>(DELAY) &&
+                it.text ==
+                    if (it.delayMinutes == null) saved.get<String>(DRAFT) else CHAT_DELAY_FALLBACK
           } == true
 
   private fun completeSend() {
     saved[OUTBOUND] = null
-    saved[DRAFT] = ""
-    mutableState.update { it.copy(draft = "", sending = false, sendError = null) }
+    if (saved.get<Int>(DELAY) == null) saved[DRAFT] = ""
+    saved[DELAY] = null
+    mutableState.update {
+      it.copy(
+          draft = saved[DRAFT] ?: "",
+          sending = false,
+          sendError = null,
+          failedDelayMinutes = null,
+      )
+    }
   }
 
   private fun invalidSession(): Boolean {
@@ -207,6 +270,7 @@ class OrderChatViewModel(
     ended = true
     saved[DRAFT] = ""
     saved[OUTBOUND] = null
+    saved[DELAY] = null
     stop()
     mutableState.value = OrderChatUiState(loading = false, error = OrderError.NotAuthenticated)
   }
@@ -253,6 +317,7 @@ class OrderChatViewModel(
     internal const val RESPONSE_TIMEOUT_MS = 20_000L
     private const val DRAFT = "chatDraft"
     private const val OUTBOUND = "chatOutboundId"
+    private const val DELAY = "chatOutboundDelay"
     private const val USER = "chatUserId"
   }
 }

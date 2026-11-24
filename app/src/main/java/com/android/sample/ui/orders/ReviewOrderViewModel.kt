@@ -4,6 +4,9 @@ package com.android.sample.ui.orders
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.android.sample.data.repository.*
+import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.OrderResult
 import com.commando.app.model.*
 import java.math.BigDecimal
 import java.util.Locale

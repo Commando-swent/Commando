@@ -2,10 +2,10 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: Claude Code for trip status seeding (#233).
 
-import com.android.sample.data.repository.TripRepositoryFirestore
-import com.android.sample.data.repository.successData
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.data.repository.TripRepositoryFirestore
+import com.commando.app.data.repository.successData
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.TripStatus

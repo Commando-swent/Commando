@@ -1,7 +1,6 @@
 package com.android.sample.ui.notifications
 
 // AI assistance: OpenAI Codex; cancellation row test (#401): Claude Code.
-
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -13,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.android.sample.data.repository.*
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import java.time.Instant
 import org.junit.Assert.*

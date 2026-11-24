@@ -14,7 +14,6 @@ import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.orders.*
 import com.android.sample.ui.theme.SampleAppTheme
-import com.android.sample.ui.trips.MyTripsTestTags
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -22,6 +21,7 @@ import com.commando.app.data.repository.OrderChatRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.ui.trips.MyTripsTestTags
 import kotlinx.coroutines.flow.*
 import org.junit.Assert.*
 import org.junit.Rule

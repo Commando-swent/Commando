@@ -23,8 +23,6 @@ import androidx.core.view.WindowCompat
 import com.android.sample.data.repository.ProfilePhotoRepositoryFirestore
 import com.android.sample.model.authentication.AuthRepositoryProvider
 import com.android.sample.resources.C
-import com.android.sample.ui.home.HomeScreen
-import com.android.sample.ui.home.HomeTripUiState
 import com.android.sample.ui.navigation.AppMode
 import com.android.sample.ui.navigation.AppScaffold
 import com.android.sample.ui.navigation.CommandoApp
@@ -34,6 +32,8 @@ import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.home.HomeScreen
+import com.commando.app.ui.home.HomeTripUiState
 import java.time.LocalDate
 import java.time.ZoneId
 

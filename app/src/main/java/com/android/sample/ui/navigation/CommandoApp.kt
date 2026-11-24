@@ -40,17 +40,11 @@ import com.android.sample.ui.auth.AuthMode
 import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.chat.OrderChatHost
 import com.android.sample.ui.chat.OrderChatViewModel
-import com.android.sample.ui.home.HomeScreen
-import com.android.sample.ui.home.HomeTripUiState
-import com.android.sample.ui.home.HomeViewModel
-import com.android.sample.ui.map.PositionSharingCard
 import com.android.sample.ui.orders.SessionOrderViewModel
 import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
-import com.android.sample.ui.trips.SavedTripSearchViewModel
-import com.android.sample.ui.trips.TripLocationFilterViewModel
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.NotificationRepository
@@ -63,6 +57,12 @@ import com.commando.app.data.repository.RatingRepositoryFirestore
 import com.commando.app.data.repository.SavedTripSearchRepository
 import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.TripRepository
+import com.commando.app.ui.home.HomeScreen
+import com.commando.app.ui.home.HomeTripUiState
+import com.commando.app.ui.home.HomeViewModel
+import com.commando.app.ui.map.PositionSharingCard
+import com.commando.app.ui.trips.SavedTripSearchViewModel
+import com.commando.app.ui.trips.TripLocationFilterViewModel
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */

@@ -480,6 +480,23 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    match /publicProfiles/{userId} {
+      function validPublicName(data) {
+        return data.keys().hasOnly(["displayName"])
+          && data.displayName is string
+          // RE2 counts Unicode code points, including one per supplementary character.
+          && data.displayName.matches("[^\\r\\n]{1,80}")
+          && !data.displayName.matches("[\\p{Z}\\x09-\\x0D\\x1C-\\x1F\\x85]*");
+      }
+
+      allow get: if isAuthenticated()
+        && (resource == null || validPublicName(resource.data));
+      allow list: if false;
+      allow create, update: if isAuthenticated() && request.auth.uid == userId
+        && validPublicName(request.resource.data);
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    }
+
     match /profilePhotos/{userId} {
       allow get, delete: if isAuthenticated() && request.auth.uid == userId;
       allow create, update: if isAuthenticated() && request.auth.uid == userId

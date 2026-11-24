@@ -12,11 +12,11 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.ui.navigation.NavigationTestTags
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.*
+import com.commando.app.ui.navigation.NavigationTestTags
+import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Rule

@@ -3,10 +3,10 @@ package com.android.sample.emulator.firestore.security
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import com.android.sample.data.repository.ProfilePhotoRepositoryFirestore
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.data.repository.ProfilePhotoRepositoryFirestore
 import com.commando.app.model.ProfilePhotoSource
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
 import com.google.firebase.firestore.Blob
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source

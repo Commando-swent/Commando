@@ -2,7 +2,7 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex; trip-owner query tests (#147), trip seeding (#233), Commando
 // cancellation (#401): Claude Code.
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FirebaseOrderFirestoreDataSource
 import com.commando.app.data.repository.NEWEST_ORDER_FIRST
 import com.commando.app.data.repository.OrderError

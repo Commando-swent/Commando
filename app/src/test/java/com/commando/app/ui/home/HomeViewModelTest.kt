@@ -1,7 +1,7 @@
 package com.commando.app.ui.home
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository

@@ -12,7 +12,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.ui.orders.money
+import com.commando.app.ui.orders.money
 
 /** Stable selectors for the owner's earnings card and its retry action. */
 object TripEarningsTestTags {

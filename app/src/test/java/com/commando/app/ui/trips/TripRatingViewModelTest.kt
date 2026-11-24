@@ -2,7 +2,7 @@ package com.commando.app.ui.trips
 
 // AI assistance: OpenAI Codex.
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.summary

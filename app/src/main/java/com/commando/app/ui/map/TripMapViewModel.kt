@@ -3,11 +3,11 @@ package com.commando.app.ui.map
 // AI assistance: OpenAI Codex; Claude Code (search criteria).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.ui.session.SessionGuard
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.Location
 import com.commando.app.model.TripFeed
 import com.commando.app.model.TripSearchCriteria
+import com.commando.app.ui.session.SessionGuard
 import com.commando.app.ui.trips.FilteredTripFeed
 import java.time.Clock
 import kotlinx.coroutines.flow.Flow

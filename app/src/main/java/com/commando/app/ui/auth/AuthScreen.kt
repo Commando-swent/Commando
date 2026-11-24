@@ -24,8 +24,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.credentials.Credential
 import com.android.sample.R
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.model.authentication.AuthUser
+import com.commando.app.ui.theme.SampleAppTheme
 
 /** Stable selectors for the authentication form. */
 object AuthTestTags {

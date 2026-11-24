@@ -11,6 +11,7 @@ import androidx.core.os.LocaleListCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.screen.MainScreen
+import com.commando.app.MainActivity
 import com.commando.app.model.authentication.AuthRepositoryProvider
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.WelcomeTestTags

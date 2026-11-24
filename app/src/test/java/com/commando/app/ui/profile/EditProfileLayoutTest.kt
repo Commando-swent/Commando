@@ -3,8 +3,8 @@ package com.commando.app.ui.profile
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.model.authentication.AuthException
+import com.commando.app.ui.theme.SampleAppTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

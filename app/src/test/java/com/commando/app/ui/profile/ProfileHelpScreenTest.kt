@@ -9,7 +9,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.ui.theme.SampleAppTheme
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

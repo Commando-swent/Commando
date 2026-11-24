@@ -20,7 +20,7 @@
         android:theme="@style/Theme.SampleApp"
         tools:targetApi="33">
         <activity
-            android:name=".MainActivity"
+            android:name="com.commando.app.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.SampleApp.NoActionBar">
             <intent-filter>

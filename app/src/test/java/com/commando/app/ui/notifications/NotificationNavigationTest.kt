@@ -7,8 +7,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.ui.navigation.*
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -21,6 +19,8 @@ import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.auth.WelcomeTestTags
+import com.commando.app.ui.navigation.*
+import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Rule

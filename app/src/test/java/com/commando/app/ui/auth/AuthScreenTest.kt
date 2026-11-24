@@ -8,11 +8,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.credentials.CustomCredential
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.theme.SampleAppTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
 import org.junit.Rule

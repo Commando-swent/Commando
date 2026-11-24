@@ -16,11 +16,11 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.*
+import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

@@ -34,11 +34,77 @@ class OrderChatRepositoryFirestore(
   override suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int) =
       send(orderId, messageId, CHAT_DELAY_FALLBACK, minutes)
 
+  override suspend fun proposeMeetup(orderId: String, messageId: String, proposal: MeetupProposal) =
+      send(orderId, messageId, CHAT_MEETUP_FALLBACK, null, proposal)
+
+  override suspend fun respondToMeetup(
+      orderId: String,
+      messageId: String,
+      response: MeetupResponse,
+  ): OrderResult<Unit> {
+    val uid =
+        currentUserId()?.takeIf { it.isDocumentId() }
+            ?: return OrderResult.Error(OrderError.NotAuthenticated)
+    return runFirestoreOperation(
+        onFailure = {
+          OrderResult.Error(
+              if (sameSession(uid)) it.toOrderError() else OrderError.NotAuthenticated
+          )
+        }
+    ) {
+      if (
+          !orderId.isDocumentId() || !messageId.isDocumentId() || response == MeetupResponse.PENDING
+      )
+          throw failure(Code.INVALID_ARGUMENT)
+      val context = currentCoroutineContext()
+      firestore
+          .runTransaction { tx ->
+            context.ensureActive()
+            guard(uid)
+            val order = tx.get(order(orderId))
+            if (order.getString("requesterId") != uid) throw failure(Code.PERMISSION_DENIED)
+            val ref = order(orderId).collection("messages").document(messageId)
+            val stored = tx.get(ref)
+            if (stored.getString("senderId") == uid) throw failure(Code.PERMISSION_DENIED)
+            val proposal = decodeMessage(stored).meetup ?: throw failure(Code.INVALID_ARGUMENT)
+            if (proposal.response != response) {
+              if (proposal.response != MeetupResponse.PENDING) throw failure(Code.INVALID_ARGUMENT)
+              val trip =
+                  tx.get(
+                      firestore
+                          .collection("trips")
+                          .document(order.getString("tripId") ?: throw failure(Code.DATA_LOSS))
+                  )
+              if (
+                  !OrderStatus.valueOf(order.getString("status").orEmpty()).canSendChat ||
+                      !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay ||
+                      !proposal.at.isAfter(java.time.Instant.now())
+              )
+                  throw failure(Code.PERMISSION_DENIED)
+              guard(uid)
+              tx.update(
+                  ref,
+                  mapOf(
+                      "meetup.response" to response.name,
+                      "meetup.respondedAt" to FieldValue.serverTimestamp(),
+                  ),
+              )
+            }
+            Unit
+          }
+          .await()
+      context.ensureActive()
+      guard(uid)
+      OrderResult.Success(Unit)
+    }
+  }
+
   private suspend fun send(
       orderId: String,
       messageId: String,
       text: String,
       delay: Int?,
+      meetup: MeetupProposal? = null,
   ): OrderResult<Unit> {
     val context = currentCoroutineContext()
     context.ensureActive()
@@ -53,7 +119,11 @@ class OrderChatRepositoryFirestore(
           )
         }
     ) {
-      if (!orderId.isDocumentId() || !messageId.isDocumentId() || !isValidChatPayload(text, delay))
+      if (
+          !orderId.isDocumentId() ||
+              !messageId.isDocumentId() ||
+              !isValidChatPayload(text, delay, meetup)
+      )
           throw failure(Code.INVALID_ARGUMENT)
       val orderRef = order(orderId)
       val messageRef = orderRef.collection("messages").document(messageId)
@@ -61,7 +131,7 @@ class OrderChatRepositoryFirestore(
           .runTransaction { transaction ->
             context.ensureActive()
             guard(uid)
-            writeOnce(transaction, orderRef, messageRef, uid, text, delay)
+            writeOnce(transaction, orderRef, messageRef, uid, text, delay, meetup)
             Unit
           }
           .await()
@@ -79,6 +149,7 @@ class OrderChatRepositoryFirestore(
       uid: String,
       text: String,
       delay: Int?,
+      meetup: MeetupProposal?,
   ) {
     val storedOrder = transaction.get(orderRef)
     if (!storedOrder.exists()) throw failure(Code.NOT_FOUND)
@@ -87,13 +158,23 @@ class OrderChatRepositoryFirestore(
       if (
           previous.getString("senderId") != uid ||
               previous.getString("text") != text ||
-              previous.getLong("delayMinutes") != delay?.toLong()
+              previous.getLong("delayMinutes") != delay?.toLong() ||
+              decodeMessage(previous).meetup?.let {
+                it.copy(response = MeetupResponse.PENDING, respondedAt = null)
+              } != meetup
       )
           throw failure(Code.INVALID_ARGUMENT)
     } else {
       val status = OrderStatus.valueOf(storedOrder.getString("status").orEmpty())
       if (!status.canSendChat) throw failure(Code.PERMISSION_DENIED)
-      if (delay != null) {
+      if (
+          meetup != null &&
+              (meetup.response != MeetupResponse.PENDING ||
+                  meetup.respondedAt != null ||
+                  !meetup.at.isAfter(java.time.Instant.now()))
+      )
+          throw failure(Code.INVALID_ARGUMENT)
+      if (delay != null || meetup != null) {
         val tripId = storedOrder.getString("tripId") ?: throw failure(Code.DATA_LOSS)
         val trip = transaction.get(firestore.collection("trips").document(tripId))
         if (
@@ -109,7 +190,18 @@ class OrderChatRepositoryFirestore(
               "senderId" to uid,
               "text" to text,
               "createdAt" to FieldValue.serverTimestamp(),
-          ) + (delay?.let { mapOf("delayMinutes" to it) } ?: emptyMap()),
+          ) +
+              (delay?.let { mapOf("delayMinutes" to it) } ?: emptyMap()) +
+              (meetup?.let {
+                mapOf(
+                    "meetup" to
+                        mapOf(
+                            "location" to it.location,
+                            "at" to com.google.firebase.Timestamp(it.at.epochSecond, it.at.nano),
+                            "response" to it.response.name,
+                        )
+                )
+              } ?: emptyMap()),
       )
     }
   }
@@ -167,13 +259,32 @@ class OrderChatRepositoryFirestore(
               throw failure(Code.DATA_LOSS)
           rawDelay.toInt()
         }
-    if (!isValidChatPayload(text, delay)) throw failure(Code.DATA_LOSS)
+    val meetup =
+        document.get("meetup")?.let {
+          val fields = it as? Map<*, *> ?: throw failure(Code.DATA_LOSS)
+          if (!fields.keys.all { key -> key in setOf("location", "at", "response", "respondedAt") })
+              throw failure(Code.DATA_LOSS)
+          MeetupProposal(
+              fields["location"] as? String ?: throw failure(Code.DATA_LOSS),
+              (fields["at"] as? com.google.firebase.Timestamp)?.toInstant()
+                  ?: throw failure(Code.DATA_LOSS),
+              MeetupResponse.valueOf(
+                  fields["response"] as? String ?: throw failure(Code.DATA_LOSS)
+              ),
+              fields["respondedAt"]?.let { time ->
+                (time as? com.google.firebase.Timestamp)?.toInstant()
+                    ?: throw failure(Code.DATA_LOSS)
+              },
+          )
+        }
+    if (!isValidChatPayload(text, delay, meetup)) throw failure(Code.DATA_LOSS)
     return ChatMessage(
         document.id,
         document.getString("senderId") ?: throw failure(Code.DATA_LOSS),
         text,
         document.getTimestamp("createdAt")?.toInstant() ?: throw failure(Code.DATA_LOSS),
         delay,
+        meetup,
     )
   }
 

@@ -65,6 +65,18 @@ class OrderChatNavigationTest {
             },
             chatRepositoryFactory = { uid ->
               object : OrderChatRepository {
+                override suspend fun proposeMeetup(
+                    orderId: String,
+                    messageId: String,
+                    proposal: com.commando.app.model.MeetupProposal,
+                ): OrderResult<Unit> = error("Not used")
+
+                override suspend fun respondToMeetup(
+                    orderId: String,
+                    messageId: String,
+                    response: com.commando.app.model.MeetupResponse,
+                ): OrderResult<Unit> = error("Not used")
+
                 override fun observeChat(orderId: String) =
                     flow<OrderResult<OrderChat>> {
                       opened += orderId

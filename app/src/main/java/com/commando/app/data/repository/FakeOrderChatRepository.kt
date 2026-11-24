@@ -28,6 +28,22 @@ class FakeOrderChatStore(val orders: StateFlow<Map<String, FakeChatOrder>>) {
     _messages.value = _messages.value + (orderId to (_messages.value[orderId].orEmpty() + message))
   }
 
+  internal fun respond(
+      orderId: String,
+      id: String,
+      response: MeetupResponse,
+      at: java.time.Instant,
+  ) {
+    _messages.value =
+        _messages.value +
+            (orderId to
+                _messages.value[orderId].orEmpty().map {
+                  if (it.id == id)
+                      it.copy(meetup = it.meetup?.copy(response = response, respondedAt = at))
+                  else it
+                })
+  }
+
   internal val mutex = Mutex()
 }
 
@@ -46,18 +62,57 @@ class FakeOrderChatRepository(
   override suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int) =
       send(orderId, messageId, CHAT_DELAY_FALLBACK, minutes)
 
+  override suspend fun proposeMeetup(orderId: String, messageId: String, proposal: MeetupProposal) =
+      send(orderId, messageId, CHAT_MEETUP_FALLBACK, null, proposal)
+
+  override suspend fun respondToMeetup(
+      orderId: String,
+      messageId: String,
+      response: MeetupResponse,
+  ): OrderResult<Unit> =
+      store.mutex.withLock {
+        val uid = currentUserId.value ?: return OrderResult.Error(OrderError.NotAuthenticated)
+        if (
+            !orderId.isDocumentId() ||
+                !messageId.isDocumentId() ||
+                response == MeetupResponse.PENDING
+        )
+            return OrderResult.Error(OrderError.InvalidData)
+        val order = store.orders.value[orderId] ?: return OrderResult.Error(OrderError.NotFound)
+        if (order.requesterId != uid) return OrderResult.Error(OrderError.PermissionDenied)
+        val message =
+            store.messages.value[orderId]?.find { it.id == messageId }
+                ?: return OrderResult.Error(OrderError.NotFound)
+        if (message.senderId == uid) return OrderResult.Error(OrderError.PermissionDenied)
+        val meetup = message.meetup ?: return OrderResult.Error(OrderError.InvalidData)
+        if (meetup.response == response) return OrderResult.Success(Unit)
+        if (meetup.response != MeetupResponse.PENDING)
+            return OrderResult.Error(OrderError.InvalidData)
+        if (
+            !order.status.canSendChat ||
+                !order.tripStatus.canReportDelay ||
+                !meetup.at.isAfter(clock.instant())
+        )
+            return OrderResult.Error(OrderError.PermissionDenied)
+        store.respond(orderId, messageId, response, clock.instant())
+        OrderResult.Success(Unit)
+      }
+
   private suspend fun send(
       orderId: String,
       messageId: String,
       text: String,
       delay: Int?,
+      meetup: MeetupProposal? = null,
   ): OrderResult<Unit> =
       store.mutex.withLock {
         val uid =
             currentUserId.value?.takeIf { it.isDocumentId() }
                 ?: return OrderResult.Error(OrderError.NotAuthenticated)
         if (
-            !orderId.isDocumentId() || !messageId.isDocumentId() || !isValidChatPayload(text, delay)
+            !orderId.isDocumentId() ||
+                !messageId.isDocumentId() ||
+                !isValidChatPayload(text, delay, meetup)
         )
             return OrderResult.Error(OrderError.InvalidData)
         val accessError = access(orderId, uid)
@@ -68,16 +123,22 @@ class FakeOrderChatRepository(
           previous != null &&
               (previous.senderId != uid ||
                   previous.text != text ||
-                  previous.delayMinutes != delay) -> OrderResult.Error(OrderError.InvalidData)
+                  previous.delayMinutes != delay ||
+                  previous.meetup?.copy(response = MeetupResponse.PENDING, respondedAt = null) !=
+                      meetup) -> OrderResult.Error(OrderError.InvalidData)
           previous != null -> OrderResult.Success(Unit)
-          delay != null &&
+          meetup != null &&
+              (meetup.response != MeetupResponse.PENDING ||
+                  meetup.respondedAt != null ||
+                  !meetup.at.isAfter(clock.instant())) -> OrderResult.Error(OrderError.InvalidData)
+          (delay != null || meetup != null) &&
               store.orders.value.getValue(orderId).let {
                 it.ownerId != uid || !it.tripStatus.canReportDelay
               } -> OrderResult.Error(OrderError.PermissionDenied)
           !store.orders.value.getValue(orderId).status.canSendChat ->
               OrderResult.Error(OrderError.PermissionDenied)
           else -> {
-            store.append(orderId, ChatMessage(messageId, uid, text, clock.instant(), delay))
+            store.append(orderId, ChatMessage(messageId, uid, text, clock.instant(), delay, meetup))
             OrderResult.Success(Unit)
           }
         }

@@ -131,7 +131,14 @@ other products, there is no product limit, and unchecking before any save is a n
 reads and writes only to the owner of `trips/{tripId}`, with exact fields, a key matching the
 product ID's hash, a positive integer quantity and a server timestamp.
 
-<<<<<<< HEAD
+## Structured chat delay notices
+
+Delay notices reuse `orders/{orderId}/messages/{messageId}` with immutable `senderId`, `createdAt`, `text` and `delayMinutes` (whole minutes late, 1–240). The structured duration drives localized rendering; the fixed readable `text` fallback keeps older text-only clients useful.
+
+Only the persisted trip owner can create a notice for an `ACCEPTED` or `READY_FOR_HANDOFF` order on a `PUBLISHED` or `IN_PROGRESS` trip. Closing a trip to new orders permits coordination; `CANCELLED` and `COMPLETED` trips reject new notices. Participant history remains readable, and identical committed same-ID retries do not write again.
+
+Unknown send outcomes retain the original ID and duration for reconciliation. Definitive failures discard both; a subsequent text send uses the typed draft, while the delay-specific retry explicitly submits the failed duration with a new ID.
+
 ## Commando cancellation of accepted orders — #388 / #401
 
 AI assistance: Claude Code.
@@ -148,12 +155,3 @@ existing `ORDER_ACCEPTED` event and the cancellation time is the `occurredAt` of
 `COMMANDO_CANCELLATION_GRACE` (10 minutes) as penalty-free; the reliability score (#387) consumes it.
 The inbox shows the event to the requester as an order decision. READY_FOR_HANDOFF and later cannot be
 cancelled. Refunds (#385) are out of scope while no payment exists on main.
-=======
-## Structured chat delay notices
-
-Delay notices reuse `orders/{orderId}/messages/{messageId}` with immutable `senderId`, `createdAt`, `text` and `delayMinutes` (whole minutes late, 1–240). The structured duration drives localized rendering; the fixed readable `text` fallback keeps older text-only clients useful.
-
-Only the persisted trip owner can create a notice for an `ACCEPTED` or `READY_FOR_HANDOFF` order on a `PUBLISHED` or `IN_PROGRESS` trip. Closing a trip to new orders permits coordination; `CANCELLED` and `COMPLETED` trips reject new notices. Participant history remains readable, and identical committed same-ID retries do not write again.
-
-Unknown send outcomes retain the original ID and duration for reconciliation. Definitive failures discard both; a subsequent text send uses the typed draft, while the delay-specific retry explicitly submits the failed duration with a new ID.
->>>>>>> origin/main

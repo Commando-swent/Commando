@@ -41,7 +41,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
             (repo(client).getPayment(order.id) as PaymentResult.Success).data!!.amountCents,
         )
       }
-      val reference = requester.firestore.collection("refunds").document(order.id)
+      val reference = document(requester, "refunds", order.id)
       val timestamp = reference.get(Source.SERVER).await().getTimestamp("updatedAt")
       assertEquals(
           PaymentResult.Success(refunds.first()),
@@ -59,7 +59,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
         val pending = repo(requester, status).refundForCancellation(order.id)
         assertEquals(status, (pending as PaymentResult.Success).data.status)
         assertEquals(pending, repo(requester).getRefund(order.id))
-        val reference = requester.firestore.collection("orders").document(order.id)
+        val reference = document(requester, "orders", order.id)
         assertPermissionDenied { reference.update("status", "CANCELLED").await() }
         assertEquals(
             RefundStatus.CONFIRMED,
@@ -83,7 +83,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       )
       for (client in listOf(other, out)) for (collection in listOf("payments", "refunds")) {
         assertPermissionDenied {
-          client.firestore.collection(collection).document(pending.id).get(Source.SERVER).await()
+          document(client, collection, pending.id).get(Source.SERVER).await()
         }
       }
       assertEquals(
@@ -105,9 +105,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
         assertPermissionDenied {
           client.firestore.collection(collection).get(Source.SERVER).await()
         }
-        assertPermissionDenied {
-          client.firestore.collection(collection).document(pending.id).delete().await()
-        }
+        assertPermissionDenied { document(client, collection, pending.id).delete().await() }
       }
     }
   }
@@ -118,7 +116,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       ->
       val order = seed(owner, requester)
       val data = refund(order).firestoreFields()
-      val reference = requester.firestore.collection("refunds").document(order.id)
+      val reference = document(requester, "refunds", order.id)
       for (invalid in
           listOf(
               data + ("amountCents" to order.totalCents + 1),
@@ -134,9 +132,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
               data - "status",
           )) assertPermissionDenied(invalid.keys.toString()) { reference.set(invalid).await() }
       for (client in listOf(owner, other)) assertPermissionDenied {
-        client.firestore
-            .collection("refunds")
-            .document(order.id)
+        document(client, "refunds", order.id)
             .set(data + ("requestedBy" to client.auth.currentUser!!.uid))
             .await()
       }
@@ -152,11 +148,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
         assertPermissionDenied { reference.update(change).await() }
       }
       assertPermissionDenied {
-        requester.firestore
-            .collection("payments")
-            .document(order.id)
-            .update("status", "CONFIRMED")
-            .await()
+        document(requester, "payments", order.id).update("status", "CONFIRMED").await()
       }
     }
   }
@@ -169,8 +161,8 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
           repo(requester).getPayment(UUID.randomUUID().toString()),
       )
       val order = seed(owner, requester)
-      val payment = requester.firestore.collection("payments").document(order.id)
-      val orderRef = requester.firestore.collection("orders").document(order.id)
+      val payment = document(requester, "payments", order.id)
+      val orderRef = document(requester, "orders", order.id)
       for (status in PaymentStatus.entries.filter { it != PaymentStatus.CONFIRMED }) {
         updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
         assertEquals(
@@ -209,6 +201,22 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun registeredPaymentsMustBeConfirmedBeforeHandoff() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      for (status in PaymentStatus.entries) {
+        val order = seed(owner, requester, OrderStatus.ACCEPTED)
+        updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
+        val target = document(owner, "orders", order.id)
+        if (status == PaymentStatus.CONFIRMED) target.update("status", "READY_FOR_HANDOFF").await()
+        else {
+          assertPermissionDenied { target.update("status", "READY_FOR_HANDOFF").await() }
+          assertEquals("ACCEPTED", target.get(Source.SERVER).await().getString("status"))
+        }
+      }
+    }
+  }
+
+  @Test
   fun refundReservationRejectsRacingHandoffAndEdits() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val order = seed(owner, requester, OrderStatus.ACCEPTED)
@@ -216,22 +224,19 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
           repo(owner, RefundStatus.PENDING).refundForCancellation(order.id) is PaymentResult.Success
       )
       assertPermissionDenied {
-        owner.firestore
-            .collection("orders")
-            .document(order.id)
-            .update("status", "READY_FOR_HANDOFF")
-            .await()
+        document(owner, "orders", order.id).update("status", "READY_FOR_HANDOFF").await()
       }
       val pending = seed(owner, requester)
       assertPermissionDenied {
-        requester.firestore
-            .collection("orders")
-            .document(pending.id)
+        document(requester, "orders", pending.id)
             .update("commissionCents", 76, "revision", 1)
             .await()
       }
     }
   }
+
+  private fun document(client: EmulatorClient, collection: String, id: String) =
+      client.firestore.collection(collection).document(id)
 
   private fun repo(
       client: EmulatorClient,

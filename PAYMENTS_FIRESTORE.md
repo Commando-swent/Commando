@@ -1,38 +1,32 @@
 # Simulated payment and refund persistence
 
-This is the proposed shared contract for #385 / #400. Agree it with the checkout
-owner before merging or enabling a paid checkout flow. No real payment provider
-is called, and the transaction callback must remain pure because Firebase retries it.
+Shared models and document paths for #385 / #400 were confirmed with the checkout
+owner. Checkout owns `processPayment(orderId, method)` after ACCEPTED and must
+reconcile UNCERTAIN from persistence before retrying the same operation.
 
-## Stored documents
+## Documents
 
 - `payments/{orderId}`: `orderId`, `requesterId`, integer `amountCents`, `method`
-  (`TWINT` or `CARD`) and `status` (`PENDING`, `CONFIRMED`, `FAILED`, `UNCERTAIN`).
-  The amount includes the persisted products and commission. Checkout owns capture.
+  (`TWINT`/`CARD`), `status` (`PENDING`/`CONFIRMED`/`FAILED`/`UNCERTAIN`).
+  Captured products plus commission stay immutable; the payment ID is the order ID.
 - `refunds/{orderId}`: `operationId` (`refund-{orderId}`), `orderId`, `paymentId`
-  (the order ID), `requesterId`, `requestedBy`, integer `amountCents`, `status`
-  (the same four outcomes) and server `updatedAt`.
+  (order ID), `requesterId`, `requestedBy`, integer `amountCents`, `status` and
+  server `updatedAt`. Refunds use the same four outcomes.
 
-The requester and trip owner can get these documents; collection listing is denied.
-Current rules deliberately deny client payment writes until #385 defines capture.
-Emulator tests seed captures with the emulator administrator, never with open rules.
+Participants can get these documents; listing/deletion is denied. Client capture
+writes remain denied until #385 defines them; emulator captures are admin seeds.
 
-## Cancellation and retry
+## Lifecycle and rollout
 
-Only a PENDING requester or the trip owner of an ACCEPTED order may initiate its
-refund. The transaction reads the order, trip, captured payment and previous refund.
-The amount and operation ID never come from UI input. Nonterminal retries reuse
-the operation; confirmed retries return it without writing or processing it again.
+Only a legacy pending requester or an accepted-order owner can initiate a refund.
+The transaction derives identity/amount from order, trip, payment and refund reads.
+Retries keep the operation; confirmed refunds are read-only. PENDING, FAILED and
+UNCERTAIN refunds cannot authorize terminal cancellation. Rules use saved refunds
+to block forward transitions; captured pending orders cannot be edited.
+A recorded payment must be CONFIRMED before READY_FOR_HANDOFF. Legacy orders with
+no payment remain compatible; deploy mandatory payment presence together with #385.
+The existing order repository owns cancellation and its event (#403/#404).
 
-An existing refund reserves the order against forward transitions. Paid pending
-orders cannot be edited, and cancellation requires a matching confirmed refund.
-PENDING, FAILED and UNCERTAIN refunds never authorize terminal cancellation.
-Unpaid orders retain their existing lifecycle; payment PENDING/UNCERTAIN fails closed.
-The existing order repository owns the final cancellation and its canonical event;
-owner cancellation integration also depends on #403 / #404. Refunds emit no events.
-
-Deploy the coordinated production rules before enabling #407. Validate with
-`./gradlew check assembleDebug assembleDebugAndroidTest` and
-`bash scripts/ci/run-firebase-emulator-tests.sh`. Emulator success does not establish
-deployed-backend or real-provider behavior. Bind repository identity permanently to
-one session and discard late results when that session ends.
+Coordinate/deploy production rules before #407. Simulation callbacks must remain
+pure because transactions retry; no real provider is called. Emulator validation
+does not establish deployed-backend behavior. Bind identity to one permanent session.

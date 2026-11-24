@@ -16,11 +16,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.ui.navigation.AppMode
-import com.android.sample.ui.navigation.AppScaffold
-import com.android.sample.ui.navigation.CommandoScreens
-import com.android.sample.ui.navigation.NavigationTestTags
-import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.ui.navigation.AppMode
+import com.commando.app.ui.navigation.AppScaffold
+import com.commando.app.ui.navigation.CommandoScreens
+import com.commando.app.ui.navigation.NavigationTestTags
+import com.commando.app.ui.theme.SampleAppTheme
 
 /** Trip actions become enabled when their destinations are connected by the navigation root. */
 @Composable

@@ -80,11 +80,12 @@ internal class TransactionalPaymentRepository(
       orderId: String,
       action: PaymentTransaction.(PaymentContext, String) -> T,
   ): PaymentResult<T> {
+    val caller = currentCoroutineContext()
+    caller.ensureActive()
     val uid =
         currentUserId()?.takeIf(String::isNotBlank)
             ?: return PaymentResult.Error(PaymentError.NOT_AUTHENTICATED)
     if (!orderId.isDocumentId()) return PaymentResult.Error(PaymentError.INVALID_DATA)
-    val caller = currentCoroutineContext()
     fun guard() {
       caller.ensureActive()
       requirePayment(currentUserId() == uid, PaymentError.NOT_AUTHENTICATED)

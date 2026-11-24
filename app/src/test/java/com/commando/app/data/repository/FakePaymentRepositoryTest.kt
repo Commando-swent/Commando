@@ -6,10 +6,7 @@ import com.commando.app.testing.PaymentFixtures.OWNER
 import com.commando.app.testing.PaymentFixtures.refund as expectedRefund
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicInteger
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
@@ -18,6 +15,7 @@ import org.junit.Test
 class FakePaymentRepositoryTest {
   private val order = PaymentFixtures.order
   private val payment = PaymentFixtures.captured
+  private val context = PaymentContext(order, OWNER, payment, null)
   private val owners = mapOf(order.tripId to OWNER)
 
   private fun source() = FakePaymentDataSource(listOf(order), owners, listOf(payment))
@@ -170,7 +168,6 @@ class FakePaymentRepositoryTest {
 
   @Test
   fun malformedCapturedRecordsCannotAuthorizeARefund() = runTest {
-    val valid = PaymentContext(order, OWNER, payment, null)
     for (bad in
         listOf(
             payment.copy(id = "wrong"),
@@ -178,27 +175,26 @@ class FakePaymentRepositoryTest {
             payment.copy(requesterId = "other"),
             payment.copy(amountCents = 0),
             payment.copy(amountCents = payment.amountCents + 1),
-        )) untrusted(valid.copy(payment = bad))
+        )) untrusted(context.copy(payment = bad))
         .refundForCancellation(order.id)
         .assertError(PaymentError.INVALID_DATA)
   }
 
   @Test
-  fun malformedRelationshipsAndOrdersAreRejectedBeforeWrites() = runTest {
-    val valid = PaymentContext(order, OWNER, payment, null)
+  fun invalidOrderRelationshipsAndCapturedTotalsAreRejectedBeforeWrites() = runTest {
     for (bad in
         listOf(
-            valid.copy(order = order.copy(id = "other")),
-            valid.copy(order = order.copy(tripId = "")),
-            valid.copy(tripOwnerId = ""),
-            valid.copy(tripOwnerId = uid),
-            valid.copy(order = order.copy(items = emptyList())),
+            context.copy(order = order.copy(id = "other")),
+            context.copy(order = order.copy(tripId = "")),
+            context.copy(tripOwnerId = ""),
+            context.copy(tripOwnerId = uid),
+            context.copy(order = order.copy(items = emptyList())),
+            context.copy(order = order.copy(commissionCents = order.commissionCents + 1)),
         )) untrusted(bad).refundForCancellation(order.id).assertError(PaymentError.INVALID_DATA)
   }
 
   @Test
   fun forgedRefundIdentityAndAmountsAreRejected() = runTest {
-    val valid = PaymentContext(order, OWNER, payment, expectedRefund())
     val refund = expectedRefund()
     for (bad in
         listOf(
@@ -208,10 +204,12 @@ class FakePaymentRepositoryTest {
             refund.copy(requesterId = "other"),
             refund.copy(amountCents = 1),
             refund.copy(requestedBy = "outsider"),
-        )) untrusted(valid.copy(refund = bad))
+        )) untrusted(context.copy(refund = bad))
         .getRefund(order.id)
         .assertError(PaymentError.INVALID_DATA)
-    untrusted(valid.copy(payment = null)).getRefund(order.id).assertError(PaymentError.INVALID_DATA)
+    untrusted(context.copy(payment = null, refund = refund))
+        .getRefund(order.id)
+        .assertError(PaymentError.INVALID_DATA)
   }
 
   @Test
@@ -242,6 +240,19 @@ class FakePaymentRepositoryTest {
       assertEquals("Cancelled", expected.message)
     }
     repo.getRefund(order.id).assertData(null)
+  }
+
+  @Test
+  fun alreadyCancelledCallsPropagateBeforeValidation() = runTest {
+    val repo = repository()
+    val calls = listOf(repo::getPayment, repo::getRefund, repo::refundForCancellation)
+    for (call in calls) for (identity in listOf(null, order.requesterId)) {
+      uid = identity
+      launch(start = CoroutineStart.UNDISPATCHED) {
+        cancel()
+        assertTrue(runCatching { call("") }.exceptionOrNull() is CancellationException)
+      }
+    }
   }
 
   @Test

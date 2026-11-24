@@ -12,10 +12,10 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import com.android.sample.ui.navigation.AppMode
-import com.android.sample.ui.navigation.AppScaffold
-import com.android.sample.ui.navigation.CommandoScreens
-import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.ui.navigation.AppMode
+import com.commando.app.ui.navigation.AppScaffold
+import com.commando.app.ui.navigation.CommandoScreens
+import com.commando.app.ui.theme.SampleAppTheme
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Rule

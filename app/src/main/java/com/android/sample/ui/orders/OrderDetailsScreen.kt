@@ -294,7 +294,8 @@ private fun OrderStatusActions(
         Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
   }
-  if (confirmCancellation && canCancel && !state.isSaving) {
+  // The rememberSaveable key resets confirmCancellation whenever canCancel changes.
+  if (confirmCancellation && !state.isSaving) {
     val dialogMessage =
         if (state.canCancelAccepted)
             COMMANDO_CANCELLATION_GRACE.toMinutes().toInt().let { minutes ->

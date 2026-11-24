@@ -312,6 +312,20 @@ class OrderDetailsScreenTest {
   }
 
   @Test
+  fun cancellationDialogIsHiddenWhileAnotherSaveIsInProgress() {
+    val accepted =
+        OrderDetailsUiState.Content(order.copy(status = OrderStatus.ACCEPTED), trip, trip.ownerId)
+    show(accepted)
+    compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertExists()
+    compose.runOnIdle { state.value = accepted.copy(mutation = OrderMutationState.Saving) }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertDoesNotExist()
+    compose.runOnIdle { state.value = accepted }
+    compose.onNodeWithTag(OrderDetailsTestTags.CONFIRM_CANCEL).assertExists()
+    compose.runOnIdle { assertEquals(0, cancellations) }
+  }
+
+  @Test
   @Config(qualifiers = "en-rUS-w320dp-h320dp-mdpi")
   fun cancellationRemainsReachableWithLargeTextAndUsesConfirmedStatus() {
     val content = OrderDetailsUiState.Content(order, trip, order.requesterId)

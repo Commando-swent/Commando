@@ -1,7 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
-import com.android.sample.emulator.auth.FirebaseAuthEmulator
 import com.commando.app.data.repository.PublicProfileRepositoryFirestore
+import com.commando.app.emulator.auth.FirebaseAuthEmulator
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.test.runTest
@@ -35,7 +35,7 @@ class PublicProfileFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun missingLegacyProfileReturnsAMissingSnapshotToSignedInViewer() = runTest {
+  fun missingLegacyProfileReturnsAMissingSnapshotToSignedInViewer() = FirebaseAuthEmulator.runTest {
     withClients("legacyOwner" to true, "viewer" to true) { (owner, viewer) ->
       val snapshot = viewer.publicProfile(owner.publicProfile().id).get(Source.SERVER).await()
 

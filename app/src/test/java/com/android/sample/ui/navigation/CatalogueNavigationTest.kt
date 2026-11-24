@@ -9,11 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderRepository
@@ -21,6 +18,9 @@ import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.ProductResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.catalogue.CatalogueTestTags
 import com.commando.app.ui.catalogue.SEARCH_DEBOUNCE_MILLIS
 import com.commando.app.ui.catalogue.StubProductRepository
@@ -346,7 +346,7 @@ class CatalogueNavigationTest {
     click(ReviewOrderTags.SUBMIT)
     compose.onNodeWithText("Your order is sent").assertIsDisplayed()
     compose.runOnIdle { auth.signOut() }
-    compose.onNodeWithTag(com.android.sample.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(com.commando.app.ui.auth.WelcomeTestTags.SCREEN).assertIsDisplayed()
     auth.signInWithEmailResult = Result.success(alice)
     auth.signInWithEmail("", "")
     click(AppTestTags.ORDERS_BUTTON)

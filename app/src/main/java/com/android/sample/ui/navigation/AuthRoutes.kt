@@ -16,13 +16,13 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import com.android.sample.R
-import com.android.sample.model.authentication.AuthRepository
-import com.android.sample.ui.auth.AuthMode
-import com.android.sample.ui.auth.AuthRoute
-import com.android.sample.ui.auth.AuthViewModel
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.auth.GoogleSignInNotConfiguredException
-import com.android.sample.ui.auth.WelcomeScreen
+import com.commando.app.model.authentication.AuthRepository
+import com.commando.app.ui.auth.AuthMode
+import com.commando.app.ui.auth.AuthRoute
+import com.commando.app.ui.auth.AuthViewModel
+import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.auth.GoogleSignInNotConfiguredException
+import com.commando.app.ui.auth.WelcomeScreen
 
 /**
  * Registers Welcome and the login/sign-up form of the signed-out graph. [initialAuthMode] is read

@@ -7,12 +7,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import com.android.sample.R
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
-import com.android.sample.ui.auth.GoogleCredentialClient
 import com.android.sample.ui.navigation.*
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -20,6 +17,9 @@ import com.commando.app.data.repository.OrderChatRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.orders.*
 import com.commando.app.ui.trips.MyTripsTestTags
 import kotlinx.coroutines.flow.*

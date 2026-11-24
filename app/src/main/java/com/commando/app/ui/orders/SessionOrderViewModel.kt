@@ -2,11 +2,11 @@ package com.commando.app.ui.orders
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModel
-import com.android.sample.model.authentication.AuthRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDraft
+import com.commando.app.model.authentication.AuthRepository
 import kotlinx.coroutines.flow.map
 
 /** Session-scoped repository and carts, retained on rotation and cleared with the App entry. */

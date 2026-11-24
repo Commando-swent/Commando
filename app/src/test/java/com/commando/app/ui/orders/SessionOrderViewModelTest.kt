@@ -3,9 +3,7 @@ package com.commando.app.ui.orders
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthUser
-import com.android.sample.model.authentication.FakeAuthRepository
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderError
@@ -13,6 +11,8 @@ import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProductResult
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthUser
+import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.catalogue.CatalogueViewModel
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers

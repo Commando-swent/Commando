@@ -3,7 +3,7 @@ package com.commando.app.ui.orders
 // AI assistance: OpenAI Codex (order editing); Claude Code (Long CHF formatter, #147).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult

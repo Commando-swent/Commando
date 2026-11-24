@@ -2,7 +2,7 @@ package com.commando.app.ui.orders
 
 // AI assistance: Claude Code.
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeShoppingChecklistRepository
 import com.commando.app.data.repository.FakeTripRepository

@@ -1,8 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
 // AI assistance: Claude Code.
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthRepositoryFirebase
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepositoryFirestore
 import com.commando.app.data.repository.OrderResult
@@ -16,6 +15,7 @@ import com.commando.app.model.OrderDecision.ACCEPT
 import com.commando.app.model.OrderDecision.REJECT
 import com.commando.app.model.TripTransition.CLOSE
 import com.commando.app.model.TripTransition.COMPLETE
+import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source

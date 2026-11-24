@@ -13,20 +13,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
-import com.android.sample.model.authentication.AuthException
-import com.android.sample.ui.profile.AppLanguage
-import com.android.sample.ui.profile.EditProfileScreen
-import com.android.sample.ui.profile.ProfileHelpScreen
-import com.android.sample.ui.profile.ProfileLanguageScreen
-import com.android.sample.ui.profile.ProfileScreen
-import com.android.sample.ui.profile.ProfileUiState
-import com.android.sample.ui.profile.ProfileViewModel
-import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.commando.app.data.repository.NotificationRepository
+import com.commando.app.model.authentication.AuthException
 import com.commando.app.ui.notifications.NotificationInboxScreen
 import com.commando.app.ui.notifications.NotificationPreferencesScreen
 import com.commando.app.ui.notifications.NotificationsViewModel
 import com.commando.app.ui.orders.SessionOrderViewModel
+import com.commando.app.ui.profile.AppLanguage
+import com.commando.app.ui.profile.EditProfileScreen
+import com.commando.app.ui.profile.ProfileHelpScreen
+import com.commando.app.ui.profile.ProfileLanguageScreen
+import com.commando.app.ui.profile.ProfileScreen
+import com.commando.app.ui.profile.ProfileUiState
+import com.commando.app.ui.profile.ProfileViewModel
+import com.commando.app.ui.profile.rememberProfilePhotoActions
 
 /**
  * The app-level account actions Profile triggers: [signOut] reports a failure through

@@ -2,15 +2,15 @@ package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex; trip seeding (#233): Claude Code.
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.data.repository.*
-import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
-import com.android.sample.model.authentication.AuthRepositoryFirebase
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepositoryFirestore
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
+import com.commando.app.emulator.auth.FirebaseAuthEmulator.runTest
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.commando.app.ui.orders.*
 import com.google.firebase.auth.FirebaseAuth
 import java.time.Instant

@@ -10,12 +10,8 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.android.sample.R
-import com.android.sample.data.repository.*
-import com.android.sample.model.authentication.AuthRepositoryFirebase
-import com.android.sample.ui.auth.AuthTestTags
-import com.android.sample.ui.auth.GoogleCredentialClient
-import com.android.sample.ui.auth.WelcomeTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -28,6 +24,10 @@ import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import com.commando.app.model.authentication.AuthRepositoryFirebase
+import com.commando.app.ui.auth.AuthTestTags
+import com.commando.app.ui.auth.GoogleCredentialClient
+import com.commando.app.ui.auth.WelcomeTestTags
 import com.commando.app.ui.catalogue.CatalogueTestTags
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.orders.*

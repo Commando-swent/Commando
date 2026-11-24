@@ -3,7 +3,7 @@ package com.commando.app.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
 import com.android.sample.MainDispatcherRule
-import com.android.sample.data.repository.*
+import com.commando.app.data.repository.*
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository

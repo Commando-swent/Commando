@@ -73,6 +73,69 @@ class EditProfileLayoutTest {
   }
 
   @Test
+  fun publicLoadFailureOffersRetryWithoutShowingAnUnpublishedField() {
+    var retries = 0
+    lateinit var error: String
+    lateinit var retry: String
+    compose.setContent {
+      error = stringResource(R.string.public_name_load_failed)
+      retry = stringResource(R.string.trips_retry)
+      SampleAppTheme {
+        Column { PublicNameEditor(PublicNameEditState(failed = true), { retries++ }, {}, {}) }
+      }
+    }
+    compose.onNodeWithText(error).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).assertDoesNotExist()
+    compose.onNodeWithText(retry).performClick()
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
+  fun publicUpdateAndRemovalUseExplicitActionsAndPreserveFailedDraft() {
+    val state =
+        mutableStateOf(
+            PublicNameEditState(loaded = true, confirmed = "Old", draft = "New", failed = true)
+        )
+    val writes = mutableListOf<String?>()
+    lateinit var update: String
+    lateinit var remove: String
+    lateinit var error: String
+    compose.setContent {
+      update = stringResource(R.string.public_name_update)
+      remove = stringResource(R.string.public_name_remove)
+      error = stringResource(R.string.public_name_write_failed)
+      SampleAppTheme { Column { PublicNameEditor(state.value, {}, {}, { writes.add(it) }) } }
+    }
+    compose.onNodeWithText(error).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).assertTextEquals("New")
+    compose.onNodeWithText(update).performClick()
+    compose.onNodeWithText(remove).performClick()
+    compose.runOnIdle {
+      assertEquals(listOf("New", null), writes)
+      state.value = state.value.copy(busy = true)
+    }
+    compose.onNodeWithText(update).assertIsNotEnabled()
+    compose.onNodeWithText(remove).assertIsNotEnabled()
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).assertIsNotEnabled()
+  }
+
+  @Test
+  fun clearingPublicDraftShowsValidationWithoutOfferingPublication() {
+    val state = mutableStateOf(PublicNameEditState(loaded = true, draft = "Alias"))
+    lateinit var error: String
+    compose.setContent {
+      error = stringResource(R.string.public_name_invalid)
+      SampleAppTheme {
+        Column {
+          PublicNameEditor(state.value, {}, { state.value = state.value.copy(draft = it) }, {})
+        }
+      }
+    }
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).performTextClearance()
+    compose.onNodeWithText(error).assertIsDisplayed()
+  }
+
+  @Test
   fun validationSavingAndProviderFailuresKeepTheFormRecoverable() {
     val state = mutableStateOf(ProfileEditUiState("", ""))
     compose.setContent {

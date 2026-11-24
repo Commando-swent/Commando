@@ -135,6 +135,38 @@ class SessionDependenciesTest {
       }
 
   @Test
+  fun defaultPublicRepositoryIsLazyAndBoundToTheSession() {
+    io.mockk.mockkStatic(com.google.firebase.firestore.FirebaseFirestore::class)
+    io.mockk.every { com.google.firebase.firestore.FirebaseFirestore.getInstance() } returns mockk()
+    lateinit var session: SessionDependencies
+    compose.setContent {
+      session =
+          rememberSessionDependencies(
+              alice.uid,
+              auth,
+              trips,
+              orders,
+              checklists,
+              savedSearches,
+              notifications,
+              positions,
+          )
+    }
+    try {
+      compose.runOnIdle {
+        org.junit.Assert.assertFalse(session.publicProfiles.isInitialized())
+        org.junit.Assert.assertTrue(
+            session.publicProfiles.value
+                is com.commando.app.data.repository.PublicProfileRepositoryFirestore
+        )
+        org.junit.Assert.assertSame(session.publicProfiles.value, session.publicProfiles.value)
+      }
+    } finally {
+      io.mockk.unmockkStatic(com.google.firebase.firestore.FirebaseFirestore::class)
+    }
+  }
+
+  @Test
   fun managePublicNameReadsTheSignedInUidOnceAcrossRecomposition() {
     val response = CompletableDeferred<String?>()
     val profiles = mockk<PublicProfileRepository>()

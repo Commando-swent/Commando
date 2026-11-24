@@ -582,6 +582,150 @@ class ProfileViewModelTest {
     assertEquals(bobEditor, model.editState.value?.publicName)
   }
 
+  @Test
+  fun publicActionsBeforeOpeningEditorDoNotStartRequests() = runTest {
+    val model = ProfileViewModel(publicAuth, publicProfiles = lazyOf(publicRepository))
+    store.put("guards", model)
+    model.loadPublicName()
+    model.editPublicName("Ignored")
+    model.savePublicName("Ignored")
+    runCurrent()
+    model.loadPublicName()
+    model.closePublicNameEditor()
+    model.cancelEditing()
+    assertEquals(0, reads)
+    assertNull(model.editState.value)
+  }
+
+  @Test
+  fun unopenedPublicSectionRejectsDraftChangesAndWrites() = runTest {
+    val model = openPublicEditor()
+    model.closePublicNameEditor()
+    model.editPublicName("Ignored")
+    model.savePublicName("Ignored")
+    assertNull(model.editState.value?.publicName)
+    assertNull(published)
+  }
+
+  @Test
+  fun busyPublicReadRejectsDuplicateLoadsEditsAndWrites() = runTest {
+    val pending = CompletableDeferred<String?>()
+    readName = { pending.await() }
+    val model = openPublicEditor()
+    model.loadPublicName()
+    model.editPublicName("Ignored")
+    model.savePublicName("Ignored")
+    assertEquals(1, reads)
+    assertTrue(checkNotNull(model.editState.value?.publicName).busy)
+    pending.complete(null)
+    runCurrent()
+    assertEquals("", model.editState.value?.publicName?.draft)
+  }
+
+  @Test
+  fun publicEditorWithoutRepositoryDoesNotStartLoading() = runTest {
+    val model = createViewModel(publicAuth)
+    runCurrent()
+    model.beginEditing()
+    model.loadPublicName()
+    assertNull(model.editState.value?.publicName)
+  }
+
+  @Test
+  fun signedOutPublicActionsCannotRestoreClearedEditor() = runTest {
+    val model = openPublicEditor()
+    publicAuth.signOut()
+    runCurrent()
+    model.loadPublicName()
+    model.editPublicName("Ignored")
+    model.savePublicName(null)
+    assertNull(model.editState.value)
+  }
+
+  @Test
+  fun providerCancelledReadRemainsRetryable() = runTest {
+    readName = { throw kotlinx.coroutines.CancellationException("provider cancelled") }
+    val model = openPublicEditor()
+    assertEquals(PublicNameEditState(), model.editState.value?.publicName)
+    readName = { "Recovered" }
+    model.loadPublicName()
+    runCurrent()
+    assertEquals("Recovered", model.editState.value?.publicName?.confirmed)
+  }
+
+  @Test
+  fun pendingUpdateRejectsEditsAndDuplicateWrites() = runTest {
+    val pending = CompletableDeferred<Unit>()
+    publishName = { pending.await() }
+    val model = openPublicEditor()
+    model.savePublicName("Submitted")
+    runCurrent()
+    model.editPublicName("Ignored")
+    model.savePublicName("Ignored")
+    assertTrue(checkNotNull(model.editState.value?.publicName).busy)
+    pending.complete(Unit)
+    runCurrent()
+    assertEquals("Submitted", model.editState.value?.publicName?.confirmed)
+  }
+
+  @Test
+  fun authSnapshotChangeBeforeObserverEmissionRejectsPublicLoad() = runTest {
+    var snapshot: AuthUser? = alice
+    val auth =
+        object : AuthRepository by publicAuth {
+          override val currentUser
+            get() = snapshot
+
+          override fun observeAuthState() = kotlinx.coroutines.flow.flowOf(alice)
+        }
+    val model = ProfileViewModel(auth, publicProfiles = lazyOf(publicRepository))
+    store.put("snapshot", model)
+    runCurrent()
+    model.beginEditing()
+    snapshot = AuthUser("bob")
+    model.loadPublicName()
+    snapshot = null
+    model.loadPublicName()
+    assertEquals(0, reads)
+  }
+
+  @Test
+  fun completedReadCannotPublishAfterAuthSnapshotSignsOut() = runTest {
+    var snapshot: AuthUser? = alice
+    val auth =
+        object : AuthRepository by publicAuth {
+          override val currentUser
+            get() = snapshot
+
+          override fun observeAuthState() = kotlinx.coroutines.flow.flowOf(alice)
+        }
+    val response = CompletableDeferred<String?>()
+    readName = { response.await() }
+    val model = ProfileViewModel(auth, publicProfiles = lazyOf(publicRepository))
+    store.put("snapshot", model)
+    runCurrent()
+    model.beginEditing()
+    model.loadPublicName()
+    runCurrent()
+    snapshot = null
+    response.complete("Old account")
+    runCurrent()
+    assertNull(model.editState.value?.publicName?.confirmed)
+  }
+
+  @Test
+  fun closingEditorInsideProviderCancellationDoesNotRestoreIt() = runTest {
+    val model = openPublicEditor()
+    model.closePublicNameEditor()
+    readName = {
+      model.cancelEditing()
+      throw kotlinx.coroutines.CancellationException("provider")
+    }
+    model.loadPublicName()
+    runCurrent()
+    assertNull(model.editState.value)
+  }
+
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {
     private val users = MutableSharedFlow<AuthUser?>(replay = 1)
     var isCollecting = false

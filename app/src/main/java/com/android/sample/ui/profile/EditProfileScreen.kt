@@ -218,9 +218,7 @@ internal fun PublicNameEditor(
         R.string.public_name_label,
         ProfileEditTestTags.PUBLIC_NAME,
         !state.busy,
-        if (!valid && (edited || state.draft.isNotEmpty() || state.confirmed != null))
-            R.string.public_name_invalid
-        else null,
+        if (!valid && (edited || state.draft.isNotEmpty())) R.string.public_name_invalid else null,
         false,
         {},
     )

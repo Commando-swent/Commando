@@ -54,6 +54,17 @@ class PublicProfileRepositoryFirestoreTest {
   }
 
   @Test
+  fun existingMalformedProfileFailsInsteadOfPretendingItIsMissing() = runTest {
+    val invalid =
+        mockk<DocumentSnapshot> {
+          every { exists() } returns true
+          every { getString("displayName") } returns null
+        }
+    every { transaction.get(ownerProfile) } returns invalid
+    assertTrue(runCatching { repository.getDisplayName("owner") }.isFailure)
+  }
+
+  @Test
   fun missingProfileReturnsNull() = runTest {
     val missing = mockk<DocumentSnapshot> { every { exists() } returns false }
     every { transaction.get(ownerProfile) } returns missing

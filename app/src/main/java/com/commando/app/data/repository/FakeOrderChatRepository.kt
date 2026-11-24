@@ -127,10 +127,8 @@ class FakeOrderChatRepository(
                   previous.meetup?.copy(response = MeetupResponse.PENDING, respondedAt = null) !=
                       meetup) -> OrderResult.Error(OrderError.InvalidData)
           previous != null -> OrderResult.Success(Unit)
-          meetup != null &&
-              (meetup.response != MeetupResponse.PENDING ||
-                  meetup.respondedAt != null ||
-                  !meetup.at.isAfter(clock.instant())) -> OrderResult.Error(OrderError.InvalidData)
+          meetup != null && !meetup.isFuturePending(clock.instant()) ->
+              OrderResult.Error(OrderError.InvalidData)
           (delay != null || meetup != null) &&
               store.orders.value.getValue(orderId).let {
                 it.ownerId != uid || !it.tripStatus.canReportDelay

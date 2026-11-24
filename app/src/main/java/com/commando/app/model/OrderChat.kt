@@ -65,3 +65,7 @@ data class MeetupProposal(
     val response: MeetupResponse = MeetupResponse.PENDING,
     val respondedAt: Instant? = null,
 )
+
+/** Expired/final proposals remain readable but cannot be created as new pending offers. */
+fun MeetupProposal.isFuturePending(now: Instant): Boolean =
+    response == MeetupResponse.PENDING && at.isAfter(now)

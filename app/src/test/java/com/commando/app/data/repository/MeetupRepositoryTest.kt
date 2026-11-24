@@ -71,6 +71,32 @@ class MeetupRepositoryTest {
   }
 
   @Test
+  fun invalidRepliesAndMissingRecordsReturnTypedFailures() = runTest {
+    uid.value = "requester"
+    assertEquals(
+        OrderResult.Error(OrderError.InvalidData),
+        repo.respondToMeetup("", "meeting", MeetupResponse.ACCEPTED),
+    )
+    assertEquals(
+        OrderResult.Error(OrderError.InvalidData),
+        repo.respondToMeetup("order", "meeting", MeetupResponse.PENDING),
+    )
+    assertEquals(
+        OrderResult.Error(OrderError.NotFound),
+        repo.respondToMeetup("missing", "meeting", MeetupResponse.ACCEPTED),
+    )
+    assertEquals(
+        OrderResult.Error(OrderError.NotFound),
+        repo.respondToMeetup("order", "missing", MeetupResponse.ACCEPTED),
+    )
+    uid.value = null
+    assertEquals(
+        OrderResult.Error(OrderError.NotAuthenticated),
+        repo.respondToMeetup("order", "meeting", MeetupResponse.ACCEPTED),
+    )
+  }
+
+  @Test
   fun invalidProposalFieldsAndMessageIdentityCannotChangeHistory() = runTest {
     for (bad in
         listOf(

@@ -22,8 +22,8 @@ import org.robolectric.RobolectricTestRunner
 class MeetupSecurityEmulatorTest {
   @Test
   fun firstRequesterDecisionWinsAndCannotRewriteTheProposal() = runTest {
-    withClients("owner" to true, "requester" to true, "outsider" to true) {
-        (owner, requester, outsider) ->
+    withClients("owner" to true, "requester" to true, "outsider" to true, "signedOut" to false) {
+        (owner, requester, outsider, signedOut) ->
       val trips = TripRepositoryFirestore(AuthRepositoryFirebase(owner.auth), owner.firestore)
       val location = Location("Migros EPFL", 46.52, 6.57)
       val trip =
@@ -42,6 +42,25 @@ class MeetupSecurityEmulatorTest {
           OrderChatRepositoryFirestore({ client.auth.currentUser?.uid }, client.firestore)
       val proposal = MeetupProposal("Library entrance", Instant.now().plusSeconds(7200))
       val ok = OrderResult.Success(Unit)
+      assertEquals(
+          OrderResult.Error(OrderError.NotAuthenticated),
+          chat(signedOut).respondToMeetup(order.id, "meetup", MeetupResponse.ACCEPTED),
+      )
+      for ((id, message, response) in
+          listOf(
+              Triple("", "meetup", MeetupResponse.ACCEPTED),
+              Triple(order.id, "bad/path", MeetupResponse.ACCEPTED),
+              Triple(order.id, "meetup", MeetupResponse.PENDING),
+          )) {
+        assertEquals(
+            OrderResult.Error(OrderError.InvalidData),
+            chat(requester).respondToMeetup(id, message, response),
+        )
+      }
+      assertEquals(
+          OrderResult.Error(OrderError.InvalidData),
+          chat(owner).proposeMeetup(order.id, "expired", proposal.copy(at = Instant.EPOCH)),
+      )
       assertEquals(ok, chat(owner).proposeMeetup(order.id, "meetup", proposal))
       assertTrue(chat(requester).proposeMeetup(order.id, "forged", proposal) is OrderResult.Error)
       assertTrue(
@@ -89,7 +108,38 @@ class MeetupSecurityEmulatorTest {
             .await()
       }
       assertPermissionDenied { ref.delete().await() }
+      val data = ref.get(Source.SERVER).await().data!!
+      val fields = data.getValue("meetup") as Map<*, *>
+      for (invalid in
+          listOf(
+              42,
+              fields + ("extra" to true),
+              fields - "location",
+              fields + ("at" to "invalid"),
+              fields - "response",
+              fields + ("respondedAt" to "invalid"),
+              fields + ("response" to "PENDING"),
+          )) {
+        createDocumentAsOwner(
+            "orders/${order.id}/messages",
+            "corrupt",
+            data + ("meetup" to invalid),
+        )
+        assertTrue(chat(requester).observeChat(order.id).first() is OrderResult.Error)
+        deleteDocumentAsOwner("orders/${order.id}/messages/corrupt")
+      }
+      assertEquals(ok, chat(owner).proposeMeetup(order.id, "pending", proposal))
+      updateDocumentAsOwner("trips/${trip.id}", mapOf("status" to TripStatus.CANCELLED.name))
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          chat(requester).respondToMeetup(order.id, "pending", MeetupResponse.ACCEPTED),
+      )
+      updateDocumentAsOwner("trips/${trip.id}", mapOf("status" to TripStatus.IN_PROGRESS.name))
       updateDocumentAsOwner("orders/${order.id}", mapOf("status" to OrderStatus.DELIVERED.name))
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          chat(requester).respondToMeetup(order.id, "pending", MeetupResponse.ACCEPTED),
+      )
       assertTrue(chat(owner).proposeMeetup(order.id, "late", proposal) is OrderResult.Error)
       assertEquals(ok, chat(requester).respondToMeetup(order.id, "meetup", decided.response))
       assertEquals(

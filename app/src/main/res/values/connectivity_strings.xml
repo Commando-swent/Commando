@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AI assistance: Claude Code (#393). -->
+    <string name="connectivity_offline_title">You’re offline</string>
+    <string name="connectivity_offline_body">Some actions may not work until you reconnect.</string>
+    <string name="connectivity_back_online_title">Back online</string>
+    <string name="connectivity_back_online_body">Your connection is back.</string>
+</resources>

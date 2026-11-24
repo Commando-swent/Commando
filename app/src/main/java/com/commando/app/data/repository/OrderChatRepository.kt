@@ -4,7 +4,7 @@ package com.commando.app.data.repository
 import com.commando.app.model.OrderChat
 import kotlinx.coroutines.flow.Flow
 
-/** Order-scoped text conversation; authorization always uses persisted participants. */
+/** Order-scoped conversation; authorization always uses persisted participants. */
 interface OrderChatRepository {
   /**
    * Server-confirmed latest window and status, including terminal history. Pending is locked. A
@@ -18,10 +18,17 @@ interface OrderChatRepository {
 
   /**
    * Caller generates one document ID per draft and keeps it on failure. An identical committed
-   * retry succeeds read-only even after delivery; a reused ID with different sender/text returns
+   * retry succeeds read-only even after delivery; a reused ID with different sender/payload returns
    * InvalidData. New sends on locked orders return PermissionDenied. Unknown/NotAuthenticated or
    * cancellation may follow a server commit: reconcile using the same ID, never a fresh ID.
    * Identity must be session-bound (invalidated even if the original account later returns).
    */
   suspend fun sendMessage(orderId: String, messageId: String, text: String): OrderResult<Unit>
+
+  /**
+   * Persisted trip owner only; whole minutes in 1..MAX_CHAT_DELAY_MINUTES. Reuse the message ID for
+   * uncertain outcomes. Identical committed retries stay read-only after terminal transitions.
+   * Stored as empty text plus delayMinutes; only ACCEPTED/READY_FOR_HANDOFF allow new notices.
+   */
+  suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int): OrderResult<Unit>
 }

@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
@@ -296,10 +297,9 @@ private fun OrderStatusActions(
   if (confirmCancellation && canCancel && !state.isSaving) {
     val dialogMessage =
         if (state.canCancelAccepted)
-            stringResource(
-                R.string.order_cancel_accepted_dialog_message,
-                COMMANDO_CANCELLATION_GRACE.toMinutes(),
-            )
+            COMMANDO_CANCELLATION_GRACE.toMinutes().toInt().let { minutes ->
+              pluralStringResource(R.plurals.order_cancel_accepted_dialog_message, minutes, minutes)
+            }
         else stringResource(R.string.order_cancel_dialog_message)
     AlertDialog(
         onDismissRequest = { confirmCancellation = false },

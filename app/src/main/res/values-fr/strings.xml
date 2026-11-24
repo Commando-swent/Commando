@@ -243,7 +243,11 @@
     <string name="order_cancel_action">Annuler la commande</string>
     <string name="order_cancel_dialog_title">Annuler cette commande ?</string>
     <string name="order_cancel_dialog_message">Cette action est irréversible. Le commando ne pourra plus accepter cette commande.</string>
-    <string name="order_cancel_accepted_dialog_message">Cette action est irréversible et le demandeur sera notifié. Annuler dans les %1$d minutes suivant l\'acceptation n\'affecte pas votre fiabilité ; une annulation plus tardive la réduit.</string>
+    <plurals name="order_cancel_accepted_dialog_message">
+        <item quantity="one">Cette action est irréversible et le demandeur sera notifié. Annuler dans la %d minute suivant l\'acceptation n\'affecte pas votre fiabilité ; une annulation plus tardive la réduit.</item>
+        <item quantity="many">Cette action est irréversible et le demandeur sera notifié. Annuler dans les %d minutes suivant l\'acceptation n\'affecte pas votre fiabilité ; une annulation plus tardive la réduit.</item>
+        <item quantity="other">Cette action est irréversible et le demandeur sera notifié. Annuler dans les %d minutes suivant l\'acceptation n\'affecte pas votre fiabilité ; une annulation plus tardive la réduit.</item>
+    </plurals>
     <string name="order_cancel_confirm">Annuler la commande</string>
     <string name="order_cancel_keep">Garder la commande</string>
     <string name="order_details_loading">Chargement des détails de la commande</string>

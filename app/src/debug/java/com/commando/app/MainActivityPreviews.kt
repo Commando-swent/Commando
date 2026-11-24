@@ -1,5 +1,6 @@
 package com.commando.app
 
+// AI assistance: OpenAI Codex. Preview the screens without requiring an authenticated session.
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable

@@ -38,6 +38,9 @@ import java.time.format.FormatStyle
 
 /** Stable selectors independent of text, locale and ordering of controls. */
 object OrderChatTestTags {
+  const val DELAY = "chat_delay"
+  const val DELAY_INPUT = "chat_delay_input"
+  const val DELAY_SEND = "chat_delay_send"
   const val SCREEN = "order_chat"
   const val BACK = "chat_back"
   const val INFO = "chat_info"
@@ -73,7 +76,14 @@ internal fun OrderChatHost(model: OrderChatViewModel, onBack: () -> Unit) {
     }
   }
   val state by model.uiState.collectAsState()
-  OrderChatScreen(state, onBack, model::start, model::updateDraft, model::send)
+  OrderChatScreen(
+      state,
+      onBack,
+      model::start,
+      model::updateDraft,
+      model::send,
+      onDelay = model::sendDelay,
+  )
 }
 
 /** Basic text conversation; callbacks own persistence and navigation, never this renderer. */
@@ -85,6 +95,7 @@ fun OrderChatScreen(
     onDraft: (String) -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
+    onDelay: (Int) -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -114,7 +125,8 @@ fun OrderChatScreen(
               null -> Spacer(Modifier.weight(1f))
               else -> {
                 Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state) }
-                ChatComposer(state, onDraft, onSend)
+                ChatDelayComposer(state, onDelay)
+                ChatComposer(state, onDraft, onSend, onDelay)
               }
             }
         else ->
@@ -320,6 +332,7 @@ private fun ChatHistory(state: OrderChatUiState) {
 @Composable
 private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
   val colors = MaterialTheme.colorScheme
+  val noticeLabel = stringResource(R.string.chat_delay_notice)
   BoxWithConstraints(Modifier.fillMaxWidth()) {
     Surface(
         Modifier.align(if (mine) Alignment.CenterEnd else Alignment.CenterStart)
@@ -332,7 +345,15 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
         border = if (mine) null else BorderStroke(1.dp, ChatOutline),
     ) {
       Column(Modifier.padding(horizontal = 14.dp, vertical = 9.dp)) {
-        Text(message.text)
+        if (message.delayMinutes != null)
+            Text(
+                noticeLabel,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        Text(
+            message.delayMinutes?.let { pluralStringResource(R.plurals.chat_delay_message, it, it) }
+                ?: message.text
+        )
         Text(time, Modifier.align(Alignment.End), style = MaterialTheme.typography.bodySmall)
       }
     }
@@ -340,7 +361,12 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
 }
 
 @Composable
-private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onSend: () -> Unit) {
+private fun ChatComposer(
+    state: OrderChatUiState,
+    onDraft: (String) -> Unit,
+    onSend: () -> Unit,
+    onDelay: (Int) -> Unit,
+) {
   val colors = MaterialTheme.colorScheme
   val sendDescription = stringResource(R.string.chat_send)
   Surface(color = colors.surfaceContainerLow) {
@@ -364,11 +390,25 @@ private fun ChatComposer(state: OrderChatUiState, onDraft: (String) -> Unit, onS
           }
       if (state.sendError != null)
           TextButton(
-              onSend,
-              Modifier.align(Alignment.End).testTag(OrderChatTestTags.RETRY_SEND),
-              enabled = !state.sending,
+              onClick = {
+                val minutes = state.failedDelayMinutes
+                if (minutes != null && state.sendError != OrderError.Unknown) onDelay(minutes)
+                else onSend()
+              },
+              modifier = Modifier.align(Alignment.End).testTag(OrderChatTestTags.RETRY_SEND),
+              enabled =
+                  !state.sending &&
+                      (state.failedDelayMinutes == null ||
+                          state.sendError == OrderError.Unknown ||
+                          state.canSendDelay),
           ) {
-            Text(stringResource(R.string.chat_send_failed), color = colors.error)
+            Text(
+                state.failedDelayMinutes?.let {
+                  pluralStringResource(R.plurals.chat_delay_failed, it, it)
+                } ?: stringResource(R.string.chat_send_failed),
+                Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                color = colors.error,
+            )
           }
       if (state.chat?.status?.canSendChat == true) {
         Row(

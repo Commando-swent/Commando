@@ -1,6 +1,6 @@
 package com.commando.app.ui.navigation
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; accepted-order cancel action (#402): Claude Code.
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -24,6 +24,7 @@ import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
 import com.commando.app.model.authentication.AuthRepositoryFirebase
+import com.commando.app.ui.auth.AuthTestTags
 import com.commando.app.ui.auth.GoogleCredentialClient
 import com.commando.app.ui.auth.WelcomeTestTags
 import com.commando.app.ui.catalogue.CatalogueTestTags
@@ -202,7 +203,8 @@ class OrderLifecycleJourneyTest {
           pending.copy(status = OrderStatus.ACCEPTED),
           (orders.getOrderById(pending.id) as OrderResult.Success).data,
       )
-      assertActions(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF)
+      // The trip owner may now also cancel the accepted order (#402).
+      assertActions(OrderDetailsTestTags.MARK_READY_FOR_HANDOFF, OrderDetailsTestTags.CANCEL)
       back() // Incoming Orders owns the shopping-checklist entry point.
       click(IncomingOrdersTestTags.OPEN_CHECKLIST)
       val purchasedTag = ShoppingChecklistTestTags.ITEM_PREFIX + product.id
@@ -332,9 +334,13 @@ class OrderLifecycleJourneyTest {
     compose
         .onNodeWithContentDescription(context.getString(R.string.auth_password))
         .performTextReplacement(password)
-    compose
-        .onNodeWithContentDescription(context.getString(R.string.auth_password))
-        .performImeAction()
+    compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+      compose
+          .onAllNodes(hasTestTag(AuthTestTags.SUBMIT) and isEnabled())
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose.onNodeWithTag(AuthTestTags.SUBMIT).performScrollTo().performClick()
     awaitTag(NavigationTestTags.HOME_SCREEN)
   }
 

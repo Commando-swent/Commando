@@ -1,6 +1,6 @@
-package com.android.sample.emulator.auth
+package com.commando.app.emulator.auth
 
-import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
+import com.commando.app.emulator.auth.FirebaseAuthEmulator.runTest
 import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.google.firebase.auth.FirebaseAuth
 import org.junit.After

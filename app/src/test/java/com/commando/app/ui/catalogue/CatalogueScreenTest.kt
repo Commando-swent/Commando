@@ -2,6 +2,9 @@ package com.commando.app.ui.catalogue
 
 import android.graphics.Bitmap
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -36,9 +39,11 @@ import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
+import com.android.sample.R
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.ProductError
 import com.commando.app.data.repository.ProductResult
+import com.commando.app.data.repository.TripError
 import com.commando.app.model.MAX_ORDER_PRODUCTS
 import com.commando.app.model.OrderItem
 import com.commando.app.model.Product
@@ -58,6 +63,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -111,6 +117,59 @@ class CatalogueScreenTest {
           LocalDensity provides Density(LocalDensity.current.density, fontScale)
       ) {
         SampleAppTheme { CatalogueRoute(vm, onBack = { backs++ }, onContinue = continued::add) }
+      }
+    }
+  }
+
+  @Test
+  fun overflowingBasketDisablesContinueWithoutChangingItsStoredQuantity() {
+    draft.addItem(OrderItem(milk.id, milk.name, Int.MAX_VALUE, 2))
+    show()
+    compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsNotEnabled().performClick()
+    compose.runOnIdle {
+      assertTrue(continued.isEmpty())
+      assertEquals(2, draft.draft.value.items.single().quantity)
+      assertEquals(Int.MAX_VALUE, draft.draft.value.items.single().unitPriceCents)
+    }
+  }
+
+  @Test
+  fun typedFailuresKeepTheBasketAndOfferTheMatchingRetryMessage() {
+    val failures =
+        listOf(
+            CatalogueContent.TripFailed(TripError.NotFound) to R.string.catalogue_trip_not_found,
+            CatalogueContent.TripFailed(TripError.PermissionDenied) to
+                R.string.catalogue_error_permission,
+            CatalogueContent.TripFailed(TripError.NetworkError) to R.string.catalogue_error_network,
+            CatalogueContent.TripFailed(TripError.Unknown) to R.string.catalogue_error_unknown,
+            CatalogueContent.ProductsFailed(ProductError.PermissionDenied) to
+                R.string.catalogue_error_permission,
+            CatalogueContent.ProductsFailed(ProductError.NetworkError) to
+                R.string.catalogue_error_network,
+            CatalogueContent.ProductsFailed(ProductError.Unknown) to
+                R.string.catalogue_error_unknown,
+        )
+    val basket = listOf(OrderItem(milk.id, milk.name, milk.priceCents, 2))
+    var state by mutableStateOf(CatalogueUiState(content = failures.first().first, items = basket))
+    var retries = 0
+    compose.setContent {
+      SampleAppTheme { CatalogueScreen(state, {}, {}, {}, {}, {}, {}, { retries++ }, {}, {}) }
+    }
+    failures.forEachIndexed { index, (failure, message) ->
+      compose.runOnIdle { state = state.copy(content = failure) }
+      compose
+          .onNodeWithText(RuntimeEnvironment.getApplication().getString(message))
+          .assertIsDisplayed()
+      val retry =
+          compose.onNodeWithText(
+              RuntimeEnvironment.getApplication().getString(R.string.catalogue_retry)
+          )
+      if (message == R.string.catalogue_trip_not_found) retry.assertDoesNotExist()
+      else retry.performClick()
+      compose.onNodeWithTag(CatalogueTestTags.CONTINUE).assertIsNotEnabled()
+      compose.runOnIdle {
+        assertEquals(index, retries)
+        assertEquals(basket, state.items)
       }
     }
   }

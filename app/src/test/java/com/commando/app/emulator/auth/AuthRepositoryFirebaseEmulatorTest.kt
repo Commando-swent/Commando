@@ -1,9 +1,9 @@
-package com.android.sample.emulator.auth
+package com.commando.app.emulator.auth
 
 // AI assistance: Claude (Anthropic).
 import android.os.Bundle
 import androidx.credentials.CustomCredential
-import com.android.sample.emulator.auth.FirebaseAuthEmulator.runTest
+import com.commando.app.emulator.auth.FirebaseAuthEmulator.runTest
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.commando.app.model.authentication.AuthUser

@@ -1,4 +1,4 @@
-package com.android.sample.emulator.auth
+package com.commando.app.emulator.auth
 
 // AI assistance: Claude (Anthropic).
 import android.content.Context

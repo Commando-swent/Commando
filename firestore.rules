@@ -284,17 +284,24 @@ service cloud.firestore {
         }
         allow get: if chatParticipant();
         allow list: if chatParticipant() && request.query.limit <= 100;
+        function validChatContent(data) {
+          return (!('delayMinutes' in data)
+              && data.text.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
+              && data.text.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000)
+            || ('delayMinutes' in data && data.delayMinutes is int
+              && data.delayMinutes >= 1 && data.delayMinutes <= 240
+              && data.text == "The commando is running late." && ownsOrderTrip(chatOrder())
+              && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status
+                in ["PUBLISHED", "IN_PROGRESS"]);
+        }
         allow create: if chatParticipant()
           && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status
             in ["ACCEPTED", "READY_FOR_HANDOFF"]
           && request.resource.data.keys().hasAll(["senderId", "text", "createdAt"])
-          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt"])
+          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt", "delayMinutes"])
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.createdAt == request.time
-          && request.resource.data.text is string
-          && request.resource.data.text.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
-          // Firestore counts code points; count supplementary characters twice like String.length.
-          && request.resource.data.text.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000;
+          && request.resource.data.text is string && validChatContent(request.resource.data);
         allow update, delete: if false;
       }
     }

@@ -1,6 +1,6 @@
 package com.android.sample.ui.notifications
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; cancellation row (#401): Claude Code.
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Surface
@@ -19,7 +19,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** French strings and all three notification types, rendered by the production Compose screens. */
+/** French strings and every notification type, rendered by the production Compose screens. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "fr-rFR-w398dp-h1050dp-mdpi")
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -63,15 +63,18 @@ class NotificationFrenchScreenTest {
         .onNodeWithText(compose.activity.getString(R.string.notifications_placed))
         .assertIsDisplayed()
     capture("inbox-fr")
+    val rejected = notifications.first { it.event.type == NotificationEventType.ORDER_REJECTED }
+    compose.onNodeWithTag(NotificationTestTags.ROW + rejected.event.id).performScrollTo()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.notifications_rejected))
+        .assertIsDisplayed()
+    compose.onNodeWithTag(NotificationTestTags.READ + rejected.event.id).assertDoesNotExist()
     compose
         .onNodeWithTag(NotificationTestTags.ROW + notifications.last().event.id)
         .performScrollTo()
     compose
-        .onNodeWithText(compose.activity.getString(R.string.notifications_rejected))
+        .onNodeWithText(compose.activity.getString(R.string.notifications_cancelled))
         .assertIsDisplayed()
-    compose
-        .onNodeWithTag(NotificationTestTags.READ + notifications.last().event.id)
-        .assertDoesNotExist()
   }
 
   @Test

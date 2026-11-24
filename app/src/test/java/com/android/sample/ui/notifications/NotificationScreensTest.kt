@@ -1,6 +1,6 @@
 package com.android.sample.ui.notifications
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; cancellation row test (#401): Claude Code.
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.height
@@ -82,6 +82,29 @@ class NotificationScreensTest {
       assertEquals(notice.event.orderId, opened)
       assertEquals(notice.event.id, marked)
     }
+  }
+
+  @Test
+  fun aCommandoCancellationIsShownAsACancelledOrderDecision() {
+    val cancelled =
+        notice.copy(event = notice.event.copy(type = NotificationEventType.ORDER_CANCELLED))
+    compose.setContent {
+      SampleAppTheme {
+        NotificationInboxScreen(
+            NotificationPageState.Content(listOf(cancelled)),
+            {},
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
+      }
+    }
+    compose.onNodeWithText("Order cancelled").assertIsDisplayed()
+    compose.onNodeWithText("The commando cancelled your accepted order.").assertIsDisplayed()
+    assertTrue(NotificationPreferences(orderDecisions = true).allows(cancelled.event.type))
+    assertFalse(NotificationPreferences(orderDecisions = false).allows(cancelled.event.type))
   }
 
   @Test

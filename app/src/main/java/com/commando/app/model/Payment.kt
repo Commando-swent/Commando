@@ -14,7 +14,7 @@ enum class PaymentStatus {
   UNCERTAIN,
 }
 
-/** One captured-payment operation per order; CHF amounts come from the stored order snapshot. */
+/** Payment id/orderId equal order.id; captured CHF total includes commission and is immutable. */
 data class Payment(
     val id: String,
     val orderId: String,

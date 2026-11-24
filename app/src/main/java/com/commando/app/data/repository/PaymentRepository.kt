@@ -24,9 +24,11 @@ sealed interface PaymentResult<out T> {
 }
 
 /**
- * Shared payment boundary for checkout and cancellation. Implementations derive identity, amount
- * and eligibility from storage. The identity callback must be bound to one session and become null
- * permanently when that session ends. Cancellation is rethrown; it cannot undo a server commit.
+ * Shared checkout/refund boundary: payment.id == payment.orderId == order.id (#385). Capture only
+ * ACCEPTED orders using the stored total including commission; the captured total and order
+ * prices/commission are immutable afterwards. Reconcile UNCERTAIN before retry. Implementations
+ * derive identity/eligibility from storage; the session callback becomes null permanently on
+ * account change. Cancellation propagates but cannot undo a server commit.
  */
 interface PaymentRepository {
   /** Reads the stored payment, or null, for the order's requester or its trip owner. */
@@ -38,8 +40,8 @@ interface PaymentRepository {
   /**
    * Begins/retries a cancellation refund: PENDING requester or ACCEPTED trip owner only. IDs and
    * amounts are never accepted from the caller. Confirmed retries are read-only; all other outcomes
-   * reuse the original operation. Creating a refund reserves the order for cancellation; the
-   * cancellation workflow must not finalize it until this outcome is CONFIRMED.
+   * reuse the original operation. This repository records refund state only; #406 persistence
+   * blocks conflicting order changes, and #407 finalizes cancellation only after CONFIRMED.
    *
    * @param orderId Stored order document ID, never a document path.
    */

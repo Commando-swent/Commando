@@ -12,6 +12,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -25,7 +29,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.android.sample.model.authentication.AuthException
+import com.commando.app.data.repository.isValidPublicName
 
+/** Edits private account details and hosts the independent [publicNameEditor] controls. */
 @Composable
 fun EditProfileScreen(
     state: ProfileEditUiState,
@@ -37,6 +43,7 @@ fun EditProfileScreen(
     modifier: Modifier = Modifier,
     photo: PhotoUiState? = null,
     onPhotoClick: (() -> Unit)? = null,
+    publicNameEditor: @Composable () -> Unit = {},
 ) {
   val enabled = !state.isSaving && !state.saved
   Column(
@@ -181,6 +188,64 @@ fun EditProfileScreen(
         ) {
           Text(stringResource(R.string.profile_edit_cancel))
         }
+    publicNameEditor()
+  }
+}
+
+/** Edits the explicitly public name independently of the personal information form. */
+@Composable
+internal fun PublicNameEditor(
+    state: PublicNameEditState?,
+    onLoad: () -> Unit,
+    onEdit: (String) -> Unit,
+    onSave: (String?) -> Unit,
+) {
+  if (state == null) {
+    TextButton(onClick = onLoad) { Text(stringResource(R.string.public_name_manage)) }
+    return
+  }
+  Text(stringResource(R.string.public_name_visibility))
+  if (state.loaded) {
+    val valid = isValidPublicName(state.draft)
+    var edited by remember(state.confirmed) { mutableStateOf(false) }
+    ProfileEditField(
+        state.draft,
+        {
+          edited = true
+          onEdit(it)
+        },
+        R.string.public_name_label,
+        R.string.public_name_label,
+        ProfileEditTestTags.PUBLIC_NAME,
+        !state.busy,
+        if (!valid && (edited || state.draft.isNotEmpty() || state.confirmed != null))
+            R.string.public_name_invalid
+        else null,
+        false,
+        {},
+    )
+    TextButton(
+        onClick = { onSave(state.draft) },
+        enabled = !state.busy && valid && state.draft != state.confirmed,
+    ) {
+      val label =
+          if (state.confirmed == null) R.string.public_name_publish else R.string.public_name_update
+      Text(stringResource(label))
+    }
+    if (state.confirmed != null) {
+      TextButton(onClick = { onSave(null) }, enabled = !state.busy) {
+        Text(stringResource(R.string.public_name_remove))
+      }
+    }
+  }
+  if (state.busy) CircularProgressIndicator()
+  if (state.failed) {
+    val error =
+        if (state.loaded) R.string.public_name_write_failed else R.string.public_name_load_failed
+    Text(stringResource(error), color = MaterialTheme.colorScheme.error)
+  }
+  if (!state.loaded && !state.busy) {
+    TextButton(onClick = onLoad) { Text(stringResource(R.string.trips_retry)) }
   }
 }
 

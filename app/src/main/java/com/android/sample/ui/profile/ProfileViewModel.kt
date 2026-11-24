@@ -6,13 +6,16 @@ import com.android.sample.data.repository.ProfilePhotoRepository
 import com.android.sample.model.authentication.AuthException
 import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.model.ProfilePhotoSource
 import java.util.Base64
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -22,6 +25,7 @@ import kotlinx.coroutines.launch
 class ProfileViewModel(
     private val repository: AuthRepository,
     private val photos: ProfilePhotoRepository? = null,
+    private val publicProfiles: Lazy<PublicProfileRepository>? = null,
 ) : ViewModel() {
   // Keep state updates private and wait for the first repository emission before showing data.
   private val mutableState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
@@ -33,6 +37,7 @@ class ProfileViewModel(
   private var activeUser: AuthUser? = null
   private var saveJob: Job? = null
   private var photoJob: Job? = null
+  private var publicNameJob: Job? = null
   private val mutablePhotoState = MutableStateFlow(PhotoUiState())
   val photoState = mutablePhotoState.asStateFlow()
 
@@ -44,6 +49,7 @@ class ProfileViewModel(
         val accountChanged = activeUser?.uid != user?.uid
         activeUser = user
         if (accountChanged) {
+          publicNameJob?.cancel()
           saveJob?.cancel()
           mutableEditState.value = null
           photoJob?.cancel()
@@ -112,7 +118,69 @@ class ProfileViewModel(
   }
 
   fun cancelEditing() {
-    if (mutableEditState.value?.isSaving != true) mutableEditState.value = null
+    if (mutableEditState.value?.isSaving != true) {
+      publicNameJob?.cancel()
+      mutableEditState.value = null
+    }
+  }
+
+  /** Opens the public editor or retries a failed read for the active account. */
+  fun loadPublicName() {
+    if (editState.value?.publicName?.loaded == true) return
+    publicNameOperation { profiles, uid -> profiles.getDisplayName(uid) }
+  }
+
+  /** Changes only the unpublished draft. Typing never writes to either profile. */
+  fun editPublicName(name: String) {
+    val editor = mutableEditState.value ?: return
+    val state = editor.publicName ?: return
+    if (state.loaded && !state.busy) {
+      mutableEditState.value = editor.copy(publicName = state.copy(draft = name, failed = false))
+    }
+  }
+
+  /** Discards the public draft and any pending response when leaving its editor. */
+  fun closePublicNameEditor() {
+    publicNameJob?.cancel()
+    mutableEditState.value = mutableEditState.value?.copy(publicName = null)
+  }
+
+  /** Publishes the explicit draft, or removes the public record when [name] is null. */
+  fun savePublicName(name: String?) {
+    if (editState.value?.publicName?.loaded != true) return
+    publicNameOperation { profiles, _ ->
+      if (name == null) profiles.removeDisplayName() else profiles.publishDisplayName(name)
+      name
+    }
+  }
+
+  private fun publicNameOperation(action: suspend (PublicProfileRepository, String) -> String?) {
+    val profiles = publicProfiles ?: return
+    val uid = activeUser?.uid ?: return
+    val editor = mutableEditState.value ?: return
+    val previous = editor.publicName ?: PublicNameEditState()
+    if (previous.busy || repository.currentUser?.uid != uid) return
+    val pending = previous.copy(busy = true, failed = false)
+    mutableEditState.value = editor.copy(publicName = pending)
+    publicNameJob = viewModelScope.launch {
+      fun finish(state: PublicNameEditState) {
+        val current = mutableEditState.value ?: return
+        if (current.publicName === pending && repository.currentUser?.uid == uid)
+            mutableEditState.value = current.copy(publicName = state)
+      }
+
+      try {
+        val name = action(profiles.value, uid)
+        ensureActive()
+        finish(PublicNameEditState(loaded = true, confirmed = name, draft = name.orEmpty()))
+      } catch (cancelled: CancellationException) {
+        if (isActive) finish(previous)
+        throw cancelled
+      } catch (_: Exception) {
+        ensureActive()
+        finish(previous.copy(failed = true))
+      }
+    }
   }
 
   fun saveProfile() {

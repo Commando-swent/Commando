@@ -7,6 +7,7 @@ import com.android.sample.model.authentication.AuthRepository
 import com.android.sample.model.authentication.AuthUser
 import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.model.authentication.ProfileUpdateResult
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.model.ProfilePhotoSource
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -385,6 +387,199 @@ class ProfileViewModelTest {
 
     assertEquals(confirmed, model.photoState.value)
     assertEquals("bob", model.photoOwner())
+  }
+
+  private val publicAuth = FakeAuthRepository(alice)
+  private var published: String? = null
+  private var readName: suspend (String) -> String? = { published }
+  private var writeFails = false
+  private var publishName: suspend (String) -> Unit = { name ->
+    check(!writeFails)
+    published = name
+  }
+  private var reads = 0
+  private val publicRepository =
+      object : PublicProfileRepository {
+        override suspend fun getDisplayName(ownerId: String): String? {
+          reads++
+          return readName(ownerId)
+        }
+
+        override suspend fun publishDisplayName(displayName: String) = publishName(displayName)
+
+        override suspend fun removeDisplayName() {
+          check(!writeFails)
+          published = null
+        }
+      }
+
+  private fun TestScope.openPublicEditor(): ProfileViewModel =
+      ProfileViewModel(publicAuth, publicProfiles = lazy { publicRepository }).also {
+        store.put("public", it)
+        runCurrent()
+        it.beginEditing()
+        it.loadPublicName()
+        runCurrent()
+      }
+
+  @Test
+  fun missingPublicProfileOpensEmptyWithoutCopyingAuthName() = runTest {
+    val model = openPublicEditor()
+    model.loadPublicName()
+    runCurrent()
+    assertEquals(PublicNameEditState(loaded = true), model.editState.value?.publicName)
+    assertEquals(1, reads)
+  }
+
+  @Test
+  fun savingPrivateProfileDoesNotPublishPublicDraft() = runTest {
+    val model = openPublicEditor()
+    model.editPublicName("Public alias")
+    model.saveProfile()
+    runCurrent()
+    assertEquals(true, model.editState.value?.saved)
+    assertNull(published)
+    assertEquals(alice.displayName, publicAuth.currentUser?.displayName)
+  }
+
+  @Test
+  fun explicitPublicationConfirmsTypedAlias() = runTest {
+    val model = openPublicEditor()
+    model.editPublicName("Public alias")
+    model.savePublicName("Public alias")
+    runCurrent()
+    assertEquals("Public alias", published)
+    assertEquals(published, model.editState.value?.publicName?.confirmed)
+  }
+
+  @Test
+  fun explicitUpdateReplacesPublishedAlias() = runTest {
+    published = "First"
+    val model = openPublicEditor()
+    model.editPublicName("Second")
+    model.savePublicName("Second")
+    runCurrent()
+    assertEquals("Second", published)
+    assertEquals(alice.displayName, publicAuth.currentUser?.displayName)
+  }
+
+  @Test
+  fun removalReturnsEditorToUnpublishedState() = runTest {
+    published = "Old alias"
+    val model = openPublicEditor()
+    model.savePublicName(null)
+    runCurrent()
+    assertNull(published)
+    assertEquals(PublicNameEditState(loaded = true), model.editState.value?.publicName)
+  }
+
+  @Test
+  fun failedReadRemainsUnconfirmedUntilRetrySucceeds() = runTest {
+    readName = { error("offline") }
+    val model = openPublicEditor()
+    assertEquals(PublicNameEditState(failed = true), model.editState.value?.publicName)
+    readName = { "Recovered" }
+    model.loadPublicName()
+    runCurrent()
+    assertEquals("Recovered", model.editState.value?.publicName?.confirmed)
+  }
+
+  @Test
+  fun failedUpdatePreservesTheDraftForSuccessfulRetry() = runTest {
+    published = "Old"
+    val model = openPublicEditor()
+    model.editPublicName("New")
+    writeFails = true
+    model.savePublicName("New")
+    runCurrent()
+    assertEquals(
+        PublicNameEditState(loaded = true, confirmed = "Old", draft = "New", failed = true),
+        model.editState.value?.publicName,
+    )
+
+    writeFails = false
+    model.savePublicName(checkNotNull(model.editState.value?.publicName).draft)
+    runCurrent()
+    assertEquals("New", published)
+    assertEquals(
+        PublicNameEditState(loaded = true, confirmed = "New", draft = "New"),
+        model.editState.value?.publicName,
+    )
+  }
+
+  @Test
+  fun latePublicationSuccessPreservesReopenedEditorsDraft() =
+      verifyLatePublicWrite(initialName = null, rejectsWrite = false)
+
+  @Test
+  fun lateUpdateFailurePreservesReopenedEditorsDraft() =
+      verifyLatePublicWrite(initialName = "Original", rejectsWrite = true)
+
+  private fun verifyLatePublicWrite(initialName: String?, rejectsWrite: Boolean) = runTest {
+    published = initialName
+    val outcome = CompletableDeferred<Unit>()
+    var started = false
+    var settled = false
+    publishName = { name ->
+      withContext(NonCancellable) {
+        started = true
+        try {
+          outcome.await()
+          published = name
+        } finally {
+          settled = true
+        }
+      }
+    }
+    val model = openPublicEditor()
+    model.editPublicName("Submitted")
+    model.savePublicName("Submitted")
+    runCurrent()
+    assertTrue(started)
+
+    model.cancelEditing()
+    model.beginEditing()
+    model.loadPublicName()
+    runCurrent()
+    assertEquals(2, reads)
+    model.editPublicName("New draft")
+    val reopened = PublicNameEditState(loaded = true, confirmed = initialName, draft = "New draft")
+    assertEquals(reopened, model.editState.value?.publicName)
+    assertFalse(settled)
+
+    if (rejectsWrite) outcome.completeExceptionally(IllegalStateException("Rejected"))
+    else outcome.complete(Unit)
+    runCurrent()
+    assertTrue(settled)
+    assertEquals(if (rejectsWrite) initialName else "Submitted", published)
+    assertEquals(reopened, model.editState.value?.publicName)
+  }
+
+  @Test
+  fun previousAccountsLateReadFailureLeavesTheNewAccountsPublicEditorIntact() = runTest {
+    val oldRead = CompletableDeferred<String?>()
+    readName = { uid ->
+      when (uid) {
+        alice.uid -> withContext(NonCancellable) { oldRead.await() }
+        "bob" -> "Bob's alias"
+        else -> error("Unexpected owner: $uid")
+      }
+    }
+    val model = openPublicEditor()
+    publicAuth.signInWithEmailResult = Result.success(AuthUser("bob"))
+    publicAuth.signInWithEmail("", "")
+    runCurrent()
+    assertNull(model.editState.value)
+    model.beginEditing()
+    model.loadPublicName()
+    runCurrent()
+    val bobEditor =
+        PublicNameEditState(loaded = true, confirmed = "Bob's alias", draft = "Bob's alias")
+    assertEquals(bobEditor, model.editState.value?.publicName)
+
+    oldRead.completeExceptionally(IllegalStateException("offline"))
+    runCurrent()
+    assertEquals(bobEditor, model.editState.value?.publicName)
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

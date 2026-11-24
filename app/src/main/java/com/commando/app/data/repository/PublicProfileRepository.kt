@@ -1,4 +1,4 @@
-package com.android.sample.data.repository
+package com.commando.app.data.repository
 
 private val publicNameLength = Regex("""[^\r\n\p{Cs}]{1,80}""")
 

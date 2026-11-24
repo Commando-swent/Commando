@@ -1,4 +1,4 @@
-package com.android.sample.data.repository
+package com.commando.app.data.repository
 
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CancellationException

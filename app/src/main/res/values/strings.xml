@@ -44,13 +44,4 @@
         <item quantity="other">Position captured %1$d seconds ago</item>
     </plurals>
     <string name="order_tracking_retry">Retry tracking</string>
-    <string name="public_name_manage">Manage public name</string>
-    <string name="public_name_label">Public trip name</string>
-    <string name="public_name_invalid">Use 1–80 characters on one line and include at least one non-space character.</string>
-    <string name="public_name_visibility">Other signed-in users can see this name on your trips.</string>
-    <string name="public_name_publish">Publish name</string>
-    <string name="public_name_update">Update public name</string>
-    <string name="public_name_remove">Remove public name</string>
-    <string name="public_name_load_failed">Couldn’t load your public name.</string>
-    <string name="public_name_write_failed">Change not confirmed. Try again.</string>
 </resources>

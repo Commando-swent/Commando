@@ -11,7 +11,6 @@ data class ProfileEditUiState(
     val saved: Boolean = false,
     val pendingEmail: String? = null,
     val error: AuthException? = null,
-    val publicName: PublicNameEditState? = null,
 ) {
   val nameInvalid
     get() = fullName.isBlank()
@@ -22,12 +21,3 @@ data class ProfileEditUiState(
   val canSave
     get() = !isSaving && !saved && !nameInvalid && !emailInvalid
 }
-
-/** A successful read can confirm an unpublished name. A failed read leaves [loaded] false. */
-data class PublicNameEditState(
-    val loaded: Boolean = false,
-    val confirmed: String? = null,
-    val draft: String = "",
-    val busy: Boolean = false,
-    val failed: Boolean = false,
-)

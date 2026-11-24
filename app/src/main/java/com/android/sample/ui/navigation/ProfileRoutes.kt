@@ -5,7 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,7 +25,6 @@ import com.android.sample.ui.profile.ProfileLanguageScreen
 import com.android.sample.ui.profile.ProfileScreen
 import com.android.sample.ui.profile.ProfileUiState
 import com.android.sample.ui.profile.ProfileViewModel
-import com.android.sample.ui.profile.PublicNameEditor
 import com.android.sample.ui.profile.rememberProfilePhotoActions
 import com.commando.app.data.repository.NotificationRepository
 
@@ -113,14 +111,7 @@ internal fun NavGraphBuilder.profileRoutes(
         onBack = { navController.popBackStack() },
     )
   }
-  composable(route = CommandoScreens.EditProfile.name) { entry ->
-    DisposableEffect(entry) {
-      onDispose {
-        navController.currentBackStackEntry?.let {
-          if (it != entry) profileViewModel.closePublicNameEditor()
-        }
-      }
-    }
+  composable(route = CommandoScreens.EditProfile.name) {
     val draft by profileViewModel.editState.collectAsState()
     val profile by profileViewModel.uiState.collectAsState()
     LaunchedEffect(profile, draft == null) {
@@ -145,14 +136,6 @@ internal fun NavGraphBuilder.profileRoutes(
           (profile as? ProfileUiState.Content)?.fullName,
           photo = photo,
           onPhotoClick = onPhotoClick,
-          publicNameEditor = {
-            PublicNameEditor(
-                it.publicName,
-                profileViewModel::loadPublicName,
-                profileViewModel::editPublicName,
-                profileViewModel::savePublicName,
-            )
-          },
       )
     } ?: CircularProgressIndicator()
   }

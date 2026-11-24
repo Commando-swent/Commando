@@ -52,7 +52,6 @@ import com.commando.app.data.repository.OrderChatRepository
 import com.commando.app.data.repository.OrderChatRepositoryFirestore
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.ProductRepository
-import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingRepositoryFirestore
 import com.commando.app.data.repository.SavedTripSearchRepository
@@ -83,7 +82,6 @@ fun CommandoApp(
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
-    publicProfileRepositoryFactory: ((() -> String?) -> PublicProfileRepository)? = null,
 ) {
   val context = LocalContext.current
   val clearSessionError = stringResource(R.string.auth_google_clear_error)
@@ -120,7 +118,6 @@ fun CommandoApp(
                   userId = user.uid,
                   authRepository = repository,
                   tripRepository = tripRepository,
-                  publicProfileRepositoryFactory = publicProfileRepositoryFactory,
                   orderRepositoryFactory = orderRepositoryFactory,
                   checklistRepositoryFactory = checklistRepositoryFactory,
                   savedSearchRepositoryFactory = savedSearchRepositoryFactory,
@@ -131,7 +128,6 @@ fun CommandoApp(
               repository = repository,
               photoRepository = photoRepository,
               tripRepository = session.trips,
-              publicProfiles = session.publicProfiles,
               productRepository = productRepository,
               orders = session.orders,
               ratingRepositoryFactory =
@@ -168,7 +164,6 @@ fun CommandoApp(
 private fun AuthenticatedApp(
     repository: AuthRepository,
     photoRepository: ProfilePhotoRepository?,
-    publicProfiles: Lazy<PublicProfileRepository>,
     tripRepository: TripRepository,
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
@@ -191,7 +186,7 @@ private fun AuthenticatedApp(
     SavedTripSearchViewModel(savedSearches)
   }
   val profileViewModel: ProfileViewModel = viewModel {
-    ProfileViewModel(repository, photoRepository, publicProfiles)
+    ProfileViewModel(repository, photoRepository)
   }
   val appUiState by appViewModel.uiState.collectAsState()
   val photoSnackbarHost = remember { SnackbarHostState() }

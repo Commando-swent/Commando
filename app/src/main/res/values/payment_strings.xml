@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="payment_twint">TWINT</string>
+    <string name="payment_card">Debit or credit card</string>
+    <string name="payment_status_label">Payment status</string>
+    <string name="payment_status_unpaid">Not paid yet</string>
+    <string name="payment_status_pending">Payment in progress</string>
+    <string name="payment_status_confirmed">Paid with %1$s</string>
+    <string name="payment_status_failed">Payment unsuccessful</string>
+    <string name="payment_status_uncertain">Payment not confirmed yet</string>
+    <string name="payment_status_unavailable">Payment status unavailable</string>
+    <string name="payment_open_checkout">Pay %1$s</string>
+    <string name="payment_open_status">View payment</string>
+</resources>

@@ -39,6 +39,7 @@ import com.android.sample.R
 import com.commando.app.data.connectivity.AndroidConnectivityMonitor
 import com.commando.app.data.connectivity.ConnectivityMonitor
 import com.commando.app.data.location.DeviceLocationProvider
+import com.commando.app.data.repository.CheckoutPaymentRepository
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.NotificationRepository
 import com.commando.app.data.repository.OrderChatRepository
@@ -88,6 +89,7 @@ fun CommandoApp(
     locationProvider: DeviceLocationProvider? = null,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
+    paymentRepositoryFactory: ((() -> String?) -> CheckoutPaymentRepository)? = null,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
     connectivityMonitor: ConnectivityMonitor? = null,
 ) {
@@ -143,6 +145,7 @@ fun CommandoApp(
               orders = session.orders,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
+              paymentRepositoryFactory = paymentRepositoryFactory,
               chatRepositoryFactory = chatRepositoryFactory,
               notifications = session.notifications,
               checklists = session.checklists,
@@ -180,6 +183,7 @@ private fun AuthenticatedApp(
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
+    paymentRepositoryFactory: ((() -> String?) -> CheckoutPaymentRepository)?,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
     notifications: Lazy<NotificationRepository>,
     checklists: ShoppingChecklistRepository,
@@ -325,6 +329,7 @@ private fun AuthenticatedApp(
           checklists = checklists,
           userId = userId,
           ratingRepositoryFactory = ratingRepositoryFactory,
+          paymentRepositoryFactory = paymentRepositoryFactory,
           onBrowseTrips = {
             appViewModel.switchMode(AppMode.Requester)
             navController.openScreen(CommandoScreens.AvailableTrips)

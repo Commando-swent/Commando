@@ -13,6 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.commando.app.data.repository.CheckoutPaymentRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.TripRepository
@@ -34,6 +35,7 @@ internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
  * ViewModel reads the session's [orders] repository, so signing out discards them with the session.
  * [userId] is the signed-in requester, [ratingRepositoryFactory] builds the receipt rating
  * repository for the session, and [onBrowseTrips] leaves an empty My Orders for the trips list.
+ * [paymentRepositoryFactory] enables the payment status; null hides it.
  */
 internal fun NavGraphBuilder.ordersRoutes(
     navController: NavHostController,
@@ -43,6 +45,7 @@ internal fun NavGraphBuilder.ordersRoutes(
     userId: String,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     onBrowseTrips: () -> Unit,
+    paymentRepositoryFactory: ((() -> String?) -> CheckoutPaymentRepository)? = null,
 ) {
   composable(route = CommandoScreens.MyOrders.name) { entry ->
     val model: MyOrdersViewModel =
@@ -74,6 +77,7 @@ internal fun NavGraphBuilder.ordersRoutes(
               orders::currentUserId,
               orders.sessionChanges,
               ratingRepositoryFactory = ratingRepositoryFactory,
+              paymentRepositoryFactory = paymentRepositoryFactory,
           )
         }
     RefreshOrderAfterChat(entry, model)

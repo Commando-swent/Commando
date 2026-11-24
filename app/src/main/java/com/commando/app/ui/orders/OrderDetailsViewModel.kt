@@ -6,6 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.PaymentError
+import com.commando.app.data.repository.PaymentRepository
+import com.commando.app.data.repository.PaymentResult
 import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingResult
@@ -17,6 +20,8 @@ import com.commando.app.model.NewRating
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
 import com.commando.app.model.OrderStatus
+import com.commando.app.model.Payment
+import com.commando.app.model.PaymentStatus
 import com.commando.app.model.Rating
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
@@ -79,6 +84,8 @@ sealed class OrderDetailsUiState {
       val mutation: OrderMutationState = OrderMutationState.Idle,
       /** Repository-confirmed requester feedback; absent while loading or unavailable. */
       val submittedRating: Rating? = null,
+      /** Persisted payment read for a participant; null when payments are not configured. */
+      val payment: PaymentResult<Payment?>? = null,
   ) : OrderDetailsUiState() {
     private val isEligibleOwner: Boolean
       get() =
@@ -133,6 +140,16 @@ sealed class OrderDetailsUiState {
     val isSaving: Boolean
       get() = mutation == OrderMutationState.Saving
 
+    /** Requester checkout entry; fails closed until the persisted payment was read. */
+    val canPay: Boolean
+      get() =
+          !viewerId.isNullOrBlank() &&
+              viewerId == order.requesterId &&
+              order.tripId == trip.id &&
+              order.status == OrderStatus.ACCEPTED &&
+              payment is PaymentResult.Success &&
+              payment.data?.status != PaymentStatus.CONFIRMED
+
     /**
      * Presentation eligibility only; [OrderRepository.cancelOrder] enforces persisted ownership.
      */
@@ -180,6 +197,7 @@ class OrderDetailsViewModel(
     private val currentUserId: () -> String? = { null },
     sessionChanges: Flow<String?> = emptyFlow(),
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<OrderDetailsUiState>(OrderDetailsUiState.Loading)
   val uiState: StateFlow<OrderDetailsUiState> = mutableState.asStateFlow()
@@ -193,6 +211,10 @@ class OrderDetailsViewModel(
   private var ratingReadGeneration = 0L
 
   private val session = SessionGuard(currentUserId)
+  // Same session-bound identity as ratings, as the PaymentRepository contract requires.
+  private val paymentRepository = paymentRepositoryFactory?.invoke {
+    if (session.hasEnded()) null else session.initialUserId
+  }
   private val ratingRepository: RatingRepository by lazy {
     checkNotNull(ratingRepositoryFactory) { "Rating repository factory is required" }
         .invoke { if (session.hasEnded()) null else session.initialUserId }
@@ -504,8 +526,26 @@ class OrderDetailsViewModel(
     currentCoroutineContext().ensureActive()
     return when (result) {
       is TripResult.Success ->
-          OrderDetailsUiState.Content(order, result.data, session.initialUserId)
+          OrderDetailsUiState.Content(
+              order,
+              result.data,
+              session.initialUserId,
+              payment = readPayment(order, result.data.ownerId),
+          )
       is TripResult.Error -> OrderDetailsUiState.Error.TripFailure(result.error)
+    }
+  }
+
+  /** Only the requester and trip owner may read the payment; the repository re-checks both. */
+  private suspend fun readPayment(order: Order, ownerId: String): PaymentResult<Payment?>? {
+    val viewer = session.initialUserId
+    val repository = paymentRepository ?: return null
+    if (viewer == null || (viewer != order.requesterId && viewer != ownerId)) return null
+    return try {
+      repository.getPayment(orderId)
+    } catch (_: Exception) {
+      currentCoroutineContext().ensureActive()
+      PaymentResult.Error(PaymentError.UNKNOWN)
     }
   }
 }

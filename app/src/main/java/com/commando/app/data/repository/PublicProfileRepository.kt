@@ -9,7 +9,13 @@ private val publicNameLength = Regex("""[^\r\n\p{Cs}]{1,80}""")
 internal fun isValidPublicName(name: String): Boolean =
     publicNameLength.matches(name) && name.any { !it.isWhitespace() && it != '\u0085' }
 
-/** Access to names explicitly published for other authenticated users to see. */
+/**
+ * Access to names explicitly published for other authenticated users to see.
+ *
+ * Operations require a non-blank authenticated UID and raise [IllegalStateException] if the session
+ * is missing or its UID changes before completion. Cancellation propagates without rolling back a
+ * write already submitted to Firestore.
+ */
 interface PublicProfileRepository {
   /**
    * Reads the public display name of [ownerId] from the server. Returns null for a missing profile.

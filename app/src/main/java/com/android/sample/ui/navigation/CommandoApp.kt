@@ -1,12 +1,14 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex (real-trip map integration and conflict resolution).
+// AI assistance: OpenAI Codex (real-trip map integration and conflict resolution); Claude Code
+// (connectivity monitor wiring, #393).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
 // dependencies, authentication, trip and map routes into their own files (#322). OpenAI Codex
 // extracted the profile and catalogue routes, and Claude Code rebased them onto the shared
 // helpers (#323), then moved the order destinations into their own file (#378) and Review
 // Order into the order-flow routes (#379).
+import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.SnackbarHostState
@@ -23,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.credentials.exceptions.ClearCredentialException
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -45,6 +49,8 @@ import com.android.sample.ui.profile.AppLanguage
 import com.android.sample.ui.profile.ProfilePhotoSnackbarHost
 import com.android.sample.ui.profile.ProfileViewModel
 import com.android.sample.ui.session.SessionViewModel
+import com.commando.app.data.connectivity.AndroidConnectivityMonitor
+import com.commando.app.data.connectivity.ConnectivityMonitor
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.NotificationRepository
@@ -82,6 +88,7 @@ fun CommandoApp(
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
+    connectivityMonitor: ConnectivityMonitor? = null,
 ) {
   val context = LocalContext.current
   val clearSessionError = stringResource(R.string.auth_google_clear_error)
@@ -91,6 +98,9 @@ fun CommandoApp(
   val scope = rememberCoroutineScope()
   val sessionViewModel: SessionViewModel = viewModel { SessionViewModel(repository) }
   val sessionUiState by sessionViewModel.uiState.collectAsState()
+  // One monitor for the activity, kept across rotations and account changes (#393).
+  val connectivity =
+      connectivityMonitor ?: viewModel { ConnectivityViewModel(context.applicationContext) }.monitor
 
   // Each account gets its own controller and back stack. Signing out removes the whole
   // authenticated graph, rather than leaving protected destinations behind the login screen.
@@ -152,6 +162,7 @@ fun CommandoApp(
               onLanguageSelected = onLanguageSelected,
               positions = session.positions,
               locationProvider = locationProvider,
+              connectivity = connectivity,
           )
         }
       }
@@ -178,8 +189,11 @@ private fun AuthenticatedApp(
     onLanguageSelected: (AppLanguage) -> Unit,
     positions: Lazy<CommandoPositionRepository>,
     locationProvider: DeviceLocationProvider?,
+    connectivity: ConnectivityMonitor,
 ) {
   val appViewModel: AppViewModel = viewModel()
+  // Routes pass this monitor to the ViewModels that need it; it says nothing about the server.
+  val isOnline by connectivity.isOnline.collectAsState()
   // Shared by the trip list and map; this entry is keyed by account, so sign-out clears it.
   val locationFilter: TripLocationFilterViewModel = viewModel()
   val savedSearchViewModel: SavedTripSearchViewModel = viewModel {
@@ -209,6 +223,7 @@ private fun AuthenticatedApp(
           photoSnackbarHost,
       )
   AppScaffold(
+      isOnline = isOnline,
       currentScreen = currentScreen,
       mode = appUiState.mode,
       onSwitchMode = { mode ->
@@ -372,4 +387,9 @@ private fun AuthenticatedApp(
       )
     }
   }
+}
+
+/** Owns the activity's connectivity monitor; its scope stops the callback when cleared. */
+private class ConnectivityViewModel(context: Context) : ViewModel() {
+  val monitor = AndroidConnectivityMonitor(context, viewModelScope)
 }

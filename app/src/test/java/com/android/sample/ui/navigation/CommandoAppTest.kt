@@ -1,6 +1,6 @@
 package com.android.sample.ui.navigation
 
-// AI assistance: OpenAI Codex (real-trip map integration).
+// AI assistance: OpenAI Codex (real-trip map integration). Claude Code: connectivity banner (#393).
 
 import android.content.Context
 import android.os.Bundle
@@ -49,6 +49,8 @@ import com.android.sample.ui.catalogue.StubProductRepository
 import com.android.sample.ui.profile.ProfileEditTestTags
 import com.android.sample.ui.profile.ProfileTestTags
 import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.data.connectivity.ConnectivityMonitor
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -66,6 +68,7 @@ import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.components.ConnectivityBannerTestTags
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.LiveMapTags
 import com.commando.app.ui.map.MapTestTags
@@ -177,6 +180,44 @@ class CommandoAppTest {
     compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertDoesNotExist()
   }
 
+  @Test
+  fun signedInScreensShowTheOfflineBannerThenBackOnline() {
+    val connectivity = FakeConnectivityMonitor(online = false)
+    show(FakeAuthRepository(alice), connectivity = connectivity)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
+    compose.mainClock.autoAdvance = false
+    connectivity.setOnline(true)
+    compose.waitForIdle()
+    compose.mainClock.advanceTimeByFrame()
+    compose.mainClock.advanceTimeByFrame()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.BACK_ONLINE).assertIsDisplayed()
+  }
+
+  @Test
+  fun signedInOnlineSessionShowsNoConnectivityBanner() {
+    show(FakeAuthRepository(alice), connectivity = FakeConnectivityMonitor(online = true))
+    compose.onNodeWithTag(AppTestTags.APP_SCAFFOLD).assertIsDisplayed()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.BACK_ONLINE).assertDoesNotExist()
+  }
+
+  @Test
+  fun welcomeAndLoginNeverShowTheConnectivityBanner() {
+    show(
+        FakeAuthRepository(),
+        openForm = false,
+        connectivity = FakeConnectivityMonitor(online = false),
+    )
+    assertScreen(com.android.sample.ui.auth.WelcomeTestTags.SCREEN)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+  }
+
   private class Picker : GoogleCredentialClient {
     var credential: Credential? = null
     var error: Exception? = null
@@ -203,8 +244,15 @@ class CommandoAppTest {
       repository: AuthRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
+      connectivity: ConnectivityMonitor? = null,
   ) {
-    show(repository, FakeTripRepository(currentUserId = "alice"), picker, openForm)
+    show(
+        repository,
+        FakeTripRepository(currentUserId = "alice"),
+        picker,
+        openForm,
+        connectivity = connectivity,
+    )
   }
 
   private fun show(
@@ -213,6 +261,7 @@ class CommandoAppTest {
       picker: Picker = Picker(),
       openForm: Boolean = true,
       ratings: ((() -> String?) -> RatingRepository)? = null,
+      connectivity: ConnectivityMonitor? = null,
   ) {
     compose.setContent {
       SampleAppTheme {
@@ -226,6 +275,7 @@ class CommandoAppTest {
             positionRepositoryFactory = {
               FakeCommandoPositionRepository(MutableStateFlow(repository.currentUser?.uid))
             },
+            connectivityMonitor = connectivity,
         )
       }
     }

@@ -46,6 +46,7 @@ import com.commando.app.data.repository.NotificationRepository
 import com.commando.app.data.repository.OrderChatRepository
 import com.commando.app.data.repository.OrderChatRepositoryFirestore
 import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.PaymentRepository
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProfilePhotoRepository
 import com.commando.app.data.repository.PublicProfileRepository
@@ -92,6 +93,7 @@ fun CommandoApp(
     locationProvider: DeviceLocationProvider? = null,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)? = null,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
     publicProfileRepositoryFactory: ((() -> String?) -> PublicProfileRepository)? = null,
     connectivityMonitor: ConnectivityMonitor? = null,
@@ -156,6 +158,7 @@ fun CommandoApp(
               productRepository = productRepository,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
+              paymentRepositoryFactory = paymentRepositoryFactory,
               chatRepositoryFactory = chatRepositoryFactory,
               savedSearches = session.savedSearches,
               userId = user.uid,
@@ -191,6 +194,7 @@ private fun AuthenticatedApp(
     photoRepository: ProfilePhotoRepository?,
     productRepository: ProductRepository?,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)?,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
     savedSearches: SavedTripSearchRepository,
     userId: String,
@@ -335,6 +339,7 @@ private fun AuthenticatedApp(
           session = session,
           userId = userId,
           ratingRepositoryFactory = ratingRepositoryFactory,
+          paymentRepositoryFactory = paymentRepositoryFactory,
           onBrowseTrips = {
             appViewModel.switchMode(AppMode.Requester)
             navController.openScreen(CommandoScreens.AvailableTrips)

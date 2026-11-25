@@ -13,6 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.commando.app.data.repository.PaymentRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.ui.orders.IncomingOrdersScreen
 import com.commando.app.ui.orders.IncomingOrdersViewModel
@@ -30,13 +31,17 @@ internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
  * Registers My Orders, Order Details, Incoming Orders and the Shopping Checklist. Every order
  * ViewModel reads the [session]'s repositories, so signing out discards them with the session.
  * [userId] is the signed-in requester, [ratingRepositoryFactory] builds the receipt rating
- * repository for the session, and [onBrowseTrips] leaves an empty My Orders for the trips list.
+ * repository for the session, and [onBrowseTrips] leaves an empty My Orders for the trips list. A
+ * null [paymentRepositoryFactory] hides the payment status, and refunds (#407) reuse the same
+ * payment repository. No `onPay` is passed, so the Pay entry point stays hidden until the checkout
+ * route exists (#419 Part 2).
  */
 internal fun NavGraphBuilder.ordersRoutes(
     navController: NavHostController,
     session: SessionDependencies,
     userId: String,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)?,
     onBrowseTrips: () -> Unit,
 ) {
   val orders = session.orders
@@ -71,6 +76,7 @@ internal fun NavGraphBuilder.ordersRoutes(
               orders::currentUserId,
               orders.sessionChanges,
               ratingRepositoryFactory = ratingRepositoryFactory,
+              paymentRepositoryFactory = paymentRepositoryFactory,
           )
         }
     RefreshOrderAfterChat(entry, model)

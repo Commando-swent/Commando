@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.commando.app.R
 import com.commando.app.data.repository.OrderError
+import com.commando.app.data.repository.PaymentResult
 import com.commando.app.data.repository.RatingError
 import com.commando.app.model.*
 import com.commando.app.ui.chat.OrderChatEntry
@@ -58,6 +59,8 @@ object OrderDetailsTestTags {
   const val SUBMITTED_RATING = "order_details_submitted_rating"
   const val RATING_SCORE = "order_details_rating_score"
   const val RATING_COMMENT = "order_details_rating_comment"
+  const val PAYMENT_STATUS = "order_details_payment_status"
+  const val PAY = "order_details_pay"
 }
 
 /**
@@ -84,6 +87,7 @@ object OrderDetailsTestTags {
  * @param ratingState Transient receipt rating input and submission feedback.
  * @param onRatingScore Selects stars; [onRatingComment] edits the optional comment.
  * @param onRatingSubmit Submits or retries; [onRatingDismiss] closes idle feedback.
+ * @param onPay Opens checkout for an eligible requester; null hides the entry point.
  */
 @Composable
 fun OrderDetailsScreen(
@@ -104,6 +108,7 @@ fun OrderDetailsScreen(
     onRatingComment: (String) -> Unit = {},
     onRatingSubmit: () -> Unit = {},
     onRatingDismiss: () -> Unit = {},
+    onPay: (() -> Unit)? = null,
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -167,6 +172,7 @@ fun OrderDetailsScreen(
       when (state) {
         is OrderDetailsUiState.Content -> {
           OrderDetailsContent(state.order, state.trip)
+          state.payment?.let { OrderPaymentStatus(state, it, onPay) }
           if (onChat != null && state.isChatParticipant) OrderChatEntry(state, onChat)
           if (state.canRate) state.submittedRating?.let { SubmittedOrderRating(it) }
           if (ratingState.submitted || ratingState.error == RatingError.AlreadyRated) {
@@ -379,6 +385,42 @@ private fun OrderDetailsContent(order: Order, trip: Trip) {
         money(order.commissionCents),
         style = MaterialTheme.typography.titleMedium.copy(fontSize = 26.sp, lineHeight = 35.sp),
     )
+  }
+}
+
+@Composable
+private fun OrderPaymentStatus(
+    state: OrderDetailsUiState.Content,
+    payment: PaymentResult<Payment?>,
+    onPay: (() -> Unit)?,
+) {
+  val stored = (payment as? PaymentResult.Success)?.data
+  OrderDetailsCard {
+    OrderDetailsSection(stringResource(R.string.payment_status_label))
+    Text(
+        paymentStatusText(stored, readFailed = payment is PaymentResult.Error),
+        Modifier.testTag(OrderDetailsTestTags.PAYMENT_STATUS).semantics {
+          liveRegion = LiveRegionMode.Polite
+        },
+        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+    )
+    Text(
+        money(state.order.totalCents),
+        style = MaterialTheme.typography.titleMedium.copy(fontSize = 26.sp, lineHeight = 35.sp),
+    )
+    if (state.canPay && onPay != null) {
+      Button(
+          onClick = onPay,
+          enabled = !state.isSaving,
+          modifier = Modifier.fillMaxWidth().testTag(OrderDetailsTestTags.PAY),
+      ) {
+        Text(
+            if (stored == null || stored.status == PaymentStatus.FAILED)
+                stringResource(R.string.payment_open_checkout, money(state.order.totalCents))
+            else stringResource(R.string.payment_open_status)
+        )
+      }
+    }
   }
 }
 

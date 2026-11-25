@@ -17,7 +17,7 @@ class PaymentRepositoryFirestore(
         currentUserId,
     )
 
-/** Reads the authoritative relationships and stages one refund in the same server transaction. */
+/** Reads authoritative relationships and stages payment/refund writes in one server transaction. */
 internal class FirebasePaymentDataSource(private val firestore: FirebaseFirestore) :
     PaymentDataSource {
   override suspend fun <T> transaction(action: (PaymentTransaction) -> T): T =
@@ -39,6 +39,13 @@ internal class FirebasePaymentDataSource(private val firestore: FirebaseFirestor
                           read("trips", order.tripId)?.data?.paymentField<String>("ownerId"),
                           read("payments", orderId)?.toPayment(),
                           read("refunds", orderId)?.toRefund(),
+                      )
+                    }
+
+                    override fun save(payment: Payment) {
+                      transaction.set(
+                          firestore.collection("payments").document(payment.orderId),
+                          payment.firestoreFields(),
                       )
                     }
 
@@ -85,6 +92,15 @@ internal fun FirestoreDocument.toPayment() =
         data.paymentField("amountCents"),
         data.paymentEnum("method"),
         data.paymentEnum("status"),
+    )
+
+internal fun Payment.firestoreFields(): Map<String, Any> =
+    mapOf(
+        "orderId" to orderId,
+        "requesterId" to requesterId,
+        "amountCents" to amountCents,
+        "method" to method.name,
+        "status" to status.name,
     )
 
 internal fun FirestoreDocument.toRefund(): Refund {

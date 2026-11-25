@@ -27,6 +27,123 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
   private lateinit var order: Order
 
   @Test
+  fun requesterPaymentsPersistOneDerivedAmountForBothMethods() {
+    for (method in PaymentMethod.entries) withOrder(OrderStatus.ACCEPTED, captured = false) {
+      val expected =
+          Payment(
+              order.id,
+              order.id,
+              order.requesterId,
+              order.totalCents,
+              method,
+              PaymentStatus.CONFIRMED,
+          )
+      val start = CompletableDeferred<Unit>()
+      val results =
+          List(4) {
+                async(Dispatchers.IO) {
+                  start.await()
+                  repo().processPayment(order.id, method)
+                }
+              }
+              .also { start.complete(Unit) }
+              .awaitAll()
+      assertEquals(setOf(PaymentResult.Success(expected)), results.toSet())
+      assertEquals(PaymentResult.Success(expected), repo(owner).getPayment(order.id))
+      assertEquals(PaymentResult.Success(expected), repo().processPayment(order.id, method))
+    }
+  }
+
+  @Test
+  fun settledPaymentOutcomesReconcileAndOnlyFailedPaymentsRetry() {
+    for (status in listOf(PaymentStatus.CONFIRMED, PaymentStatus.FAILED)) withOrder(
+        OrderStatus.ACCEPTED,
+        captured = false,
+    ) {
+      val first = paymentRepo(status).processPayment(order.id, PaymentMethod.TWINT)
+      assertEquals(status, (first as PaymentResult.Success).data.status)
+      val retry =
+          paymentRepo(PaymentStatus.CONFIRMED).processPayment(order.id, PaymentMethod.CARD)
+              as PaymentResult.Success
+      if (status == PaymentStatus.FAILED) {
+        assertEquals(PaymentMethod.CARD, retry.data.method)
+        assertEquals(PaymentStatus.CONFIRMED, retry.data.status)
+      } else {
+        assertEquals(first.data, retry.data)
+      }
+    }
+  }
+
+  @Test
+  fun clientsCannotCreateOrRetryIntoUnsettledPayments() =
+      withOrder(OrderStatus.ACCEPTED, captured = false) {
+        for (status in listOf("PENDING", "UNCERTAIN")) {
+          assertPermissionDenied("create $status") {
+            doc("payments").set(failedPayment() + ("status" to status)).await()
+          }
+        }
+        doc("payments").set(failedPayment()).await()
+        for (status in listOf("PENDING", "UNCERTAIN")) {
+          assertPermissionDenied("retry $status") {
+            doc("payments").update("status", status).await()
+          }
+        }
+        assertTrue(
+            repo().processPayment(order.id, PaymentMethod.CARD) is PaymentResult.Success,
+        )
+        assertEquals("CONFIRMED", doc("payments").get(Source.SERVER).await().getString("status"))
+      }
+
+  @Test
+  fun serverRecordedUnsettledPaymentsAreReturnedWithoutReprocessing() {
+    for (status in listOf(PaymentStatus.PENDING, PaymentStatus.UNCERTAIN)) withOrder(
+        OrderStatus.ACCEPTED,
+    ) {
+      updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
+      val result = paymentRepo(PaymentStatus.CONFIRMED).processPayment(order.id, PaymentMethod.CARD)
+      assertEquals(status, (result as PaymentResult.Success).data.status)
+      assertEquals(status.name, doc("payments").get(Source.SERVER).await().getString("status"))
+    }
+  }
+
+  @Test
+  fun forgedPaymentFieldsAreDenied() =
+      withOrder(OrderStatus.ACCEPTED, captured = false) {
+        val valid = failedPayment()
+        for ((field, value) in
+            listOf(
+                "orderId" to "forged",
+                "requesterId" to "forged",
+                "amountCents" to order.totalCents + 1,
+                "amountCents" to order.totalCents.toDouble(),
+                "method" to "CASH",
+                "status" to "OTHER",
+                "extra" to true,
+            )) {
+          assertPermissionDenied(field) { doc("payments").set(valid + (field to value)).await() }
+        }
+        assertPermissionDenied("missing status") { doc("payments").set(valid - "status").await() }
+      }
+
+  @Test
+  fun tripOwnerAndOutsidersCannotWritePayments() =
+      withOrder(OrderStatus.ACCEPTED, captured = false) {
+        withClients("other" to true) { (other) ->
+          for (client in listOf(owner, other)) assertPermissionDenied {
+            doc("payments", client = client).set(failedPayment()).await()
+          }
+        }
+      }
+
+  @Test
+  fun onlyAFailedPaymentCanBeRewritten() =
+      withOrder(OrderStatus.ACCEPTED, captured = false) {
+        doc("payments").set(failedPayment()).await()
+        doc("payments").update(mapOf("method" to "CARD", "status" to "CONFIRMED")).await()
+        assertPermissionDenied { doc("payments").update("status", "FAILED").await() }
+      }
+
+  @Test
   fun concurrentRefundsPersistOneOperationAndReloadWithoutAnotherWrite() = withOrder {
     val start = CompletableDeferred<Unit>()
     val jobs =
@@ -434,6 +551,24 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
             status
           }
 
+  private fun failedPayment() =
+      Payment(
+              order.id,
+              order.id,
+              order.requesterId,
+              order.totalCents,
+              PaymentMethod.TWINT,
+              PaymentStatus.FAILED,
+          )
+          .firestoreFields()
+
+  private fun paymentRepo(status: PaymentStatus): PaymentRepository =
+      TransactionalPaymentRepository(
+          FirebasePaymentDataSource(requester.firestore),
+          { requester.auth.currentUser?.uid },
+          simulatePayment = { status },
+      )
+
   private fun refund() =
       PaymentFixtures.refund()
           .copy(
@@ -446,6 +581,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
 
   private fun withOrder(
       status: OrderStatus = OrderStatus.PENDING,
+      captured: Boolean = true,
       test: suspend CoroutineScope.() -> Unit,
   ) = runTest {
     withClients("owner" to true, "requester" to true) { clients ->
@@ -470,17 +606,18 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
               .firestoreFields(order.requesterId) +
               mapOf("status" to status.name, "createdAt" to Timestamp(0, 0)),
       )
-      createDocumentAsOwner(
-          "payments",
-          order.id,
-          mapOf(
-              "orderId" to order.id,
-              "requesterId" to order.requesterId,
-              "amountCents" to order.totalCents,
-              "method" to "TWINT",
-              "status" to "CONFIRMED",
-          ),
-      )
+      if (captured)
+          createDocumentAsOwner(
+              "payments",
+              order.id,
+              mapOf(
+                  "orderId" to order.id,
+                  "requesterId" to order.requesterId,
+                  "amountCents" to order.totalCents,
+                  "method" to "TWINT",
+                  "status" to "CONFIRMED",
+              ),
+          )
       test()
     }
   }

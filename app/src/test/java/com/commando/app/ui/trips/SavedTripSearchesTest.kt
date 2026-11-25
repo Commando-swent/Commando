@@ -17,7 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.SavedTripSearch
 import com.commando.app.model.StoreFilter

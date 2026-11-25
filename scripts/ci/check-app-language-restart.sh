@@ -7,7 +7,7 @@ api=$("$adb" -s "$serial" shell getprop ro.build.version.sdk)
 [[ "$api" -ge 28 && "$api" -le 32 ]] || { echo "Requires Android API 28–32" >&2; exit 1; }
 for language in fr en; do
   output=$("$adb" -s "$serial" shell am instrument -w -e persistLanguage "$language" \
-    -e class 'com.android.sample.MainActivityTest#frenchAndEnglishSurviveActivityRecreation' \
+    -e class 'com.commando.app.MainActivityTest#frenchAndEnglishSurviveActivityRecreation' \
     com.android.sample.test/androidx.test.runner.AndroidJUnitRunner)
   printf '%s\n' "$output"
   [[ "$output" == *"OK (1 test)"* ]]

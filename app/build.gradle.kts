@@ -13,7 +13,7 @@ plugins {
 }
 
 android {
-  namespace = "com.android.sample"
+  namespace = "com.commando.app"
   compileSdk = 37
 
   defaultConfig {

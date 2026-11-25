@@ -184,18 +184,18 @@ class ReviewOrderTest {
   fun unauthenticatedCreationExplainsThatTheUserMustSignIn() =
       assertCreationFailure(
           OrderError.NotAuthenticated,
-          com.android.sample.R.string.order_session_error,
+          com.commando.app.R.string.order_session_error,
       )
 
   @Test
   fun invalidCreationPreservesTheBasketAndOffersRecovery() =
-      assertCreationFailure(OrderError.InvalidData, com.android.sample.R.string.order_failure_help)
+      assertCreationFailure(OrderError.InvalidData, com.commando.app.R.string.order_failure_help)
 
   @Test
   fun forbiddenCreationPreservesTheBasketAndOffersRecovery() =
       assertCreationFailure(
           OrderError.PermissionDenied,
-          com.android.sample.R.string.order_failure_help,
+          com.commando.app.R.string.order_failure_help,
       )
 
   private fun assertCreationFailure(failure: OrderError, message: Int) {

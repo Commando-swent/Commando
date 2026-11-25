@@ -1,7 +1,7 @@
 package com.commando.app.ui.catalogue
 
 // AI assistance: OpenAI Codex and Claude Code.
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.ProductError
 import com.commando.app.data.repository.ProductResult

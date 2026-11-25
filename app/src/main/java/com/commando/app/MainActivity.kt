@@ -13,9 +13,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.WindowCompat
-import com.android.sample.resources.C
 import com.commando.app.data.repository.ProfilePhotoRepositoryFirestore
 import com.commando.app.model.authentication.AuthRepositoryProvider
+import com.commando.app.resources.C
 import com.commando.app.ui.navigation.CommandoApp
 import com.commando.app.ui.theme.SampleAppTheme
 

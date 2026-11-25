@@ -3,7 +3,7 @@ package com.commando.app.ui.chat
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository

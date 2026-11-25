@@ -2,7 +2,7 @@ package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
 // AI assistance: OpenAI Codex for public-name refresh regression coverage.
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.TripError

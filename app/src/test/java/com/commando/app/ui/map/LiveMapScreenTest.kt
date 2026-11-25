@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.*
 import com.commando.app.ui.theme.SampleAppTheme
 import com.commando.app.ui.trips.discoveryTrip

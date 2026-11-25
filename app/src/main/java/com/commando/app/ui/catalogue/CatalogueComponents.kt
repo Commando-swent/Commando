@@ -76,7 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.Product
 import com.commando.app.ui.orders.money
 import com.commando.app.ui.theme.IllustrationCream

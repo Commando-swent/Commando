@@ -6,7 +6,6 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
 import com.commando.app.model.authentication.AuthRepositoryProvider
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.WelcomeTestTags

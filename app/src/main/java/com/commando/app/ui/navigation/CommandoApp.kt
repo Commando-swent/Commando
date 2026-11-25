@@ -37,7 +37,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.connectivity.AndroidConnectivityMonitor
 import com.commando.app.data.connectivity.ConnectivityMonitor
 import com.commando.app.data.location.DeviceLocationProvider

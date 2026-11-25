@@ -159,3 +159,9 @@ argument. This does not validate Google OAuth, physical location or deployed pro
 
 The instrumentation configuration excludes legacy `protobuf-lite` from Espresso-contrib, which
 otherwise shadows Firestore's runtime ([Android Test issue #999](https://github.com/android/android-test/issues/999)).
+
+## Android namespace
+
+Source packages and generated resources use `com.commando.app`. The installed
+application ID remains `com.android.sample` to preserve the existing installation
+and Firebase client. See [namespace migration and future application-ID changes](docs/android-namespace.md).

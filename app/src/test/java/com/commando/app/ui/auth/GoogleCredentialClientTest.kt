@@ -11,7 +11,7 @@ import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialUnknownException
 import androidx.credentials.exceptions.NoCredentialException
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.authentication.AuthException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import io.mockk.coEvery

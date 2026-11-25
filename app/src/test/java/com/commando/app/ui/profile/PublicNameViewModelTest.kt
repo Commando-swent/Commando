@@ -3,7 +3,7 @@ package com.commando.app.ui.profile
 // AI assistance: OpenAI Codex. Migrated from SessionViewModelTest with entry/root lifecycle
 // fixtures.
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository

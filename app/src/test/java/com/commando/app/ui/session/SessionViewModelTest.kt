@@ -2,7 +2,7 @@ package com.commando.app.ui.session
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.model.authentication.AuthUser

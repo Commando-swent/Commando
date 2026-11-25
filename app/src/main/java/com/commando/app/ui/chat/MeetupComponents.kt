@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.*
 import com.commando.app.ui.trips.TripDatePickerDialog
 import com.commando.app.ui.trips.TripTimePickerDialog

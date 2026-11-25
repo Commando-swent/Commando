@@ -2,7 +2,7 @@ package com.commando.app.ui.profile
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.ProfilePhotoRepository
 import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.model.ProfilePhotoSource

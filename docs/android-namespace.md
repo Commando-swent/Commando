@@ -43,20 +43,32 @@ device, signing source and outcome in the PR; leave unperformed checks explicitl
 
 ### Device-validation status for PR #415
 
-No device-validation result is recorded for this revision. The following checks
-remain pending and must stay unchecked in the PR description:
+Recorded on 25 November 2026 for code revision `701817b6`, on the `Pixel_10`
+Google Play emulator (API 37, arm64-v8a, 16 KB pages). No production data was
+created or changed during the launch checks.
 
 | Required check | Tested revision / signing source | Device | Outcome |
 | --- | --- | --- | --- |
-| Interactive debug launch | Not tested | None | Pending |
-| Interactive release launch | Not tested | None | Pending |
-| Google Sign-In on the signed CI APK | No signed CI artifact installed for this check | None | Pending |
-| Authorized Firestore read on the same signed CI APK | No signed CI artifact installed for this check | None | Pending |
+| Interactive debug launch | Local debug APK; CI APK from run `45636092785`, artifact `15033023209` | Pixel_10 / API 37 | Passed: cold launch, welcome and login screens render |
+| Interactive release launch | Minified release build, temporary installation copy signed with the local debug key | Pixel_10 / API 37 | Passed: cold launch, login, Back and cold relaunch |
+| Google Sign-In on the signed CI APK | Original, unmodified APK from the same CI run | Pixel_10 / API 37 | Pending: Google sign-in form reached, but the completed app session uses email/password, not Google |
+| Authorized Firestore read on the same signed CI APK | Same original CI APK, authenticated email/password session | Pixel_10 / API 37 | Passed: the stored profile photo loaded and rendered through `ProfilePhotoRepositoryFirestore.load`, which explicitly reads with `Source.SERVER` |
+
+The downloaded CI APK has SHA-256
+`362ec11e13b841d3a83d6dbabf33283e4b9f156943d2ae75d1a74c78af9f9e5f`;
+its signing-certificate SHA-256 is
+`57031e87260ff0a112ec0289d01ee0379f3a10b117fe7c94e3b6faf328c7db62`.
+It was not re-signed. The temporary release test signature is not a production
+release signature or a substitute for the signed-CI Google/Firestore checks.
+
+The completed Firebase session reports the `password` provider, without `google.com`.
+Its successful server-backed photo load verifies an authorized Firestore read, but
+does not verify Google OAuth on this signing certificate. No account identifiers,
+credentials or profile images are included in this validation record.
 
 Local builds, APK-manifest inspection and Firebase demo-project emulator suites
-are separate automated checks. They do not establish these interactive results.
-Before closing #349, record the actual commit, CI artifact/run, signing source,
-device/API and observed outcome for each required check.
+are separate automated checks. Google Sign-In remains unchecked; #349 is not fully
+validated until that required check is completed on the signed CI APK.
 
 ## Future application-ID migration (not implemented here)
 

@@ -36,6 +36,7 @@ object ReviewOrderTags {
   const val SUBMIT = "order_submit"
   const val ERROR = "order_error"
   const val TOTAL = "order_total"
+  const val BROWSE = "order_browse_trips"
 }
 
 /** Connects the shared review ViewModel to its trip and navigation callbacks. */
@@ -48,6 +49,7 @@ fun ReviewOrderRoute(
     onViewOrders: (String) -> Unit,
     tripSubtitle: String? = null,
     isDemo: Boolean = false,
+    onBrowseTrips: () -> Unit = onBack,
 ) {
   val observed by viewModel.uiState.collectAsState()
   val state = observed.copy(tripMatches = observed.tripMatches && trip.id == observed.draft.tripId)
@@ -72,7 +74,7 @@ fun ReviewOrderRoute(
       ReviewItems(state, viewModel::changeQuantity, viewModel::updateCommission, onAddProducts)
       if (state.draft.items.isNotEmpty()) ReviewTotals(state)
     }
-    ReviewFooter(state, isDemo, onAddProducts, onViewOrders, viewModel::submit)
+    ReviewFooter(state, isDemo, onAddProducts, onViewOrders, viewModel::submit, onBrowseTrips)
   }
 }
 
@@ -106,7 +108,7 @@ private fun ReviewError(state: ReviewOrderState) {
   Text(
       if (state.tripMatches && state.hasTooManyProducts)
           stringResource(R.string.order_product_limit, MAX_ORDER_PRODUCTS)
-      else stringResource(state.errorMessage()),
+      else stringResource(reviewErrorMessage(state)),
       Modifier.testTag(ReviewOrderTags.ERROR),
       color = MaterialTheme.colorScheme.error,
   )
@@ -114,15 +116,19 @@ private fun ReviewError(state: ReviewOrderState) {
 
 /** Maps review failures to the existing localized creation and editing messages. */
 @StringRes
-private fun ReviewOrderState.errorMessage(): Int =
-    when {
-      !tripMatches -> R.string.order_invalid_error
-      error == OrderError.NotAuthenticated -> R.string.order_session_error
-      error is OrderError.AlreadyDecided -> R.string.order_edit_conflict
-      editing && (error == OrderError.InvalidData || error == OrderError.PermissionDenied) ->
-          R.string.order_edit_unavailable
-      else -> R.string.order_failure_help
-    }
+private fun reviewErrorMessage(state: ReviewOrderState): Int {
+  val failure = state.error
+  if (!state.tripMatches) return R.string.order_invalid_error
+  return when (failure) {
+    OrderError.OwnTrip -> R.string.order_own_trip_error
+    OrderError.NotAuthenticated -> R.string.order_session_error
+    is OrderError.AlreadyDecided -> R.string.order_edit_conflict
+    OrderError.InvalidData,
+    OrderError.PermissionDenied ->
+        if (state.editing) R.string.order_edit_unavailable else R.string.order_failure_help
+    else -> R.string.order_failure_help
+  }
+}
 
 /** Shows the selected trip using its existing subtitle and handoff presentation. */
 @Composable
@@ -196,19 +202,23 @@ private fun ReviewTotals(state: ReviewOrderState) {
 
 /** Resolves the primary action label, giving persisted conflict recovery priority. */
 @StringRes
-private fun ReviewOrderState.actionTitle(): Int =
-    when {
-      error is OrderError.AlreadyDecided -> R.string.order_view_saved
-      order != null && editing -> R.string.order_view_saved
-      order != null -> R.string.order_view
-      draft.items.isEmpty() -> R.string.order_add
-      saving -> R.string.order_saving
-      else ->
-          when (error) {
-            null -> if (editing) R.string.order_save_changes else R.string.order_submit
-            else -> R.string.order_retry
-          }
-    }
+private fun reviewActionTitle(state: ReviewOrderState): Int {
+  val failure = state.error
+  return when (failure) {
+    OrderError.OwnTrip -> R.string.my_orders_browse_trips
+    is OrderError.AlreadyDecided -> R.string.order_view_saved
+    else ->
+        when {
+          state.order != null && state.editing -> R.string.order_view_saved
+          state.order != null -> R.string.order_view
+          state.draft.items.isEmpty() -> R.string.order_add
+          state.saving -> R.string.order_saving
+          failure == null ->
+              if (state.editing) R.string.order_save_changes else R.string.order_submit
+          else -> R.string.order_retry
+        }
+  }
+}
 
 /** Submits the draft or opens the persisted order, keeping the existing action enablement. */
 @Composable
@@ -218,6 +228,7 @@ private fun ReviewFooter(
     onAddProducts: () -> Unit,
     onViewOrders: (String) -> Unit,
     onSubmit: () -> Unit,
+    onBrowseTrips: () -> Unit,
 ) {
   val c = MaterialTheme.colorScheme
   val order = state.order
@@ -237,6 +248,7 @@ private fun ReviewFooter(
     Button(
         onClick = {
           when {
+            error == OrderError.OwnTrip -> onBrowseTrips()
             error is OrderError.AlreadyDecided -> onViewOrders(error.persistedOrder.id)
             order != null -> onViewOrders(order.id)
             empty -> onAddProducts()
@@ -244,7 +256,13 @@ private fun ReviewFooter(
           }
         },
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth().height(56.dp).testTag(ReviewOrderTags.SUBMIT),
+        modifier =
+            Modifier.fillMaxWidth()
+                .height(56.dp)
+                .testTag(
+                    if (error == OrderError.OwnTrip) ReviewOrderTags.BROWSE
+                    else ReviewOrderTags.SUBMIT
+                ),
         shape = RoundedCornerShape(28.dp),
         colors =
             ButtonDefaults.buttonColors(
@@ -255,7 +273,7 @@ private fun ReviewFooter(
             ),
     ) {
       if (state.saving) ReviewSavingIndicator()
-      Text(stringResource(state.actionTitle()), style = MaterialTheme.typography.labelLarge)
+      Text(stringResource(reviewActionTitle(state)), style = MaterialTheme.typography.labelLarge)
     }
     Label(
         if (isDemo) R.string.order_submit_help else R.string.order_persistent_help,

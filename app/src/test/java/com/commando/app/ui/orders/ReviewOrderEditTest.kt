@@ -161,6 +161,27 @@ class ReviewOrderEditTest {
   }
 
   @Test
+  fun invalidEditExplainsUnavailabilityAndKeepsTheDraft() =
+      assertUnavailableEdit(OrderError.InvalidData)
+
+  @Test
+  fun forbiddenEditExplainsUnavailabilityAndKeepsTheDraft() =
+      assertUnavailableEdit(OrderError.PermissionDenied)
+
+  private fun assertUnavailableEdit(failure: OrderError) {
+    fake.forcedError = failure
+    show(fake)
+    compose.onNodeWithTag(ReviewOrderTags.SUBMIT).performClick()
+    compose
+        .onNodeWithTag(ReviewOrderTags.ERROR)
+        .performScrollTo()
+        .assertTextEquals(
+            RuntimeEnvironment.getApplication().getString(R.string.order_edit_unavailable)
+        )
+    assertEquals(order.items, shared.draft.value.items)
+  }
+
+  @Test
   fun conflictShowsSavedOrderWithoutClearingOrResubmittingTheDraft() {
     var calls = 0
     val persisted = order.copy(commissionCents = 8000, revision = 4)

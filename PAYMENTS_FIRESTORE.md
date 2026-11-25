@@ -14,9 +14,12 @@ amounts, identities or credentials from the caller. No real money is transferred
 
 Participants can get these documents; listing/deletion is denied. Only the
 authenticated requester can create a payment for an ACCEPTED order. The transaction
-derives its amount from the persisted items and commission. Confirmed, pending and
-uncertain payments are read-only; a failed payment may retry the same order-based ID
-and change its simulated method.
+derives its amount from the persisted items and commission. The simulation settles
+synchronously, so clients may only write `CONFIRMED` or `FAILED`. Confirmed payments are
+read-only; a failed payment may retry the same order-based ID and change its simulated
+method. `PENDING` and `UNCERTAIN` are reserved for a future trusted server or provider
+callback, which must also reconcile them; the client returns such records unchanged and
+never reprocesses them. No client-created record can block handoff, cancellation or retry.
 
 ## Lifecycle and rollout
 

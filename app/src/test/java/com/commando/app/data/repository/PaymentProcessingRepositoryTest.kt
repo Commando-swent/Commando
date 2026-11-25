@@ -91,6 +91,15 @@ class PaymentProcessingRepositoryTest {
   }
 
   @Test
+  fun unsettledSimulationOutcomesAreNeverPersisted() = runTest {
+    for (status in listOf(PaymentStatus.PENDING, PaymentStatus.UNCERTAIN)) {
+      val repo = repository { status }
+      repo.processPayment(order.id, PaymentMethod.TWINT).assertError(PaymentError.UNKNOWN)
+      repo.getPayment(order.id).assertData(null)
+    }
+  }
+
+  @Test
   fun failedPaymentRetriesTheSameIdentityAndMayChangeMethod() = runTest {
     val failed = payment(PaymentMethod.TWINT, PaymentStatus.FAILED)
     val repo =

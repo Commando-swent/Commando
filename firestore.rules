@@ -263,7 +263,8 @@ service cloud.firestore {
             + checkedTotal(order.items, 1) + checkedTotal(order.items, 2)
             + checkedTotal(order.items, 3) + checkedTotal(order.items, 4)
           && data.method in ["TWINT", "CARD"]
-          && data.status in ["PENDING", "CONFIRMED", "FAILED", "UNCERTAIN"]
+          // The simulation settles synchronously; PENDING/UNCERTAIN need a trusted server.
+          && data.status in ["CONFIRMED", "FAILED"]
           && !existsAfter(/databases/$(database)/documents/refunds/$(orderId));
       }
       allow get: if paymentParticipant(orderId);

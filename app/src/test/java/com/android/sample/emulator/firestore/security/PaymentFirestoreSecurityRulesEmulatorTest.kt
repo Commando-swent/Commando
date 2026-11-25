@@ -55,8 +55,11 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun persistedPaymentOutcomesReconcileAndOnlyFailedPaymentsRetry() {
-    for (status in PaymentStatus.entries) withOrder(OrderStatus.ACCEPTED, captured = false) {
+  fun settledPaymentOutcomesReconcileAndOnlyFailedPaymentsRetry() {
+    for (status in listOf(PaymentStatus.CONFIRMED, PaymentStatus.FAILED)) withOrder(
+        OrderStatus.ACCEPTED,
+        captured = false,
+    ) {
       val first = paymentRepo(status).processPayment(order.id, PaymentMethod.TWINT)
       assertEquals(status, (first as PaymentResult.Success).data.status)
       val retry =
@@ -68,6 +71,38 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       } else {
         assertEquals(first.data, retry.data)
       }
+    }
+  }
+
+  @Test
+  fun clientsCannotCreateOrRetryIntoUnsettledPayments() =
+      withOrder(OrderStatus.ACCEPTED, captured = false) {
+        for (status in listOf("PENDING", "UNCERTAIN")) {
+          assertPermissionDenied("create $status") {
+            doc("payments").set(failedPayment() + ("status" to status)).await()
+          }
+        }
+        doc("payments").set(failedPayment()).await()
+        for (status in listOf("PENDING", "UNCERTAIN")) {
+          assertPermissionDenied("retry $status") {
+            doc("payments").update("status", status).await()
+          }
+        }
+        assertTrue(
+            repo().processPayment(order.id, PaymentMethod.CARD) is PaymentResult.Success,
+        )
+        assertEquals("CONFIRMED", doc("payments").get(Source.SERVER).await().getString("status"))
+      }
+
+  @Test
+  fun serverRecordedUnsettledPaymentsAreReturnedWithoutReprocessing() {
+    for (status in listOf(PaymentStatus.PENDING, PaymentStatus.UNCERTAIN)) withOrder(
+        OrderStatus.ACCEPTED,
+    ) {
+      updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
+      val result = paymentRepo(PaymentStatus.CONFIRMED).processPayment(order.id, PaymentMethod.CARD)
+      assertEquals(status, (result as PaymentResult.Success).data.status)
+      assertEquals(status.name, doc("payments").get(Source.SERVER).await().getString("status"))
     }
   }
 

@@ -61,7 +61,10 @@ internal class TransactionalPaymentRepository(
                 method,
                 PaymentStatus.PENDING,
             )
-        payment.copy(status = simulatePayment(payment)).also { save(it) }
+        val status = simulatePayment(payment)
+        // Rules accept only settled client outcomes; anything else would block the order.
+        check(status == PaymentStatus.CONFIRMED || status == PaymentStatus.FAILED)
+        payment.copy(status = status).also { save(it) }
       }
 
   override suspend fun getRefund(orderId: String) =

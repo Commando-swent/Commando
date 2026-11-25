@@ -8,7 +8,9 @@ import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit.MICROS
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -135,6 +137,82 @@ class MeetupSecurityEmulatorTest {
           decided.response.name,
           ref.get(Source.SERVER).await().getString("meetup.response"),
       )
+    }
+  }
+
+  @Test
+  fun missingProposalReturnsNotFoundForTheRequester() = runTest {
+    withAcceptedOrder { _, requester, orderId ->
+      val repo =
+          OrderChatRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      assertEquals(
+          OrderResult.Error(OrderError.NotFound),
+          repo.respondToMeetup(orderId, "missing", ACCEPTED),
+      )
+    }
+  }
+
+  @Test
+  fun missingOrderReturnsNotFound() = runTest {
+    withClients("requester" to true) { (requester) ->
+      val repo =
+          OrderChatRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+      assertEquals(
+          OrderResult.Error(OrderError.NotFound),
+          repo.respondToMeetup("missing", "proposal", ACCEPTED),
+      )
+    }
+  }
+
+  @Test
+  fun injectedClockRejectsExpiredCreationAndResponse() = runTest {
+    withAcceptedOrder { owner, requester, orderId ->
+      val at = Instant.now().plusSeconds(3600)
+      val proposal = MeetupProposal("Library", at)
+      val clock = Clock.fixed(at.plusSeconds(1), ZoneOffset.UTC)
+      val ownerRepo = OrderChatRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+      val expiredOwner =
+          OrderChatRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore, clock)
+      assertEquals(
+          OrderResult.Error(OrderError.InvalidData),
+          expiredOwner.proposeMeetup(orderId, "expired", proposal),
+      )
+      assertEquals(OrderResult.Success(Unit), ownerRepo.proposeMeetup(orderId, "meeting", proposal))
+      val requesterRepo =
+          OrderChatRepositoryFirestore(
+              { requester.auth.currentUser?.uid },
+              requester.firestore,
+              clock,
+          )
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          requesterRepo.respondToMeetup(orderId, "meeting", ACCEPTED),
+      )
+      val history = (ownerRepo.observeChat(orderId).first() as OrderResult.Success).data
+      assertEquals(MeetupResponse.PENDING, history.messages.single().meetup!!.response)
+    }
+  }
+
+  private suspend fun withAcceptedOrder(
+      test: suspend (EmulatorClient, EmulatorClient, String) -> Unit
+  ) {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val id = owner.app.name
+      createDocumentAsOwner(
+          "trips",
+          id,
+          mapOf("ownerId" to owner.auth.currentUser!!.uid, "status" to TripStatus.PUBLISHED.name),
+      )
+      createDocumentAsOwner(
+          "orders",
+          id,
+          mapOf(
+              "tripId" to id,
+              "requesterId" to requester.auth.currentUser!!.uid,
+              "status" to OrderStatus.ACCEPTED.name,
+          ),
+      )
+      test(owner, requester, id)
     }
   }
 }

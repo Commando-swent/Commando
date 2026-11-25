@@ -6,6 +6,7 @@ import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.parseEmulatorHostAndPort
+import com.commando.app.data.repository.publishTrip
 import com.commando.app.data.repository.successData
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip

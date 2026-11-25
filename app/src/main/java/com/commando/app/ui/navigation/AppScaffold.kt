@@ -1,7 +1,7 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: OpenAI Codex. Shared bars from the Command'o Figma design.
-// Incoming-orders and checklist back bars (#147, #193): Claude Code.
+// Incoming-orders and checklist back bars (#147, #193), connectivity banner (#393): Claude Code.
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.android.sample.R
+import com.commando.app.ui.components.ConnectivityBanner
 
 /** Detail destinations without their own back control; they get the shared back bar. */
 private val BACK_BAR_SCREENS =
@@ -46,6 +47,7 @@ fun AppScaffold(
     onBack: (() -> Unit)? = null,
     onOrders: (() -> Unit)? = null,
     snackbarHost: @Composable () -> Unit = {},
+    isOnline: Boolean = true,
     content: @Composable (PaddingValues) -> Unit,
 ) {
   Scaffold(
@@ -53,20 +55,13 @@ fun AppScaffold(
       containerColor = MaterialTheme.colorScheme.background,
       snackbarHost = snackbarHost,
       topBar = {
-        if (currentScreen.showModeSelector) {
-          AppTopBar(
-              mode,
-              onSwitchMode,
-              // Each trips list belongs to one mode, so the other mode cannot be selected there.
-              lockedMode =
-                  when (currentScreen) {
-                    CommandoScreens.AvailableTrips -> AppMode.Requester
-                    CommandoScreens.MyTrips -> AppMode.Commando
-                    else -> null
-                  },
-          )
-        } else if (currentScreen in BACK_BAR_SCREENS && onBack != null) {
-          AppBackBar(onBack)
+        Column {
+          AppTopBars(currentScreen, mode, onSwitchMode, onBack)
+          val hasHeader =
+              currentScreen.showModeSelector ||
+                  (currentScreen in BACK_BAR_SCREENS && onBack != null)
+          // One banner for every signed-in screen, under its header or the status bar (#393).
+          ConnectivityBanner(isOnline, if (hasHeader) Modifier else Modifier.statusBarsPadding())
         }
       },
       bottomBar = {
@@ -76,6 +71,30 @@ fun AppScaffold(
       },
       content = content,
   )
+}
+
+@Composable
+private fun AppTopBars(
+    currentScreen: CommandoScreens,
+    mode: AppMode,
+    onSwitchMode: (AppMode) -> Unit,
+    onBack: (() -> Unit)?,
+) {
+  if (currentScreen.showModeSelector) {
+    AppTopBar(
+        mode,
+        onSwitchMode,
+        // Each trips list belongs to one mode, so the other mode cannot be selected there.
+        lockedMode =
+            when (currentScreen) {
+              CommandoScreens.AvailableTrips -> AppMode.Requester
+              CommandoScreens.MyTrips -> AppMode.Commando
+              else -> null
+            },
+    )
+  } else if (currentScreen in BACK_BAR_SCREENS && onBack != null) {
+    AppBackBar(onBack)
+  }
 }
 
 @Composable

@@ -306,6 +306,7 @@ service cloud.firestore {
       allow list: if isAuthenticated()
         && (resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
       allow update: if isAuthenticated()
+        && (request.resource.data.status != "REJECTED" || hasNoPayment(orderId))
         && (request.resource.data.status != "READY_FOR_HANDOFF"
           || !existsAfter(/databases/$(database)/documents/payments/$(orderId))
           || paymentMatchesOrder(orderId,

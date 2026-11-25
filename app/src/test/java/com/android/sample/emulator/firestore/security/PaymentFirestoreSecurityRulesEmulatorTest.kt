@@ -1,6 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
 import com.commando.app.data.repository.*
+import com.commando.app.data.repository.PaymentError.*
 import com.commando.app.model.*
 import com.commando.app.testing.PaymentFixtures
 import com.google.firebase.Timestamp
@@ -14,232 +15,320 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** Production-rule tests use admin seeds only for captures supplied by the checkout dependency. */
+/** Production-rule tests seed captures as admin; operations use authenticated SDK clients. */
 @RunWith(RobolectricTestRunner::class)
 class PaymentFirestoreSecurityRulesEmulatorTest {
+  private val denied = OrderResult.Error(OrderError.PermissionDenied)
+
+  private fun failure(error: PaymentError) = PaymentResult.Error(error)
+
+  private lateinit var owner: EmulatorClient
+  private lateinit var requester: EmulatorClient
+  private lateinit var order: Order
+
   @Test
-  fun concurrentRefundsPersistOneOperationAndReloadWithoutAnotherWrite() = runTest {
-    withClients("owner" to true, "requester" to true) { (owner, requester) ->
-      val order = seed(owner, requester)
-      val start = CompletableDeferred<Unit>()
-      val jobs =
-          List(4) {
-            async(Dispatchers.IO) {
-              start.await()
-              repo(requester).refundForCancellation(order.id)
-            }
+  fun concurrentRefundsPersistOneOperationAndReloadWithoutAnotherWrite() = withOrder {
+    val start = CompletableDeferred<Unit>()
+    val jobs =
+        List(4) {
+          async(Dispatchers.IO) {
+            start.await()
+            repo().refundForCancellation(order.id)
           }
-      start.complete(Unit)
-      val refunds = jobs.awaitAll().map { (it as PaymentResult.Success).data }
-      assertEquals(1, refunds.toSet().size)
-      assertEquals("refund-${order.id}", refunds.first().operationId)
-      assertEquals(order.totalCents, refunds.first().amountCents)
-      for (client in listOf(owner, requester)) {
-        assertEquals(PaymentResult.Success(refunds.first()), repo(client).getRefund(order.id))
-        assertEquals(
-            order.totalCents,
-            (repo(client).getPayment(order.id) as PaymentResult.Success).data!!.amountCents,
-        )
-      }
-      val reference = document(requester, "refunds", order.id)
-      val timestamp = reference.get(Source.SERVER).await().getTimestamp("updatedAt")
-      assertEquals(
-          PaymentResult.Success(refunds.first()),
-          repo(requester).refundForCancellation(order.id),
-      )
-      assertEquals(timestamp, reference.get(Source.SERVER).await().getTimestamp("updatedAt"))
-    }
-  }
-
-  @Test
-  fun nonterminalOutcomesSurviveReloadAndBlockCancellationUntilConfirmed() = runTest {
-    withClients("owner" to true, "requester" to true) { (owner, requester) ->
-      for (status in RefundStatus.entries.filter { it != RefundStatus.CONFIRMED }) {
-        val order = seed(owner, requester)
-        val pending = repo(requester, status).refundForCancellation(order.id)
-        assertEquals(status, (pending as PaymentResult.Success).data.status)
-        assertEquals(pending, repo(requester).getRefund(order.id))
-        val reference = document(requester, "orders", order.id)
-        assertPermissionDenied { reference.update("status", "CANCELLED").await() }
-        assertEquals(
-            RefundStatus.CONFIRMED,
-            (repo(requester).refundForCancellation(order.id) as PaymentResult.Success).data.status,
-        )
-        reference.update("status", "CANCELLED").await()
-        assertEquals("CANCELLED", reference.get(Source.SERVER).await().getString("status"))
-        assertTrue(repo(requester).refundForCancellation(order.id) is PaymentResult.Success)
-      }
-    }
-  }
-
-  @Test
-  fun onlyParticipantsReadAndOnlyTheCancellationActorWrites() = runTest {
-    withClients("owner" to true, "requester" to true, "other" to true, "out" to false) {
-        (owner, requester, other, out) ->
-      val pending = seed(owner, requester)
-      assertEquals(
-          PaymentResult.Error(PaymentError.INELIGIBLE),
-          repo(owner).refundForCancellation(pending.id),
-      )
-      for (client in listOf(other, out)) for (collection in listOf("payments", "refunds")) {
-        assertPermissionDenied {
-          document(client, collection, pending.id).get(Source.SERVER).await()
         }
+    start.complete(Unit)
+    val refunds = jobs.awaitAll().map { (it as PaymentResult.Success).data }
+    assertEquals(1, refunds.toSet().size)
+    assertEquals("refund-${order.id}", refunds.first().operationId)
+    assertEquals(order.totalCents, refunds.first().amountCents)
+    for (client in listOf(owner, requester)) {
+      assertEquals(PaymentResult.Success(refunds.first()), repo(client).getRefund(order.id))
+      assertEquals(
+          order.totalCents,
+          (repo(client).getPayment(order.id) as PaymentResult.Success).data!!.amountCents,
+      )
+    }
+    val timestamp = doc("refunds").get(Source.SERVER).await().getTimestamp("updatedAt")
+    assertEquals(PaymentResult.Success(refunds.first()), repo().refundForCancellation(order.id))
+    assertEquals(timestamp, doc("refunds").get(Source.SERVER).await().getTimestamp("updatedAt"))
+  }
+
+  @Test fun pendingRefundBlocksAcceptedCancellation() = acceptedCancellation(RefundStatus.PENDING)
+
+  @Test fun failedRefundBlocksAcceptedCancellation() = acceptedCancellation(RefundStatus.FAILED)
+
+  @Test
+  fun uncertainRefundBlocksAcceptedCancellation() = acceptedCancellation(RefundStatus.UNCERTAIN)
+
+  @Test
+  fun confirmedRefundAllowsAtomicAcceptedCancellation() =
+      acceptedCancellation(RefundStatus.CONFIRMED)
+
+  private fun acceptedCancellation(status: RefundStatus) =
+      withOrder(OrderStatus.ACCEPTED) {
+        val refund = repo(owner, status).refundForCancellation(order.id)
+        assertEquals(status, (refund as PaymentResult.Success).data.status)
+        assertEquals(refund, repo().getRefund(order.id))
+        val result = orders().cancelAcceptedOrder(order.id)
+        val events = events()
+        if (status == RefundStatus.CONFIRMED) {
+          assertEquals(OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)), result)
+          val event = events.single()
+          assertEquals(order.requesterId, event.getString("recipientId"))
+          assertEquals("ORDER_CANCELLED", event.getString("type"))
+          assertNotNull(event.getTimestamp("occurredAt"))
+        } else {
+          assertEquals(denied, result)
+          assertTrue(events.isEmpty())
+        }
+        assertEquals(
+            if (status == RefundStatus.CONFIRMED) "CANCELLED" else "ACCEPTED",
+            doc("orders").get(Source.SERVER).await().getString("status"),
+        )
+      }
+
+  @Test
+  fun pendingRefundSurvivesReloadAndRetryBeforeRequesterCancellation() = withOrder {
+    val pending = repo(requester, RefundStatus.PENDING).refundForCancellation(order.id)
+    assertEquals(RefundStatus.PENDING, (pending as PaymentResult.Success).data.status)
+    assertEquals(pending, repo().getRefund(order.id))
+    assertPermissionDenied { doc("orders").update("status", "CANCELLED").await() }
+    assertEquals(
+        RefundStatus.CONFIRMED,
+        (repo().refundForCancellation(order.id) as PaymentResult.Success).data.status,
+    )
+    doc("orders").update("status", "CANCELLED").await()
+    assertTrue(repo().refundForCancellation(order.id) is PaymentResult.Success)
+  }
+
+  @Test
+  fun outsidersAndSignedOutClientsCannotReadPaymentsOrRefunds() = withOrder {
+    withClients("other" to true, "out" to false) { clients ->
+      for (client in clients) for (collection in listOf("payments", "refunds")) {
+        assertPermissionDenied { doc(collection, client = client).get(Source.SERVER).await() }
       }
       assertEquals(
-          PaymentResult.Error(PaymentError.PERMISSION_DENIED),
-          repo(other).getPayment(pending.id),
+          failure(PERMISSION_DENIED),
+          repo(clients[0]).getPayment(order.id),
       )
       assertEquals(
-          PaymentResult.Error(PaymentError.NOT_AUTHENTICATED),
-          repo(out).getRefund(pending.id),
+          failure(NOT_AUTHENTICATED),
+          repo(clients[1]).getRefund(order.id),
       )
-      val accepted = seed(owner, requester, OrderStatus.ACCEPTED)
-      assertEquals(
-          PaymentResult.Error(PaymentError.INELIGIBLE),
-          repo(requester).refundForCancellation(accepted.id),
-      )
-      assertTrue(repo(owner).refundForCancellation(accepted.id) is PaymentResult.Success)
-      for (client in listOf(owner, requester, other, out)) for (collection in
+    }
+  }
+
+  @Test
+  fun onlyTheRequesterCanRefundAPendingOrder() = withOrder {
+    assertEquals(
+        failure(INELIGIBLE),
+        repo(owner).refundForCancellation(order.id),
+    )
+    assertTrue(repo().refundForCancellation(order.id) is PaymentResult.Success)
+  }
+
+  @Test
+  fun requesterCannotRefundAnAcceptedOrder() =
+      withOrder(OrderStatus.ACCEPTED) {
+        assertEquals(
+            failure(INELIGIBLE),
+            repo().refundForCancellation(order.id),
+        )
+      }
+
+  @Test
+  fun collectionListingAndDeletionAreDenied() = withOrder {
+    withClients("other" to true, "out" to false) { clients ->
+      for (client in listOf(owner, requester) + clients) for (collection in
           listOf("payments", "refunds")) {
         assertPermissionDenied {
           client.firestore.collection(collection).get(Source.SERVER).await()
         }
-        assertPermissionDenied { document(client, collection, pending.id).delete().await() }
+        assertPermissionDenied { doc(collection, client = client).delete().await() }
       }
     }
   }
 
   @Test
-  fun rulesRejectForgedFieldsAndConfirmedOperationMutation() = runTest {
-    withClients("owner" to true, "requester" to true, "other" to true) { (owner, requester, other)
-      ->
-      val order = seed(owner, requester)
-      val data = refund(order).firestoreFields()
-      val reference = document(requester, "refunds", order.id)
-      for (invalid in
-          listOf(
-              data + ("amountCents" to order.totalCents + 1),
-              data + ("amountCents" to order.totalCents.toDouble()),
-              data + ("requesterId" to "forged"),
-              data + ("requestedBy" to owner.auth.currentUser!!.uid),
-              data + ("orderId" to "forged"),
-              data + ("paymentId" to "forged"),
-              data + ("operationId" to "new"),
-              data + ("status" to "OTHER"),
-              data + ("updatedAt" to Timestamp(0, 0)),
-              data + ("extra" to true),
-              data - "status",
-          )) assertPermissionDenied(invalid.keys.toString()) { reference.set(invalid).await() }
+  fun forgedRefundFieldsAreDenied() = withOrder {
+    val data = refund().firestoreFields()
+    for ((field, value) in
+        listOf(
+            "amountCents" to order.totalCents + 1,
+            "amountCents" to order.totalCents.toDouble(),
+            "requesterId" to "forged",
+            "requestedBy" to owner.auth.currentUser!!.uid,
+            "orderId" to "forged",
+            "paymentId" to "forged",
+            "operationId" to "new",
+            "status" to "OTHER",
+            "updatedAt" to Timestamp(0, 0),
+            "extra" to true,
+        )) {
+      assertPermissionDenied(field) { doc("refunds").set(data + (field to value)).await() }
+    }
+    assertPermissionDenied("missing status") { doc("refunds").set(data - "status").await() }
+  }
+
+  @Test
+  fun unauthorizedActorsCannotWriteRefundsDirectly() = withOrder {
+    withClients("other" to true) { (other) ->
       for (client in listOf(owner, other)) assertPermissionDenied {
-        document(client, "refunds", order.id)
-            .set(data + ("requestedBy" to client.auth.currentUser!!.uid))
-            .await()
-      }
-      for (status in
-          OrderStatus.entries.filter { it !in listOf(OrderStatus.PENDING, OrderStatus.ACCEPTED) }) {
-        updateDocumentAsOwner("orders/${order.id}", mapOf("status" to status.name))
-        assertPermissionDenied(status.name) { reference.set(data).await() }
-      }
-      updateDocumentAsOwner("orders/${order.id}", mapOf("status" to "PENDING"))
-      reference.set(data).await()
-      for (change in
-          listOf(mapOf("status" to "FAILED"), mapOf("amountCents" to 1), mapOf("extra" to true))) {
-        assertPermissionDenied { reference.update(change).await() }
-      }
-      assertPermissionDenied {
-        document(requester, "payments", order.id).update("status", "CONFIRMED").await()
-      }
-    }
-  }
-
-  @Test
-  fun malformedOrUncapturedPaymentsFailClosedWhileUnpaidCancellationIsPreserved() = runTest {
-    withClients("owner" to true, "requester" to true) { (owner, requester) ->
-      assertEquals(
-          PaymentResult.Error(PaymentError.NOT_FOUND),
-          repo(requester).getPayment(UUID.randomUUID().toString()),
-      )
-      val order = seed(owner, requester)
-      val payment = document(requester, "payments", order.id)
-      val orderRef = document(requester, "orders", order.id)
-      for (status in PaymentStatus.entries.filter { it != PaymentStatus.CONFIRMED }) {
-        updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
-        assertEquals(
-            PaymentResult.Error(PaymentError.NOT_CAPTURED),
-            repo(requester).refundForCancellation(order.id),
-        )
-        if (status != PaymentStatus.FAILED)
-            assertPermissionDenied { orderRef.update("status", "CANCELLED").await() }
-      }
-      for (fields in
-          listOf(
-              mapOf("amountCents" to 1),
-              mapOf("amountCents" to 325.0),
-              mapOf("status" to "OTHER"),
-          )) {
-        updateDocumentAsOwner(
-            "payments/${order.id}",
-            mapOf("amountCents" to order.totalCents, "status" to "CONFIRMED") + fields,
-        )
-        assertEquals(
-            PaymentResult.Error(PaymentError.INVALID_DATA),
-            repo(requester).getPayment(order.id),
-        )
-        assertPermissionDenied { orderRef.update("status", "CANCELLED").await() }
-      }
-      deleteDocumentAsOwner("payments/${order.id}")
-      assertFalse(payment.get(Source.SERVER).await().exists())
-      assertEquals(PaymentResult.Success(null), repo(requester).getPayment(order.id))
-      orderRef.update("status", "CANCELLED").await()
-      updateDocumentAsOwner("trips/${order.tripId}", mapOf("ownerId" to false))
-      assertEquals(
-          PaymentResult.Error(PaymentError.INVALID_DATA),
-          repo(requester).getPayment(order.id),
-      )
-    }
-  }
-
-  @Test
-  fun registeredPaymentsMustBeConfirmedBeforeHandoff() = runTest {
-    withClients("owner" to true, "requester" to true) { (owner, requester) ->
-      for (status in PaymentStatus.entries) {
-        val order = seed(owner, requester, OrderStatus.ACCEPTED)
-        updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
-        val target = document(owner, "orders", order.id)
-        if (status == PaymentStatus.CONFIRMED) target.update("status", "READY_FOR_HANDOFF").await()
-        else {
-          assertPermissionDenied { target.update("status", "READY_FOR_HANDOFF").await() }
-          assertEquals("ACCEPTED", target.get(Source.SERVER).await().getString("status"))
-        }
-      }
-    }
-  }
-
-  @Test
-  fun refundReservationRejectsRacingHandoffAndEdits() = runTest {
-    withClients("owner" to true, "requester" to true) { (owner, requester) ->
-      val order = seed(owner, requester, OrderStatus.ACCEPTED)
-      assertTrue(
-          repo(owner, RefundStatus.PENDING).refundForCancellation(order.id) is PaymentResult.Success
-      )
-      assertPermissionDenied {
-        document(owner, "orders", order.id).update("status", "READY_FOR_HANDOFF").await()
-      }
-      val pending = seed(owner, requester)
-      assertPermissionDenied {
-        document(requester, "orders", pending.id)
-            .update("commissionCents", 76, "revision", 1)
+        doc("refunds", client = client)
+            .set(refund().firestoreFields() + ("requestedBy" to client.auth.currentUser!!.uid))
             .await()
       }
     }
   }
 
-  private fun document(client: EmulatorClient, collection: String, id: String) =
+  @Test
+  fun terminalAndHandoffOrdersRejectNewRefunds() = withOrder {
+    for (status in
+        OrderStatus.entries.filter { it !in listOf(OrderStatus.PENDING, OrderStatus.ACCEPTED) }) {
+      updateDocumentAsOwner("orders/${order.id}", mapOf("status" to status.name))
+      assertPermissionDenied(status.name) { doc("refunds").set(refund().firestoreFields()).await() }
+    }
+  }
+
+  @Test
+  fun confirmedFinancialRecordsCannotBeMutated() = withOrder {
+    doc("refunds").set(refund().firestoreFields()).await()
+    for (change in
+        listOf(mapOf("status" to "FAILED"), mapOf("amountCents" to 1), mapOf("extra" to true))) {
+      assertPermissionDenied(change.toString()) { doc("refunds").update(change).await() }
+    }
+    assertPermissionDenied { doc("payments").update("status", "CONFIRMED").await() }
+  }
+
+  @Test
+  fun uncapturedPaymentsCannotAuthorizeRefundsOrPrematureCancellation() = withOrder {
+    for (status in PaymentStatus.entries.filter { it != PaymentStatus.CONFIRMED }) {
+      updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
+      assertEquals(
+          failure(NOT_CAPTURED),
+          repo().refundForCancellation(order.id),
+      )
+      if (status != PaymentStatus.FAILED)
+          assertPermissionDenied(status.name) {
+            doc("orders").update("status", "CANCELLED").await()
+          }
+    }
+  }
+
+  @Test
+  fun malformedPaymentRelationshipsFailClosed() = withOrder {
+    for (fields in
+        listOf(
+            mapOf("amountCents" to 1),
+            mapOf("amountCents" to 325.0),
+            mapOf("status" to "OTHER"),
+        )) {
+      updateDocumentAsOwner(
+          "payments/${order.id}",
+          mapOf("amountCents" to order.totalCents, "status" to "CONFIRMED") + fields,
+      )
+      assertEquals(failure(INVALID_DATA), repo().getPayment(order.id))
+      assertPermissionDenied(fields.toString()) {
+        doc("orders").update("status", "CANCELLED").await()
+      }
+    }
+    updateDocumentAsOwner("trips/${order.tripId}", mapOf("ownerId" to false))
+    assertEquals(failure(INVALID_DATA), repo().getPayment(order.id))
+  }
+
+  @Test
+  fun missingPaymentPreservesUnpaidCancellation() = withOrder {
+    assertEquals(
+        failure(NOT_FOUND),
+        repo().getPayment(UUID.randomUUID().toString()),
+    )
+    deleteDocumentAsOwner("payments/${order.id}")
+    assertFalse(doc("payments").get(Source.SERVER).await().exists())
+    assertEquals(PaymentResult.Success(null), repo().getPayment(order.id))
+    doc("orders").update("status", "CANCELLED").await()
+  }
+
+  @Test fun pendingPaymentBlocksHandoff() = handoff(PaymentStatus.PENDING)
+
+  @Test fun failedPaymentBlocksHandoff() = handoff(PaymentStatus.FAILED)
+
+  @Test fun uncertainPaymentBlocksHandoff() = handoff(PaymentStatus.UNCERTAIN)
+
+  @Test fun confirmedPaymentAllowsHandoff() = handoff(PaymentStatus.CONFIRMED)
+
+  private fun handoff(status: PaymentStatus) =
+      withOrder(OrderStatus.ACCEPTED) {
+        updateDocumentAsOwner("payments/${order.id}", mapOf("status" to status.name))
+        val result = orders().markReadyForHandoff(order.id)
+        if (status == PaymentStatus.CONFIRMED) assertTrue(result is OrderResult.Success)
+        else assertEquals(denied, result)
+      }
+
+  @Test
+  fun paidPendingRejectionLeavesOrderAndEventUnchanged() = withOrder {
+    assertEquals(
+        denied,
+        orders().decideOrder(order.id, OrderDecision.REJECT, 0),
+    )
+    assertEquals("PENDING", doc("orders").get(Source.SERVER).await().getString("status"))
+    assertTrue(events().isEmpty())
+    assertTrue(repo().refundForCancellation(order.id) is PaymentResult.Success)
+  }
+
+  @Test
+  fun unpaidPendingRejectionRemainsAvailable() = withOrder {
+    deleteDocumentAsOwner("payments/${order.id}")
+    assertEquals(
+        OrderResult.Success(order.copy(status = OrderStatus.REJECTED)),
+        orders().decideOrder(order.id, OrderDecision.REJECT, 0),
+    )
+  }
+
+  @Test
+  fun refundAndHandoffRaceHasExactlyOneWinner() =
+      withOrder(OrderStatus.ACCEPTED) {
+        val start = CompletableDeferred<Unit>()
+        val refund =
+            async(Dispatchers.IO) {
+              start.await()
+              repo(owner, RefundStatus.PENDING).refundForCancellation(order.id)
+            }
+        val handoff =
+            async(Dispatchers.IO) {
+              start.await()
+              orders().markReadyForHandoff(order.id)
+            }
+        start.complete(Unit)
+        val refunded = refund.await() is PaymentResult.Success
+        val handedOff = handoff.await() is OrderResult.Success
+        assertTrue("Exactly one operation must commit", refunded xor handedOff)
+        assertEquals(
+            if (handedOff) "READY_FOR_HANDOFF" else "ACCEPTED",
+            doc("orders").get(Source.SERVER).await().getString("status"),
+        )
+        assertEquals(refunded, doc("refunds").get(Source.SERVER).await().exists())
+      }
+
+  @Test
+  fun capturedPendingOrderCannotBeEdited() = withOrder {
+    assertPermissionDenied { doc("orders").update("commissionCents", 76, "revision", 1).await() }
+  }
+
+  private fun doc(collection: String, id: String = order.id, client: EmulatorClient = requester) =
       client.firestore.collection(collection).document(id)
 
+  private suspend fun events() =
+      requester.firestore
+          .collection("orderEvents")
+          .whereEqualTo("recipientId", order.requesterId)
+          .get(Source.SERVER)
+          .await()
+          .documents
+
+  private fun orders() = OrderRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
+
   private fun repo(
-      client: EmulatorClient,
+      client: EmulatorClient = requester,
       status: RefundStatus = RefundStatus.CONFIRMED,
   ): PaymentRepository =
       if (status == RefundStatus.CONFIRMED)
@@ -252,7 +341,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
             status
           }
 
-  private fun refund(order: Order) =
+  private fun refund() =
       PaymentFixtures.refund()
           .copy(
               operationId = "refund-${order.id}",
@@ -262,41 +351,44 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
               requestedBy = order.requesterId,
           )
 
-  private fun seed(
-      owner: EmulatorClient,
-      requester: EmulatorClient,
+  private fun withOrder(
       status: OrderStatus = OrderStatus.PENDING,
-  ): Order {
-    val order =
-        PaymentFixtures.order.copy(
-            id = UUID.randomUUID().toString(),
-            tripId = UUID.randomUUID().toString(),
-            requesterId = requester.auth.currentUser!!.uid,
-            status = status,
-        )
-    createDocumentAsOwner(
-        "trips",
-        order.tripId,
-        mapOf("ownerId" to owner.auth.currentUser!!.uid, "status" to "PUBLISHED"),
-    )
-    createDocumentAsOwner(
-        "orders",
-        order.id,
-        OrderDraft(order.tripId, order.items, order.commissionCents)
-            .firestoreFields(order.requesterId) +
-            mapOf("status" to status.name, "createdAt" to Timestamp(0, 0)),
-    )
-    createDocumentAsOwner(
-        "payments",
-        order.id,
-        mapOf(
-            "orderId" to order.id,
-            "requesterId" to order.requesterId,
-            "amountCents" to order.totalCents,
-            "method" to "TWINT",
-            "status" to "CONFIRMED",
-        ),
-    )
-    return order
+      test: suspend CoroutineScope.() -> Unit,
+  ) = runTest {
+    withClients("owner" to true, "requester" to true) { clients ->
+      owner = clients[0]
+      requester = clients[1]
+      order =
+          PaymentFixtures.order.copy(
+              id = UUID.randomUUID().toString(),
+              tripId = UUID.randomUUID().toString(),
+              requesterId = requester.auth.currentUser!!.uid,
+              status = status,
+          )
+      createDocumentAsOwner(
+          "trips",
+          order.tripId,
+          mapOf("ownerId" to owner.auth.currentUser!!.uid, "status" to "PUBLISHED"),
+      )
+      createDocumentAsOwner(
+          "orders",
+          order.id,
+          OrderDraft(order.tripId, order.items, order.commissionCents)
+              .firestoreFields(order.requesterId) +
+              mapOf("status" to status.name, "createdAt" to Timestamp(0, 0)),
+      )
+      createDocumentAsOwner(
+          "payments",
+          order.id,
+          mapOf(
+              "orderId" to order.id,
+              "requesterId" to order.requesterId,
+              "amountCents" to order.totalCents,
+              "method" to "TWINT",
+              "status" to "CONFIRMED",
+          ),
+      )
+      test()
+    }
   }
 }

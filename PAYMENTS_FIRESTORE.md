@@ -22,7 +22,7 @@ Only a legacy pending requester or an accepted-order owner can initiate a refund
 The transaction derives identity/amount from order, trip, payment and refund reads.
 Retries keep the operation; confirmed refunds are read-only. PENDING, FAILED and
 UNCERTAIN refunds cannot authorize terminal cancellation. Rules use saved refunds
-to block forward transitions; captured pending orders cannot be edited.
+to block forward transitions; captured pending orders cannot be edited or rejected.
 A recorded payment must be CONFIRMED before READY_FOR_HANDOFF. Legacy orders with
 no payment remain compatible; deploy mandatory payment presence together with #385.
 The existing order repository owns cancellation and its event (#403/#404).
@@ -30,3 +30,11 @@ The existing order repository owns cancellation and its event (#403/#404).
 Coordinate/deploy production rules before #407. Simulation callbacks must remain
 pure because transactions retry; no real provider is called. Emulator validation
 does not establish deployed-backend behavior. Bind identity to one permanent session.
+
+## Offline contract (#426 / #407)
+
+All payment/refund operations require server transactions: cached records cannot
+satisfy offline reads, and refunds are not queued. A transport failure returns
+`PaymentError.UNKNOWN`, never a missing record or confirmed refund. Keep the order
+unchanged, show retry feedback, and reconcile persisted state after reconnection
+before retrying the same operation; a lost response may follow a server commit.

@@ -1,9 +1,15 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code, including the uncertain publication lock test (#394).
+// AI assistance: Claude Code, including the uncertain publication lock test (#394) and outcome
+// banners (#429).
+import android.os.Looper
+import android.os.Parcel
 import androidx.compose.runtime.*
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripError
@@ -15,11 +21,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(AndroidJUnit4::class)
 class CreateTripScreenTest {
@@ -101,6 +110,7 @@ class CreateTripScreenTest {
     setContent()
 
     node(CreateTripScreenTestTags.ERROR_BANNER).assertExists()
+    node(CreateTripScreenTestTags.UNCERTAIN_BANNER).assertDoesNotExist()
     node(CreateTripScreenTestTags.STORE_FIELD).assertTextContains(STORE.name)
     node(CreateTripScreenTestTags.HANDOFF_LOCATION_FIELD).assertTextContains(HANDOFF.name)
     node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertTextContains("Try again")
@@ -112,15 +122,56 @@ class CreateTripScreenTest {
     setContent()
 
     FIELD_TAGS.forEach { node(it).assertIsNotEnabled() }
-    node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertIsEnabled()
+    node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertIsEnabled().assertTextContains("Try again")
+    node(CreateTripScreenTestTags.UNCERTAIN_BANNER)
+        .assertTextContains("Your trip may already be published")
+        .assertTextContains("without creating a duplicate", substring = true)
+    node(CreateTripScreenTestTags.ERROR_BANNER).assertDoesNotExist()
+    composeTestRule.onNodeWithText("Couldn", substring = true).assertDoesNotExist()
+    // A restored intent has no error yet and still offers a retry.
+    state = state.copy(publishError = null)
+    node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertTextContains("Try again")
     state = state.copy(publishError = TripError.InvalidData, hasUncertainPublication = false)
     FIELD_TAGS.forEach { node(it).assertIsEnabled() }
   }
 
   @Test
+  fun offlineRefusal_showsOnlyItsOwnBannerAndARetry() {
+    // Refused offline while an uncertain attempt is pending: only the refusal is shown.
+    state =
+        READY.copy(
+            isOffline = true,
+            hasUncertainPublication = true,
+            publishError = TripError.NetworkError,
+        )
+    setContent()
+
+    node(CreateTripScreenTestTags.OFFLINE_BANNER)
+        .assertTextContains("You were offline")
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+    node(CreateTripScreenTestTags.ERROR_BANNER).assertDoesNotExist()
+    node(CreateTripScreenTestTags.UNCERTAIN_BANNER).assertDoesNotExist()
+    node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertIsEnabled().assertTextContains("Try again")
+    state = state.copy(isOffline = false)
+    node(CreateTripScreenTestTags.OFFLINE_BANNER).assertDoesNotExist()
+    node(CreateTripScreenTestTags.UNCERTAIN_BANNER).assertExists()
+    // A new trip refused offline also offers a retry.
+    state = READY.copy(isOffline = true)
+    node(CreateTripScreenTestTags.OFFLINE_BANNER).assertExists()
+    node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertTextContains("Try again")
+  }
+
+  @Test
   fun screen_confirmsThePublicationBeforeLeaving() {
     val repository = FakeTripRepository(currentUserId = "me", now = { NOW })
-    val viewModel = CreateTripViewModel(repository, Clock.fixed(NOW, ZONE))
+    val viewModel =
+        CreateTripViewModel(
+            repository,
+            SavedStateHandle(),
+            "me",
+            MutableStateFlow(true),
+            Clock.fixed(NOW, ZONE),
+        )
     val notified = mutableListOf<Trip>()
     var onScreen by mutableStateOf(true)
     // Like navigation would, the callback removes the screen.
@@ -158,6 +209,41 @@ class CreateTripScreenTest {
       assertEquals(stored, notified)
     }
     composeTestRule.onNodeWithTag(CreateTripScreenTestTags.PUBLISH_BUTTON).assertDoesNotExist()
+  }
+
+  @Test
+  fun uncertainIntent_survivesASavedStateRoundTripAndRetriesWithItsTripId() {
+    val repository =
+        FakeTripRepository(currentUserId = "me", now = { NOW }).apply {
+          forcedError = TripError.NetworkError
+        }
+    val clock = Clock.fixed(NOW, ZONE)
+    val firstHandle = SavedStateHandle()
+    CreateTripViewModel(repository, firstHandle, "me", MutableStateFlow(true), clock).apply {
+      setStore(STORE)
+      setDate(TODAY.plusDays(1))
+      setTime(LocalTime.of(18, 30))
+      setHandoffLocation(HANDOFF)
+      publish()
+    }
+    shadowOf(Looper.getMainLooper()).idle()
+
+    // Process death: Android writes the saved state to a parcel and reads it back.
+    val parcel = Parcel.obtain()
+    parcel.writeBundle(firstHandle.savedStateProvider().saveState())
+    parcel.setDataPosition(0)
+    val restoredHandle =
+        SavedStateHandle.createHandle(parcel.readBundle(javaClass.classLoader), null)
+    parcel.recycle()
+    val tripId = restoredHandle.get<List<String>>("createTripPendingIntent")!![1]
+
+    repository.forcedError = null
+    val restored =
+        CreateTripViewModel(repository, restoredHandle, "me", MutableStateFlow(true), clock)
+    assertTrue(restored.uiState.value.hasUncertainPublication)
+    restored.publish()
+    shadowOf(Looper.getMainLooper()).idle()
+    assertEquals(tripId, restored.uiState.value.publishedTrip?.id)
   }
 
   /** Renders the content like the ViewModel would and logs the forwarded actions. */

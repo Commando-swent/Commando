@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.TripLocations
@@ -38,7 +39,11 @@ class HomeTripPublicationTest {
 
           override suspend fun clearSession() {}
         }
-    compose.setContent { SampleAppTheme { CommandoApp(auth, trips, google) } }
+    compose.setContent {
+      SampleAppTheme {
+        CommandoApp(auth, trips, google, connectivityMonitor = FakeConnectivityMonitor())
+      }
+    }
     compose.onNodeWithTag(AppTestTags.COMMANDO_MODE).performClick()
     compose.onNodeWithTag(HomeTestTags.TRIP_ACTION).performScrollTo().performClick()
     field(CreateTripScreenTestTags.STORE_FIELD).performClick()

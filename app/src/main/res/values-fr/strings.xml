@@ -169,6 +169,10 @@
     <string name="create_trip_publish_failed_permission">Vous n’êtes pas autorisé à publier des trajets. Vos informations sont conservées.</string>
     <string name="create_trip_publish_failed_invalid">Certaines informations n’ont pas été acceptées. Vérifiez-les et réessayez.</string>
     <string name="create_trip_publish_failed_unknown">Une erreur est survenue. Réessayez. Vos informations sont conservées.</string>
+    <string name="create_trip_publish_uncertain_title">Votre trajet est peut-être déjà publié</string>
+    <string name="create_trip_publish_uncertain_body">Nous n’avons pas pu le confirmer. « Réessayer » le vérifie sans créer de doublon.</string>
+    <string name="create_trip_offline_title">Vous étiez hors ligne</string>
+    <string name="create_trip_offline_body">Rien n’a été envoyé. Connectez-vous, puis touchez « Réessayer ». Vos informations sont conservées.</string>
     <string name="create_trip_title">Publier un trajet</string>
     <string name="create_trip_intro">Indiquez où et quand vous faites vos courses. Les autres pourront ajouter quelques articles à votre trajet.</string>
     <string name="create_trip_back">Retour</string>

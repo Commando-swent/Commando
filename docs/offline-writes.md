@@ -31,11 +31,9 @@ other writes do not yet (see Limits).
 | Write | Intent kept by | Write once in |
 |---|---|---|
 | Chat message | `OrderChatViewModel` (saved state) | `OrderChatRepositoryFirestore.writeOnce` |
-| Trip publication | `CreateTripViewModel` (memory) | `FirebaseTripFirestoreDataSource.createTripIfAbsent` |
+| Trip publication | `CreateTripViewModel` (saved state, same account only) | `FirebaseTripFirestoreDataSource.createTripIfAbsent` |
 
 ## Limits
 
-- The pending trip intent lives in memory: leaving the form or process death starts a new intent.
-- The trip form still titles an uncertain result "Couldn't publish your trip".
-- Refusing before start while offline needs the connectivity state from #393.
+- Leaving the trip form drops its pending intent; process death keeps it (#429).
 - Order creation, checklist, profile photo and position writes can still be queued offline.

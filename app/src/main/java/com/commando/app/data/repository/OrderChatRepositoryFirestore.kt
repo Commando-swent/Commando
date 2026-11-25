@@ -9,6 +9,7 @@ import com.commando.app.model.OrderStatus
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import java.time.temporal.ChronoUnit.MICROS
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -114,8 +115,9 @@ class OrderChatRepositoryFirestore(
       messageId: String,
       text: String,
       delay: Int?,
-      meetup: MeetupProposal? = null,
+      proposal: MeetupProposal? = null,
   ): OrderResult<Unit> {
+    val meetup = proposal?.let { it.copy(at = it.at.truncatedTo(MICROS)) }
     val context = currentCoroutineContext()
     context.ensureActive()
     val uid =

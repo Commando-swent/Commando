@@ -75,7 +75,8 @@ class TripDetailsViewModel(
    * Refreshes only the loaded owner's public name on Trip Details resume. Construction performs no
    * profile query, so Review Order can reuse this ViewModel. Overlapping same-owner calls
    * deduplicate; owner changes, cancellation and session changes discard late results independently
-   * of ratings. A same-owner refresh keeps the confirmed name until its result replaces it.
+   * of ratings. A same-owner refresh keeps the confirmed name on failure; a successful result,
+   * including null, replaces it.
    */
   fun refreshPublicName(ownerId: String?) {
     val profiles = publicProfiles ?: return
@@ -105,7 +106,7 @@ class TripDetailsViewModel(
               } catch (cancelled: CancellationException) {
                 throw cancelled
               } catch (_: Exception) {
-                null
+                return@launch
               }
           ensureActive()
           if (

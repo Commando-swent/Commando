@@ -1,6 +1,7 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
+// AI assistance: OpenAI Codex for public-name refresh regression coverage.
 import com.android.sample.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.PublicProfileTestRepository
@@ -367,23 +368,41 @@ class TripDetailsViewModelTest {
   }
 
   @Test
-  fun sameOwnerRefreshRetainsConfirmedNameUntilNullOrErrorReplacesItWithFallback() = runTest {
+  fun sameOwnerRefreshRetainsConfirmedNameUntilSuccessfulNullReplacesItWithFallback() = runTest {
     val model = publicTrip()
-    for (fails in listOf(false, true)) {
-      profiles.read = { "Confirmed" }
-      model.refreshPublicName(trip.ownerId)
-      runCurrent()
-      val response = profiles.deferRead()
-      model.refreshPublicName(trip.ownerId)
-      assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
-      runCurrent()
-      assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
-      if (fails) response.completeExceptionally(IllegalStateException("Offline"))
-      else response.complete(null)
-      runCurrent()
-      assertEquals(trip.ownerId to null, model.publicName.value)
-      assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
-    }
+    profiles.read = { "Confirmed" }
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    val response = profiles.deferRead()
+    model.refreshPublicName(trip.ownerId)
+    assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+    runCurrent()
+    assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+    response.complete(null)
+    runCurrent()
+    assertEquals(trip.ownerId to null, model.publicName.value)
+    assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
+  }
+
+  @Test
+  fun failedSameOwnerRefreshRetainsConfirmedName() = runTest {
+    val model = publicTrip()
+    profiles.name = "Confirmed"
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    profiles.read = { error("Offline") }
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+  }
+
+  @Test
+  fun initialPublicNameFailureUsesFallback() = runTest {
+    val model = publicTrip()
+    profiles.read = { error("Offline") }
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(trip.ownerId to null, model.publicName.value)
   }
 
   @Test

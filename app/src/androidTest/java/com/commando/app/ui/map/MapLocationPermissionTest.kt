@@ -51,8 +51,6 @@ class MapLocationPermissionTest {
           }
     }
     val device = UiDevice.getInstance(instrumentation)
-    device.wakeUp()
-    device.executeShellCommand("wm dismiss-keyguard")
     var reads = 0
     val now = Instant.now()
     val point = TripLocations.handoffPoints.first { it.name == "CM building" }
@@ -91,14 +89,10 @@ class MapLocationPermissionTest {
     }
     compose.onNodeWithTag(MapLocationTestTags.POSITION).assertDoesNotExist()
     assertEquals(0, reads)
-    // RESUMED alone does not guarantee that Android can display a permission request for us.
-    // Bring this existing test activity forward, without recreating its Compose content.
-    val component = compose.runOnUiThread { compose.activity.componentName.flattenToShortString() }
-    device.executeShellCommand("am start --activity-reorder-to-front -n $component")
+    // Semantics invokes the action directly; transient system-window focus is not a prerequisite.
     compose.waitUntil(DEVICE_WAIT_MILLIS) {
       compose.runOnUiThread {
-        compose.activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-            compose.activity.hasWindowFocus()
+        compose.activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
       }
     }
     val permissionWasGranted = hasLocationPermission()

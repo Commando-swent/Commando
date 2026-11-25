@@ -6,10 +6,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import com.android.sample.R
-import com.android.sample.ui.navigation.AppMode
-import com.android.sample.ui.theme.SampleAppTheme
 import com.commando.app.ui.home.HomeScreen
 import com.commando.app.ui.home.HomeTripUiState
+import com.commando.app.ui.navigation.AppMode
+import com.commando.app.ui.theme.SampleAppTheme
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test

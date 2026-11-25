@@ -3,7 +3,7 @@ package com.commando.app.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.compose.runtime.*
 import androidx.compose.ui.tooling.preview.*
-import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.ui.theme.SampleAppTheme
 
 class MockMapPreviewStates : PreviewParameterProvider<MockMapUiState> {
   override val values =

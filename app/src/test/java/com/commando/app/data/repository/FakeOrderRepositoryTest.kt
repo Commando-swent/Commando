@@ -1,7 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: OpenAI Codex; trip-owner query tests (#147), closed-trip creation (#233): Claude
-// Code.
+// AI assistance: OpenAI Codex; trip-owner query tests (#147), closed-trip creation (#233),
+// Commando cancellation (#401): Claude Code.
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
@@ -769,6 +769,39 @@ class FakeOrderRepositoryTest {
           else stored
       assertEquals(OrderResult.Success(expected), orders.getOrderById(stored.id))
     }
+  }
+
+  @Test
+  fun commandoCancellationChangesOnlyAcceptedOrdersAndIsIdempotent() = runTest {
+    userId = "commando"
+    for (status in OrderStatus.entries) {
+      val stored = order().copy(status = status)
+      val orders = FakeOrderRepository({ userId }, listOf(stored), tripRepository = trips())
+      val cancelled = stored.copy(status = OrderStatus.CANCELLED)
+      val expected =
+          if (status in listOf(OrderStatus.ACCEPTED, OrderStatus.CANCELLED))
+              OrderResult.Success(cancelled)
+          else failure(OrderError.AlreadyDecided(stored))
+      repeat(2) { assertEquals(expected, orders.cancelAcceptedOrder(stored.id)) }
+      assertEquals(expected.persisted(), orders.getOrderById(stored.id).data())
+    }
+  }
+
+  @Test
+  fun commandoCancellationIsDeniedToEveryoneButTheTripOwner() = runTest {
+    val accepted = order().copy(status = OrderStatus.ACCEPTED)
+    val selfOrder = accepted.copy(id = "self-order", requesterId = "commando")
+    val orders =
+        FakeOrderRepository({ userId }, listOf(accepted, selfOrder), tripRepository = trips())
+    for (caller in listOf("requester-demo", "outsider")) {
+      userId = caller
+      assertEquals(failure(OrderError.PermissionDenied), orders.cancelAcceptedOrder(accepted.id))
+    }
+    userId = null
+    assertEquals(failure(OrderError.NotAuthenticated), orders.cancelAcceptedOrder(accepted.id))
+    userId = "commando"
+    assertEquals(failure(OrderError.PermissionDenied), orders.cancelAcceptedOrder(selfOrder.id))
+    assertEquals(OrderResult.Success(accepted), orders.getOrderById(accepted.id))
   }
 
   @Test

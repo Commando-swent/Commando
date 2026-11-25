@@ -1,7 +1,7 @@
 package com.commando.app.model
 
 // AI assistance: OpenAI Codex (requester cancellation).
-// AI assistance: Claude Code for the shared item count and total.
+// AI assistance: Claude Code for the shared item count and total, and the CANCELLED KDoc (#401).
 import java.time.Instant
 
 /** Maximum distinct products per order; mirrored by the production Firestore rules. */
@@ -28,7 +28,10 @@ enum class OrderStatus {
   REJECTED,
   /** The trip owner has marked the order as ready to hand over to its requester. */
   READY_FOR_HANDOFF,
-  /** The requester cancelled the order while it was pending; its history remains readable. */
+  /**
+   * Cancelled by the requester while pending, or by the trip owner while accepted; its history
+   * remains readable.
+   */
   CANCELLED,
   /** The requester has confirmed receipt of the order. */
   DELIVERED,

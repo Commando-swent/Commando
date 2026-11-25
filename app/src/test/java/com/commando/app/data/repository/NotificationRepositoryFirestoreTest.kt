@@ -1,6 +1,6 @@
 package com.commando.app.data.repository
 
-// AI assistance: OpenAI Codex (review regression tests).
+// AI assistance: OpenAI Codex (review regression tests); unknown-type fixture (#401): Claude Code.
 import com.commando.app.data.repository.NotificationFirestoreData as Schema
 import com.commando.app.model.*
 import com.commando.app.model.NotificationEventType.ORDER_PLACED
@@ -93,8 +93,8 @@ class NotificationRepositoryFirestoreTest {
             snapshot(data + (Schema.TYPE to null)),
             snapshot(data + (Schema.TYPE to "")),
             snapshot(
-                data + (Schema.TYPE to "ORDER_CANCELLED") - Schema.OCCURRED_AT,
-                "order_ORDER_CANCELLED",
+                data + (Schema.TYPE to "ORDER_FUTURE_TYPE") - Schema.OCCURRED_AT,
+                "order_ORDER_FUTURE_TYPE",
             ),
             snapshot(data, "noncanonical"),
         )) {
@@ -125,9 +125,9 @@ class NotificationRepositoryFirestoreTest {
   @Test
   fun futureTypesAndExtraFieldsKeepSupportedNotificationsVisible() = runTest {
     val data = Schema.eventData(event) + ("futureField" to true)
-    val future = data + (Schema.TYPE to "ORDER_CANCELLED")
+    val future = data + (Schema.TYPE to "ORDER_FUTURE_TYPE")
     every { events.documents } returns
-        listOf(snapshot(future, "order_ORDER_CANCELLED"), snapshot(data))
+        listOf(snapshot(future, "order_ORDER_FUTURE_TYPE"), snapshot(data))
     every { inbox.documents } returns
         listOf(snapshot(data + mapOf(Schema.IS_READ to false, Schema.VISIBLE to true)))
     assertEquals(
@@ -136,7 +136,7 @@ class NotificationRepositoryFirestoreTest {
     )
     verify(exactly = 0) { firestore.runTransaction(any<Transaction.Function<Any?>>()) }
     every { events.documents } returns
-        listOf(snapshot(future + (Schema.RECIPIENT_ID to "another"), "order_ORDER_CANCELLED"))
+        listOf(snapshot(future + (Schema.RECIPIENT_ID to "another"), "order_ORDER_FUTURE_TYPE"))
     assertEquals(OrderResult.Error(OrderError.PermissionDenied), repository.getNotifications())
   }
 

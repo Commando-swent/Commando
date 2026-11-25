@@ -1,13 +1,15 @@
 package com.commando.app.model
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; Commando cancellation event (#401): Claude Code.
 import java.time.Instant
 
-/** Initial in-app events; cancellation and handoff events are outside #190. */
+/** In-app order events; handoff events are outside #190. */
 enum class NotificationEventType {
   ORDER_PLACED,
   ORDER_ACCEPTED,
-  ORDER_REJECTED;
+  ORDER_REJECTED,
+  /** The trip owner cancelled an accepted order; its time is the trusted cancellation time. */
+  ORDER_CANCELLED;
 
   /** A stable document ID, reused by event publication and inbox processing. */
   fun eventId(orderId: String): String = "${orderId}_${name}"
@@ -41,6 +43,7 @@ data class NotificationPreferences(
       when (type) {
         NotificationEventType.ORDER_PLACED -> newOrders
         NotificationEventType.ORDER_ACCEPTED,
-        NotificationEventType.ORDER_REJECTED -> orderDecisions
+        NotificationEventType.ORDER_REJECTED,
+        NotificationEventType.ORDER_CANCELLED -> orderDecisions
       }
 }

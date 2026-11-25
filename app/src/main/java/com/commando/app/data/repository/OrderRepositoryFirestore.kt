@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193): Claude Code.
+// AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193), Commando cancellation
+// (#401): Claude Code.
 import com.commando.app.model.NotificationEventType
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
@@ -177,6 +178,11 @@ internal constructor(
         source.markReadyForHandoff(orderId, uid)
       }
 
+  override suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order> =
+      transitionOrder(orderId, OwnerOrderTransition.CANCEL_ACCEPTED) { uid ->
+        source.cancelAccepted(orderId, uid)
+      }
+
   /** Confirms receipt for the persisted requester; see [OrderRepository.confirmReceipt]. */
   override suspend fun confirmReceipt(orderId: String): OrderResult<Order> =
       transitionOrder(orderId, OrderStatus.READY_FOR_HANDOFF, OrderStatus.DELIVERED) { uid ->
@@ -282,6 +288,9 @@ internal interface OrderFirestoreDataSource {
 
   /** Owner-only ACCEPTED → READY_FOR_HANDOFF; repeats return a stored snapshot without writing. */
   suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument
+
+  /** Owner-only ACCEPTED → CANCELLED with its event; repeats return a stored snapshot. */
+  suspend fun cancelAccepted(id: String, ownerId: String): OrderFirestoreDocument
 
   /** Authorizes the stored requester before atomically cancelling or returning a stored outcome. */
   suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument
@@ -442,6 +451,9 @@ internal class FirebaseOrderFirestoreDataSource(
   override suspend fun markReadyForHandoff(id: String, ownerId: String): OrderFirestoreDocument =
       transitionOrder(id, ownerId, OwnerOrderTransition.MARK_READY)
 
+  override suspend fun cancelAccepted(id: String, ownerId: String): OrderFirestoreDocument =
+      transitionOrder(id, ownerId, OwnerOrderTransition.CANCEL_ACCEPTED)
+
   override suspend fun confirmReceipt(id: String, requesterId: String): OrderFirestoreDocument =
       transitionOrder(id, requesterId, OrderStatus.READY_FOR_HANDOFF, OrderStatus.DELIVERED, true)
 
@@ -502,7 +514,7 @@ internal class FirebaseOrderFirestoreDataSource(
     }
   }
 
-  // Cancellation changes status only; order placement and decisions retain their atomic events.
+  // Requester cancellation changes status only; owner transitions publish their own events.
   override suspend fun cancel(id: String, requesterId: String): OrderFirestoreDocument =
       transitionOrder(id, requesterId, OrderStatus.PENDING, OrderStatus.CANCELLED, requester = true)
 
@@ -552,6 +564,7 @@ internal class FirebaseOrderFirestoreDataSource(
         when (transition) {
           OwnerOrderTransition.ACCEPT -> NotificationEventType.ORDER_ACCEPTED
           OwnerOrderTransition.REJECT -> NotificationEventType.ORDER_REJECTED
+          OwnerOrderTransition.CANCEL_ACCEPTED -> NotificationEventType.ORDER_CANCELLED
           OwnerOrderTransition.MARK_READY -> return
         }
     set(

@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code (#147); OpenAI Codex (cancellation contract and KDoc).
+// AI assistance: Claude Code (#147, Commando cancellation #401); OpenAI Codex (cancellation
+// contract and KDoc).
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
 import com.commando.app.model.OrderDraft
@@ -77,6 +78,21 @@ interface OrderRepository {
   suspend fun markReadyForHandoff(orderId: String): OrderResult<Order>
 
   /**
+   * Cancels an accepted order on behalf of the owner of its trip, when they can no longer fulfil
+   * it.
+   *
+   * Trip owner only, excluding self-orders. Atomically changes only [OrderStatus.ACCEPTED] to
+   * [OrderStatus.CANCELLED] and publishes an `ORDER_CANCELLED` event to the requester, whose server
+   * time is the trusted cancellation time. Authorized repeats at CANCELLED return Success without
+   * writing; every other status returns [OrderError.AlreadyDecided] with the persisted order.
+   *
+   * @param orderId Firestore document ID; blank IDs and document paths are invalid.
+   * @return Persisted order or typed failure, including [OrderError.NotAuthenticated] for ended
+   *   sessions and [OrderError.PermissionDenied] for requesters and unrelated users.
+   */
+  suspend fun cancelAcceptedOrder(orderId: String): OrderResult<Order>
+
+  /**
    * Cancels the authenticated requester's pending order without deleting its history.
    *
    * Authorizes the persisted requester. Only [OrderStatus.PENDING] changes to
@@ -108,6 +124,7 @@ internal enum class OwnerOrderTransition(val source: OrderStatus, val target: Or
   ACCEPT(OrderStatus.PENDING, OrderStatus.ACCEPTED),
   REJECT(OrderStatus.PENDING, OrderStatus.REJECTED),
   MARK_READY(OrderStatus.ACCEPTED, OrderStatus.READY_FOR_HANDOFF),
+  CANCEL_ACCEPTED(OrderStatus.ACCEPTED, OrderStatus.CANCELLED),
 }
 
 internal fun OrderDecision.ownerTransition(): OwnerOrderTransition =

@@ -111,7 +111,7 @@ With a device or emulator connected, run only this journey with:
 
 ```bash
 ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.android.sample.ui.navigation.AppJourneyTest
+  -Pandroid.testInstrumentationRunnerArguments.class=com.commando.app.ui.navigation.AppJourneyTest
 ```
 
 The existing CI `connectedCheck` step also discovers it automatically. The instrumented report
@@ -130,7 +130,7 @@ With Auth/Firestore emulators running and an Android emulator connected:
 
 ```bash
 ./gradlew connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.android.sample.ui.navigation.PersistentOrderJourneyTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.commando.app.ui.navigation.PersistentOrderJourneyTest \
   -Pandroid.testInstrumentationRunnerArguments.firebaseEmulatorHost=10.0.2.2 \
   -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 ```
@@ -153,7 +153,7 @@ Selectors reuse test tags and localized resources; saved IDs, item prices and qu
 from the fixture and persisted snapshots. No production credentials or deployment are needed.
 
 Run the command above with the class replaced by
-`com.android.sample.ui.navigation.OrderLifecycleJourneyTest`. CI's existing `connectedCheck`
+`com.commando.app.ui.navigation.OrderLifecycleJourneyTest`. CI's existing `connectedCheck`
 automatically includes it when `firebaseEmulatorHost` is provided. The test skips without that
 argument. This does not validate Google OAuth, physical location or deployed production rules.
 

@@ -10,10 +10,11 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.core.os.LocaleListCompat
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.android.sample.model.authentication.AuthRepositoryProvider
-import com.android.sample.model.authentication.FakeAuthRepository
 import com.android.sample.screen.MainScreen
-import com.android.sample.ui.auth.WelcomeTestTags
+import com.commando.app.MainActivity
+import com.commando.app.model.authentication.AuthRepositoryProvider
+import com.commando.app.model.authentication.FakeAuthRepository
+import com.commando.app.ui.auth.WelcomeTestTags
 import com.kaspersky.kaspresso.testcases.api.testcase.TestCase
 import io.github.kakaocup.compose.node.element.ComposeScreen
 import org.junit.Assert.*

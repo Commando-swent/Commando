@@ -119,7 +119,8 @@ class CreateTripViewModel(
             Field.TIME to timeError(state, now),
             Field.HANDOFF_LOCATION to handoffLocationError(state),
         )
-    fun shown(field: Field) = errors[field]?.takeIf { field in touchedFields }
+    // A locked form shows no field error, since only the retry is possible.
+    fun shown(field: Field) = errors[field]?.takeIf { field in touchedFields && pending == null }
     return state.copy(
         storeError = shown(Field.STORE),
         dateError = shown(Field.DATE),

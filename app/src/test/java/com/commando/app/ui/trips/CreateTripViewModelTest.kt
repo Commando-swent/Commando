@@ -269,15 +269,20 @@ class CreateTripViewModelTest {
       assertTrue(locked.hasUncertainPublication && locked.canPublish)
       assertEquals("Edits wait for the uncertain attempt", locked, viewModel.uiState.value)
 
-      repository.exception = null
-      repository.result = TripResult.Success(PUBLISHED_TRIP)
       clock.instant = NEW_TRIP.scheduledAt.plusSeconds(60) // Past departure: no re-validation.
       viewModel.publish()
       advanceUntilIdle()
+      val past = viewModel.uiState.value // Locked fields show no error; only the retry remains.
+      assertTrue(past.canPublish && past.dateError == null && past.timeError == null)
 
-      assertEquals("$error/$exception", 2, repository.tripIds.size)
+      repository.exception = null
+      repository.result = TripResult.Success(PUBLISHED_TRIP)
+      viewModel.publish()
+      advanceUntilIdle()
+
+      assertEquals("$error/$exception", 3, repository.tripIds.size)
       assertEquals("$error/$exception", 1, repository.tripIds.distinct().size)
-      assertEquals(listOf(NEW_TRIP, NEW_TRIP), repository.published)
+      assertEquals(listOf(NEW_TRIP, NEW_TRIP, NEW_TRIP), repository.published)
       assertEquals(PUBLISHED_TRIP, viewModel.uiState.value.publishedTrip)
       assertFalse(viewModel.uiState.value.hasUncertainPublication)
     }

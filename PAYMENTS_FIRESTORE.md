@@ -1,8 +1,7 @@
 # Simulated payment and refund persistence
 
-Shared models and document paths for #385 / #400 were confirmed with the checkout
-owner. Checkout owns `processPayment(orderId, method)` after ACCEPTED and must
-reconcile UNCERTAIN from persistence before retrying the same operation.
+The shared repository processes simulated payments and refunds without accepting
+amounts, identities or credentials from the caller. No real money is transferred.
 
 ## Documents
 
@@ -13,18 +12,25 @@ reconcile UNCERTAIN from persistence before retrying the same operation.
   (order ID), `requesterId`, `requestedBy`, integer `amountCents`, `status` and
   server `updatedAt`. Refunds use the same four outcomes.
 
-Participants can get these documents; listing/deletion is denied. Client capture
-writes remain denied until #385 defines them; emulator captures are admin seeds.
+Participants can get these documents; listing/deletion is denied. Only the
+authenticated requester can create a payment for an ACCEPTED order. The transaction
+derives its amount from the persisted items and commission. The simulation settles
+synchronously, so clients may only write `CONFIRMED` or `FAILED`. Confirmed payments are
+read-only; a failed payment may retry the same order-based ID and change its simulated
+method. `PENDING` and `UNCERTAIN` are reserved for a future trusted server or provider
+callback, which must also reconcile them; the client returns such records unchanged and
+never reprocesses them. No client-created record can block handoff, cancellation or retry.
 
 ## Lifecycle and rollout
 
 Only a legacy pending requester or an accepted-order owner can initiate a refund.
-The transaction derives identity/amount from order, trip, payment and refund reads.
-Retries keep the operation; confirmed refunds are read-only. PENDING, FAILED and
-UNCERTAIN refunds cannot authorize terminal cancellation. Rules use saved refunds
-to block forward transitions; captured pending orders cannot be edited or rejected.
+Payment and refund transactions derive identity/amount from order, trip, payment and
+refund reads. Retries keep the operation; confirmed refunds are read-only. PENDING,
+FAILED and UNCERTAIN refunds cannot authorize terminal cancellation. Rules use saved
+refunds to block forward transitions; captured pending orders cannot be edited or
+rejected.
 A recorded payment must be CONFIRMED before READY_FOR_HANDOFF. Legacy orders with
-no payment remain compatible; deploy mandatory payment presence together with #385.
+no payment remain compatible; globally requiring a payment belongs to #420.
 The existing order repository owns cancellation and its event (#403/#404).
 Client CONFIRMED writes are simulation-only. Before #407 or a real provider,
 confirmation must move to a trusted server and client confirmation writes be denied.

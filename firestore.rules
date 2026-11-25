@@ -211,7 +211,7 @@ service cloud.firestore {
           productAt(items, 3), productAt(items, 4)].removeAll([null]).toSet().size() == items.size();
     }
 
-    // Checkout owns payment writes (#385); refunds use one immutable association per order.
+    // Checkout and refunds use one immutable association and stored total per order.
     function paymentMatchesOrder(orderId, payment, order) {
       return payment.orderId == orderId && payment.requesterId == order.requesterId
         && payment.status == "CONFIRMED" && payment.amountCents is int
@@ -251,9 +251,28 @@ service cloud.firestore {
     }
 
     match /payments/{orderId} {
+      function validPayment(data) {
+        let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+        return isAuthenticated() && order.status == "ACCEPTED"
+          && order.requesterId == request.auth.uid
+          && data.keys().hasAll(["orderId", "requesterId", "amountCents", "method", "status"])
+          && data.keys().hasOnly(["orderId", "requesterId", "amountCents", "method", "status"])
+          && data.orderId == orderId && data.requesterId == order.requesterId
+          && data.amountCents is int && data.amountCents > 0
+          && data.amountCents == order.commissionCents + checkedTotal(order.items, 0)
+            + checkedTotal(order.items, 1) + checkedTotal(order.items, 2)
+            + checkedTotal(order.items, 3) + checkedTotal(order.items, 4)
+          && data.method in ["TWINT", "CARD"]
+          // The simulation settles synchronously; PENDING/UNCERTAIN need a trusted server.
+          && data.status in ["CONFIRMED", "FAILED"]
+          && !existsAfter(/databases/$(database)/documents/refunds/$(orderId));
+      }
       allow get: if paymentParticipant(orderId);
-      // Capture/checkout writes need the agreed #385 contract; clients cannot forge paid records.
-      allow list, create, update, delete: if false;
+      allow create: if validPayment(request.resource.data);
+      allow update: if validPayment(request.resource.data)
+        && resource.data.status == "FAILED"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["method", "status"]);
+      allow list, delete: if false;
     }
 
     match /refunds/{orderId} {

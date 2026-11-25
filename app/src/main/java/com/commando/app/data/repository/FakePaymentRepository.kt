@@ -4,18 +4,20 @@ import com.commando.app.model.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Mutex-serialized fixture backend; [simulateRefund] is pure. No Firebase security guarantees. */
+/** Mutex-serialized fixture backend; simulations are pure. No Firebase security guarantees. */
 class FakePaymentRepository(
     currentUserId: () -> String?,
     initialOrders: List<Order>,
     tripOwners: Map<String, String>,
     initialPayments: List<Payment> = emptyList(),
     initialRefunds: List<Refund> = emptyList(),
+    simulatePayment: (Payment) -> PaymentStatus = { PaymentStatus.CONFIRMED },
     simulateRefund: (Refund) -> RefundStatus = { RefundStatus.CONFIRMED },
 ) :
     PaymentRepository by TransactionalPaymentRepository(
         FakePaymentDataSource(initialOrders, tripOwners, initialPayments, initialRefunds),
         currentUserId,
+        simulatePayment,
         simulateRefund,
     )
 
@@ -28,12 +30,13 @@ internal class FakePaymentDataSource(
 ) : PaymentDataSource {
   private val orders = orders.map { it.copy(items = it.items.toList()) }.associateBy(Order::id)
   private val owners = owners.toMap()
-  private val payments = payments.associateBy(Payment::orderId)
+  private val payments = payments.associateBy(Payment::orderId).toMutableMap()
   private val refunds = refunds.associateBy(Refund::orderId).toMutableMap()
   private val mutex = Mutex()
 
   override suspend fun <T> transaction(action: (PaymentTransaction) -> T): T = mutex.withLock {
-    val pending = mutableMapOf<String, Refund>()
+    val pendingPayments = mutableMapOf<String, Payment>()
+    val pendingRefunds = mutableMapOf<String, Refund>()
     val result =
         action(
             object : PaymentTransaction {
@@ -47,12 +50,17 @@ internal class FakePaymentDataSource(
                 )
               }
 
+              override fun save(payment: Payment) {
+                pendingPayments[payment.orderId] = payment
+              }
+
               override fun save(refund: Refund) {
-                pending[refund.orderId] = refund
+                pendingRefunds[refund.orderId] = refund
               }
             }
         )
-    refunds.putAll(pending)
+    payments.putAll(pendingPayments)
+    refunds.putAll(pendingRefunds)
     result
   }
 }

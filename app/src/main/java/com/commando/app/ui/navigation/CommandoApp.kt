@@ -29,6 +29,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -355,12 +356,7 @@ private fun AuthenticatedApp(
         val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
         // Retain the draft while visiting the chat from this order details entry.
         val draftOwner =
-            remember(entry) {
-              navController.previousBackStackEntry?.takeIf {
-                it.destination.route == CommandoScreens.OrderDetails.route &&
-                    it.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT) == orderId
-              } ?: entry
-            }
+            remember(entry) { chatDraftOwner(entry, navController.previousBackStackEntry, orderId) }
         val model: OrderChatViewModel =
             viewModel(viewModelStoreOwner = entry) {
               OrderChatViewModel(
@@ -410,3 +406,14 @@ private fun AuthenticatedApp(
 private class ConnectivityViewModel(context: Context) : ViewModel() {
   val monitor = AndroidConnectivityMonitor(context, viewModelScope)
 }
+
+/** Shares drafts only with the matching order details; other entry paths own their draft. */
+internal fun chatDraftOwner(
+    entry: NavBackStackEntry,
+    previous: NavBackStackEntry?,
+    orderId: String,
+): NavBackStackEntry =
+    previous?.takeIf {
+      it.destination.route == CommandoScreens.OrderDetails.route &&
+          it.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT) == orderId
+    } ?: entry

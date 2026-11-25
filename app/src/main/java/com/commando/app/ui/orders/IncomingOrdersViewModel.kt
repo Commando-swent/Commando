@@ -6,19 +6,27 @@ import androidx.lifecycle.viewModelScope
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.model.Order
 import com.commando.app.model.itemCount
 import com.commando.app.model.totalCents
+import com.commando.app.ui.session.SessionGuard
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
-/** One incoming-order row, built only from fields stored on the order itself. */
-data class IncomingOrderRow(val order: Order) {
+/**
+ * One stored order plus its requester's explicitly public name, or null for the localized fallback.
+ */
+data class IncomingOrderRow(val order: Order, val requesterName: String? = null) {
   /** Total quantity across products; see [Order.itemCount]. */
   val itemCount: Long
     get() = order.itemCount
@@ -54,28 +62,84 @@ class IncomingOrdersViewModel(
     private val orderRepository: OrderRepository,
     private val tripId: String,
     loadImmediately: Boolean = true,
+    private val publicProfiles: Lazy<PublicProfileRepository>? = null,
+    currentUserId: (() -> String?)? = null,
+    sessionChanges: Flow<String?> = emptyFlow(),
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<IncomingOrdersUiState>(IncomingOrdersUiState.Loading)
   /** Current state of the list, read by the screen. */
   val uiState: StateFlow<IncomingOrdersUiState> = mutableState.asStateFlow()
   private var loadJob: Job? = null
   private var latestLoad = 0
+  private val session = currentUserId?.let(::SessionGuard)
 
   init {
+    viewModelScope.launch {
+      sessionChanges.collect { uid ->
+        if (session?.hasEnded(uid) == true) {
+          loadJob?.cancel()
+          latestLoad++
+          mutableState.value = IncomingOrdersUiState.Error(OrderError.PermissionDenied)
+        }
+      }
+    }
     // Navigation may own the first load through ON_RESUME, which also refreshes after Details.
     if (loadImmediately) refresh()
   }
 
-  /** Reloads the list, e.g. on retry or when returning from Order Details after a decision. */
+  /**
+   * Reloads orders and invalidates all public names on retry/resume. One lookup per distinct
+   * requester runs in this load; missing names and failures are retried on the next refresh, never
+   * cached globally.
+   */
   fun refresh() {
     loadJob?.cancel()
     // A repository may still return after cancellation; the counter discards superseded results.
     val load = ++latestLoad
-    mutableState.value = IncomingOrdersUiState.Loading
-    loadJob = viewModelScope.launch {
-      val state = fetch()
-      if (load == latestLoad) mutableState.value = state
+    if (session?.hasEnded() == true) {
+      mutableState.value = IncomingOrdersUiState.Error(OrderError.PermissionDenied)
+      return
     }
+    mutableState.value = IncomingOrdersUiState.Loading
+    val job =
+        viewModelScope.launch(start = CoroutineStart.LAZY) {
+          val state = fetch()
+          ensureActive()
+          if (load != latestLoad || session?.hasEnded() == true) return@launch
+          mutableState.value = state
+          val profiles = publicProfiles
+          if (state is IncomingOrdersUiState.Content && profiles != null) {
+            // Names belong to this load; the order snapshot changes only on refresh.
+            val resolvedNames = mutableMapOf<String, String?>()
+            // Child jobs belong to this load; a refresh cancels them without blocking order
+            // rendering.
+            state.rows
+                .map { it.order.requesterId }
+                .distinct()
+                .forEach { requesterId ->
+                  launch requester@{
+                    val name =
+                        try {
+                          profiles.value.getDisplayName(requesterId)
+                        } catch (cancelled: CancellationException) {
+                          throw cancelled
+                        } catch (_: Exception) {
+                          null
+                        }
+                    ensureActive()
+                    if (session?.hasEnded() == true) return@requester
+                    resolvedNames[requesterId] = name
+                    val rows =
+                        state.rows.map { row ->
+                          row.copy(requesterName = resolvedNames[row.order.requesterId])
+                        }
+                    mutableState.value = state.copy(rows = rows)
+                  }
+                }
+          }
+        }
+    loadJob = job
+    job.start()
   }
 
   private suspend fun fetch(): IncomingOrdersUiState =
@@ -83,7 +147,7 @@ class IncomingOrdersViewModel(
         when (val result = orderRepository.getOrdersForTrip(tripId)) {
           is OrderResult.Error -> IncomingOrdersUiState.Error(result.error)
           is OrderResult.Success -> {
-            val rows = result.data.map(::IncomingOrderRow)
+            val rows = result.data.map { IncomingOrderRow(it) }
             if (rows.isEmpty()) IncomingOrdersUiState.Empty else IncomingOrdersUiState.Content(rows)
           }
         }

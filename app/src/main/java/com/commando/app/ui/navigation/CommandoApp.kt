@@ -315,6 +315,7 @@ private fun AuthenticatedApp(
           checklists = checklists,
           userId = userId,
           ratingRepositoryFactory = ratingRepositoryFactory,
+          publicProfiles = publicProfiles,
           onBrowseTrips = {
             appViewModel.switchMode(AppMode.Requester)
             navController.openScreen(CommandoScreens.AvailableTrips)

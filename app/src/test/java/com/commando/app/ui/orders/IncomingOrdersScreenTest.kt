@@ -45,7 +45,7 @@ class IncomingOrdersScreenTest {
   @Test
   fun contentShowsEachOrderSummaryAndOpensItsExactId() {
     val opened = mutableListOf<String>()
-    val rows = listOf(IncomingOrderRow(pending), IncomingOrderRow(accepted))
+    val rows = listOf(IncomingOrderRow(pending, "Public Bob"), IncomingOrderRow(accepted))
     show(IncomingOrdersUiState.Content(rows), onOrderClick = { opened += it })
     compose.onNodeWithText("Incoming orders").assertIsDisplayed()
     // 2 x 2.20 + 1 x 1.80 + 1.50 commission.
@@ -53,8 +53,12 @@ class IncomingOrdersScreenTest {
         .assertIsDisplayed()
         .assert(hasText("Order order-1"))
         .assert(hasText("PENDING"))
+        .assert(hasText("From Public Bob"))
         .assert(hasText("3 items · CHF 7.70"))
-    card(accepted).assert(hasText("ACCEPTED")).assert(hasText("1 item · CHF 1.80"))
+    card(accepted)
+        .assert(hasText("From Requester"))
+        .assert(hasText("ACCEPTED"))
+        .assert(hasText("1 item · CHF 1.80"))
     card(accepted).performClick()
     compose.runOnIdle { assertEquals(listOf(accepted.id), opened) }
   }

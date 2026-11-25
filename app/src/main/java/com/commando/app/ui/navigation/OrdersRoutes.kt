@@ -13,6 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.ShoppingChecklistRepository
 import com.commando.app.data.repository.TripRepository
@@ -43,6 +44,7 @@ internal fun NavGraphBuilder.ordersRoutes(
     userId: String,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     onBrowseTrips: () -> Unit,
+    publicProfiles: Lazy<PublicProfileRepository>? = null,
 ) {
   composable(route = CommandoScreens.MyOrders.name) { entry ->
     val model: MyOrdersViewModel =
@@ -113,7 +115,14 @@ internal fun NavGraphBuilder.ordersRoutes(
     // The resume observer loads on entry and refreshes after a decision in Order Details.
     val incomingOrdersViewModel: IncomingOrdersViewModel =
         viewModel(viewModelStoreOwner = entry) {
-          IncomingOrdersViewModel(orders.repository, tripId, loadImmediately = false)
+          IncomingOrdersViewModel(
+              orders.repository,
+              tripId,
+              loadImmediately = false,
+              publicProfiles = publicProfiles,
+              currentUserId = orders::currentUserId,
+              sessionChanges = orders.sessionChanges,
+          )
         }
     RefreshOnResume(incomingOrdersViewModel, incomingOrdersViewModel::refresh)
     IncomingOrdersScreen(

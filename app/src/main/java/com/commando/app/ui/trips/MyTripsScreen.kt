@@ -20,7 +20,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.ui.components.SkeletonCard

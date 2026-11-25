@@ -39,7 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.model.CommandoPosition
 import com.commando.app.model.DeviceLocation

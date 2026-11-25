@@ -1,7 +1,8 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution); Claude Code
-// (connectivity monitor wiring, #393; session cache closed on sign-out, #428).
+// (connectivity monitor wiring, #393, and into trip publication, #429; session cache closed on
+// sign-out, #428).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
 // dependencies, authentication, trip and map routes into their own files (#322). OpenAI Codex
@@ -29,13 +30,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.connectivity.AndroidConnectivityMonitor
 import com.commando.app.data.connectivity.ConnectivityMonitor
 import com.commando.app.data.location.DeviceLocationProvider
@@ -46,6 +48,7 @@ import com.commando.app.data.repository.OrderChatRepositoryFirestore
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProfilePhotoRepository
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingRepositoryFirestore
 import com.commando.app.data.repository.SavedTripSearchRepository
@@ -63,13 +66,14 @@ import com.commando.app.ui.home.HomeScreen
 import com.commando.app.ui.home.HomeTripUiState
 import com.commando.app.ui.home.HomeViewModel
 import com.commando.app.ui.map.PositionSharingCard
-import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.profile.AppLanguage
 import com.commando.app.ui.profile.ProfilePhotoSnackbarHost
 import com.commando.app.ui.profile.ProfileViewModel
+import com.commando.app.ui.profile.PublicNameWritesViewModel
 import com.commando.app.ui.session.SessionViewModel
 import com.commando.app.ui.trips.SavedTripSearchViewModel
 import com.commando.app.ui.trips.TripLocationFilterViewModel
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
@@ -89,6 +93,7 @@ fun CommandoApp(
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
+    publicProfileRepositoryFactory: ((() -> String?) -> PublicProfileRepository)? = null,
     connectivityMonitor: ConnectivityMonitor? = null,
 ) {
   val context = LocalContext.current
@@ -99,6 +104,13 @@ fun CommandoApp(
   val scope = rememberCoroutineScope()
   val sessionViewModel: SessionViewModel = viewModel { SessionViewModel(repository) }
   val sessionUiState by sessionViewModel.uiState.collectAsState()
+  // Submitted name writes outlive the authenticated graph, just like the activity's monitor.
+  val publicNameWrites: PublicNameWritesViewModel = viewModel {
+    PublicNameWritesViewModel(
+        { repository.currentUser?.uid },
+        sessionViewModel.uiState.map { it.user?.uid },
+    )
+  }
   // One monitor for the activity, kept across rotations and account changes (#393).
   val connectivity =
       connectivityMonitor ?: viewModel { ConnectivityViewModel(context.applicationContext) }.monitor
@@ -134,18 +146,17 @@ fun CommandoApp(
                   savedSearchRepositoryFactory = savedSearchRepositoryFactory,
                   notificationRepositoryFactory = notificationRepositoryFactory,
                   positionRepositoryFactory = positionRepositoryFactory,
+                  publicProfileRepositoryFactory = publicProfileRepositoryFactory,
               )
           AuthenticatedApp(
               repository = repository,
+              publicNameWrites = publicNameWrites,
+              session = session,
               photoRepository = photoRepository,
-              tripRepository = session.trips,
               productRepository = productRepository,
-              orders = session.orders,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
               chatRepositoryFactory = chatRepositoryFactory,
-              notifications = session.notifications,
-              checklists = session.checklists,
               savedSearches = session.savedSearches,
               userId = user.uid,
               onSignOut = {
@@ -175,14 +186,12 @@ fun CommandoApp(
 @Composable
 private fun AuthenticatedApp(
     repository: AuthRepository,
+    publicNameWrites: PublicNameWritesViewModel,
+    session: SessionDependencies,
     photoRepository: ProfilePhotoRepository?,
-    tripRepository: TripRepository,
     productRepository: ProductRepository?,
-    orders: SessionOrderViewModel,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
-    notifications: Lazy<NotificationRepository>,
-    checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
     userId: String,
     onSignOut: () -> Unit,
@@ -192,6 +201,8 @@ private fun AuthenticatedApp(
     locationProvider: DeviceLocationProvider?,
     connectivity: ConnectivityMonitor,
 ) {
+  val orders = session.orders
+  val tripRepository = session.trips
   val appViewModel: AppViewModel = viewModel()
   // Routes pass this monitor to the ViewModels that need it; it says nothing about the server.
   // Stops collecting in the background, so the monitor can release its system callback.
@@ -310,19 +321,18 @@ private fun AuthenticatedApp(
                   userId = userId,
                   mode = { appUiState.mode },
                   ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
-                  commandoName = { ownerId ->
-                    repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
-                  },
                   orderRepository = orders.repository,
+                  publicProfiles = session.publicProfiles,
+                  currentUserId = orders::currentUserId,
+                  sessionChanges = orders.sessionChanges,
               ),
           locationFilter = locationFilter,
           savedSearchViewModel = savedSearchViewModel,
+          isOnline = connectivity.isOnline,
       )
       ordersRoutes(
           navController = navController,
-          orders = orders,
-          tripRepository = tripRepository,
-          checklists = checklists,
+          session = session,
           userId = userId,
           ratingRepositoryFactory = ratingRepositoryFactory,
           onBrowseTrips = {
@@ -350,6 +360,9 @@ private fun AuthenticatedApp(
               listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
       ) { entry ->
         val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+        // Retain the draft while visiting the chat from this order details entry.
+        val draftOwner =
+            remember(entry) { chatDraftOwner(entry, navController.previousBackStackEntry, orderId) }
         val model: OrderChatViewModel =
             viewModel(viewModelStoreOwner = entry) {
               OrderChatViewModel(
@@ -360,15 +373,19 @@ private fun AuthenticatedApp(
                       ?: OrderChatRepositoryFirestore(orders::currentUserId),
                   orders::currentUserId,
                   orders.sessionChanges,
-                  entry.savedStateHandle,
+                  draftOwner.savedStateHandle,
+                  session.cache,
+                  connectivity.isOnline,
               )
             }
         OrderChatHost(
             model,
             onBack = {
-              navController.previousBackStackEntry
-                  ?.savedStateHandle
-                  ?.set(ORDER_REFRESH_AFTER_CHAT, true)
+              if (connectivity.isOnline.value) {
+                navController.previousBackStackEntry
+                    ?.savedStateHandle
+                    ?.set(ORDER_REFRESH_AFTER_CHAT, true)
+              }
               navController.popBackStack()
             },
         )
@@ -377,9 +394,9 @@ private fun AuthenticatedApp(
       profileRoutes(
           navController = navController,
           profileViewModel = profileViewModel,
+          publicNameWrites = publicNameWrites,
+          session = session,
           photoSnackbarHost = photoSnackbarHost,
-          notifications = notifications,
-          orders = orders,
           actions =
               ProfileRouteActions(
                   signOut = sharing.signOut,
@@ -395,3 +412,14 @@ private fun AuthenticatedApp(
 private class ConnectivityViewModel(context: Context) : ViewModel() {
   val monitor = AndroidConnectivityMonitor(context, viewModelScope)
 }
+
+/** Shares drafts only with the matching order details; other entry paths own their draft. */
+internal fun chatDraftOwner(
+    entry: NavBackStackEntry,
+    previous: NavBackStackEntry?,
+    orderId: String,
+): NavBackStackEntry =
+    previous?.takeIf {
+      it.destination.route == CommandoScreens.OrderDetails.route &&
+          it.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT) == orderId
+    } ?: entry

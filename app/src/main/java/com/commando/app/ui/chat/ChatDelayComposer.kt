@@ -17,7 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.MAX_CHAT_DELAY_MINUTES
 import com.commando.app.model.canReportDelay
 import com.commando.app.model.canSendChat

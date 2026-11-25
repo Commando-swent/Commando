@@ -2,7 +2,7 @@ package com.commando.app.ui.map
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.model.DeviceLocation

@@ -5,7 +5,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.ui.home.HomeScreen
 import com.commando.app.ui.home.HomeTripUiState
 import com.commando.app.ui.navigation.AppMode

@@ -2,7 +2,7 @@ package com.commando.app.ui.navigation
 
 // AI assistance: Claude Code (#394, sub-issue #428).
 import androidx.lifecycle.ViewModelStore
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.model.authentication.AuthUser

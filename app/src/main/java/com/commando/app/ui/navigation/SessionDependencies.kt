@@ -15,6 +15,8 @@ import com.commando.app.data.repository.NotificationRepository
 import com.commando.app.data.repository.NotificationRepositoryFirestore
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderRepositoryFirestore
+import com.commando.app.data.repository.PublicProfileRepository
+import com.commando.app.data.repository.PublicProfileRepositoryFirestore
 import com.commando.app.data.repository.SavedTripSearchRepository
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
 import com.commando.app.data.repository.ShoppingChecklistRepository
@@ -35,6 +37,7 @@ internal class SessionDependencies(
     val savedSearches: SavedTripSearchRepository,
     val notifications: Lazy<NotificationRepository>,
     val positions: Lazy<CommandoPositionRepository>,
+    val publicProfiles: Lazy<PublicProfileRepository>,
     val cache: SessionCache,
 )
 
@@ -54,6 +57,7 @@ internal fun rememberSessionDependencies(
     savedSearchRepositoryFactory: ((() -> String?) -> SavedTripSearchRepository)?,
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)?,
     positionRepositoryFactory: ((() -> String?) -> CommandoPositionRepository)?,
+    publicProfileRepositoryFactory: ((() -> String?) -> PublicProfileRepository)? = null,
 ): SessionDependencies {
   val context = LocalContext.current
   val trips: SessionTripRepositoryViewModel = viewModel {
@@ -103,6 +107,12 @@ internal fun rememberSessionDependencies(
       savedSearches,
       notifications,
       positions.repository,
+      remember(orders) {
+        lazy {
+          publicProfileRepositoryFactory?.invoke(orders::currentUserId)
+              ?: PublicProfileRepositoryFirestore(orders::currentUserId)
+        }
+      },
       cache.cache,
   )
 }

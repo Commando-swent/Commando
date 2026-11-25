@@ -1,7 +1,10 @@
 package com.commando.app.ui.profile
 
+// AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.ProfilePhotoRepository
+import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.model.ProfilePhotoSource
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.model.authentication.AuthRepository
@@ -9,21 +12,19 @@ import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.model.authentication.ProfileUpdateResult
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.*
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -31,15 +32,11 @@ class ProfileViewModelTest {
   private val alice = AuthUser("alice", displayName = "Alice Martin", email = "alice@epfl.ch")
   private val store = ViewModelStore()
 
-  @Before
-  fun setUp() {
-    Dispatchers.setMain(StandardTestDispatcher())
-  }
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @After
   fun tearDown() {
     store.clear()
-    Dispatchers.resetMain()
   }
 
   private fun createViewModel(repository: AuthRepository): ProfileViewModel =
@@ -385,6 +382,72 @@ class ProfileViewModelTest {
 
     assertEquals(confirmed, model.photoState.value)
     assertEquals("bob", model.photoOwner())
+  }
+
+  private val publicAuth = FakeAuthRepository(alice)
+  private val profiles = PublicProfileTestRepository()
+
+  private fun TestScope.pendingPublicName(): Pair<PublicNameViewModel, CompletableDeferred<Unit>> {
+    val writes =
+        PublicNameWritesViewModel(
+                { publicAuth.currentUser?.uid },
+                publicAuth.observeAuthState().map { it?.uid },
+            )
+            .also { store.put("writes", it) }
+    val session =
+        PublicNameViewModel(
+                lazyOf(profiles),
+                writes,
+                { publicAuth.currentUser?.uid },
+                publicAuth.observeAuthState().map { it?.uid },
+            )
+            .also { store.put("names", it) }
+    session.loadPublicName()
+    runCurrent()
+    val reply = profiles.deferWrite()
+    session.savePublicName("Public alias")
+    runCurrent()
+    return session to reply
+  }
+
+  @Test
+  fun pendingPublicWriteDoesNotBlockPrivateSaveOrReplaceItsFeedback() = runTest {
+    val (session, reply) = pendingPublicName()
+    val model = createViewModel(publicAuth)
+    runCurrent()
+    model.beginEditing()
+    model.updateFullName("Private draft")
+    model.updateEmail("new@epfl.ch")
+    model.saveProfile()
+    runCurrent()
+    val saved = checkNotNull(model.editState.value)
+    assertTrue(saved.saved)
+    assertEquals("new@epfl.ch", saved.pendingEmail)
+    reply.complete(Unit)
+    runCurrent()
+    assertEquals(saved, model.editState.value)
+    assertEquals("Public alias", session.publicName.value?.confirmed)
+  }
+
+  @Test
+  fun pendingPublicWriteDoesNotBlockPhotoLoad() = runTest {
+    val (session, reply) = pendingPublicName()
+    val image = CompletableDeferred<ByteArray?>()
+    val photos =
+        object : ProfilePhotoRepository {
+          override suspend fun load(userId: String): ByteArray? = image.await()
+
+          override suspend fun save(userId: String, source: ProfilePhotoSource?): ByteArray? =
+              error("Public name must not save a photo")
+        }
+    val model = ProfileViewModel(publicAuth, photos).also { store.put("photo", it) }
+    runCurrent()
+    image.complete(byteArrayOf(1, 2, 3))
+    runCurrent()
+    assertEquals(PhotoUiState("AQID"), model.photoState.value)
+    assertEquals(true, session.publicName.value?.busy)
+    reply.complete(Unit)
+    runCurrent()
   }
 
   private class ControlledAuthRepository : AuthRepository by FakeAuthRepository() {

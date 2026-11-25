@@ -11,7 +11,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.*

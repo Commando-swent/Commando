@@ -10,7 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.*
 import com.commando.app.ui.trips.TripDatePickerDialog
 import com.commando.app.ui.trips.TripTimePickerDialog
@@ -146,7 +146,7 @@ internal fun MeetupCard(
         for (response in listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED)) {
           TextButton(
               onClick = { onRespond(message.id, response) },
-              enabled = state.canEditDraft,
+              enabled = state.canWrite && state.canEditDraft,
               modifier =
                   Modifier.testTag(OrderChatTestTags.MEETUP_RESPONSE + message.id + response.name),
           ) {

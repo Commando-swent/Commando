@@ -31,7 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.ui.components.SkeletonCard
 import com.commando.app.ui.components.StateCard
 
@@ -155,7 +155,7 @@ fun IncomingOrdersScreen(
   }
 }
 
-/** One order: its ID, then its status, item count and total. */
+/** One order: its ID, public requester name, status, item count and total. */
 @Composable
 private fun IncomingOrderCard(row: IncomingOrderRow, onClick: () -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -177,6 +177,16 @@ private fun IncomingOrderCard(row: IncomingOrderRow, onClick: () -> Unit) {
           stringResource(R.string.incoming_orders_order, row.order.id),
           color = colors.onSurface,
           style = MaterialTheme.typography.titleMedium,
+          maxLines = 1,
+          overflow = TextOverflow.Ellipsis,
+      )
+      Text(
+          stringResource(
+              R.string.incoming_orders_requester,
+              row.requesterName ?: stringResource(R.string.home_requester),
+          ),
+          color = colors.onSurfaceVariant,
+          style = MaterialTheme.typography.bodyMedium,
           maxLines = 1,
           overflow = TextOverflow.Ellipsis,
       )

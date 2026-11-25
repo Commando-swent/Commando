@@ -2,7 +2,7 @@ package com.commando.app.ui.trips
 
 // AI assistance: Claude Code.
 import androidx.lifecycle.SavedStateHandle
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripResult

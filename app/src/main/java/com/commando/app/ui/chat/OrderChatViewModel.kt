@@ -4,6 +4,7 @@ package com.commando.app.ui.chat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderChatRepository
 import com.commando.app.data.repository.OrderError
@@ -15,6 +16,8 @@ import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
 import com.commando.app.ui.session.SessionGuard
+import java.time.Clock
+import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -34,28 +37,27 @@ data class OrderChatUiState(
     val draft: String = "",
     val sending: Boolean = false,
     val sendError: OrderError? = null,
+    val online: Boolean = true,
+    val cached: Boolean = false,
+    val lastConfirmedAt: Instant? = null,
     val failedDelayMinutes: Int? = null,
 ) {
   /** Unknown outcomes keep the submitted text immutable until the server reconciles it. */
   val canEditDraft: Boolean
     get() = !sending && sendError != OrderError.Unknown
 
+  /** Network and server-confirmed authorization are required for every chat mutation. */
+  val canWrite: Boolean
+    get() = online && !cached && !loading && error == null && chat?.status?.canSendChat == true
+
   val canSendDelay: Boolean
     get() =
-        !loading &&
-            error == null &&
+        canWrite &&
             canEditDraft &&
-            context?.let { it.viewerId == it.trip.ownerId && it.trip.status.canReportDelay } ==
-                true &&
-            chat?.status?.canSendChat == true
+            context?.let { it.viewerId == it.trip.ownerId && it.trip.status.canReportDelay } == true
 
   val canSend: Boolean
-    get() =
-        !loading &&
-            error == null &&
-            !sending &&
-            chat?.status?.canSendChat == true &&
-            draft.isValidChatText()
+    get() = canWrite && !sending && draft.isValidChatText()
 }
 
 /**
@@ -70,6 +72,9 @@ class OrderChatViewModel(
     currentUserId: () -> String?,
     sessionChanges: Flow<String?>,
     private val saved: SavedStateHandle,
+    private val cache: SessionCache,
+    private val online: StateFlow<Boolean> = MutableStateFlow(true),
+    private val clock: Clock = Clock.systemUTC(),
 ) : ViewModel() {
   private val session = SessionGuard(currentUserId)
   private val mutableState = MutableStateFlow(OrderChatUiState())
@@ -77,9 +82,14 @@ class OrderChatViewModel(
   private var observer: Job? = null
   private var timeout: Job? = null
   private var sender: Job? = null
+  private var connectivityJob: Job? = null
   private var active = false
   private var ended = false
   internal val meetups = MeetupActions(orderId, messages, mutableState, saved, viewModelScope)
+
+  private data class Conversation(val context: ChatContext, val chat: OrderChat)
+
+  private val cacheKey = SessionCache.key<Conversation>("order-chat/$orderId")
 
   init {
     if (session.initialUserId == null || saved.get<String>(USER) != session.initialUserId) {
@@ -92,6 +102,7 @@ class OrderChatViewModel(
     saved[USER] = session.initialUserId
     mutableState.value =
         OrderChatUiState(
+            online = online.value,
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
             failedDelayMinutes = saved[DELAY],
@@ -105,16 +116,34 @@ class OrderChatViewModel(
     stop()
     if (invalidSession()) return
     active = true
-    mutableState.update { it.copy(loading = true, error = null) }
+    connectivityJob = viewModelScope.launch { online.collect(::connectionChanged) }
+    val restored = restoreHistory()
+    if (!online.value) {
+      if (!restored) fail(OrderError.Unknown)
+      return
+    }
+    if (!restored) mutableState.update { it.copy(loading = true, error = null) }
     val initialTimeout = viewModelScope.launch {
       delay(RESPONSE_TIMEOUT_MS)
-      if (mutableState.value.loading) {
+      if (mutableState.value.loading || mutableState.value.cached) {
         observer?.cancel()
         fail(OrderError.Unknown)
       }
     }
     timeout = initialTimeout
     observer = viewModelScope.launch { observeConversation(initialTimeout) }
+  }
+
+  private fun connectionChanged(connected: Boolean) {
+    if (mutableState.value.online == connected) return
+    mutableState.update { it.copy(online = connected) }
+    if (!active || invalidSession()) return
+    if (connected) start()
+    else {
+      observer?.cancel()
+      timeout?.cancel()
+      fail(OrderError.Unknown)
+    }
   }
 
   private suspend fun observeConversation(initialTimeout: Job) {
@@ -126,7 +155,11 @@ class OrderChatViewModel(
       messages.observeChat(orderId).collect { result ->
         currentCoroutineContext().ensureActive()
         if (invalidSession()) return@collect
-        initialTimeout.cancel()
+        if (
+            result is OrderResult.Error ||
+                (result is OrderResult.Success && result.data.serverConfirmed)
+        )
+            initialTimeout.cancel()
         receive(result)
       }
       if (mutableState.value.error == null) fail(OrderError.Unknown)
@@ -142,7 +175,26 @@ class OrderChatViewModel(
     when (result) {
       is OrderResult.Error -> fail(result.error)
       is OrderResult.Success -> {
-        mutableState.update { it.copy(chat = result.data, loading = false, error = null) }
+        if (!result.data.serverConfirmed) {
+          restoreHistory()
+          return
+        }
+        val context = mutableState.value.context ?: return
+        val confirmed = result.data.copy(messages = result.data.messages.toList())
+        val confirmedAt = clock.instant()
+        if (!cache.put(cacheKey, Conversation(context, confirmed), confirmedAt)) {
+          endSession()
+          return
+        }
+        mutableState.update {
+          it.copy(
+              chat = confirmed,
+              loading = false,
+              error = null,
+              cached = false,
+              lastConfirmedAt = confirmedAt,
+          )
+        }
         if (!mutableState.value.sending && confirmed(saved[OUTBOUND])) completeSend()
         meetups.reconcile()
       }
@@ -159,8 +211,10 @@ class OrderChatViewModel(
     observer?.cancel()
     timeout?.cancel()
     sender?.cancel()
+    connectivityJob?.cancel()
     mutableState.value =
         OrderChatUiState(
+            online = online.value,
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
             failedDelayMinutes = saved[DELAY],
@@ -190,12 +244,19 @@ class OrderChatViewModel(
             saved.get<String>(OUTBOUND) != null
     )
         return
-    saved[DELAY] = minutes
-    sendPending()
+    sendPending(minutes)
   }
 
-  private fun sendPending() {
-    if (!active || invalidSession() || mutableState.value.sending) return
+  private fun sendPending(newDelay: Int? = null) {
+    if (
+        !active ||
+            invalidSession() ||
+            mutableState.value.sending ||
+            mutableState.value.cached ||
+            !online.value
+    )
+        return
+    if (newDelay != null) saved[DELAY] = newDelay
     val existing = saved.get<String>(OUTBOUND)
     val minutes = saved.get<Int>(DELAY)
     if (
@@ -275,6 +336,7 @@ class OrderChatViewModel(
   private fun endSession() {
     ended = true
     meetups.clear()
+    cache.remove(cacheKey)
     saved[DRAFT] = ""
     saved[OUTBOUND] = null
     saved[DELAY] = null
@@ -282,10 +344,40 @@ class OrderChatViewModel(
     mutableState.value = OrderChatUiState(loading = false, error = OrderError.NotAuthenticated)
   }
 
+  /** Reads only this account's server-confirmed snapshot, never Firestore's shared disk cache. */
+  private fun restoreHistory(): Boolean {
+    val confirmed = cache.get(cacheKey) ?: return false
+    mutableState.update {
+      it.copy(
+          context = confirmed.value.context,
+          chat = confirmed.value.chat,
+          loading = false,
+          error = null,
+          cached = true,
+          lastConfirmedAt = confirmed.confirmedAt,
+      )
+    }
+    return true
+  }
+
   private fun fail(error: OrderError) {
-    if (error == OrderError.NotAuthenticated) endSession()
-    else
-        mutableState.update { it.copy(context = null, chat = null, loading = false, error = error) }
+    when {
+      error == OrderError.NotAuthenticated -> endSession()
+      error == OrderError.Unknown && restoreHistory() -> Unit
+      else -> {
+        cache.remove(cacheKey)
+        mutableState.update {
+          it.copy(
+              context = null,
+              chat = null,
+              loading = false,
+              error = error,
+              cached = false,
+              lastConfirmedAt = null,
+          )
+        }
+      }
+    }
   }
 
   private suspend fun loadContext(): ChatContext {

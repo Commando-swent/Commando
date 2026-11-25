@@ -24,7 +24,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.ui.theme.SampleAppTheme
 
 /** Stable selectors for the welcome destination and its authentication entry points. */

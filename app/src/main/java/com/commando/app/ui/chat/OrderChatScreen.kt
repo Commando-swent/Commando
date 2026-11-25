@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import com.commando.app.ui.orders.OrderStatusBadge
@@ -59,6 +59,7 @@ object OrderChatTestTags {
   const val LOADING = "chat_loading"
   const val ERROR = "chat_error"
   const val HISTORY = "chat_history"
+  const val CACHED = "chat_cached"
   const val MESSAGE = "chat_message_"
 }
 
@@ -139,6 +140,33 @@ fun OrderChatScreen(
             when (state.chat) {
               null -> Spacer(Modifier.weight(1f))
               else -> {
+                if (state.cached) {
+                  Column(
+                      Modifier.padding(horizontal = 20.dp)
+                          .testTag(OrderChatTestTags.CACHED)
+                          .semantics { liveRegion = LiveRegionMode.Polite }
+                  ) {
+                    Text(stringResource(R.string.chat_cached_history))
+                    state.lastConfirmedAt?.let {
+                      Text(
+                          stringResource(
+                              R.string.chat_last_confirmed,
+                              DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
+                                  .withLocale(LocalConfiguration.current.locales[0])
+                                  .withZone(ZoneId.systemDefault())
+                                  .format(it),
+                          )
+                      )
+                    }
+                    TextButton(
+                        onRetry,
+                        Modifier.testTag(OrderChatTestTags.RETRY),
+                        enabled = state.online,
+                    ) {
+                      Text(stringResource(R.string.my_orders_retry))
+                    }
+                  }
+                }
                 Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state, onRespond) }
                 MeetupComposer(state, onPropose)
                 MeetupFeedback(meetupState, onMeetupRetry)
@@ -153,11 +181,19 @@ fun OrderChatScreen(
                   horizontalAlignment = Alignment.CenterHorizontally,
               ) {
                 Text(
-                    stringResource(chatLoadErrorMessage(error)),
+                    stringResource(
+                        if (!state.online && error == OrderError.Unknown)
+                            R.string.chat_offline_empty
+                        else chatLoadErrorMessage(error)
+                    ),
                     Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
                 if (error != OrderError.NotAuthenticated)
-                    TextButton(onRetry, Modifier.testTag(OrderChatTestTags.RETRY)) {
+                    TextButton(
+                        onRetry,
+                        Modifier.testTag(OrderChatTestTags.RETRY),
+                        enabled = state.online,
+                    ) {
                       Text(stringResource(R.string.my_orders_retry))
                     }
               }
@@ -426,6 +462,8 @@ private fun ChatComposer(
               modifier = Modifier.align(Alignment.End).testTag(OrderChatTestTags.RETRY_SEND),
               enabled =
                   !state.sending &&
+                      state.online &&
+                      !state.cached &&
                       (state.failedDelayMinutes == null ||
                           state.sendError == OrderError.Unknown ||
                           state.canSendDelay),

@@ -3,7 +3,7 @@ package com.commando.app.ui.navigation
 // AI assistance: Claude Code for the incoming-orders (#147) and checklist (#193) destinations.
 import android.net.Uri
 import androidx.annotation.StringRes
-import com.android.sample.R
+import com.commando.app.R
 
 /** Navigation destinations; Welcome opens Auth in the selected login or sign-up mode. */
 enum class CommandoScreens(

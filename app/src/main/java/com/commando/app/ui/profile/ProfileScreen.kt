@@ -32,7 +32,7 @@ import androidx.credentials.Credential
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.authentication.AuthException

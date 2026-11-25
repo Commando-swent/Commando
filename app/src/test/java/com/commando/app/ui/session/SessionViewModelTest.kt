@@ -2,21 +2,18 @@ package com.commando.app.ui.session
 
 // AI assistance: OpenAI Codex.
 import androidx.lifecycle.ViewModelStore
+import com.commando.app.MainDispatcherRule
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.*
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -25,15 +22,11 @@ class SessionViewModelTest {
   private val bob = AuthUser("bob", email = "bob@epfl.ch")
   private val store = ViewModelStore()
 
-  @Before
-  fun setUp() {
-    Dispatchers.setMain(StandardTestDispatcher())
-  }
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @After
   fun tearDown() {
     store.clear()
-    Dispatchers.resetMain()
   }
 
   private fun createViewModel(repository: AuthRepository): SessionViewModel {

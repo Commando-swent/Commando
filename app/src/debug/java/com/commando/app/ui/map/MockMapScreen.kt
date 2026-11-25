@@ -19,7 +19,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.*
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.ui.map.MapTestTags as Tags
 import com.commando.app.ui.navigation.NavigationTestTags
 

@@ -12,4 +12,5 @@
         <item quantity="one">%1$d item · %2$s</item>
         <item quantity="other">%1$d items · %2$s</item>
     </plurals>
+    <string name="incoming_orders_requester">From %1$s</string>
 </resources>

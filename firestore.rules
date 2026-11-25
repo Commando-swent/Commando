@@ -384,12 +384,23 @@ service cloud.firestore {
         allow get: if chatParticipant();
         allow list: if chatParticipant() && request.query.limit <= 100;
         function validChatContent(data) {
-          return (!('delayMinutes' in data)
+          return (!('delayMinutes' in data) && !('meetup' in data)
               && data.text.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
               && data.text.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000)
-            || ('delayMinutes' in data && data.delayMinutes is int
+            || ('delayMinutes' in data && !('meetup' in data) && data.delayMinutes is int
               && data.delayMinutes >= 1 && data.delayMinutes <= 240
               && data.text == "The commando is running late." && ownsOrderTrip(chatOrder())
+              && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status
+                in ["PUBLISHED", "IN_PROGRESS"])
+            || ('meetup' in data && !('delayMinutes' in data)
+              && data.text == "The commando proposed a meetup. Open the updated app to respond."
+              && data.meetup is map && data.meetup.keys().hasAll(["location", "at", "response"])
+              && data.meetup.keys().hasOnly(["location", "at", "response"])
+              && data.meetup.location is string
+              && data.meetup.location.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
+              && data.meetup.location.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000
+              && data.meetup.at is timestamp && data.meetup.at > request.time
+              && data.meetup.response == "PENDING" && ownsOrderTrip(chatOrder())
               && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status
                 in ["PUBLISHED", "IN_PROGRESS"]);
         }
@@ -397,11 +408,20 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status
             in ["ACCEPTED", "READY_FOR_HANDOFF"]
           && request.resource.data.keys().hasAll(["senderId", "text", "createdAt"])
-          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt", "delayMinutes"])
+          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt", "delayMinutes", "meetup"])
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.createdAt == request.time
           && request.resource.data.text is string && validChatContent(request.resource.data);
-        allow update, delete: if false;
+        allow update: if chatParticipant() && chatOrder().requesterId == request.auth.uid
+          && resource.data.senderId != request.auth.uid && 'meetup' in resource.data
+          && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status in ["ACCEPTED", "READY_FOR_HANDOFF"]
+          && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status in ["PUBLISHED", "IN_PROGRESS"]
+          && resource.data.meetup.at > request.time && resource.data.meetup.response == "PENDING"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["meetup"])
+          && request.resource.data.meetup.diff(resource.data.meetup).affectedKeys().hasOnly(["response", "respondedAt"])
+          && request.resource.data.meetup.response in ["ACCEPTED", "DECLINED"]
+          && request.resource.data.meetup.respondedAt == request.time;
+        allow delete: if false;
       }
     }
 

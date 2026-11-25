@@ -1,6 +1,8 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
+import com.commando.app.model.MeetupProposal
+import com.commando.app.model.MeetupResponse
 import com.commando.app.model.OrderChat
 import kotlinx.coroutines.flow.Flow
 
@@ -28,7 +30,22 @@ interface OrderChatRepository {
   /**
    * Persisted trip owner only; whole minutes in 1..MAX_CHAT_DELAY_MINUTES. Reuse the message ID for
    * uncertain outcomes. Identical committed retries stay read-only after terminal transitions.
-   * Stored as empty text plus delayMinutes; only ACCEPTED/READY_FOR_HANDOFF allow new notices.
+   * Stored as readable fallback text plus delayMinutes; only ACCEPTED/READY_FOR_HANDOFF allow new
+   * notices.
    */
   suspend fun sendDelayNotice(orderId: String, messageId: String, minutes: Int): OrderResult<Unit>
+
+  /** Owner-only future proposal. Identical same-ID retries remain read-only after a response. */
+  suspend fun proposeMeetup(
+      orderId: String,
+      messageId: String,
+      proposal: MeetupProposal,
+  ): OrderResult<Unit>
+
+  /** Requester-only first decision wins atomically; identical repeats succeed without writing. */
+  suspend fun respondToMeetup(
+      orderId: String,
+      messageId: String,
+      response: MeetupResponse,
+  ): OrderResult<Unit>
 }

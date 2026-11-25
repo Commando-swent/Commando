@@ -31,4 +31,15 @@
         <item quantity="other">Échec de l’envoi du retard de %1$d minutes. Réessayer cet avis.</item>
     </plurals>
     <string name="chat_delay_notice">Avis de retard</string>
+    <string name="chat_meetup_propose">Proposer un rendez-vous</string>
+    <string name="chat_meetup_title">Proposition de rendez-vous</string>
+    <string name="chat_meetup_location">Lieu du rendez-vous</string>
+    <string name="chat_meetup_validation">Choisissez une date et une heure futures et renseignez le lieu.</string>
+    <string name="chat_meetup_pending">En attente de la réponse du demandeur</string>
+    <string name="chat_meetup_expired">Proposition expirée</string>
+    <string name="chat_meetup_accepted">Rendez-vous accepté</string>
+    <string name="chat_meetup_declined">Rendez-vous refusé</string>
+    <string name="chat_meetup_sending">Envoi du rendez-vous…</string>
+    <string name="chat_meetup_failure">Impossible de confirmer le rendez-vous. Réessayez ou actualisez la conversation.</string>
+    <string name="chat_meetup_time">Heure du rendez-vous</string>
 </resources>

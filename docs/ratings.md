@@ -47,7 +47,7 @@ Success and AlreadyRated close the dialog and prevent another submission in that
 Session changes clear dialog state and invalidate its repository identity; late results are discarded.
 Historical rating loading and display belong to #328, not this receipt-triggered flow.
 
-## Trusted reliability tracking (#387, PR 1)
+## Trusted reliability tracking (#387)
 
 AI assistance: OpenAI Codex contributed this persistence implementation and documentation.
 
@@ -56,7 +56,7 @@ AI assistance: OpenAI Codex contributed this persistence implementation and docu
 Authenticated users may get one summary, including its absence; listing and deletion are denied.
 `reliabilitySummaryWrites/{ownerId}` contains exactly `lastOrderId`. Clients cannot read or delete
 this witness. Private orders/events keep their existing read restrictions. Customer-star documents,
-submission, averages and names are unchanged; this PR adds no score, threshold, evaluation window or UI.
+submission, averages and names are unchanged; tracking adds no score, threshold, evaluation window or UI.
 
 Receipt confirmation atomically increments completedCount with READY_FOR_HANDOFF -> DELIVERED.
 An eligible ACCEPTED -> CANCELLED owner transition increments lateCancellationCount only when the
@@ -105,8 +105,7 @@ cancellation-event-after, order-before/after, summary-before/after and witness-a
 validators use at most seven of those states; adapter reads add no new rule lookup path.
 [Firestore limits](https://firebase.google.com/docs/firestore/security/rules-conditions#access_call_limits)
 are ten access calls per operation and twenty per atomic request; cached accesses do not count.
-The table is a static cached-path analysis, not an emulator result. Production-rule emulator tests must
-verify first/existing summaries and paid/unpaid paths, including the full four-write late transaction.
+The table is a static cached-path analysis rather than measured per-operation access counts.
 Do not combine multiple owners' transitions in one request without reassessing the twenty-call budget.
 
 Deploy the updated client and rules in coordination. Old clients omit reliability writes and will
@@ -115,11 +114,7 @@ cancellation and rating submission retain their rules. New clients cannot write 
 old rules. Do not relax either side's atomic requirement for compatibility: require an upgraded client
 before enabling enforcement. Record the actual enforcement rollout externally; no date is invented here.
 
-### Validation results and remaining limitations
+### Coverage limitations
 
-Reported local validation passed: `ktfmtCheck`, `check`, `assembleDebug`,
-`assembleDebugAndroidTest` and the `firestoreSecurity` emulator tests.
-Independent read-only review returned APPROVE with no blocking findings.
-CI, SonarCloud and on-device instrumentation remain unverified.
 Exact ten-minute Firestore rule boundary coverage and controlled boundary-crossing retry coverage
-remain documented gaps; the passing emulator suite does not establish those specific cases.
+remain gaps. Model-level boundary tests do not establish those server-side cases.

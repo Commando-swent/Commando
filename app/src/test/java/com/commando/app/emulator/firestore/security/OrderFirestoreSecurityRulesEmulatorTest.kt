@@ -1,7 +1,7 @@
 package com.commando.app.emulator.firestore.security
 
 // AI assistance: OpenAI Codex; trip-owner query tests (#147), trip seeding (#233), Commando
-// cancellation (#401): Claude Code.
+// cancellation (#401) and its race with handoff readiness (#449): Claude Code.
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FirebaseOrderFirestoreDataSource
 import com.commando.app.data.repository.NEWEST_ORDER_FIRST
@@ -1050,6 +1050,42 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         }
       }
       assertEquals(OrderResult.Success(order), orders(owner).getOrderById(order.id))
+    }
+  }
+
+  @Test
+  fun cancellationAndReadinessRaceLeavesOneWinnerAndAnEventOnlyForACancellation() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = acceptedOrder(owner, requester)
+      val gate = CompletableDeferred<Unit>()
+      val (cancel, ready) =
+          kotlinx.coroutines.coroutineScope {
+            val calls =
+                listOf<suspend () -> OrderResult<Order>>(
+                        { orders(owner).cancelAcceptedOrder(order.id) },
+                        { orders(owner).markReadyForHandoff(order.id) },
+                    )
+                    .map { call ->
+                      async(Dispatchers.Default) {
+                        gate.await()
+                        call()
+                      }
+                    }
+            gate.complete(Unit)
+            calls.awaitAll()
+          }
+      val persisted = (orders(owner).getOrderById(order.id) as OrderResult.Success).data
+      val cancelled = persisted.status == OrderStatus.CANCELLED
+      assertTrue(cancelled || persisted.status == OrderStatus.READY_FOR_HANDOFF)
+      assertEquals(order.copy(status = persisted.status), persisted)
+      val lost = OrderResult.Error(OrderError.AlreadyDecided(persisted))
+      assertEquals(if (cancelled) OrderResult.Success(persisted) else lost, cancel)
+      assertEquals(if (cancelled) lost else OrderResult.Success(persisted), ready)
+      val cancelledEvent = suspend {
+        eventTime(requester, order.id, NotificationEventType.ORDER_CANCELLED)
+      }
+      // The requester can read its own events; a missing one is denied like a foreign one.
+      if (cancelled) cancelledEvent() else assertPermissionDenied("event") { cancelledEvent() }
     }
   }
 

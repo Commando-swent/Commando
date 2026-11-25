@@ -139,12 +139,14 @@ service cloud.firestore {
       }
     }
 
-    // Trip lifecycle (#233): the owner closes (PUBLISHED -> IN_PROGRESS), then completes
-    // (IN_PROGRESS -> COMPLETED); nothing else changes. The completion rule (no open order)
-    // needs a query, so the app enforces it.
+    // Trip lifecycle (#233, #449): the owner closes (PUBLISHED -> IN_PROGRESS), then completes
+    // (IN_PROGRESS -> COMPLETED), or cancels a trip that has not started (PUBLISHED -> CANCELLED);
+    // nothing else changes. Completion and cancellation also need every order settled, which needs
+    // a query, so the app enforces it.
     function isAllowedTripTransition(from, to) {
       return (from == "PUBLISHED" && to == "IN_PROGRESS")
-        || (from == "IN_PROGRESS" && to == "COMPLETED");
+        || (from == "IN_PROGRESS" && to == "COMPLETED")
+        || (from == "PUBLISHED" && to == "CANCELLED");
     }
 
     match /trips/{tripId} {
@@ -154,10 +156,11 @@ service cloud.firestore {
         && request.resource.data.status == "PUBLISHED"
         && request.resource.data.createdAt == request.resource.data.updatedAt;
 
-      // Requesters keep the trip of their order after it closes; listing stays PUBLISHED-or-owner.
+      // Requesters keep the trip of their order after it closes or is cancelled (#449); listing
+      // stays PUBLISHED-or-owner.
       allow get: if isAuthenticated()
         && (resource == null
-          || resource.data.status in ["PUBLISHED", "IN_PROGRESS", "COMPLETED"]
+          || resource.data.status in ["PUBLISHED", "IN_PROGRESS", "COMPLETED", "CANCELLED"]
           || resource.data.ownerId == request.auth.uid);
 
       allow list: if isAuthenticated()

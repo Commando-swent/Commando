@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transition tests (#233) and idempotent publication (#394).
+// AI assistance: Claude Code for trip transition tests (#233, #449) and idempotent publication
+// (#394).
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
@@ -586,7 +587,7 @@ class TripRepositoryFirestoreTest {
   )
 
   @Test
-  fun transitionTrip_writesOnlyValidChangesAndChecksOrdersOnlyToComplete() = runTest {
+  fun transitionTrip_writesOnlyValidChangesAndChecksOrdersOnlyToCompleteOrCancel() = runTest {
     val open = listOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
     val settled = listOf("DELIVERED", "REJECTED", "CANCELLED")
     val raceTo = { status: TripStatus ->
@@ -622,14 +623,28 @@ class TripRepositoryFirestoreTest {
                 hook = failWith(Code.PERMISSION_DENIED),
             ),
             Row(CLOSE, PUBLISHED, error = NetworkError, hook = failWith(Code.UNAVAILABLE)),
+            Row(CANCEL, PUBLISHED, settled),
+            Row(CANCEL, CANCELLED, open), // repeat
+            Row(CANCEL, IN_PROGRESS, error = InvalidTransition),
+            Row(CANCEL, COMPLETED, error = InvalidTransition),
+            Row(CANCEL, PUBLISHED, listOf(null), InvalidData),
+            Row(CANCEL, PUBLISHED, error = PermissionDenied, user = "requester"),
+            // Closed by another device between the order check and the write.
+            Row(CANCEL, PUBLISHED, error = InvalidTransition, hook = raceTo(IN_PROGRESS)),
         ) +
-            open.map { Row(COMPLETE, IN_PROGRESS, settled + it, OrdersStillOpen) } +
+            listOf(COMPLETE to IN_PROGRESS, CANCEL to PUBLISHED).flatMap { (transition, status) ->
+              open.map { Row(transition, status, settled + it, OrdersStillOpen) }
+            } +
             listOf("", "a/b", ".", "..").map { Row(CLOSE, PUBLISHED, error = InvalidData, id = it) }
     for (row in rows) {
       val dataSource = dataSourceWithTrip(row.status).apply { orderStatuses = row.orders }
       dataSource.beforeTransition = row.hook?.let { hook -> { hook(dataSource) } }
       val writes = row.hook != null || (row.error == null && row.status != row.transition.target)
-      val queriesOrders = row.transition == COMPLETE && row.status == IN_PROGRESS
+      val queriesOrders =
+          row.transition.requiresSettledOrders &&
+              row.status == row.transition.source &&
+              row.user == "authenticated-user" &&
+              row.id == TRIP_ID
 
       val result =
           createRepository(dataSource, userId = row.user).transitionTrip(row.id, row.transition)

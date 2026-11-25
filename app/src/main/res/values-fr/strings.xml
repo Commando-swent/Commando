@@ -388,9 +388,12 @@
     <string name="trip_details_close_message">Les demandeurs ne pourront plus commander sur ce trajet. Vous pourrez encore gérer les commandes existantes.</string>
     <string name="trip_details_complete_title">Terminer ce trajet ?</string>
     <string name="trip_details_complete_message">Le trajet se termine et ne pourra pas être rouvert.</string>
+    <string name="trip_details_cancel_trip">Annuler le trajet</string>
+    <string name="trip_details_cancel_trip_title">Annuler ce trajet ?</string>
+    <string name="trip_details_cancel_trip_message">Le trajet est retiré et ne pourra pas être rouvert. Les demandeurs ne pourront plus le trouver ni y commander.</string>
     <string name="trip_details_confirm">Confirmer</string>
     <string name="trip_details_cancel">Annuler</string>
-    <string name="trip_details_error_orders_open">Réglez toutes les commandes en cours avant de terminer le trajet.</string>
+    <string name="trip_details_error_orders_open">Réglez toutes les commandes en cours avant de terminer ou d\'annuler le trajet.</string>
     <string name="trip_details_error_status_changed">Ce trajet a changé. Revenez en arrière et rouvrez-le.</string>
     <string name="trip_details_error_network">Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.</string>
     <string name="trip_details_error_update">Impossible de mettre à jour le trajet. Réessayez.</string>

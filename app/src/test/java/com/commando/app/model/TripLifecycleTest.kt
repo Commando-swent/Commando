@@ -1,16 +1,19 @@
 package com.commando.app.model
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code (trip cancellation: #449).
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class TripLifecycleTest {
   @Test
-  fun transitions_areExactlyCloseAndComplete() {
-    assertEquals(listOf("CLOSE", "COMPLETE"), TripTransition.entries.map { it.name })
+  fun transitions_areExactlyCloseCompleteAndCancel() {
+    assertEquals(listOf("CLOSE", "COMPLETE", "CANCEL"), TripTransition.entries.map { it.name })
     assertEquals(TripStatus.PUBLISHED to TripStatus.IN_PROGRESS, TripTransition.CLOSE.pair())
     assertEquals(TripStatus.IN_PROGRESS to TripStatus.COMPLETED, TripTransition.COMPLETE.pair())
+    assertEquals(TripStatus.PUBLISHED to TripStatus.CANCELLED, TripTransition.CANCEL.pair())
+    val settledFirst = TripTransition.entries.filter { it.requiresSettledOrders }
+    assertEquals(listOf(TripTransition.COMPLETE, TripTransition.CANCEL), settledFirst)
   }
 
   @Test

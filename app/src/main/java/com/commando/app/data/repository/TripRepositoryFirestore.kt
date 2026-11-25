@@ -1,7 +1,8 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
-// AI assistance: Claude Code for the trip transition (#233) and idempotent publication (#394).
+// AI assistance: Claude Code for the trip transitions (#233, #449) and idempotent publication
+// (#394).
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus
@@ -140,14 +141,9 @@ internal constructor(
       trip.transitionPrecheck(uid, transition)?.let {
         return@runRepositoryOperation it
       }
-      // The trip is seen IN_PROGRESS before its orders are read: from then on no order can be
-      // created (the rules require PUBLISHED) and order statuses only move to terminal ones, so
-      // this server read cannot go stale. The transaction re-checks the status anyway.
-      if (transition == TripTransition.COMPLETE) {
-        val statuses = dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() }
-        if (null in statuses) return@runRepositoryOperation invalidData()
-        if (statuses.any { it?.blocksTripCompletion() == true }) {
-          return@runRepositoryOperation TripResult.Error(TripError.OrdersStillOpen)
+      if (transition.requiresSettledOrders) {
+        openOrdersError(tripId)?.let {
+          return@runRepositoryOperation it
         }
       }
       val stored =
@@ -157,6 +153,24 @@ internal constructor(
       // A change this call wrote is a success even if another device changed the trip right after.
       if (stored.written || updated.status == transition.target) TripResult.Success(updated)
       else TripResult.Error(TripError.InvalidTransition)
+    }
+  }
+
+  /**
+   * InvalidData for an unreadable order status, OrdersStillOpen while an order of [tripId]
+   * [blocksTripCompletion], otherwise null. For COMPLETE the trip is already IN_PROGRESS, so no
+   * order can be created any more (the rules require PUBLISHED) and this server read cannot go
+   * stale. For CANCEL the trip is still PUBLISHED: an order created between this read and the
+   * transaction stays PENDING on the cancelled trip, where its requester can still cancel it and
+   * the owner can still reject it. Client transactions cannot run queries, so this window remains.
+   */
+  private suspend fun openOrdersError(tripId: String): TripResult.Error? {
+    val statuses = dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() }
+    return when {
+      null in statuses -> invalidData()
+      statuses.any { it?.blocksTripCompletion() == true } ->
+          TripResult.Error(TripError.OrdersStillOpen)
+      else -> null
     }
   }
 

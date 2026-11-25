@@ -156,6 +156,24 @@ existing `ORDER_ACCEPTED` event and the cancellation time is the `occurredAt` of
 The inbox shows the event to the requester as an order decision. READY_FOR_HANDOFF and later cannot be
 cancelled. Refunds (#385) are out of scope while no payment exists on main.
 
+A race between `cancelAcceptedOrder` and `markReadyForHandoff` on two devices leaves exactly one winner:
+the loser returns AlreadyDecided(persistedOrder), and `ORDER_CANCELLED` exists only if the cancellation won.
+
+## Trip cancellation — #396 / #449
+
+AI assistance: Claude Code.
+
+`transitionTrip(id, TripTransition.CANCEL)` lets the trip owner withdraw a PUBLISHED trip (PUBLISHED to
+CANCELLED) through the same transaction as Close and Complete. Like Complete, it is refused with
+`OrdersStillOpen` while an order is PENDING, ACCEPTED or READY_FOR_HANDOFF, so the owner must first
+settle them (reject, cancel or deliver). The rules allow only the owner, only from PUBLISHED; a cancelled
+trip leaves discovery, refuses new orders and order edits, and stays readable by id so requesters keep
+the trip of their past orders.
+
+Known limit: client transactions cannot run queries, so an order created between the order check and the
+cancellation write stays PENDING on the cancelled trip. Its requester can still cancel it and the owner
+can still reject it; neither rule depends on the trip status.
+
 ## Meetup proposals (#389)
 
 A chat message may carry `meetup: {location, at, response}` instead of `delayMinutes`, with readable fallback text. The Firestore adapter normalizes `at` to microsecond precision before writing and comparing retries. The trip owner creates a future PENDING proposal on an active trip and order. Only the requester can finalize it as ACCEPTED or DECLINED; rules preserve the location/time and require server `respondedAt`. Concurrent replies cannot overwrite the first decision. Identical creation/response retries are read-only, including after expiry or delivery. History remains participant-only and permanent; this does not change the trip’s configured handoff point.

@@ -1,7 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transitions and idempotent publication (#394); OpenAI Codex
-// for live feed expiry.
+// AI assistance: Claude Code for trip transitions (#233, #449) and idempotent publication (#394);
+// OpenAI Codex for live feed expiry.
 import com.commando.app.model.NewTrip
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
@@ -40,8 +40,8 @@ interface TripRepository {
   /**
    * Applies [transition] to the current user's trip [tripId], checked against the latest stored
    * status, and returns the stored trip. A repeat (trip already at the target status) succeeds
-   * without writing. COMPLETE is refused with [TripError.OrdersStillOpen] while an order of the
-   * trip still [blocksTripCompletion].
+   * without writing. A transition that [TripTransition.requiresSettledOrders] is refused with
+   * [TripError.OrdersStillOpen] while an order of the trip still [blocksTripCompletion].
    */
   suspend fun transitionTrip(tripId: String, transition: TripTransition): TripResult<Trip>
 }

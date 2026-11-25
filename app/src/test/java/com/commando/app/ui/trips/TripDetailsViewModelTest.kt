@@ -1,6 +1,6 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code for the close and complete tests (#233).
+// AI assistance: Claude Code for the close, complete (#233) and cancel (#449) tests.
 // AI assistance: OpenAI Codex for public-name refresh regression coverage.
 import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
@@ -213,6 +213,20 @@ class TripDetailsViewModelTest {
     assertFalse(state.transitionInProgress)
     assertNull(state.transitionError)
     assertEquals(listOf(trip.id to TripTransition.CLOSE), repository.transitions)
+  }
+
+  @Test
+  fun confirmedCancelShowsTheStoredCancelledTrip() = runTest {
+    val viewModel = loaded()
+    viewModel.requestTransition(TripTransition.CANCEL)
+    assertEquals(TripTransition.CANCEL, content(viewModel).pendingTransition)
+
+    viewModel.confirmTransition()
+    advanceUntilIdle()
+
+    assertEquals(TripStatus.CANCELLED, content(viewModel).trip.status)
+    assertNull(content(viewModel).transitionError)
+    assertEquals(listOf(trip.id to TripTransition.CANCEL), repository.transitions)
   }
 
   @Test

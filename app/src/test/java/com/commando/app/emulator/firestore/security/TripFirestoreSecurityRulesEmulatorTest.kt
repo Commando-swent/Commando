@@ -1,6 +1,7 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: Claude Code for trip status seeding (#233) and trip ID reuse (#394).
+// AI assistance: Claude Code for trip status seeding (#233), trip ID reuse (#394) and cancelled
+// trip reads (#449).
 
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepositoryFirestore
@@ -122,12 +123,13 @@ class TripFirestoreSecurityRulesEmulatorTest {
       nonPublished.set(storedTrip(ownerId)).await()
       setStatusAsAdmin(nonPublished.id, TripStatus.IN_PROGRESS)
       assertTrue(nonPublished.get().await().exists())
-      // A closed trip stays readable by id so requesters keep the trip of their order (#233).
+      // A closed (#233) or cancelled (#449) trip stays readable by id so requesters keep the trip
+      // of their order.
       val otherNonPublished = other.firestore.collection(TRIPS_COLLECTION).document(nonPublished.id)
       assertTrue(otherNonPublished.get().await().exists())
       setStatusAsAdmin(nonPublished.id, TripStatus.CANCELLED)
       assertTrue(nonPublished.get().await().exists())
-      assertPermissionDenied { otherNonPublished.get().await() }
+      assertTrue(otherNonPublished.get().await().exists())
     }
   }
 
@@ -280,7 +282,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
             .set(storedTrip(otherId))
             .await()
       }
-      // A cancelled trip is hidden from others, so the transaction read itself is denied.
+      // A cancelled trip of another owner is refused too, never claimed.
       setStatusAsAdmin(tripId, TripStatus.CANCELLED)
       assertEquals(denied, repository(otherId, other).publishTrip(tripId, newTrip))
 

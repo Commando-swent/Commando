@@ -3,7 +3,7 @@ package com.commando.app.ui.map
 // AI assistance: OpenAI Codex.
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.model.canIdentifyNearbyTrips
 

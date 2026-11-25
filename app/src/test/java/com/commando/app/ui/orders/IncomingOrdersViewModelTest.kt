@@ -6,6 +6,7 @@ import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem
@@ -17,6 +18,9 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -203,5 +207,125 @@ class IncomingOrdersViewModelTest {
       val gate = CompletableDeferred<OrderResult<List<Order>>>().also { gates += it }
       return withContext(NonCancellable) { gate.await() }
     }
+  }
+
+  private val profiles = PublicProfileTestRepository()
+
+  private fun publicOrders(
+      repository: OrderRepository = orders,
+      currentUserId: () -> String? = { sessionUser },
+      sessionChanges: Flow<String?> = emptyFlow(),
+  ) =
+      IncomingOrdersViewModel(
+          repository,
+          trip.id,
+          publicProfiles = lazyOf(profiles),
+          currentUserId = currentUserId,
+          sessionChanges = sessionChanges,
+      )
+
+  private fun names(model: IncomingOrdersViewModel) =
+      (model.uiState.value as IncomingOrdersUiState.Content).rows.map { it.requesterName }
+
+  @Test
+  fun publicNamesUseDistinctStoredRequestersAndDeduplicateRows() = runTest {
+    val distinct = newer.copy(requesterId = "second")
+    val repository =
+        FakeOrderRepository(
+            { sessionUser },
+            listOf(older, distinct, older.copy(id = "copy")),
+            tripRepository = trips,
+        )
+    profiles.read = { "Public $it" }
+    val model = publicOrders(repository)
+    runCurrent()
+    assertEquals(setOf("requester", "second"), profiles.reads.toSet())
+    assertEquals(2, profiles.reads.size)
+    assertEquals(listOf("Public second", "Public requester", "Public requester"), names(model))
+  }
+
+  @Test
+  fun refreshInvalidatesPreviouslyLoadedRequesterNames() = runTest {
+    profiles.name = "Original"
+    val model = publicOrders()
+    runCurrent()
+    assertEquals(listOf("Original", "Original"), names(model))
+    profiles.name = "Updated"
+    model.refresh()
+    runCurrent()
+    assertEquals(listOf("requester", "requester"), profiles.reads)
+    assertEquals(listOf("Updated", "Updated"), names(model))
+  }
+
+  @Test
+  fun missingAndFailedRequesterNamesPreserveOrderRows() = runTest {
+    profiles.read = { error("Offline") }
+    val model = publicOrders()
+    runCurrent()
+    assertEquals(listOf("newer", "older"), rowIds(model.uiState.value))
+    assertEquals(listOf(null, null), names(model))
+    profiles.read = { null }
+    model.refresh()
+    runCurrent()
+    assertEquals(listOf(null, null), names(model))
+  }
+
+  @Test
+  fun refreshDiscardsLateRequesterNameFromPreviousLoad() = runTest {
+    val response = profiles.deferRead()
+    val model = publicOrders()
+    runCurrent()
+    profiles.read = { "Current" }
+    model.refresh()
+    runCurrent()
+    response.complete("Stale")
+    runCurrent()
+    assertEquals(listOf("Current", "Current"), names(model))
+  }
+
+  @Test
+  fun sessionChangeClearsRowsAndRejectsLateRequesterName() = runTest {
+    val user = MutableStateFlow<String?>(sessionUser)
+    val response = profiles.deferRead()
+    val model = publicOrders(currentUserId = { user.value }, sessionChanges = user)
+    runCurrent()
+    user.value = "other"
+    runCurrent()
+    response.complete("Stale")
+    runCurrent()
+    assertEquals(IncomingOrdersUiState.Error(OrderError.PermissionDenied), model.uiState.value)
+    model.refresh()
+    runCurrent()
+    assertEquals(1, profiles.reads.size)
+  }
+
+  @Test
+  fun sessionSnapshotChangeDuringOrderFetchCannotPublishRowsOrStartNameQueries() = runTest {
+    val repository =
+        object : OrderRepository by orders {
+          override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> {
+            sessionUser = null
+            return OrderResult.Success(listOf(newer))
+          }
+        }
+    val model = publicOrders(repository)
+    runCurrent()
+    assertEquals(IncomingOrdersUiState.Loading, model.uiState.value)
+    assertEquals(emptyList<String>(), profiles.reads)
+    model.refresh()
+    assertEquals(IncomingOrdersUiState.Error(OrderError.PermissionDenied), model.uiState.value)
+  }
+
+  @Test
+  fun requesterReplyAfterSnapshotSessionEndsCannotExposeName() = runTest {
+    profiles.read = {
+      sessionUser = null
+      "Stale"
+    }
+    val model = publicOrders()
+    runCurrent()
+    assertEquals(listOf(null, null), names(model))
+    model.refresh()
+    assertEquals(IncomingOrdersUiState.Error(OrderError.PermissionDenied), model.uiState.value)
   }
 }

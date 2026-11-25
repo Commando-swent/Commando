@@ -17,7 +17,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.location.AndroidDeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.repository.CommandoPositionRepository

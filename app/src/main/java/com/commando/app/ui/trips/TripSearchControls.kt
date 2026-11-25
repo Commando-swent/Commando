@@ -26,7 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.DeparturePeriod
 import com.commando.app.model.StoreFilter
 import com.commando.app.model.TripSearchCriteria

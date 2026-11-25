@@ -9,7 +9,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.createGraph
 import androidx.navigation.navArgument
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals

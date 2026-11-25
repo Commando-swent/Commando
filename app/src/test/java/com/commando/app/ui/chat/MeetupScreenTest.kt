@@ -8,7 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import com.commando.app.ui.theme.SampleAppTheme
@@ -200,5 +200,28 @@ class MeetupScreenTest {
     for (tag in listOf("meetup-composer-root", "meetup-card-root", "meetup-feedback-root")) {
       compose.onNodeWithTag(tag).assertIsDisplayed()
     }
+  }
+
+  @Test
+  fun cachedProposalKeepsHistoryVisibleAndDisablesBothReplies() {
+    val context = state.context!!
+    val proposal = MeetupProposal("Library entrance", Instant.now().plusSeconds(3600))
+    val message =
+        ChatMessage(
+            "cached-meeting",
+            context.trip.ownerId,
+            CHAT_MEETUP_FALLBACK,
+            Instant.now(),
+            meetup = proposal,
+        )
+    state = state.copy(cached = true, chat = state.chat!!.copy(messages = listOf(message)))
+    show()
+    compose.onNodeWithText(proposal.location).assertIsDisplayed()
+    for (response in listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED)) {
+      compose
+          .onNodeWithTag(OrderChatTestTags.MEETUP_RESPONSE + message.id + response.name)
+          .assertIsNotEnabled()
+    }
+    assertTrue(replies.isEmpty())
   }
 }

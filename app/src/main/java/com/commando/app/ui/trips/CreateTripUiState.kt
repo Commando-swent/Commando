@@ -1,6 +1,7 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code, including the uncertain publication lock (#394).
+// AI assistance: Claude Code, including the uncertain publication lock (#394) and the
+// offline refusal (#429).
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
@@ -35,13 +36,18 @@ data class CreateTripUiState(
     /** True when every field is valid and nothing is being or has been published. */
     val canPublish: Boolean = false,
     val isPublishing: Boolean = false,
-    /** Set when the last publication failed; the inputs are kept so the user can retry. */
+    /**
+     * Set when the last publication failed; the inputs are kept so the user can retry. With
+     * [hasUncertainPublication] the trip may exist, so it is not shown as a failure.
+     */
     val publishError: TripError? = null,
     /**
      * True after a network or unknown failure: the trip may exist, so the form is locked and only a
-     * retry of the same publication is possible.
+     * retry of the same publication is possible. A timeout or a restored attempt is uncertain too.
      */
     val hasUncertainPublication: Boolean = false,
+    /** True when the last tap was refused offline, before any write; the next tap retries. */
+    val isOffline: Boolean = false,
     /** Set once the trip has been published; the form is then locked. */
     val publishedTrip: Trip? = null,
 )

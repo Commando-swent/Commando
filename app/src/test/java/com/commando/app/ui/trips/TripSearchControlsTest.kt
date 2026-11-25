@@ -11,7 +11,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.DeparturePeriod
 import com.commando.app.model.StoreFilter
 import com.commando.app.model.TripSearchCriteria

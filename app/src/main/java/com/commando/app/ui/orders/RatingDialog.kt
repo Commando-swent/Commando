@@ -20,7 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.RatingError
 import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
 import com.commando.app.ui.theme.RatingAmber

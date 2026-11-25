@@ -1,7 +1,10 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
+// AI assistance: OpenAI Codex for public-name refresh regression coverage.
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
@@ -12,18 +15,14 @@ import com.commando.app.model.TripTransition
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.*
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -48,15 +47,7 @@ class TripDetailsViewModelTest {
   private val fake = FakeTripRepository("owner", now = { now }, initialTrips = listOf(trip))
   private val repository = RecordingRepository(fake)
 
-  @Before
-  fun setUp() {
-    Dispatchers.setMain(StandardTestDispatcher())
-  }
-
-  @After
-  fun tearDown() {
-    Dispatchers.resetMain()
-  }
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @Test
   fun startsLoadingAndAutomaticallyRequestsSuppliedTripId() = runTest {
@@ -347,5 +338,152 @@ class TripDetailsViewModelTest {
       failure?.let { throw it }
       return result ?: fake.getTripById(tripId)
     }
+  }
+
+  private val profiles = PublicProfileTestRepository()
+
+  private fun TestScope.publicTrip(user: MutableStateFlow<String?> = MutableStateFlow("viewer")) =
+      TripDetailsViewModel(repository, trip.id, lazyOf(profiles), { user.value }, user).also {
+        runCurrent()
+      }
+
+  @Test
+  fun constructionUsedByReviewOrderNeverLooksUpPublicNames() = runTest {
+    publicTrip()
+    assertTrue(profiles.reads.isEmpty())
+  }
+
+  @Test
+  fun publicNameUsesLoadedOwnerAndDeduplicatesPendingRequests() = runTest {
+    val response = profiles.deferRead()
+    val model = publicTrip()
+    model.refreshPublicName("wrong-owner")
+    model.refreshPublicName(trip.ownerId)
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(listOf(trip.ownerId), profiles.reads)
+    response.complete("Public owner")
+    runCurrent()
+    assertEquals(trip.ownerId to "Public owner", model.publicName.value)
+  }
+
+  @Test
+  fun sameOwnerRefreshRetainsConfirmedNameUntilSuccessfulNullReplacesItWithFallback() = runTest {
+    val model = publicTrip()
+    profiles.read = { "Confirmed" }
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    val response = profiles.deferRead()
+    model.refreshPublicName(trip.ownerId)
+    assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+    runCurrent()
+    assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+    response.complete(null)
+    runCurrent()
+    assertEquals(trip.ownerId to null, model.publicName.value)
+    assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
+  }
+
+  @Test
+  fun failedSameOwnerRefreshRetainsConfirmedName() = runTest {
+    val model = publicTrip()
+    profiles.name = "Confirmed"
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    profiles.read = { error("Offline") }
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+  }
+
+  @Test
+  fun initialPublicNameFailureUsesFallback() = runTest {
+    val model = publicTrip()
+    profiles.read = { error("Offline") }
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(trip.ownerId to null, model.publicName.value)
+  }
+
+  @Test
+  fun changedOwnerRejectsLateNameResponse() = runTest {
+    profiles.name = "Confirmed"
+    val model = publicTrip()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    val response = profiles.deferRead()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    repository.result = TripResult.Success(trip.copy(ownerId = "next"))
+    profiles.read = { "Next" }
+    model.retry()
+    runCurrent()
+    model.refreshPublicName("next")
+    assertEquals("next" to null, model.publicName.value)
+    runCurrent()
+    response.complete("Old")
+    runCurrent()
+    assertEquals("next" to "Next", model.publicName.value)
+  }
+
+  @Test
+  fun sessionChangeClearsPublicNameAndRejectsLateResponse() = runTest {
+    val user = MutableStateFlow<String?>("viewer")
+    profiles.name = "Confirmed"
+    val model = publicTrip(user)
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    val response = profiles.deferRead()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    user.value = "other"
+    model.refreshPublicName(trip.ownerId)
+    assertNull(model.publicName.value)
+    runCurrent()
+    response.complete("Old")
+    runCurrent()
+    assertNull(model.publicName.value)
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(2, profiles.reads.size)
+  }
+
+  @Test
+  fun absentPublicRepositoryLeavesTripDetailsUsable() = runTest {
+    val model = TripDetailsViewModel(repository, trip.id)
+    runCurrent()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertNull(model.publicName.value)
+    assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
+  }
+
+  @Test
+  fun publicLookupRequiresLoadedTripContent() = runTest {
+    repository.result = TripResult.Error(TripError.NotFound)
+    val model = publicTrip()
+    model.refreshPublicName(trip.ownerId)
+    model.refreshPublicName(null)
+    runCurrent()
+    assertTrue(profiles.reads.isEmpty())
+    assertNull(model.publicName.value)
+    assertEquals(TripDetailsUiState.Error(TripError.NotFound), model.uiState.value)
+  }
+
+  @Test
+  fun snapshotChangeInsidePublicReadRejectsNameWithoutSessionEmission() = runTest {
+    var uid: String? = "viewer"
+    profiles.read = {
+      uid = null
+      "Stale"
+    }
+    val model = TripDetailsViewModel(repository, trip.id, lazyOf(profiles), { uid })
+    runCurrent()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(trip.ownerId to null, model.publicName.value)
+    model.refreshPublicName(trip.ownerId)
+    assertNull(model.publicName.value)
+    assertEquals(listOf(trip.ownerId), profiles.reads)
   }
 }

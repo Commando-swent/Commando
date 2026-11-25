@@ -20,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.ui.navigation.NavigationTestTags

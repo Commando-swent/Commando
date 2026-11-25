@@ -24,7 +24,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.ui.components.ConnectivityBanner
 
 /** Detail destinations without their own back control; they get the shared back bar. */

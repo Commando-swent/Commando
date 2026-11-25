@@ -15,6 +15,8 @@
     </plurals>
     <string name="chat_locked_pending">Chat opens when the order is accepted.</string>
     <string name="chat_message_partner">Message %1$s</string>
+    <string name="chat_cached_history">Cached history — connection unconfirmed. Refresh after reconnecting to send.</string>
+    <string name="chat_last_confirmed">Last confirmed update: %1$s</string>
     <string name="chat_delay_action">Report delay</string>
     <string name="chat_delay_minutes">Minutes late</string>
     <string name="chat_delay_range">Range: 1–%1$d</string>
@@ -39,4 +41,5 @@
     <string name="chat_meetup_sending">Sending meetup update…</string>
     <string name="chat_meetup_failure">Could not confirm the meetup update. Retry or refresh the conversation.</string>
     <string name="chat_meetup_time">Meeting time</string>
+    <string name="chat_offline_empty">You’re offline. Open this conversation online once to keep its confirmed history available.</string>
 </resources>

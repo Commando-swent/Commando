@@ -2,7 +2,7 @@ package com.commando.app.ui.trips
 
 // AI assistance: Claude Code.
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.MainDispatcherRule
+import com.commando.app.MainDispatcherRule
 import com.commando.app.data.repository.SavedTripSearchRepository
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
 import com.commando.app.data.repository.TripError

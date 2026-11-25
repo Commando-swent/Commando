@@ -8,7 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -21,11 +23,15 @@ import com.commando.app.ui.notifications.NotificationsViewModel
 import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.profile.AppLanguage
 import com.commando.app.ui.profile.EditProfileScreen
+import com.commando.app.ui.profile.ProfileEditTestTags
 import com.commando.app.ui.profile.ProfileHelpScreen
 import com.commando.app.ui.profile.ProfileLanguageScreen
 import com.commando.app.ui.profile.ProfileScreen
 import com.commando.app.ui.profile.ProfileUiState
 import com.commando.app.ui.profile.ProfileViewModel
+import com.commando.app.ui.profile.PublicNameEditor
+import com.commando.app.ui.profile.PublicNameViewModel
+import com.commando.app.ui.profile.PublicNameWritesViewModel
 import com.commando.app.ui.profile.rememberProfilePhotoActions
 
 /**
@@ -42,9 +48,9 @@ internal class ProfileRouteActions(
 internal fun NavGraphBuilder.profileRoutes(
     navController: NavHostController,
     profileViewModel: ProfileViewModel,
+    publicNameWrites: PublicNameWritesViewModel,
+    session: SessionDependencies,
     photoSnackbarHost: SnackbarHostState,
-    notifications: Lazy<NotificationRepository>,
-    orders: SessionOrderViewModel,
     actions: ProfileRouteActions,
 ) {
   composable(route = CommandoScreens.Profile.name) {
@@ -74,7 +80,7 @@ internal fun NavGraphBuilder.profileRoutes(
     )
   }
   composable(route = CommandoScreens.Notifications.name) {
-    val model = notificationsViewModel(notifications, orders)
+    val model = notificationsViewModel(session.notifications, session.orders)
     RefreshOnResume(model, model::refreshInbox)
     val state by model.inbox.collectAsState()
     NotificationInboxScreen(
@@ -90,7 +96,7 @@ internal fun NavGraphBuilder.profileRoutes(
     )
   }
   composable(route = CommandoScreens.NotificationPreferences.name) {
-    val model = notificationsViewModel(notifications, orders)
+    val model = notificationsViewModel(session.notifications, session.orders)
     RefreshOnResume(model, model::refreshPreferences)
     val state by model.preferences.collectAsState()
     NotificationPreferencesScreen(
@@ -111,8 +117,18 @@ internal fun NavGraphBuilder.profileRoutes(
         onBack = { navController.popBackStack() },
     )
   }
-  composable(route = CommandoScreens.EditProfile.name) {
+  composable(route = CommandoScreens.EditProfile.name) { entry ->
+    val names: PublicNameViewModel =
+        viewModel(viewModelStoreOwner = entry) {
+          PublicNameViewModel(
+              session.publicProfiles,
+              publicNameWrites,
+              session.orders::currentUserId,
+              session.orders.sessionChanges,
+          )
+        }
     val draft by profileViewModel.editState.collectAsState()
+    val publicName by names.publicName.collectAsState()
     val profile by profileViewModel.uiState.collectAsState()
     LaunchedEffect(profile, draft == null) {
       if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
@@ -136,6 +152,15 @@ internal fun NavGraphBuilder.profileRoutes(
           (profile as? ProfileUiState.Content)?.fullName,
           photo = photo,
           onPhotoClick = onPhotoClick,
+          publicNameEditor = {
+            PublicNameEditor(
+                publicName,
+                names::loadPublicName,
+                names::editPublicName,
+                names::savePublicName,
+                Modifier.testTag(ProfileEditTestTags.PUBLIC_SECTION),
+            )
+          },
       )
     } ?: CircularProgressIndicator()
   }

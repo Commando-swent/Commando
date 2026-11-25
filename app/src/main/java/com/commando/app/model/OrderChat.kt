@@ -28,7 +28,12 @@ data class ChatMessage(
 )
 
 /** Chronological live window; equal timestamps are ordered by message ID. */
-data class OrderChat(val status: OrderStatus, val messages: List<ChatMessage>)
+data class OrderChat(
+    val status: OrderStatus,
+    val messages: List<ChatMessage>,
+    /** False is an unconfirmed marker; neither its status nor its messages are authoritative. */
+    val serverConfirmed: Boolean = true,
+)
 
 /** One shared send policy for the repository, fake and composer. */
 val OrderStatus.canSendChat: Boolean

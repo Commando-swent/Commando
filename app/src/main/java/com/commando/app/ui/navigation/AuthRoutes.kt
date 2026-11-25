@@ -15,7 +15,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.ui.auth.AuthMode
 import com.commando.app.ui.auth.AuthRoute

@@ -15,8 +15,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.commando.app.data.repository.PaymentRepository
 import com.commando.app.data.repository.RatingRepository
-import com.commando.app.data.repository.ShoppingChecklistRepository
-import com.commando.app.data.repository.TripRepository
 import com.commando.app.ui.orders.IncomingOrdersScreen
 import com.commando.app.ui.orders.IncomingOrdersViewModel
 import com.commando.app.ui.orders.MyOrdersScreen
@@ -24,39 +22,30 @@ import com.commando.app.ui.orders.MyOrdersViewModel
 import com.commando.app.ui.orders.OrderDetailsScreen
 import com.commando.app.ui.orders.OrderDetailsUiState
 import com.commando.app.ui.orders.OrderDetailsViewModel
-import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.orders.ShoppingChecklistScreen
 import com.commando.app.ui.orders.ShoppingChecklistViewModel
 
 internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
 
 /**
- * The signed-in account as seen by the order routes. [userId] is the signed-in requester; each
- * Order Details destination binds [ratingRepositoryFactory] and [paymentRepositoryFactory] to its
- * session. A null [paymentRepositoryFactory] hides the payment status, and refunds (#407) reuse the
- * same payment repository.
- */
-internal class OrderRouteSession(
-    val userId: String,
-    val ratingRepositoryFactory: (() -> String?) -> RatingRepository,
-    val paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)?,
-)
-
-/**
  * Registers My Orders, Order Details, Incoming Orders and the Shopping Checklist. Every order
- * ViewModel reads the session's [orders] repository, so signing out discards them with the session.
- * [onBrowseTrips] leaves an empty My Orders for the trips list. No `onPay` is passed, so the Pay
- * entry point stays hidden until the checkout route exists (#419 Part 2).
+ * ViewModel reads the [session]'s repositories, so signing out discards them with the session.
+ * [userId] is the signed-in requester, [ratingRepositoryFactory] builds the receipt rating
+ * repository for the session, and [onBrowseTrips] leaves an empty My Orders for the trips list. A
+ * null [paymentRepositoryFactory] hides the payment status, and refunds (#407) reuse the same
+ * payment repository. No `onPay` is passed, so the Pay entry point stays hidden until the checkout
+ * route exists (#419 Part 2).
  */
 internal fun NavGraphBuilder.ordersRoutes(
     navController: NavHostController,
-    orders: SessionOrderViewModel,
-    tripRepository: TripRepository,
-    checklists: ShoppingChecklistRepository,
-    session: OrderRouteSession,
+    session: SessionDependencies,
+    userId: String,
+    ratingRepositoryFactory: (() -> String?) -> RatingRepository,
+    paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)?,
     onBrowseTrips: () -> Unit,
 ) {
-  val userId = session.userId
+  val orders = session.orders
+  val tripRepository = session.trips
   composable(route = CommandoScreens.MyOrders.name) { entry ->
     val model: MyOrdersViewModel =
         viewModel(viewModelStoreOwner = entry) {
@@ -86,8 +75,8 @@ internal fun NavGraphBuilder.ordersRoutes(
               tripRepository,
               orders::currentUserId,
               orders.sessionChanges,
-              ratingRepositoryFactory = session.ratingRepositoryFactory,
-              paymentRepositoryFactory = session.paymentRepositoryFactory,
+              ratingRepositoryFactory = ratingRepositoryFactory,
+              paymentRepositoryFactory = paymentRepositoryFactory,
           )
         }
     RefreshOrderAfterChat(entry, model)
@@ -127,7 +116,14 @@ internal fun NavGraphBuilder.ordersRoutes(
     // The resume observer loads on entry and refreshes after a decision in Order Details.
     val incomingOrdersViewModel: IncomingOrdersViewModel =
         viewModel(viewModelStoreOwner = entry) {
-          IncomingOrdersViewModel(orders.repository, tripId, loadImmediately = false)
+          IncomingOrdersViewModel(
+              orders.repository,
+              tripId,
+              loadImmediately = false,
+              publicProfiles = session.publicProfiles,
+              currentUserId = orders::currentUserId,
+              sessionChanges = orders.sessionChanges,
+          )
         }
     RefreshOnResume(incomingOrdersViewModel, incomingOrdersViewModel::refresh)
     IncomingOrdersScreen(
@@ -154,7 +150,7 @@ internal fun NavGraphBuilder.ordersRoutes(
     // Reloading on resume picks up orders accepted while the checklist was in the background.
     val checklist: ShoppingChecklistViewModel =
         viewModel(viewModelStoreOwner = entry) {
-          ShoppingChecklistViewModel(orders.repository, checklists, tripId)
+          ShoppingChecklistViewModel(orders.repository, session.checklists, tripId)
         }
     RefreshOnResume(checklist, checklist::refresh)
     ShoppingChecklistScreen(viewModel = checklist)

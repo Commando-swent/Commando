@@ -1,8 +1,10 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code. Layout from the Command'o Figma "Publish a trip" frames; uncertain
-// publication lock (#394).
+// publication lock (#394); uncertain and offline banners (#429).
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,12 +18,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
@@ -111,7 +117,29 @@ fun CreateTripContent(
           style = tripTextStyle(14, 20),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
       )
-      state.publishError?.let { PublishErrorBanner(it) }
+      // One banner: the last tap's offline refusal, else the outcome. An uncertain attempt may have
+      // created the trip, so it is never shown as a failure.
+      when {
+        state.isOffline ->
+            PublishBanner(
+                R.string.create_trip_offline_title,
+                R.string.create_trip_offline_body,
+                CreateTripScreenTestTags.OFFLINE_BANNER,
+                MaterialTheme.colorScheme.secondaryContainer,
+                MaterialTheme.colorScheme.onSecondaryContainer,
+                R.drawable.ic_connectivity_offline,
+            )
+        state.hasUncertainPublication ->
+            PublishBanner(
+                R.string.create_trip_publish_uncertain_title,
+                R.string.create_trip_publish_uncertain_body,
+                CreateTripScreenTestTags.UNCERTAIN_BANNER,
+                MaterialTheme.colorScheme.secondaryContainer,
+                MaterialTheme.colorScheme.onSecondaryContainer,
+                R.drawable.ic_trip_alert_circle,
+            )
+        else -> state.publishError?.let { PublishErrorBanner(it) }
+      }
       LocationPickerField(
           label = R.string.create_trip_store_label,
           icon = R.drawable.ic_trip_shopping_bag,
@@ -247,30 +275,51 @@ internal fun PublishErrorBanner(error: TripError) {
         TripError.OrdersStillOpen,
         TripError.Unknown -> R.string.create_trip_publish_failed_unknown
       }
+  PublishBanner(
+      R.string.create_trip_publish_failed_title,
+      message,
+      CreateTripScreenTestTags.ERROR_BANNER,
+      MaterialTheme.colorScheme.errorContainer,
+      MaterialTheme.colorScheme.onErrorContainer,
+      R.drawable.ic_trip_alert_circle,
+  )
+}
+
+/** A publication outcome, announced politely; only a definitive failure uses error colours. */
+@Composable
+private fun PublishBanner(
+    @StringRes title: Int,
+    @StringRes message: Int,
+    tag: String,
+    container: Color,
+    content: Color,
+    @DrawableRes icon: Int,
+) {
   Row(
       modifier =
           Modifier.fillMaxWidth()
-              .background(MaterialTheme.colorScheme.errorContainer, FieldShape)
+              .background(container, FieldShape)
               .padding(16.dp)
-              .testTag(CreateTripScreenTestTags.ERROR_BANNER),
+              .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }
+              .testTag(tag),
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Icon(
-        painter = painterResource(R.drawable.ic_trip_alert_circle),
+        painter = painterResource(icon),
         contentDescription = null,
-        tint = MaterialTheme.colorScheme.onErrorContainer,
+        tint = content,
         modifier = Modifier.size(24.dp),
     )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(
-          text = stringResource(R.string.create_trip_publish_failed_title),
+          text = stringResource(title),
           style = tripTextStyle(14, 20, FontWeight.Bold),
-          color = MaterialTheme.colorScheme.onErrorContainer,
+          color = content,
       )
       Text(
           text = stringResource(message),
           style = tripTextStyle(13, 18),
-          color = MaterialTheme.colorScheme.onErrorContainer,
+          color = content,
       )
     }
   }
@@ -324,7 +373,8 @@ internal fun PublishBar(state: CreateTripUiState, onPublish: () -> Unit) {
       val label =
           when {
             publishing -> R.string.create_trip_publishing
-            state.publishError != null -> R.string.create_trip_retry
+            state.publishError != null || state.hasUncertainPublication || state.isOffline ->
+                R.string.create_trip_retry
             else -> R.string.create_trip_publish
           }
       Text(stringResource(label), style = tripTextStyle(16, 24, FontWeight.Bold))

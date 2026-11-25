@@ -3,7 +3,7 @@ package com.commando.app.ui.orders
 // AI assistance: Claude Code (#419).
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.Payment
 import com.commando.app.model.PaymentMethod
 import com.commando.app.model.PaymentStatus

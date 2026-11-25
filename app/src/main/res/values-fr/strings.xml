@@ -169,6 +169,10 @@
     <string name="create_trip_publish_failed_permission">Vous n’êtes pas autorisé à publier des trajets. Vos informations sont conservées.</string>
     <string name="create_trip_publish_failed_invalid">Certaines informations n’ont pas été acceptées. Vérifiez-les et réessayez.</string>
     <string name="create_trip_publish_failed_unknown">Une erreur est survenue. Réessayez. Vos informations sont conservées.</string>
+    <string name="create_trip_publish_uncertain_title">Votre trajet est peut-être déjà publié</string>
+    <string name="create_trip_publish_uncertain_body">Nous n’avons pas pu le confirmer. « Réessayer » le vérifie sans créer de doublon.</string>
+    <string name="create_trip_offline_title">Vous étiez hors ligne</string>
+    <string name="create_trip_offline_body">Rien n’a été envoyé. Connectez-vous, puis touchez « Réessayer ». Vos informations sont conservées.</string>
     <string name="create_trip_title">Publier un trajet</string>
     <string name="create_trip_intro">Indiquez où et quand vous faites vos courses. Les autres pourront ajouter quelques articles à votre trajet.</string>
     <string name="create_trip_back">Retour</string>
@@ -520,5 +524,17 @@
     <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
     <string name="rating_success">Note envoyée.</string>
     <string name="rating_already">Cette commande a déjà été évaluée.</string>
+    <string name="public_name_manage">Gérer le nom public</string>
+    <string name="public_name_label">Nom public</string>
+    <string name="public_name_invalid">Saisissez de 1 à 80 caractères sur une ligne, dont au moins un caractère autre qu’un espace.</string>
+    <string name="public_name_visibility">Les autres utilisateurs connectés peuvent voir ce nom sur vos trajets et commandes.</string>
+    <string name="public_name_unpublished">Aucun nom public publié.</string>
+    <string name="public_name_confirmed">Nom publié : %1$s</string>
+    <string name="public_name_publish">Publier le nom</string>
+    <string name="public_name_update">Modifier le nom public</string>
+    <string name="public_name_remove">Retirer le nom public</string>
+    <string name="public_name_load_failed">Impossible de charger votre nom public.</string>
+    <string name="public_name_write_failed">Modification non confirmée. Réessayez.</string>
+    <string name="incoming_orders_requester">De %1$s</string>
     <string name="order_own_trip_error">Vous ne pouvez pas commander sur votre propre trajet.</string>
 </resources>

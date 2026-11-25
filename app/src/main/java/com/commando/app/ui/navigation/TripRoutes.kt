@@ -1,11 +1,12 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: Claude Code moved the trip destinations out of CommandoApp (#322) and added the
-// owner's earnings (#301).
+// owner's earnings (#301), and wired the trip form's saved, offline-aware publication (#429).
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
@@ -14,6 +15,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.commando.app.data.repository.OrderRepository
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.model.TripLocations
@@ -32,19 +34,23 @@ import com.commando.app.ui.trips.TripEarningsViewModel
 import com.commando.app.ui.trips.TripLocationFilterViewModel
 import com.commando.app.ui.trips.TripRatingUiState
 import com.commando.app.ui.trips.TripRatingViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The signed-in account as seen by the trip routes. [mode] is read when a destination composes, not
  * when the graph is built, so Trip Details shows the current mode's actions. [ratingRepository] and
- * [orderRepository] are bound to the session, and [commandoName] returns the user's name when they
- * own the trip.
+ * [orderRepository] and [publicProfiles] are bound to the session; public names never use Auth
+ * names.
  */
 internal class TripRouteSession(
     val userId: String,
     val mode: () -> AppMode,
     val ratingRepository: () -> RatingRepository,
-    val commandoName: (String?) -> String?,
     val orderRepository: OrderRepository,
+    val publicProfiles: Lazy<PublicProfileRepository>,
+    val currentUserId: () -> String?,
+    val sessionChanges: Flow<String?>,
 )
 
 /** Registers trip creation, discovery, the owner's list and Trip Details. */
@@ -54,10 +60,13 @@ internal fun NavGraphBuilder.tripRoutes(
     session: TripRouteSession,
     locationFilter: TripLocationFilterViewModel,
     savedSearchViewModel: SavedTripSearchViewModel,
+    isOnline: StateFlow<Boolean>,
 ) {
   composable(route = CommandoScreens.CreateTrip.name) { entry ->
     val createTripViewModel: CreateTripViewModel =
-        viewModel(viewModelStoreOwner = entry) { CreateTripViewModel(tripRepository) }
+        viewModel(viewModelStoreOwner = entry) {
+          CreateTripViewModel(tripRepository, createSavedStateHandle(), session.userId, isOnline)
+        }
     CreateTripScreen(
         viewModel = createTripViewModel,
         onBack = { navController.popBackStack() },
@@ -135,9 +144,21 @@ internal fun NavGraphBuilder.tripRoutes(
           "Trip Details requires the ${CommandoScreens.TRIP_ID_ARGUMENT} argument"
         }
     val tripDetailsViewModel: TripDetailsViewModel =
-        viewModel(viewModelStoreOwner = entry) { TripDetailsViewModel(tripRepository, tripId) }
+        viewModel(viewModelStoreOwner = entry) {
+          TripDetailsViewModel(
+              tripRepository,
+              tripId,
+              session.publicProfiles,
+              session.currentUserId,
+              session.sessionChanges,
+          )
+        }
     val tripState by tripDetailsViewModel.uiState.collectAsState()
     val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
+    val publicName by tripDetailsViewModel.publicName.collectAsState()
+    RefreshOnResume(tripDetailsViewModel to ownerId) {
+      tripDetailsViewModel.refreshPublicName(ownerId)
+    }
     val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
     // The entry point is for the owner only; the repository and rules check ownership again.
     val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == session.userId
@@ -162,7 +183,7 @@ internal fun NavGraphBuilder.tripRoutes(
         showOwnerActions = showOwnerActions,
         ratingState = ratingState,
         onRetryRating = onRetryRating,
-        commandoName = session.commandoName(ownerId),
+        commandoName = publicName?.takeIf { it.first == ownerId }?.second,
         earningsViewModel =
             rememberTripEarnings(showOwnerActions, tripId, entry, session.orderRepository),
     )

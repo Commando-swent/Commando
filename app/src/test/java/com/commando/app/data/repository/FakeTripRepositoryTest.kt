@@ -322,6 +322,9 @@ class FakeTripRepositoryTest {
     val sameIntent = newTripAt(stored.scheduledAt)
 
     assertEquals(TripResult.Success(stored), repository.publishTrip("trip-1", sameIntent))
+    // Same Trip.isPublicationOf as Firestore: below a microsecond is the same departure.
+    val subMicro = sameIntent.copy(scheduledAt = stored.scheduledAt.plusNanos(1))
+    assertEquals(TripResult.Success(stored), repository.publishTrip("trip-1", subMicro))
     assertEquals(
         TripResult.Success(departed),
         repository.publishTrip("trip-3", newTripAt(departed.scheduledAt)),

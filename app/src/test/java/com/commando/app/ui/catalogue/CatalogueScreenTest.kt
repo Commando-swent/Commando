@@ -39,7 +39,7 @@ import coil3.intercept.Interceptor
 import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.ProductError
 import com.commando.app.data.repository.ProductResult

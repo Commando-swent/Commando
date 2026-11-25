@@ -13,7 +13,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import com.commando.app.ui.orders.*
@@ -242,6 +242,25 @@ class OrderChatScreenTest {
   }
 
   @Test
+  fun cachedHistoryRemainsReadableAndOffersRefreshWithoutSending() {
+    state =
+        state.copy(
+            cached = true,
+            lastConfirmedAt = null,
+            draft = "Saved draft",
+            sendError = OrderError.Unknown,
+        )
+    show()
+    tag(OrderChatTestTags.CACHED).assertExists()
+    tag(OrderChatTestTags.MESSAGE + "incoming").assertExists()
+    tag(OrderChatTestTags.SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.RETRY_SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.RETRY).performClick()
+    assertEquals(1, retries)
+    assertEquals(0, sends)
+  }
+
+  @Test
   fun conversationInputValidationAndCallbacks() {
     show()
     tag(OrderChatTestTags.MESSAGE + "incoming").assertIsDisplayed()
@@ -441,6 +460,45 @@ class OrderChatScreenTest {
     }
     tag(OrderChatTestTags.MESSAGE + "history-7").assertIsDisplayed()
     tag(OrderChatTestTags.MESSAGE + "new").assertIsNotDisplayed()
+  }
+
+  @Test
+  fun cachedHistoryRemainsReadableButSendingAndRefreshAreDisabledOffline() {
+    assertOfflineHistory("offline-en")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR-w412dp-h917dp-mdpi")
+  fun cachedHistoryAndConfirmationTimeAreLocalizedInFrench() {
+    assertOfflineHistory("offline-fr")
+  }
+
+  @Test
+  fun coldOfflineChatExplainsThatHistoryMustFirstBeLoadedOnline() {
+    state = state.copy(context = null, chat = null, error = OrderError.Unknown, online = false)
+    show()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.chat_offline_empty))
+        .assertIsDisplayed()
+    tag(OrderChatTestTags.RETRY).assertIsNotEnabled()
+    tag(OrderChatTestTags.HISTORY).assertDoesNotExist()
+  }
+
+  private fun assertOfflineHistory(capture: String) {
+    state =
+        state.copy(
+            online = false,
+            cached = true,
+            lastConfirmedAt = state.chat!!.messages.last().createdAt.plusSeconds(60),
+            draft = "Unsent draft",
+        )
+    show()
+    tag(OrderChatTestTags.CACHED).assertIsDisplayed()
+    tag(OrderChatTestTags.SEND).assertIsNotEnabled()
+    tag(OrderChatTestTags.RETRY).assertIsNotEnabled()
+    tag(OrderChatTestTags.INPUT).performTextReplacement("Edited offline")
+    assertEquals("Edited offline", state.draft)
+    screenshot(capture)
   }
 
   private fun screenshot(name: String) {

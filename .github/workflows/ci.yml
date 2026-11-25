@@ -1,5 +1,7 @@
 name: CI - Test Runner
 
+# AI assistance: Claude Code for the parallel job layout (#437).
+
 env:
   FIREBASE_TOOLS_VERSION: "15.32.1"
 
@@ -19,27 +21,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# The build and the three test suites are independent, so they run as parallel jobs. The coverage
+# job then merges the JaCoCo execution data of every test job before uploading it to SonarCloud.
 jobs:
-  ci:
-    name: CI
-    # Execute the CI on the course's runners
+  build:
+    name: Build
     runs-on: ubuntu-latest
 
     steps:
-      # First step : Checkout the repository on the runner
       - name: Checkout
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis (if we use Sonar Later)
-
-
-      # Kernel-based Virtual Machine (KVM) is an open source virtualization technology built into Linux. Enabling it allows the Android emulator to run faster.
-      - name: Enable KVM group perms
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
 
       - name: Setup JDK
         uses: actions/setup-java@v6
@@ -59,12 +52,6 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Robolectric Android runtime cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.m2/repository/org/robolectric
-          key: ${{ runner.os }}-robolectric-${{ hashFiles('gradle/libs.versions.toml', 'app/src/test/resources/robolectric.properties') }}
-
       - name: Firebase emulator cache
         uses: actions/cache@v6
         with:
@@ -83,6 +70,179 @@ jobs:
           npx --yes "firebase-tools@${FIREBASE_TOOLS_VERSION}" emulators:exec
           --non-interactive --project demo-commando --config firebase.firestore-open-test.json --only firestore
           'node --test tools/catalog-import/import.test.mjs'
+
+      - name: Test CI discovery and coverage checks
+        run: python3 scripts/ci/test_ci_checks.py
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x ./gradlew
+
+      # Check formatting
+      - name: KTFmt Check
+        run: |
+          ./gradlew ktfmtCheck
+
+      # Use the team keystore (SHA-1 registered in Firebase) when the secret is available
+      - name: Decode signing keystore
+        env:
+          KS: ${{ secrets.CI_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/ci.keystore"
+            echo "CI_KEYSTORE_PATH=$RUNNER_TEMP/ci.keystore" >> "$GITHUB_ENV"
+          fi
+
+      # Lint runs in the unit test job, as part of `check`.
+      - name: Assemble
+        run: |
+          # To run the CI with debug information, add --info
+          ./gradlew assemble --parallel --build-cache
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: commando-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+  unit-tests:
+    name: Unit tests and lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Robolectric Android runtime cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ runner.os }}-robolectric-${{ hashFiles('gradle/libs.versions.toml', 'app/src/test/resources/robolectric.properties') }}
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x ./gradlew
+
+      # Run unit tests and lint
+      - name: Run tests
+        run: |
+          # To run the CI with debug information, add --info
+          ./gradlew check --parallel --build-cache
+
+      # The coverage job reads the unit test coverage, JUnit results and lint report for SonarCloud.
+      - name: Upload unit test reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-reports
+          path: |
+            app/build/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/lint-results-debug.xml
+          if-no-files-found: error
+
+  firebase-emulator-tests:
+    name: Firebase emulator tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Robolectric Android runtime cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ runner.os }}-robolectric-${{ hashFiles('gradle/libs.versions.toml', 'app/src/test/resources/robolectric.properties') }}
+
+      - name: Firebase emulator cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ env.FIREBASE_TOOLS_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x ./gradlew
+
+      - name: Run Firebase emulator tests
+        run: bash scripts/ci/run-firebase-emulator-tests.sh
+
+      # One execution data file per emulator profile, written by the script above.
+      - name: Upload emulator test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: firebase-emulator-coverage
+          path: app/build/jacoco/firebaseEmulator/
+          if-no-files-found: error
+
+  android-tests:
+    name: Android tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      # Kernel-based Virtual Machine (KVM) is an open source virtualization technology built into Linux. Enabling it allows the Android emulator to run faster.
+      - name: Enable KVM group perms
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Firebase emulator cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/firebase/emulators
+          key: ${{ runner.os }}-firebase-emulators-${{ env.FIREBASE_TOOLS_VERSION }}
+          restore-keys: |
+            ${{ runner.os }}-firebase-emulators-
 
       # Cache the Emulator, if the cache does not hit, create the emulator.
       # API 34 matches targetSdk. compileSdk 37 is only the compile platform.
@@ -111,12 +271,7 @@ jobs:
         run: |
           chmod +x ./gradlew
 
-      # Check formatting
-      - name: KTFmt Check
-        run: |
-          ./gradlew ktfmtCheck
-
-      # Use the team keystore (SHA-1 registered in Firebase) when the secret is available
+      # The instrumented APKs are signed with the team keystore, as in the build job.
       - name: Decode signing keystore
         env:
           KS: ${{ secrets.CI_KEYSTORE_BASE64 }}
@@ -125,31 +280,6 @@ jobs:
             echo "$KS" | base64 -d > "$RUNNER_TEMP/ci.keystore"
             echo "CI_KEYSTORE_PATH=$RUNNER_TEMP/ci.keystore" >> "$GITHUB_ENV"
           fi
-
-      # This step runs gradle commands to build the application
-      - name: Assemble
-        run: |
-          # To run the CI with debug information, add --info
-          ./gradlew assemble lint --parallel --build-cache
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: commando-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Test CI discovery and coverage checks
-        run: python3 scripts/ci/test_ci_checks.py
-
-      - name: Run Firebase emulator tests
-        run: bash scripts/ci/run-firebase-emulator-tests.sh
-
-      # Run Unit tests
-      - name: Run tests
-        run: |
-          # To run the CI with debug information, add --info
-          ./gradlew check --parallel --build-cache
 
       # Run connected tests on the emulator
       - name: Run Android tests with Firebase emulators
@@ -166,10 +296,66 @@ jobs:
             --non-interactive --project demo-commando --config firebase.json --only auth,firestore
             './gradlew connectedCheck --parallel --build-cache -Pandroid.testInstrumentationRunnerArguments.firebaseEmulatorHost=10.0.2.2'
 
-      # This step generates the coverage report which will be uploaded to sonar
+      - name: Upload Android test coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-coverage
+          path: app/build/outputs/code_coverage/debugAndroidTest/connected/
+          if-no-files-found: error
+
+  # Waits for the build too: SonarCloud is the only required check, so a failed build must also
+  # stop it, otherwise a pull request with a failing build could still be merged.
+  coverage:
+    name: Coverage and SonarCloud
+    needs: [build, unit-tests, firebase-emulator-tests, android-tests]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Grant execute permission for gradlew
+        run: |
+          chmod +x ./gradlew
+
+      # Each artifact is restored to the build path it was uploaded from.
+      - name: Download unit test reports
+        uses: actions/download-artifact@v4
+        with:
+          name: unit-test-reports
+          path: app/build
+
+      - name: Download emulator test coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: firebase-emulator-coverage
+          path: app/build/jacoco/firebaseEmulator
+
+      - name: Download Android test coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: android-test-coverage
+          path: app/build/outputs/code_coverage/debugAndroidTest/connected
+
+      # The tests already ran in the jobs above. The report reads the compiled classes, which it only
+      # depends on through testDebugUnitTest, so compile them in a separate Gradle invocation and
+      # generate the report without running the unit tests again.
       - name: Generate Coverage Report
         run: |
-          ./gradlew jacocoTestReport
+          ./gradlew compileDebugKotlin --build-cache
+          ./gradlew jacocoTestReport -x testDebugUnitTest --build-cache
 
       - name: Validate Coverage Report
         run: >-

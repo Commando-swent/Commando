@@ -1,6 +1,7 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
+import com.android.sample.MainDispatcherRule
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.TripError
@@ -13,19 +14,14 @@ import com.commando.app.model.TripTransition
 import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
-import org.junit.After
 import org.junit.Assert.*
-import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -50,15 +46,7 @@ class TripDetailsViewModelTest {
   private val fake = FakeTripRepository("owner", now = { now }, initialTrips = listOf(trip))
   private val repository = RecordingRepository(fake)
 
-  @Before
-  fun setUp() {
-    Dispatchers.setMain(StandardTestDispatcher())
-  }
-
-  @After
-  fun tearDown() {
-    Dispatchers.resetMain()
-  }
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @Test
   fun startsLoadingAndAutomaticallyRequestsSuppliedTripId() = runTest {
@@ -379,11 +367,19 @@ class TripDetailsViewModelTest {
   }
 
   @Test
-  fun missingAndFailedPublicNamesKeepTripContentAndFallback() = runTest {
+  fun sameOwnerRefreshRetainsConfirmedNameUntilNullOrErrorReplacesItWithFallback() = runTest {
     val model = publicTrip()
     for (fails in listOf(false, true)) {
-      profiles.read = { if (fails) error("Offline") else null }
+      profiles.read = { "Confirmed" }
       model.refreshPublicName(trip.ownerId)
+      runCurrent()
+      val response = profiles.deferRead()
+      model.refreshPublicName(trip.ownerId)
+      assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+      runCurrent()
+      assertEquals(trip.ownerId to "Confirmed", model.publicName.value)
+      if (fails) response.completeExceptionally(IllegalStateException("Offline"))
+      else response.complete(null)
       runCurrent()
       assertEquals(trip.ownerId to null, model.publicName.value)
       assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
@@ -392,8 +388,11 @@ class TripDetailsViewModelTest {
 
   @Test
   fun changedOwnerRejectsLateNameResponse() = runTest {
-    val response = profiles.deferRead()
+    profiles.name = "Confirmed"
     val model = publicTrip()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    val response = profiles.deferRead()
     model.refreshPublicName(trip.ownerId)
     runCurrent()
     repository.result = TripResult.Success(trip.copy(ownerId = "next"))
@@ -401,6 +400,7 @@ class TripDetailsViewModelTest {
     model.retry()
     runCurrent()
     model.refreshPublicName("next")
+    assertEquals("next" to null, model.publicName.value)
     runCurrent()
     response.complete("Old")
     runCurrent()
@@ -410,17 +410,22 @@ class TripDetailsViewModelTest {
   @Test
   fun sessionChangeClearsPublicNameAndRejectsLateResponse() = runTest {
     val user = MutableStateFlow<String?>("viewer")
-    val response = profiles.deferRead()
+    profiles.name = "Confirmed"
     val model = publicTrip(user)
     model.refreshPublicName(trip.ownerId)
     runCurrent()
+    val response = profiles.deferRead()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
     user.value = "other"
+    model.refreshPublicName(trip.ownerId)
+    assertNull(model.publicName.value)
     runCurrent()
     response.complete("Old")
     runCurrent()
     assertNull(model.publicName.value)
     model.refreshPublicName(trip.ownerId)
     runCurrent()
-    assertEquals(1, profiles.reads.size)
+    assertEquals(2, profiles.reads.size)
   }
 }

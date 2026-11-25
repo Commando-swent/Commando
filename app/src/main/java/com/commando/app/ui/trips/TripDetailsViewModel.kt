@@ -1,6 +1,7 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete actions (#233).
+// AI assistance: OpenAI Codex for public-name lookup and refresh.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.repository.PublicProfileRepository
@@ -74,19 +75,28 @@ class TripDetailsViewModel(
    * Refreshes only the loaded owner's public name on Trip Details resume. Construction performs no
    * profile query, so Review Order can reuse this ViewModel. Overlapping same-owner calls
    * deduplicate; owner changes, cancellation and session changes discard late results independently
-   * of ratings.
+   * of ratings. A same-owner refresh keeps the confirmed name until its result replaces it.
    */
   fun refreshPublicName(ownerId: String?) {
     val profiles = publicProfiles ?: return
-    if (mutablePublicName.value?.first == ownerId && publicNameJob?.isActive == true) return
-    publicNameJob?.cancel()
-    mutablePublicName.value = ownerId?.let { it to null }
+    if (session?.hasEnded() == true) {
+      publicNameJob?.cancel()
+      mutablePublicName.value = null
+      return
+    }
     if (
         ownerId == null ||
-            session?.hasEnded() == true ||
             (mutableState.value as? TripDetailsUiState.Content)?.trip?.ownerId != ownerId
-    )
-        return
+    ) {
+      publicNameJob?.cancel()
+      mutablePublicName.value = null
+      return
+    }
+    if (mutablePublicName.value?.first == ownerId && publicNameJob?.isActive == true) return
+    publicNameJob?.cancel()
+    if (mutablePublicName.value?.first != ownerId) {
+      mutablePublicName.value = ownerId to null
+    }
     val job =
         viewModelScope.launch(start = CoroutineStart.LAZY) {
           val name =

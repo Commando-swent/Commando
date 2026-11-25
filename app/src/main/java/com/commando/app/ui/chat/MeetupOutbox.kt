@@ -21,15 +21,25 @@ internal class MeetupOutbox(private val saved: SavedStateHandle) {
       val response = saved.get<String>(RESPONSE)
       if (response != null) return PendingMeetup(id, response = MeetupResponse.valueOf(response))
       val place = saved.get<String>(PLACE) ?: return null
-      val at = saved.get<Long>(AT) ?: return null
-      return PendingMeetup(id, MeetupProposal(place, Instant.ofEpochMilli(at)))
+      val seconds = saved.get<Long>(SECONDS)
+      val at =
+          if (seconds != null) {
+            val nanos = saved.get<Int>(NANOS) ?: return null
+            Instant.ofEpochSecond(seconds, nanos.toLong())
+          } else {
+            Instant.ofEpochMilli(saved.get<Long>(AT) ?: return null)
+          }
+      return PendingMeetup(id, MeetupProposal(place, at))
     }
     set(action) {
-      if (action == null) for (key in listOf(ID, PLACE, AT, RESPONSE)) saved.remove<Any>(key)
+      if (action == null)
+          for (key in listOf(ID, PLACE, AT, SECONDS, NANOS, RESPONSE)) saved.remove<Any>(key)
       else {
         saved[ID] = action.id
         saved[PLACE] = action.proposal?.location
-        saved[AT] = action.proposal?.at?.toEpochMilli()
+        saved.remove<Long>(AT)
+        saved[SECONDS] = action.proposal?.at?.epochSecond
+        saved[NANOS] = action.proposal?.at?.nano
         saved[RESPONSE] = action.response?.name
       }
     }
@@ -38,6 +48,8 @@ internal class MeetupOutbox(private val saved: SavedStateHandle) {
     const val ID = "meetupActionId"
     const val PLACE = "meetupPlace"
     const val AT = "meetupAt"
+    const val SECONDS = "meetupAtSeconds"
+    const val NANOS = "meetupAtNanos"
     const val RESPONSE = "meetupResponse"
   }
 }

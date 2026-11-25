@@ -6,9 +6,11 @@ import com.commando.app.model.CHAT_WINDOW_SIZE
 import com.commando.app.model.ChatMessage
 import com.commando.app.model.OrderChat
 import com.commando.app.model.OrderStatus
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.*
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
+import java.time.Clock
 import java.time.temporal.ChronoUnit.MICROS
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
@@ -20,6 +22,7 @@ import kotlinx.coroutines.tasks.await
 class OrderChatRepositoryFirestore(
     private val currentUserId: () -> String?,
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val clock: Clock = Clock.systemUTC(),
 ) : OrderChatRepository {
   private val auth
     get() = FirebaseAuth.getInstance(firestore.app)
@@ -80,9 +83,11 @@ class OrderChatRepositoryFirestore(
       response: MeetupResponse,
   ) {
     val order = tx.get(order(orderId))
+    if (!order.exists()) throw failure(Code.NOT_FOUND)
     if (order.getString("requesterId") != uid) throw failure(Code.PERMISSION_DENIED)
     val ref = order(orderId).collection("messages").document(messageId)
     val stored = tx.get(ref)
+    if (!stored.exists()) throw failure(Code.NOT_FOUND)
     if (stored.getString("senderId") == uid) throw failure(Code.PERMISSION_DENIED)
     val proposal = decodeMessage(stored).meetup ?: throw failure(Code.INVALID_ARGUMENT)
     if (proposal.response == response) return
@@ -92,7 +97,7 @@ class OrderChatRepositoryFirestore(
     if (
         !OrderStatus.valueOf(order.getString("status").orEmpty()).canSendChat ||
             !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay ||
-            !proposal.at.isAfter(java.time.Instant.now())
+            !proposal.at.isAfter(clock.instant())
     )
         throw failure(Code.PERMISSION_DENIED)
     guard(uid)
@@ -174,7 +179,7 @@ class OrderChatRepositoryFirestore(
     } else {
       val status = OrderStatus.valueOf(storedOrder.getString("status").orEmpty())
       if (!status.canSendChat) throw failure(Code.PERMISSION_DENIED)
-      if (meetup != null && !meetup.isFuturePending(java.time.Instant.now()))
+      if (meetup != null && !meetup.isFuturePending(clock.instant()))
           throw failure(Code.INVALID_ARGUMENT)
       if (delay != null || meetup != null) requireActiveOwner(transaction, storedOrder, uid)
       guard(uid)
@@ -191,7 +196,7 @@ class OrderChatRepositoryFirestore(
                     "meetup" to
                         mapOf(
                             "location" to it.location,
-                            "at" to com.google.firebase.Timestamp(it.at.epochSecond, it.at.nano),
+                            "at" to Timestamp(it.at.epochSecond, it.at.nano),
                             "response" to it.response.name,
                         )
                 )

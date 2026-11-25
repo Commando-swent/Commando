@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.FakeCommandoPositionRepository
@@ -104,6 +105,7 @@ class AppJourneyTest {
             auth,
             trips,
             google,
+            connectivityMonitor = FakeConnectivityMonitor(),
             productRepository = products,
             positionRepositoryFactory = {
               object :

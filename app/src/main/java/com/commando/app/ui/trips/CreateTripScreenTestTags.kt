@@ -12,6 +12,8 @@ object CreateTripScreenTestTags {
   const val TIME_ERROR = "createTripTimeError"
   const val HANDOFF_LOCATION_ERROR = "createTripHandoffLocationError"
   const val ERROR_BANNER = "createTripErrorBanner"
+  const val UNCERTAIN_BANNER = "createTripUncertainBanner"
+  const val OFFLINE_BANNER = "createTripOfflineBanner"
   const val PUBLISH_BUTTON = "createTripPublishButton"
   const val PUBLISH_PROGRESS = "createTripPublishProgress"
 

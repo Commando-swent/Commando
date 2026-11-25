@@ -44,10 +44,7 @@ class FakeTripRepository(
     trips[tripId]?.let { stored ->
       return when {
         stored.ownerId != currentUserId -> TripResult.Error(TripError.PermissionDenied)
-        stored.store != newTrip.store ||
-            stored.scheduledAt != newTrip.scheduledAt ||
-            stored.handoffLocation != newTrip.handoffLocation ->
-            TripResult.Error(TripError.InvalidData)
+        !stored.isPublicationOf(newTrip) -> TripResult.Error(TripError.InvalidData)
         else -> TripResult.Success(stored)
       }
     }

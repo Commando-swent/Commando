@@ -30,6 +30,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -37,6 +38,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.android.sample.R
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.connectivity.AndroidConnectivityMonitor
 import com.commando.app.data.connectivity.ConnectivityMonitor
 import com.commando.app.data.location.DeviceLocationProvider
@@ -142,6 +144,7 @@ fun CommandoApp(
               tripRepository = session.trips,
               productRepository = productRepository,
               orders = session.orders,
+              cache = session.cache,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
               chatRepositoryFactory = chatRepositoryFactory,
@@ -180,6 +183,7 @@ private fun AuthenticatedApp(
     tripRepository: TripRepository,
     productRepository: ProductRepository?,
     orders: SessionOrderViewModel,
+    cache: SessionCache,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
     notifications: Lazy<NotificationRepository>,
@@ -352,6 +356,9 @@ private fun AuthenticatedApp(
               listOf(navArgument(CommandoScreens.ORDER_ID_ARGUMENT) { type = NavType.StringType }),
       ) { entry ->
         val orderId = requireNotNull(entry.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT))
+        // Retain the draft while visiting the chat from this order details entry.
+        val draftOwner =
+            remember(entry) { chatDraftOwner(entry, navController.previousBackStackEntry, orderId) }
         val model: OrderChatViewModel =
             viewModel(viewModelStoreOwner = entry) {
               OrderChatViewModel(
@@ -362,15 +369,19 @@ private fun AuthenticatedApp(
                       ?: OrderChatRepositoryFirestore(orders::currentUserId),
                   orders::currentUserId,
                   orders.sessionChanges,
-                  entry.savedStateHandle,
+                  draftOwner.savedStateHandle,
+                  cache,
+                  connectivity.isOnline,
               )
             }
         OrderChatHost(
             model,
             onBack = {
-              navController.previousBackStackEntry
-                  ?.savedStateHandle
-                  ?.set(ORDER_REFRESH_AFTER_CHAT, true)
+              if (connectivity.isOnline.value) {
+                navController.previousBackStackEntry
+                    ?.savedStateHandle
+                    ?.set(ORDER_REFRESH_AFTER_CHAT, true)
+              }
               navController.popBackStack()
             },
         )
@@ -397,3 +408,14 @@ private fun AuthenticatedApp(
 private class ConnectivityViewModel(context: Context) : ViewModel() {
   val monitor = AndroidConnectivityMonitor(context, viewModelScope)
 }
+
+/** Shares drafts only with the matching order details; other entry paths own their draft. */
+internal fun chatDraftOwner(
+    entry: NavBackStackEntry,
+    previous: NavBackStackEntry?,
+    orderId: String,
+): NavBackStackEntry =
+    previous?.takeIf {
+      it.destination.route == CommandoScreens.OrderDetails.route &&
+          it.arguments?.getString(CommandoScreens.ORDER_ID_ARGUMENT) == orderId
+    } ?: entry

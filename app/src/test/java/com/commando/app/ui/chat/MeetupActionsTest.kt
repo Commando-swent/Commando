@@ -73,6 +73,8 @@ class MeetupActionsTest {
         listOf(
             pending.copy(context = null),
             pending.copy(loading = true),
+            pending.copy(online = false),
+            pending.copy(cached = true),
             pending.copy(error = OrderError.PermissionDenied),
         )) {
       chat.value = blocked
@@ -157,5 +159,19 @@ class MeetupActionsTest {
     actions.propose("Entrance", now.plusSeconds(3600))
     runCurrent()
     assertTrue(ids.isEmpty())
+  }
+
+  @Test
+  fun offlineOrCachedChatCannotCreateOrRespondToAMeetup() = runTest {
+    val actions = MeetupActions(order.id, repository, chat, SavedStateHandle(), backgroundScope)
+    for (blocked in listOf(chat.value.copy(online = false), chat.value.copy(cached = true))) {
+      chat.value = blocked
+      actions.propose("Entrance", now.plusSeconds(3600))
+      actions.respond("meeting", MeetupResponse.ACCEPTED)
+      runCurrent()
+      assertTrue(ids.isEmpty())
+      assertFalse(actions.hasPending)
+      assertNull(actions.state.value.error)
+    }
   }
 }

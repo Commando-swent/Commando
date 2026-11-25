@@ -64,7 +64,6 @@ import com.commando.app.ui.home.HomeScreen
 import com.commando.app.ui.home.HomeTripUiState
 import com.commando.app.ui.home.HomeViewModel
 import com.commando.app.ui.map.PositionSharingCard
-import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.profile.AppLanguage
 import com.commando.app.ui.profile.ProfilePhotoSnackbarHost
 import com.commando.app.ui.profile.ProfileViewModel
@@ -150,16 +149,12 @@ fun CommandoApp(
           AuthenticatedApp(
               repository = repository,
               publicNameWrites = publicNameWrites,
-              publicProfiles = session.publicProfiles,
+              session = session,
               photoRepository = photoRepository,
-              tripRepository = session.trips,
               productRepository = productRepository,
-              orders = session.orders,
               ratingRepositoryFactory =
                   ratingRepositoryFactory ?: { identity -> RatingRepositoryFirestore(identity) },
               chatRepositoryFactory = chatRepositoryFactory,
-              notifications = session.notifications,
-              checklists = session.checklists,
               savedSearches = session.savedSearches,
               userId = user.uid,
               onSignOut = {
@@ -190,15 +185,11 @@ fun CommandoApp(
 private fun AuthenticatedApp(
     repository: AuthRepository,
     publicNameWrites: PublicNameWritesViewModel,
-    publicProfiles: Lazy<PublicProfileRepository>,
+    session: SessionDependencies,
     photoRepository: ProfilePhotoRepository?,
-    tripRepository: TripRepository,
     productRepository: ProductRepository?,
-    orders: SessionOrderViewModel,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)?,
-    notifications: Lazy<NotificationRepository>,
-    checklists: ShoppingChecklistRepository,
     savedSearches: SavedTripSearchRepository,
     userId: String,
     onSignOut: () -> Unit,
@@ -208,6 +199,8 @@ private fun AuthenticatedApp(
     locationProvider: DeviceLocationProvider?,
     connectivity: ConnectivityMonitor,
 ) {
+  val orders = session.orders
+  val tripRepository = session.trips
   val appViewModel: AppViewModel = viewModel()
   // Routes pass this monitor to the ViewModels that need it; it says nothing about the server.
   // Stops collecting in the background, so the monitor can release its system callback.
@@ -327,7 +320,7 @@ private fun AuthenticatedApp(
                   mode = { appUiState.mode },
                   ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
                   orderRepository = orders.repository,
-                  publicProfiles = publicProfiles,
+                  publicProfiles = session.publicProfiles,
                   currentUserId = orders::currentUserId,
                   sessionChanges = orders.sessionChanges,
               ),
@@ -336,12 +329,9 @@ private fun AuthenticatedApp(
       )
       ordersRoutes(
           navController = navController,
-          orders = orders,
-          tripRepository = tripRepository,
-          checklists = checklists,
+          session = session,
           userId = userId,
           ratingRepositoryFactory = ratingRepositoryFactory,
-          publicProfiles = publicProfiles,
           onBrowseTrips = {
             appViewModel.switchMode(AppMode.Requester)
             navController.openScreen(CommandoScreens.AvailableTrips)
@@ -395,10 +385,8 @@ private fun AuthenticatedApp(
           navController = navController,
           profileViewModel = profileViewModel,
           publicNameWrites = publicNameWrites,
-          publicProfiles = publicProfiles,
+          session = session,
           photoSnackbarHost = photoSnackbarHost,
-          notifications = notifications,
-          orders = orders,
           actions =
               ProfileRouteActions(
                   signOut = sharing.signOut,

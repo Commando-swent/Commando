@@ -13,10 +13,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
-import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
-import com.commando.app.data.repository.ShoppingChecklistRepository
-import com.commando.app.data.repository.TripRepository
 import com.commando.app.ui.orders.IncomingOrdersScreen
 import com.commando.app.ui.orders.IncomingOrdersViewModel
 import com.commando.app.ui.orders.MyOrdersScreen
@@ -24,7 +21,6 @@ import com.commando.app.ui.orders.MyOrdersViewModel
 import com.commando.app.ui.orders.OrderDetailsScreen
 import com.commando.app.ui.orders.OrderDetailsUiState
 import com.commando.app.ui.orders.OrderDetailsViewModel
-import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.orders.ShoppingChecklistScreen
 import com.commando.app.ui.orders.ShoppingChecklistViewModel
 
@@ -32,20 +28,19 @@ internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
 
 /**
  * Registers My Orders, Order Details, Incoming Orders and the Shopping Checklist. Every order
- * ViewModel reads the session's [orders] repository, so signing out discards them with the session.
+ * ViewModel reads the [session]'s repositories, so signing out discards them with the session.
  * [userId] is the signed-in requester, [ratingRepositoryFactory] builds the receipt rating
  * repository for the session, and [onBrowseTrips] leaves an empty My Orders for the trips list.
  */
 internal fun NavGraphBuilder.ordersRoutes(
     navController: NavHostController,
-    orders: SessionOrderViewModel,
-    tripRepository: TripRepository,
-    checklists: ShoppingChecklistRepository,
+    session: SessionDependencies,
     userId: String,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     onBrowseTrips: () -> Unit,
-    publicProfiles: Lazy<PublicProfileRepository>? = null,
 ) {
+  val orders = session.orders
+  val tripRepository = session.trips
   composable(route = CommandoScreens.MyOrders.name) { entry ->
     val model: MyOrdersViewModel =
         viewModel(viewModelStoreOwner = entry) {
@@ -119,7 +114,7 @@ internal fun NavGraphBuilder.ordersRoutes(
               orders.repository,
               tripId,
               loadImmediately = false,
-              publicProfiles = publicProfiles,
+              publicProfiles = session.publicProfiles,
               currentUserId = orders::currentUserId,
               sessionChanges = orders.sessionChanges,
           )
@@ -149,7 +144,7 @@ internal fun NavGraphBuilder.ordersRoutes(
     // Reloading on resume picks up orders accepted while the checklist was in the background.
     val checklist: ShoppingChecklistViewModel =
         viewModel(viewModelStoreOwner = entry) {
-          ShoppingChecklistViewModel(orders.repository, checklists, tripId)
+          ShoppingChecklistViewModel(orders.repository, session.checklists, tripId)
         }
     RefreshOnResume(checklist, checklist::refresh)
     ShoppingChecklistScreen(viewModel = checklist)

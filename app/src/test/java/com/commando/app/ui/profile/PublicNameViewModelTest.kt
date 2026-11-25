@@ -277,7 +277,7 @@ class PublicNameViewModelTest {
     runCurrent()
     assertEquals(rejected, runCatching { first.await() }.isFailure)
     assertEquals(listOf("First", "Second"), profiles.writes)
-    val reconciliation = backgroundScope.async { writes.awaitPending(alice.uid) }
+    val reconciliation = backgroundScope.async { writes.pendingCompletion(alice.uid).await() }
     runCurrent()
     assertFalse(reconciliation.isCompleted)
 

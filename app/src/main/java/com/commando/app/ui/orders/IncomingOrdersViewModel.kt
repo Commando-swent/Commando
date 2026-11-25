@@ -1,6 +1,7 @@
 package com.commando.app.ui.orders
 
 // AI assistance: Claude Code.
+// AI assistance: OpenAI Codex for public requester-name resolution.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.repository.OrderError
@@ -14,6 +15,7 @@ import com.commando.app.ui.session.SessionGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -107,39 +109,39 @@ class IncomingOrdersViewModel(
           ensureActive()
           if (load != latestLoad || session?.hasEnded() == true) return@launch
           mutableState.value = state
-          val profiles = publicProfiles
-          if (state is IncomingOrdersUiState.Content && profiles != null) {
-            // Names belong to this load; the order snapshot changes only on refresh.
-            val resolvedNames = mutableMapOf<String, String?>()
-            // Child jobs belong to this load; a refresh cancels them without blocking order
-            // rendering.
-            state.rows
-                .map { it.order.requesterId }
-                .distinct()
-                .forEach { requesterId ->
-                  launch requester@{
-                    val name =
-                        try {
-                          profiles.value.getDisplayName(requesterId)
-                        } catch (cancelled: CancellationException) {
-                          throw cancelled
-                        } catch (_: Exception) {
-                          null
-                        }
-                    ensureActive()
-                    if (session?.hasEnded() == true) return@requester
-                    resolvedNames[requesterId] = name
-                    val rows =
-                        state.rows.map { row ->
-                          row.copy(requesterName = resolvedNames[row.order.requesterId])
-                        }
-                    mutableState.value = state.copy(rows = rows)
-                  }
-                }
-          }
+          if (state is IncomingOrdersUiState.Content) resolveRequesterNames(state)
         }
     loadJob = job
     job.start()
+  }
+
+  private suspend fun resolveRequesterNames(state: IncomingOrdersUiState.Content) = coroutineScope {
+    val profiles = publicProfiles ?: return@coroutineScope
+    // Names belong to this load; child jobs cannot block the initial order rendering.
+    val resolvedNames = mutableMapOf<String, String?>()
+    state.rows
+        .map { it.order.requesterId }
+        .distinct()
+        .forEach { requesterId ->
+          launch {
+            val name =
+                try {
+                  profiles.value.getDisplayName(requesterId)
+                } catch (cancelled: CancellationException) {
+                  throw cancelled
+                } catch (_: Exception) {
+                  null
+                }
+            ensureActive()
+            if (session?.hasEnded() == true) return@launch
+            resolvedNames[requesterId] = name
+            val rows =
+                state.rows.map { row ->
+                  row.copy(requesterName = resolvedNames[row.order.requesterId])
+                }
+            mutableState.value = state.copy(rows = rows)
+          }
+        }
   }
 
   private suspend fun fetch(): IncomingOrdersUiState =

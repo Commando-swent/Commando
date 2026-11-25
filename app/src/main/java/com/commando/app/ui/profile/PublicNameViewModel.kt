@@ -9,6 +9,7 @@ import com.commando.app.ui.session.SessionGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,16 +86,7 @@ class PublicNameViewModel(
           }
           try {
             if (!canAct()) return@launch
-            val confirmed =
-                if (write) {
-                  writes.submit(uid, profiles, name).await()
-                  name
-                } else {
-                  writes.awaitPending(uid)
-                  ensureActive()
-                  if (!canAct()) return@launch
-                  profiles.value.getDisplayName(uid)
-                }
+            val confirmed = resolveConfirmedName(uid, write, name)
             ensureActive()
             finish(
                 PublicNameEditState(
@@ -114,5 +106,16 @@ class PublicNameViewModel(
     operation = job
     mutableState.value = pending
     job.start()
+  }
+
+  private suspend fun resolveConfirmedName(uid: String, write: Boolean, name: String?): String? {
+    if (write) {
+      writes.submit(uid, profiles, name).await()
+      return name
+    }
+    writes.pendingCompletion(uid).await()
+    currentCoroutineContext().ensureActive()
+    if (!canAct()) return null
+    return profiles.value.getDisplayName(uid)
   }
 }

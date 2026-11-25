@@ -16,7 +16,6 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import com.commando.app.data.repository.NotificationRepository
-import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.ui.notifications.NotificationInboxScreen
 import com.commando.app.ui.notifications.NotificationPreferencesScreen
@@ -50,10 +49,8 @@ internal fun NavGraphBuilder.profileRoutes(
     navController: NavHostController,
     profileViewModel: ProfileViewModel,
     publicNameWrites: PublicNameWritesViewModel,
-    publicProfiles: Lazy<PublicProfileRepository>,
+    session: SessionDependencies,
     photoSnackbarHost: SnackbarHostState,
-    notifications: Lazy<NotificationRepository>,
-    orders: SessionOrderViewModel,
     actions: ProfileRouteActions,
 ) {
   composable(route = CommandoScreens.Profile.name) {
@@ -83,7 +80,7 @@ internal fun NavGraphBuilder.profileRoutes(
     )
   }
   composable(route = CommandoScreens.Notifications.name) {
-    val model = notificationsViewModel(notifications, orders)
+    val model = notificationsViewModel(session.notifications, session.orders)
     RefreshOnResume(model, model::refreshInbox)
     val state by model.inbox.collectAsState()
     NotificationInboxScreen(
@@ -99,7 +96,7 @@ internal fun NavGraphBuilder.profileRoutes(
     )
   }
   composable(route = CommandoScreens.NotificationPreferences.name) {
-    val model = notificationsViewModel(notifications, orders)
+    val model = notificationsViewModel(session.notifications, session.orders)
     RefreshOnResume(model, model::refreshPreferences)
     val state by model.preferences.collectAsState()
     NotificationPreferencesScreen(
@@ -124,10 +121,10 @@ internal fun NavGraphBuilder.profileRoutes(
     val names: PublicNameViewModel =
         viewModel(viewModelStoreOwner = entry) {
           PublicNameViewModel(
-              publicProfiles,
+              session.publicProfiles,
               publicNameWrites,
-              orders::currentUserId,
-              orders.sessionChanges,
+              session.orders::currentUserId,
+              session.orders.sessionChanges,
           )
         }
     val draft by profileViewModel.editState.collectAsState()

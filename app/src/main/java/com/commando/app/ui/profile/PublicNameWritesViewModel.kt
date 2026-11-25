@@ -72,17 +72,21 @@ class PublicNameWritesViewModel(
   }
 
   /**
-   * Waits for completion, including rejected writes, before an editor reads committed server data.
+   * Returns completion of all outstanding writes for [ownerId], including rejected writes, before
+   * an editor reads committed server data. Cancelling the caller's await never cancels the writes.
    */
-  suspend fun awaitPending(ownerId: String) {
+  fun pendingCompletion(ownerId: String): Deferred<Unit> = viewModelScope.async {
     while (true) {
-      val write = synchronized(pending) { pending[ownerId] } ?: return
+      val write = synchronized(pending) { pending[ownerId] } ?: break
       write.join()
       forget(ownerId, write)
     }
   }
 
-  private fun forget(ownerId: String, write: Deferred<Unit>) {
-    synchronized(pending) { if (pending[ownerId] === write) pending.remove(ownerId) }
+  private fun forget(ownerId: String, write: Deferred<Unit>): Unit {
+    synchronized(pending) {
+      if (pending[ownerId] === write) pending.remove(ownerId)
+      Unit
+    }
   }
 }

@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import com.android.sample.R
-import com.android.sample.ui.navigation.NavigationTestTags
+import com.commando.app.ui.navigation.NavigationTestTags
 import com.commando.app.ui.trips.criteriaProblemMessage
 import com.commando.app.ui.trips.noMatchesMessage
 

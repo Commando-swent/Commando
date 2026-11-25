@@ -1,7 +1,7 @@
 package com.android.sample.emulator.firestore.security
 
 // AI assistance: OpenAI Codex.
-import com.android.sample.model.authentication.AuthRepositoryFirebase
+import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.commando.app.data.repository.*
 import com.commando.app.model.*
 import com.google.firebase.Timestamp

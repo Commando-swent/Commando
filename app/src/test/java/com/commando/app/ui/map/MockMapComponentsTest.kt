@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
-import com.android.sample.ui.theme.SampleAppTheme
+import com.commando.app.ui.theme.SampleAppTheme
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule

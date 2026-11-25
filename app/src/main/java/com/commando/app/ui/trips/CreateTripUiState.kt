@@ -1,6 +1,6 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code, including the uncertain publication lock (#394).
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
@@ -37,6 +37,11 @@ data class CreateTripUiState(
     val isPublishing: Boolean = false,
     /** Set when the last publication failed; the inputs are kept so the user can retry. */
     val publishError: TripError? = null,
+    /**
+     * True after a network or unknown failure: the trip may exist, so the form is locked and only a
+     * retry of the same publication is possible.
+     */
+    val hasUncertainPublication: Boolean = false,
     /** Set once the trip has been published; the form is then locked. */
     val publishedTrip: Trip? = null,
 )

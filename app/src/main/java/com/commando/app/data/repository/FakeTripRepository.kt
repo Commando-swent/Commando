@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transitions; OpenAI Codex for live feeds.
+// AI assistance: Claude Code for trip transitions and idempotent publication (#394); OpenAI
+// Codex for live feeds.
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus
@@ -9,7 +10,6 @@ import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
 import com.commando.app.model.blocksTripCompletion
 import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -36,19 +36,30 @@ class FakeTripRepository(
       changes.value += 1
     }
 
-  override suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> {
+  override suspend fun publishTrip(tripId: String, newTrip: NewTrip): TripResult<Trip> {
     forcedError?.let {
       return TripResult.Error(it)
     }
+    // Same at-most-once contract as Firestore: a stored trip is never overwritten.
+    trips[tripId]?.let { stored ->
+      return when {
+        stored.ownerId != currentUserId -> TripResult.Error(TripError.PermissionDenied)
+        stored.store != newTrip.store ||
+            stored.scheduledAt != newTrip.scheduledAt ||
+            stored.handoffLocation != newTrip.handoffLocation ->
+            TripResult.Error(TripError.InvalidData)
+        else -> TripResult.Success(stored)
+      }
+    }
 
     val createdAt = now()
-    if (!newTrip.isValid(createdAt)) {
+    if (!tripId.isDocumentId() || !newTrip.isValid(createdAt)) {
       return TripResult.Error(TripError.InvalidData)
     }
 
     val trip =
         Trip(
-            id = UUID.randomUUID().toString(),
+            id = tripId,
             ownerId = currentUserId,
             store = newTrip.store,
             scheduledAt = newTrip.scheduledAt,

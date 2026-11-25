@@ -1,8 +1,10 @@
 package com.android.sample.emulator.firestore.security
 
-// AI assistance: Claude Code for trip status seeding (#233).
+// AI assistance: Claude Code for trip status seeding (#233) and trip ID reuse (#394).
 
+import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepositoryFirestore
+import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.successData
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
@@ -247,6 +249,41 @@ class TripFirestoreSecurityRulesEmulatorTest {
               .await()
         }
       }
+    }
+  }
+
+  @Test
+  fun publish_reusingAnotherUsersTripId_cannotClaimOrOverwriteIt() = runTest {
+    withClients("owner" to true, "other" to true) { (owner, other) ->
+      val ownerId = checkNotNull(owner.auth.currentUser).uid
+      val otherId = checkNotNull(other.auth.currentUser).uid
+      val newTrip =
+          NewTrip(
+              store = Location("Migros", latitude = 46.5191, longitude = 6.6332),
+              scheduledAt = NOW.plusSeconds(3_600),
+              handoffLocation = Location("EPFL", latitude = 46.5188, longitude = 6.5665),
+          )
+      fun repository(uid: String, client: EmulatorClient) =
+          TripRepositoryFirestore(FakeAuthRepository(AuthUser(uid = uid)), client.firestore) { NOW }
+      val tripId = "reused-${UUID.randomUUID()}"
+      repository(ownerId, owner).publishTrip(tripId, newTrip).successData()
+      val reference = owner.firestore.collection(TRIPS_COLLECTION).document(tripId)
+      val stored = checkNotNull(reference.get().await().data)
+
+      val denied = TripResult.Error(TripError.PermissionDenied)
+      assertEquals(denied, repository(otherId, other).publishTrip(tripId, newTrip))
+      assertPermissionDenied {
+        other.firestore
+            .collection(TRIPS_COLLECTION)
+            .document(tripId)
+            .set(storedTrip(otherId))
+            .await()
+      }
+      // A cancelled trip is hidden from others, so the transaction read itself is denied.
+      setStatusAsAdmin(tripId, TripStatus.CANCELLED)
+      assertEquals(denied, repository(otherId, other).publishTrip(tripId, newTrip))
+
+      assertEquals(stored + ("status" to "CANCELLED"), reference.get().await().data)
     }
   }
 

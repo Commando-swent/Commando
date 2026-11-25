@@ -28,4 +28,15 @@
         <item quantity="other">Could not send the delay notice for %1$d minutes. Retry delay notice.</item>
     </plurals>
     <string name="chat_delay_notice">Delay notice</string>
+    <string name="chat_meetup_propose">Propose a meetup</string>
+    <string name="chat_meetup_title">Meetup proposal</string>
+    <string name="chat_meetup_location">Meeting location</string>
+    <string name="chat_meetup_validation">Choose a future date and time and a non-empty location.</string>
+    <string name="chat_meetup_pending">Awaiting requester response</string>
+    <string name="chat_meetup_expired">Proposal expired</string>
+    <string name="chat_meetup_accepted">Meetup accepted</string>
+    <string name="chat_meetup_declined">Meetup declined</string>
+    <string name="chat_meetup_sending">Sending meetup update…</string>
+    <string name="chat_meetup_failure">Could not confirm the meetup update. Retry or refresh the conversation.</string>
+    <string name="chat_meetup_time">Meeting time</string>
 </resources>

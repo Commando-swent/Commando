@@ -125,13 +125,18 @@ fun CreateTripContent(
                 R.string.create_trip_offline_title,
                 R.string.create_trip_offline_body,
                 CreateTripScreenTestTags.OFFLINE_BANNER,
-                icon = R.drawable.ic_connectivity_offline,
+                MaterialTheme.colorScheme.secondaryContainer,
+                MaterialTheme.colorScheme.onSecondaryContainer,
+                R.drawable.ic_connectivity_offline,
             )
         state.hasUncertainPublication ->
             PublishBanner(
                 R.string.create_trip_publish_uncertain_title,
                 R.string.create_trip_publish_uncertain_body,
                 CreateTripScreenTestTags.UNCERTAIN_BANNER,
+                MaterialTheme.colorScheme.secondaryContainer,
+                MaterialTheme.colorScheme.onSecondaryContainer,
+                R.drawable.ic_trip_alert_circle,
             )
         else -> state.publishError?.let { PublishErrorBanner(it) }
       }
@@ -276,6 +281,7 @@ internal fun PublishErrorBanner(error: TripError) {
       CreateTripScreenTestTags.ERROR_BANNER,
       MaterialTheme.colorScheme.errorContainer,
       MaterialTheme.colorScheme.onErrorContainer,
+      R.drawable.ic_trip_alert_circle,
   )
 }
 
@@ -285,9 +291,9 @@ private fun PublishBanner(
     @StringRes title: Int,
     @StringRes message: Int,
     tag: String,
-    container: Color = MaterialTheme.colorScheme.secondaryContainer,
-    content: Color = MaterialTheme.colorScheme.onSecondaryContainer,
-    @DrawableRes icon: Int = R.drawable.ic_trip_alert_circle,
+    container: Color,
+    content: Color,
+    @DrawableRes icon: Int,
 ) {
   Row(
       modifier =

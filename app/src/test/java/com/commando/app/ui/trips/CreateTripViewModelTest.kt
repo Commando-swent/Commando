@@ -478,11 +478,16 @@ class CreateTripViewModelTest {
 
   @Test
   fun malformedSavedIntent_isDroppedForAnEmptyForm() {
-    val savedState =
-        SavedStateHandle(mapOf(PENDING_KEY to arrayListOf("me", "trip-1", "not a date")))
-
-    assertEquals(CreateTripUiState(), createViewModel(savedState = savedState).uiState.value)
-    assertNull(savedState.get<List<String>>(PENDING_KEY))
+    // Too short, then the right size with an unreadable departure.
+    listOf(
+            arrayListOf("me", "trip-1", "not a date"),
+            arrayListOf("me", "trip-1", *Array(7) { "?" }),
+        )
+        .forEach {
+          val savedState = SavedStateHandle(mapOf(PENDING_KEY to it))
+          assertEquals(CreateTripUiState(), createViewModel(savedState = savedState).uiState.value)
+          assertNull(savedState.get<List<String>>(PENDING_KEY))
+        }
   }
 
   @Test

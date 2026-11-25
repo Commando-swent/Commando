@@ -26,6 +26,8 @@ to block forward transitions; captured pending orders cannot be edited or reject
 A recorded payment must be CONFIRMED before READY_FOR_HANDOFF. Legacy orders with
 no payment remain compatible; deploy mandatory payment presence together with #385.
 The existing order repository owns cancellation and its event (#403/#404).
+Client CONFIRMED writes are simulation-only. Before #407 or a real provider,
+confirmation must move to a trusted server and client confirmation writes be denied.
 
 Coordinate/deploy production rules before #407. Simulation callbacks must remain
 pure because transactions retry; no real provider is called. Emulator validation

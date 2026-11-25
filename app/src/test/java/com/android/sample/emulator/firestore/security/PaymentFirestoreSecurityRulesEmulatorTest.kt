@@ -265,6 +265,15 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       }
 
   @Test
+  fun refundReservationBlocksPendingAcceptance() = withOrder {
+    val refund = repo(requester, RefundStatus.PENDING).refundForCancellation(order.id)
+    assertEquals(RefundStatus.PENDING, (refund as PaymentResult.Success).data.status)
+    assertEquals(denied, orders().decideOrder(order.id, OrderDecision.ACCEPT, 0))
+    assertEquals("PENDING", doc("orders").get(Source.SERVER).await().getString("status"))
+    assertTrue(events().isEmpty())
+  }
+
+  @Test
   fun paidPendingRejectionLeavesOrderAndEventUnchanged() = withOrder {
     assertEquals(
         denied,

@@ -1,11 +1,14 @@
 package com.commando.app.ui.navigation
 
-// AI assistance: Claude Code moved the session dependency wiring out of CommandoApp (#322).
+// AI assistance: Claude Code moved the session dependency wiring out of CommandoApp (#322) and
+// added the session cache (#428).
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.CommandoPositionRepository
 import com.commando.app.data.repository.CommandoPositionRepositoryFirestore
 import com.commando.app.data.repository.NotificationRepository
@@ -20,6 +23,9 @@ import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripRepositoryFirestore
 import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.ui.orders.SessionOrderViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /** The repositories of one signed-in account, all bound to the same session identity. */
 internal class SessionDependencies(
@@ -29,6 +35,7 @@ internal class SessionDependencies(
     val savedSearches: SavedTripSearchRepository,
     val notifications: Lazy<NotificationRepository>,
     val positions: Lazy<CommandoPositionRepository>,
+    val cache: SessionCache,
 )
 
 /**
@@ -85,6 +92,10 @@ internal fun rememberSessionDependencies(
           ?: CommandoPositionRepositoryFirestore(orders::currentUserId)
     }
   }
+  // Same identity as the orders; a new account gets a new, empty cache (#428).
+  val cache: SessionCacheHolder = viewModel {
+    SessionCacheHolder(SessionCache(orders::currentUserId), orders.sessionChanges)
+  }
   return SessionDependencies(
       trips.repository,
       orders,
@@ -92,6 +103,7 @@ internal fun rememberSessionDependencies(
       savedSearches,
       notifications,
       positions.repository,
+      cache.cache,
   )
 }
 
@@ -102,3 +114,31 @@ private class SessionTripRepositoryViewModel(val repository: TripRepository) : V
 private class SessionPositionRepository(create: () -> CommandoPositionRepository) : ViewModel() {
   val repository = lazy(create)
 }
+
+/**
+ * Keeps the session cache across rotation. It is emptied as soon as [sessionChanges] reports that
+ * the session ended, without waiting for the next access, and again when the App entry is cleared.
+ *
+ * [SessionOrderViewModel.sessionChanges] follows the latest auth state, so a sign-out followed by a
+ * sign-in back faster than the collector runs can be seen as no change. In-app sign-out therefore
+ * closes the cache directly through [signOutClosing].
+ */
+internal class SessionCacheHolder(val cache: SessionCache, sessionChanges: Flow<String?>) :
+    ViewModel() {
+  init {
+    viewModelScope.launch {
+      sessionChanges.first { it == null }
+      cache.close()
+    }
+  }
+
+  override fun onCleared() = cache.close()
+}
+
+/**
+ * Runs [signOut] and, once it succeeds, closes [cache] at once. Unlike [SessionCacheHolder], this
+ * does not depend on observing the conflated auth state, so a quick sign-in back cannot revive the
+ * cache.
+ */
+internal fun signOutClosing(cache: SessionCache, signOut: () -> Boolean): Boolean =
+    signOut().also { if (it) cache.close() }

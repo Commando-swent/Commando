@@ -9,7 +9,6 @@ import com.commando.app.model.TripTransition
 import com.commando.app.model.blocksTripCompletion
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -20,10 +19,6 @@ interface TripRepository {
   fun observeUpcomingTrips(): Flow<TripResult<List<Trip>>?> = flow {
     error("Live trips unsupported")
   }
-
-  /** Publishes [newTrip] as a new intent, under a fresh trip ID. */
-  suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> =
-      publishTrip(UUID.randomUUID().toString(), newTrip)
 
   /**
    * Publishes [newTrip] under the caller's [tripId], at most once. The caller creates one ID per

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
 import com.android.sample.R
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -128,6 +129,7 @@ class TripRoutesNavigationTest {
             savedSearchRepositoryFactory = { presets },
             publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

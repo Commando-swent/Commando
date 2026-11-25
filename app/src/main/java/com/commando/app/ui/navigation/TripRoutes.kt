@@ -1,11 +1,12 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: Claude Code moved the trip destinations out of CommandoApp (#322) and added the
-// owner's earnings (#301).
+// owner's earnings (#301), and wired the trip form's saved, offline-aware publication (#429).
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraphBuilder
@@ -34,6 +35,7 @@ import com.commando.app.ui.trips.TripLocationFilterViewModel
 import com.commando.app.ui.trips.TripRatingUiState
 import com.commando.app.ui.trips.TripRatingViewModel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The signed-in account as seen by the trip routes. [mode] is read when a destination composes, not
@@ -58,10 +60,13 @@ internal fun NavGraphBuilder.tripRoutes(
     session: TripRouteSession,
     locationFilter: TripLocationFilterViewModel,
     savedSearchViewModel: SavedTripSearchViewModel,
+    isOnline: StateFlow<Boolean>,
 ) {
   composable(route = CommandoScreens.CreateTrip.name) { entry ->
     val createTripViewModel: CreateTripViewModel =
-        viewModel(viewModelStoreOwner = entry) { CreateTripViewModel(tripRepository) }
+        viewModel(viewModelStoreOwner = entry) {
+          CreateTripViewModel(tripRepository, createSavedStateHandle(), session.userId, isOnline)
+        }
     CreateTripScreen(
         viewModel = createTripViewModel,
         onBack = { navController.popBackStack() },

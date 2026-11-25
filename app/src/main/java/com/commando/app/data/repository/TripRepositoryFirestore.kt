@@ -16,7 +16,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -167,13 +166,6 @@ internal constructor(
 
   private fun String?.toOrderStatus(): OrderStatus? =
       OrderStatus.entries.firstOrNull { it.name == this }
-
-  /** Firestore keeps microseconds, so a stored departure is compared at that precision. */
-  private fun Trip.isPublicationOf(intent: NewTrip): Boolean =
-      store == intent.store &&
-          handoffLocation == intent.handoffLocation &&
-          scheduledAt.truncatedTo(ChronoUnit.MICROS) ==
-              intent.scheduledAt.truncatedTo(ChronoUnit.MICROS)
 }
 
 /** Raw trip transport; [FirestoreDocument] is decoded with Trip-specific validation below. */

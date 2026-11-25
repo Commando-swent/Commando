@@ -1,6 +1,8 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code, including publication intent ID and lock tests (#394).
+// AI assistance: Claude Code wrote the intent ID and lock tests (#394) and the timeout, offline
+// and saved intent tests (#429).
+import androidx.lifecycle.SavedStateHandle
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
@@ -17,11 +19,14 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -37,6 +42,7 @@ import org.junit.Test
 class CreateTripViewModelTest {
 
   private lateinit var repository: RecordingRepository
+  private val online = MutableStateFlow(true)
 
   @Before
   fun setUp() {
@@ -151,7 +157,7 @@ class CreateTripViewModelTest {
   @Test
   fun publish_isAcceptedByTheSharedFakeRepository() = runTest {
     val fake = FakeTripRepository(currentUserId = "me", now = { NOW })
-    val viewModel = CreateTripViewModel(fake, Clock.fixed(NOW, ZONE))
+    val viewModel = createViewModel(repo = fake)
     viewModel.fillValidForm()
 
     viewModel.publish()
@@ -168,7 +174,7 @@ class CreateTripViewModelTest {
   fun publish_coopTripKeepsTheCoopStoreSoItsCatalogueIsCoop() = runTest {
     val coop = TripLocations.stores.single { it.name == "Coop Ecublens" }
     val fake = FakeTripRepository(currentUserId = "me", now = { NOW })
-    val viewModel = CreateTripViewModel(fake, Clock.fixed(NOW, ZONE))
+    val viewModel = createViewModel(repo = fake)
     viewModel.fillValidForm()
     viewModel.setStore(coop)
 
@@ -347,8 +353,174 @@ class CreateTripViewModelTest {
     assertTrue(repository.tripIds.all { it.isNotBlank() })
   }
 
-  private fun createViewModel(clock: Clock = Clock.fixed(NOW, ZONE)) =
-      CreateTripViewModel(repository, clock)
+  @Test
+  fun timeout_isUncertainAndTheRetryReusesTheTripId() = runTest {
+    val gate = CompletableDeferred<Unit>()
+    repository = RecordingRepository(gate = gate)
+    val viewModel = createViewModel()
+    viewModel.fillValidForm()
+
+    viewModel.publish()
+    advanceTimeBy(TIMEOUT_SECONDS * 1_000 - 1)
+    assertTrue(viewModel.uiState.value.isPublishing)
+    advanceUntilIdle()
+    assertEquals(
+        VALID_STATE.copy(publishError = TripError.Unknown, hasUncertainPublication = true),
+        viewModel.uiState.value,
+    )
+
+    gate.complete(Unit)
+    viewModel.publish()
+    advanceUntilIdle()
+
+    assertEquals(2, repository.tripIds.size)
+    assertEquals(1, repository.tripIds.distinct().size)
+    assertEquals(PUBLISHED_TRIP, viewModel.uiState.value.publishedTrip)
+  }
+
+  @Test
+  fun offline_refusesBeforeAnyWriteWithoutConsumingAnIdUntilATapOnline() = runTest {
+    online.value = false
+    val savedState = SavedStateHandle()
+    val viewModel = createViewModel(savedState = savedState)
+    viewModel.fillValidForm()
+
+    viewModel.publish()
+    advanceUntilIdle()
+
+    assertTrue(repository.tripIds.isEmpty())
+    assertNull(savedState.get<List<String>>(PENDING_KEY))
+    assertEquals(VALID_STATE.copy(isOffline = true), viewModel.uiState.value)
+    online.value = true
+    viewModel.publish()
+    advanceUntilIdle()
+    assertEquals(1, repository.tripIds.size)
+    assertFalse(viewModel.uiState.value.isOffline)
+  }
+
+  @Test
+  fun offline_anEditClearsTheRefusal() = runTest {
+    online.value = false
+    val viewModel = createViewModel().apply { fillValidForm() }
+    viewModel.publish()
+    assertTrue(viewModel.uiState.value.isOffline)
+
+    viewModel.setTime(LocalTime.of(19, 0))
+
+    assertFalse(viewModel.uiState.value.isOffline)
+    assertTrue(repository.tripIds.isEmpty())
+  }
+
+  @Test
+  fun offline_keepsAnUncertainIntentPendingForTheNextRetry() = runTest {
+    repository = RecordingRepository(result = TripResult.Error(TripError.NetworkError))
+    val viewModel = createViewModel()
+    viewModel.fillValidForm()
+    viewModel.publish()
+    advanceUntilIdle()
+
+    online.value = false
+    viewModel.publish()
+    advanceUntilIdle()
+    val refused = viewModel.uiState.value
+    assertTrue(refused.isOffline && refused.hasUncertainPublication && refused.canPublish)
+    assertEquals(1, repository.tripIds.size)
+
+    online.value = true
+    repository.result = TripResult.Success(PUBLISHED_TRIP)
+    viewModel.publish()
+    advanceUntilIdle()
+    assertEquals(1, repository.tripIds.distinct().size)
+    assertEquals(PUBLISHED_TRIP, viewModel.uiState.value.publishedTrip)
+  }
+
+  @Test
+  fun recreation_restoresTheUncertainIntentForTheSameAccountOnly() = runTest {
+    repository = RecordingRepository(result = TripResult.Error(TripError.NetworkError))
+    val savedState = SavedStateHandle()
+    createViewModel(savedState = savedState).apply { fillValidForm() }.publish()
+    advanceUntilIdle()
+    val saved = savedState.get<List<String>>(PENDING_KEY)
+
+    val other = createViewModel(userId = "other", savedState = savedState)
+    assertEquals(CreateTripUiState(), other.uiState.value)
+    assertNull(savedState.get<List<String>>(PENDING_KEY))
+
+    savedState[PENDING_KEY] = saved
+    val restored = createViewModel(savedState = savedState)
+    assertEquals(VALID_STATE.copy(hasUncertainPublication = true), restored.uiState.value)
+    restored.setStore(OTHER_STORE)
+    repository.result = TripResult.Success(PUBLISHED_TRIP)
+    restored.publish()
+    advanceUntilIdle()
+    assertEquals(listOf(NEW_TRIP, NEW_TRIP), repository.published)
+    assertEquals(1, repository.tripIds.distinct().size)
+  }
+
+  @Test
+  fun restoredIntentRefusedAfterDeparture_unlocksWithTheFieldErrorsShown() = runTest {
+    repository = RecordingRepository(result = TripResult.Error(TripError.NetworkError))
+    val savedState = SavedStateHandle()
+    createViewModel(savedState = savedState).apply { fillValidForm() }.publish()
+    advanceUntilIdle()
+
+    val past = Clock.fixed(NEW_TRIP.scheduledAt.plusSeconds(60), ZONE)
+    val restored = createViewModel(clock = past, savedState = savedState)
+    repository.result = TripResult.Error(TripError.InvalidData)
+    restored.publish()
+    advanceUntilIdle()
+
+    val state = restored.uiState.value
+    assertEquals(CreateTripError.TIME_IN_PAST, state.timeError) // Same day, past time.
+    assertFalse(state.canPublish || state.hasUncertainPublication)
+    assertNull(savedState.get<List<String>>(PENDING_KEY))
+  }
+
+  @Test
+  fun malformedSavedIntent_isDroppedForAnEmptyForm() {
+    // Too short, then the right size with an unreadable departure.
+    listOf(
+            arrayListOf("me", "trip-1", "not a date"),
+            arrayListOf("me", "trip-1", *Array(7) { "?" }),
+        )
+        .forEach {
+          val savedState = SavedStateHandle(mapOf(PENDING_KEY to it))
+          assertEquals(CreateTripUiState(), createViewModel(savedState = savedState).uiState.value)
+          assertNull(savedState.get<List<String>>(PENDING_KEY))
+        }
+  }
+
+  @Test
+  fun savedIntent_isClearedOnceTheIntentSettles() = runTest {
+    listOf(TripResult.Success(PUBLISHED_TRIP), TripResult.Error(TripError.InvalidData)).forEach {
+      repository = RecordingRepository(result = TripResult.Error(TripError.Unknown))
+      val savedState = SavedStateHandle()
+      val viewModel = createViewModel(savedState = savedState).apply { fillValidForm() }
+      viewModel.publish()
+      advanceUntilIdle()
+      assertNotNull(savedState.get<List<String>>(PENDING_KEY))
+
+      repository.result = it
+      viewModel.publish()
+      advanceUntilIdle()
+      assertNull("$it", savedState.get<List<String>>(PENDING_KEY))
+    }
+  }
+
+  private fun createViewModel(
+      clock: Clock = Clock.fixed(NOW, ZONE),
+      userId: String = "me",
+      repo: TripRepository = repository,
+      savedState: SavedStateHandle = SavedStateHandle(),
+  ) =
+      CreateTripViewModel(
+          repo,
+          savedState,
+          userId,
+          online,
+          clock,
+          TIMEOUT_SECONDS.seconds,
+      )
 
   private fun CreateTripViewModel.fillValidForm(
       date: LocalDate = TOMORROW,
@@ -397,6 +569,8 @@ class CreateTripViewModelTest {
   }
 
   private companion object {
+    const val PENDING_KEY = "createTripPendingIntent"
+    const val TIMEOUT_SECONDS = 15L
     val ZONE: ZoneId = ZoneId.of("Europe/Zurich")
     val NOW: Instant = Instant.parse("2026-10-05T10:00:00Z") // 12:00 in Zurich
     val TODAY: LocalDate = LocalDate.of(2026, 10, 5)

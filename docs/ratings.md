@@ -56,7 +56,18 @@ AI assistance: OpenAI Codex contributed this persistence implementation and docu
 Authenticated users may get one summary, including its absence; listing and deletion are denied.
 `reliabilitySummaryWrites/{ownerId}` contains exactly `lastOrderId`. Clients cannot read or delete
 this witness. Private orders/events keep their existing read restrictions. Customer-star documents,
-submission, averages and names are unchanged; tracking adds no score, threshold, evaluation window or UI.
+submission, averages and names are unchanged. Tracking persists counts; calculation and UI belong to #448.
+
+The agreed reliability contract is:
+
+- Evaluated commitments = `completedCount + lateCancellationCount`.
+- Reliability percentage = `completedCount / (completedCount + lateCancellationCount) × 100`.
+- The evaluation window is cumulative eligible outcomes since reliability tracking was introduced.
+- Minimum history is five evaluated commitments. Below five, including zero history, display no
+  reliability percentage; #448 implements this calculation and presentation policy.
+- Early cancellations and non-terminal orders are excluded. Orders remaining indefinitely in
+  `READY_FOR_HANDOFF` contribute to neither counter; readiness alone is not completion.
+- No historical backfill.
 
 Receipt confirmation atomically increments completedCount with READY_FOR_HANDOFF -> DELIVERED.
 An eligible ACCEPTED -> CANCELLED owner transition increments lateCancellationCount only when the
@@ -83,7 +94,7 @@ Missing historical acceptance evidence remains penalty-free. This is not a new-o
 PENDING -> ACCEPTED already requires the matching server-timestamped event, and clients cannot delete
 or modify that event or rewrite an order's identity/status history. Malformed/future evidence fails
 closed. Previously terminal orders are not backfilled. No completion timestamp is needed for this
-prospective accumulation; choosing a later evaluation window or repairing legacy history is separate work.
+agreed cumulative window; repairing legacy history is separate work.
 Delivery tracking reads the persisted trip owner; supported trip lifecycle states permit that read.
 Historical CANCELLED trips remain owner-only, so imported handoff orders on those trips need trusted
 data repair before requesters can record delivery. Admin SDK imports bypass rules and must preserve

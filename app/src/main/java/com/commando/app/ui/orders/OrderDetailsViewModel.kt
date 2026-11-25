@@ -311,7 +311,7 @@ class OrderDetailsViewModel(
       val result = readPayment(repository)
       currentCoroutineContext().ensureActive()
       if (endSessionIfChanged()) return@launch
-      val current = mutableState.value as OrderDetailsUiState.Content
+      val current = mutableState.value as? OrderDetailsUiState.Content ?: return@launch
       mutableState.value = current.copy(payment = result)
     }
   }

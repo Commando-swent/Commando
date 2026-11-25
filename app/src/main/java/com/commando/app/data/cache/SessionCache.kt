@@ -25,9 +25,11 @@ class SessionCache(private val currentUserId: () -> String?) {
 
   /**
    * Identifies one cached value by name and type, so two keys with the same name but different
-   * types never share an entry. Create keys with [key].
+   * types never share an entry. Only [key] creates keys, so the type always matches [T]; the
+   * constructor and `copy` are internal only because the inline factory needs them.
    */
-  data class Key<T>(val name: String, val type: KType)
+  @ConsistentCopyVisibility
+  data class Key<T> @PublishedApi internal constructor(val name: String, val type: KType)
 
   /** Stores [value] as confirmed at [confirmedAt]; returns false if the session has ended. */
   fun <T> put(key: Key<T>, value: T, confirmedAt: Instant = Instant.now()): Boolean =

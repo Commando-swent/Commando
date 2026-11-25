@@ -11,14 +11,15 @@ screen can show it while the server cannot be reached. Each signed-in account ge
   (`orders::currentUserId`). Pass `session.cache` from `AuthenticatedApp` through the route to the
   ViewModel, like the repositories.
 - Store only values the server confirmed: results read with `Source.SERVER` (as the order
-  repository does), or snapshots whose `metadata.isFromCache` is false. A Firestore result served
-  from its local cache is not a confirmation and must not be stored.
+  repository does), or snapshots whose `metadata.isFromCache` and `metadata.hasPendingWrites` are
+  both false. A Firestore result served from its local cache, or holding local writes the server
+  has not confirmed yet, is not a confirmation and must not be stored.
 - Create keys with `SessionCache.key<T>(name)`, for example `key<Order>("order/$id")`. A key's
   type is part of its identity, so two keys with the same name and different types never share an
   entry.
 - As soon as the account signs out or changes, the cache is emptied for good: `get` returns `null`,
-  `put` returns `false` and `remove` does nothing. The next account starts with a new, empty
-  cache. `put` returning `false` means the session ended: drop the result, do not show it.
+  `put` returns `false` and `remove` does nothing. In-app sign-out closes it directly, so even a
+  quick sign-in back cannot revive it. The next account starts with a new, empty cache. `put` returning `false` means the session ended: drop the result, do not show it.
 - Every operation runs under one lock, so a write can never land after the cache was closed.
 - Tests use a real `SessionCache { uid }` with a variable `uid`.
 

@@ -65,6 +65,25 @@ class SessionCacheHolderTest {
       }
 
   @Test
+  fun signOutAndQuickSignInBackNeverReviveTheCache() =
+      runTest(main.dispatcher) {
+        val cache = holder().cache
+        assertTrue(signOutClosing(cache) { auth.signOut().isSuccess })
+        signIn("alice") // No advance: the collector never sees the sign-out.
+        advanceUntilIdle()
+        assertNull(cache.get(key))
+        assertFalse(cache.put(key, "late", confirmed))
+      }
+
+  @Test
+  fun failedSignOutKeepsTheCache() =
+      runTest(main.dispatcher) {
+        val cache = holder().cache
+        assertFalse(signOutClosing(cache) { false })
+        assertEquals("milk", cache.get(key)?.value)
+      }
+
+  @Test
   fun clearingTheSessionEntryClosesItsCache() =
       runTest(main.dispatcher) {
         val cache = holder().cache

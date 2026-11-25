@@ -119,11 +119,9 @@ private class SessionPositionRepository(create: () -> CommandoPositionRepository
  * Keeps the session cache across rotation. It is emptied as soon as [sessionChanges] reports that
  * the session ended, without waiting for the next access, and again when the App entry is cleared.
  *
- * [SessionOrderViewModel.sessionChanges] emits null whenever the signed-in user is not this
- * account: sign-out, another account, or a cleared session. It follows the latest auth state, so a
- * switch away and back faster than the collector runs may be seen as no change. The App entry is
- * keyed by that same state, so no screen of the other account ran in that case, and every cache
- * access still checks the identity itself.
+ * [SessionOrderViewModel.sessionChanges] follows the latest auth state, so a sign-out followed by a
+ * sign-in back faster than the collector runs can be seen as no change. In-app sign-out therefore
+ * closes the cache directly through [signOutClosing].
  */
 internal class SessionCacheHolder(val cache: SessionCache, sessionChanges: Flow<String?>) :
     ViewModel() {
@@ -136,3 +134,11 @@ internal class SessionCacheHolder(val cache: SessionCache, sessionChanges: Flow<
 
   override fun onCleared() = cache.close()
 }
+
+/**
+ * Runs [signOut] and, once it succeeds, closes [cache] at once. Unlike [SessionCacheHolder], this
+ * does not depend on observing the conflated auth state, so a quick sign-in back cannot revive the
+ * cache.
+ */
+internal fun signOutClosing(cache: SessionCache, signOut: () -> Boolean): Boolean =
+    signOut().also { if (it) cache.close() }

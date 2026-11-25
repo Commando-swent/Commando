@@ -84,7 +84,11 @@ sealed class OrderDetailsUiState {
       val mutation: OrderMutationState = OrderMutationState.Idle,
       /** Repository-confirmed requester feedback; absent while loading or unavailable. */
       val submittedRating: Rating? = null,
-      /** Persisted payment read for a participant; null when payments are not configured. */
+      /**
+       * The destination's only payment read, for the requester or trip owner; null while loading,
+       * when payments are not configured, or when the viewer is neither. Refund presentation (#407)
+       * reuses this result and reads only the refund, so Order Details shows one payment card.
+       */
       val payment: PaymentResult<Payment?>? = null,
   ) : OrderDetailsUiState() {
     private val isEligibleOwner: Boolean
@@ -209,9 +213,10 @@ class OrderDetailsViewModel(
   private val ratingsConfigured = ratingRepositoryFactory != null
   private var ratingReadJob: Job? = null
   private var ratingReadGeneration = 0L
+  private var paymentReadJob: Job? = null
 
   private val session = SessionGuard(currentUserId)
-  // Same session-bound identity as ratings, as the PaymentRepository contract requires.
+  // One session-bound instance, as for ratings, shared by payment status and refunds (#407).
   private val paymentRepository = paymentRepositoryFactory?.invoke {
     if (session.hasEnded()) null else session.initialUserId
   }
@@ -225,6 +230,7 @@ class OrderDetailsViewModel(
       sessionChanges.collect { userId ->
         if (session.hasEnded(userId)) {
           invalidateRatingRead()
+          invalidatePaymentRead()
           mutableState.value = OrderDetailsUiState.SessionEnded
           mutableRating.value = RatingDialogState()
         }
@@ -252,6 +258,7 @@ class OrderDetailsViewModel(
     // Set before launching so rapid retries cannot start simultaneous loads.
     isLoading = true
     invalidateRatingRead()
+    invalidatePaymentRead()
     mutableState.value = OrderDetailsUiState.Loading
     viewModelScope.launch {
       try {
@@ -260,6 +267,7 @@ class OrderDetailsViewModel(
         currentCoroutineContext().ensureActive()
         if (!endSessionIfChanged()) {
           mutableState.value = state
+          loadPayment()
           loadSubmittedRating()
         }
       } finally {
@@ -271,6 +279,7 @@ class OrderDetailsViewModel(
   private fun endSessionIfChanged(): Boolean {
     if (session.hasEnded()) {
       invalidateRatingRead()
+      invalidatePaymentRead()
       mutableState.value = OrderDetailsUiState.SessionEnded
       mutableRating.value = RatingDialogState()
       return true
@@ -282,6 +291,29 @@ class OrderDetailsViewModel(
     ratingReadGeneration++
     ratingReadJob?.cancel()
     ratingReadJob = null
+  }
+
+  private fun invalidatePaymentRead() {
+    paymentReadJob?.cancel()
+    paymentReadJob = null
+  }
+
+  /** Payment status must not delay the order actions that were already available on this screen. */
+  private fun loadPayment() {
+    val content = mutableState.value as? OrderDetailsUiState.Content ?: return
+    val repository = paymentRepository ?: return
+    val viewer = session.initialUserId
+    if (viewer == null || (viewer != content.order.requesterId && viewer != content.trip.ownerId)) {
+      return
+    }
+    if (endSessionIfChanged()) return
+    paymentReadJob = viewModelScope.launch {
+      val result = readPayment(repository)
+      currentCoroutineContext().ensureActive()
+      if (endSessionIfChanged()) return@launch
+      val current = mutableState.value as OrderDetailsUiState.Content
+      mutableState.value = current.copy(payment = result)
+    }
   }
 
   private fun loadSubmittedRating() {
@@ -471,7 +503,10 @@ class OrderDetailsViewModel(
           }
       currentCoroutineContext().ensureActive()
       if (!endSessionIfChanged()) {
-        mutableState.value = mutationResult(content, result)
+        // Saving keeps the screen in Content; payment may have completed while the write was
+        // active.
+        val latest = mutableState.value as OrderDetailsUiState.Content
+        mutableState.value = mutationResult(latest, result)
         if (result is OrderResult.Success) onSuccess(result.data)
       }
     }
@@ -530,17 +565,13 @@ class OrderDetailsViewModel(
               order,
               result.data,
               session.initialUserId,
-              payment = readPayment(order, result.data.ownerId),
           )
       is TripResult.Error -> OrderDetailsUiState.Error.TripFailure(result.error)
     }
   }
 
-  /** Only the requester and trip owner may read the payment; the repository re-checks both. */
-  private suspend fun readPayment(order: Order, ownerId: String): PaymentResult<Payment?>? {
-    val viewer = session.initialUserId
-    val repository = paymentRepository ?: return null
-    if (viewer == null || (viewer != order.requesterId && viewer != ownerId)) return null
+  /** The repository re-checks the participant filtered by [loadPayment]. */
+  private suspend fun readPayment(repository: PaymentRepository): PaymentResult<Payment?> {
     return try {
       repository.getPayment(orderId)
     } catch (_: Exception) {

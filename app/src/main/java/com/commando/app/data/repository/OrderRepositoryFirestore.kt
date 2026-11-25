@@ -1,7 +1,7 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193), Commando cancellation
-// (#401): Claude Code.
+// (#401): Claude Code. Trusted reliability tracking (#387): OpenAI Codex.
 import com.commando.app.model.NotificationEventType
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
@@ -14,6 +14,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.WriteBatch
@@ -489,29 +490,81 @@ internal class FirebaseOrderFirestoreDataSource(
       ensureDecisionIdentity(database.app, uid)
     }
     ensureSession()
-    fun attempt(write: Boolean) = database.runTransaction { transaction ->
+    fun attempt(
+        write: Boolean,
+        countLateCancellation: Boolean = false,
+    ) = database.runTransaction { transaction ->
       ensureSession()
       val ref = database.collection("orders").document(id)
       val document = transaction.readOrder(ref, uid, requester)
+      val changesOrder = write && document.canTransition(from, expectedRevision)
+      val ownerId =
+          if (changesOrder && (target == OrderStatus.DELIVERED || countLateCancellation)) {
+            val tripId = document.data.getValue("tripId") as String
+            transaction.get(database.collection("trips").document(tripId)).getString("ownerId")
+                ?: throw transitionError(FirebaseFirestoreException.Code.INVALID_ARGUMENT)
+          } else null
       // Retried callbacks authorize current persisted data before writing.
       ensureSession()
-      if (write && document.canTransition(from, expectedRevision)) {
+      if (changesOrder) {
+        if (ownerId != null) {
+          transaction.recordReliability(ref, ownerId, target == OrderStatus.DELIVERED)
+        }
         val status = target.name
         transaction.update(ref, "status", status)
         ownerTransition?.let { transaction.setDecisionEvent(ref, document, it) }
         document.copy(data = document.data + ("status" to status))
       } else document
     }
+    suspend fun readBack() = attempt(write = false).await().also { ensureSession() }
     return try {
-      attempt(write = true).await()
-    } catch (denied: FirebaseFirestoreException) {
-      if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
-      // Reconcile a competing commit without retrying a denied write or bypassing authorization.
-      attempt(write = false).await().also {
-        ensureSession()
-        if (it.data["status"] == from.name) throw denied
-      }
-    }
+          attempt(write = true).await()
+        } catch (denied: FirebaseFirestoreException) {
+          if (denied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw denied
+          val persisted = readBack()
+          if (persisted.data["status"] != from.name) {
+            persisted
+          } else if (ownerTransition == OwnerOrderTransition.CANCEL_ACCEPTED) {
+            // Denial does not prove lateness. Try one rules-validated alternative after
+            // reauthorizing.
+            // The server independently checks timing, ownership, refund and the exact counter
+            // delta.
+            try {
+              attempt(write = true, countLateCancellation = true).await()
+            } catch (retryDenied: FirebaseFirestoreException) {
+              if (retryDenied.code != FirebaseFirestoreException.Code.PERMISSION_DENIED)
+                  throw retryDenied
+              readBack().also { if (it.data["status"] == from.name) throw denied }
+            }
+          } else {
+            throw denied
+          }
+        }
+        .also { ensureSession() }
+  }
+
+  /**
+   * Adds one terminal commitment in the order transaction. Rules validate the transform against the
+   * persisted transition; callers never supply totals or a cancellation classification. The witness
+   * is write-only to clients so authenticated summary reads expose counts alone.
+   */
+  private fun Transaction.recordReliability(
+      ref: DocumentReference,
+      ownerId: String,
+      completed: Boolean,
+  ) {
+    set(
+        ref.firestore.collection("reliabilitySummaries").document(ownerId),
+        mapOf(
+            "completedCount" to FieldValue.increment(if (completed) 1L else 0L),
+            "lateCancellationCount" to FieldValue.increment(if (completed) 0L else 1L),
+        ),
+        SetOptions.merge(),
+    )
+    set(
+        ref.firestore.collection("reliabilitySummaryWrites").document(ownerId),
+        mapOf("lastOrderId" to ref.id),
+    )
   }
 
   // Requester cancellation changes status only; owner transitions publish their own events.

@@ -113,6 +113,7 @@ class OrderNavigationTest {
       ratings: ((() -> String?) -> RatingRepository) = {
         error("Order navigation must not initialize ratings")
       },
+      payments: ((() -> String?) -> PaymentRepository)? = null,
   ) {
     content = {
       SampleAppTheme {
@@ -122,6 +123,7 @@ class OrderNavigationTest {
             credentials,
             orderRepositoryFactory = factory,
             ratingRepositoryFactory = ratings,
+            paymentRepositoryFactory = payments,
             positionRepositoryFactory = {
               positions ?: FakeCommandoPositionRepository(MutableStateFlow(auth.currentUser?.uid))
             },
@@ -241,6 +243,22 @@ class OrderNavigationTest {
     assertEquals(1, factoryCalls)
     back()
     compose.onNodeWithTag(NavigationTestTags.HOME_SCREEN).assertIsDisplayed()
+  }
+
+  @Test
+  fun orderDetailsReadsPaymentStatusThroughTheSessionBoundRepository() {
+    var identity: (() -> String?)? = null
+    show(
+        payments = { currentUserId ->
+          identity = currentUserId
+          FakePaymentRepository(currentUserId, listOf(order), mapOf(trip.id to trip.ownerId))
+        }
+    )
+    click(AppTestTags.ORDERS_BUTTON)
+    card().performClick()
+    compose.onNodeWithTag(OrderDetailsTestTags.PAYMENT_STATUS).assertExists()
+    compose.onNodeWithTag(OrderDetailsTestTags.PAY).assertDoesNotExist()
+    assertEquals(alice.uid, identity?.invoke())
   }
 
   @Test

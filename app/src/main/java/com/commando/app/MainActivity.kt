@@ -13,6 +13,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.WindowCompat
+import com.commando.app.data.repository.PaymentRepositoryFirestore
 import com.commando.app.data.repository.ProfilePhotoRepositoryFirestore
 import com.commando.app.model.authentication.AuthRepositoryProvider
 import com.commando.app.resources.C
@@ -37,6 +38,7 @@ class MainActivity : AppCompatActivity() {
           CommandoApp(
               repository = auth,
               photoRepository = photos,
+              paymentRepositoryFactory = { identity -> PaymentRepositoryFirestore(identity) },
               onLanguageSelected = { language ->
                 AppCompatDelegate.setApplicationLocales(
                     LocaleListCompat.forLanguageTags(language.tag)

@@ -105,8 +105,11 @@ sonar {
     property("sonar.organization", "commando-swent")
     property("sonar.host.url", "https://sonarcloud.io")
 
-    // Launcher previews are IDE-only fixtures compiled in debug, not release application code.
-    property("sonar.coverage.exclusions", "src/debug/java/**/MainActivityPreviews.kt")
+    // Previews are IDE-only fixtures compiled in debug, not release application code.
+    property(
+        "sonar.coverage.exclusions",
+        "src/debug/java/**/MainActivityPreviews.kt,src/debug/java/**/CheckoutPreviews.kt",
+    )
 
     property(
         "sonar.junit.reportPaths",

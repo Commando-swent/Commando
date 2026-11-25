@@ -3,6 +3,7 @@ package com.android.sample.emulator.firestore.security
 // AI assistance: OpenAI Codex.
 import com.commando.app.data.repository.*
 import com.commando.app.model.*
+import com.commando.app.model.MeetupResponse.ACCEPTED
 import com.commando.app.model.authentication.AuthRepositoryFirebase
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
@@ -27,16 +28,12 @@ class MeetupSecurityEmulatorTest {
         (owner, requester, outsider, signedOut) ->
       val trips = TripRepositoryFirestore(AuthRepositoryFirebase(owner.auth), owner.firestore)
       val location = Location("Migros EPFL", 46.52, 6.57)
-      val trip =
-          (trips.publishTrip(NewTrip(location, Instant.now().plusSeconds(3600), location))
-                  as TripResult.Success)
-              .data
+      val tripInput = NewTrip(location, Instant.now().plusSeconds(3600), location)
+      val trip = (trips.publishTrip(tripInput) as TripResult.Success).data
       val orders =
           OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
-      val order =
-          (orders.createOrder(OrderDraft(trip.id, listOf(OrderItem("milk", "Milk", 220, 1)), 100))
-                  as OrderResult.Success)
-              .data
+      val draft = OrderDraft(trip.id, listOf(OrderItem("milk", "Milk", 220, 1)), 100)
+      val order = (orders.createOrder(draft) as OrderResult.Success).data
       val ownerOrders = OrderRepositoryFirestore({ owner.auth.currentUser?.uid }, owner.firestore)
       ownerOrders.decideOrder(order.id, OrderDecision.ACCEPT, order.revision)
       fun chat(client: EmulatorClient) =
@@ -46,12 +43,12 @@ class MeetupSecurityEmulatorTest {
       val ok = OrderResult.Success(Unit)
       assertEquals(
           OrderResult.Error(OrderError.NotAuthenticated),
-          chat(signedOut).respondToMeetup(order.id, "meetup", MeetupResponse.ACCEPTED),
+          chat(signedOut).respondToMeetup(order.id, "meetup", ACCEPTED),
       )
       for ((id, message, response) in
           listOf(
-              Triple("", "meetup", MeetupResponse.ACCEPTED),
-              Triple(order.id, "bad/path", MeetupResponse.ACCEPTED),
+              Triple("", "meetup", ACCEPTED),
+              Triple(order.id, "bad/path", ACCEPTED),
               Triple(order.id, "meetup", MeetupResponse.PENDING),
           )) {
         assertEquals(
@@ -65,14 +62,8 @@ class MeetupSecurityEmulatorTest {
       )
       assertEquals(ok, chat(owner).proposeMeetup(order.id, "meetup", proposal))
       assertTrue(chat(requester).proposeMeetup(order.id, "forged", proposal) is OrderResult.Error)
-      assertTrue(
-          chat(owner).respondToMeetup(order.id, "meetup", MeetupResponse.ACCEPTED)
-              is OrderResult.Error
-      )
-      assertTrue(
-          chat(outsider).respondToMeetup(order.id, "meetup", MeetupResponse.ACCEPTED)
-              is OrderResult.Error
-      )
+      assertTrue(chat(owner).respondToMeetup(order.id, "meetup", ACCEPTED) is OrderResult.Error)
+      assertTrue(chat(outsider).respondToMeetup(order.id, "meetup", ACCEPTED) is OrderResult.Error)
       val ref =
           requester.firestore
               .collection("orders")
@@ -85,16 +76,12 @@ class MeetupSecurityEmulatorTest {
             .await()
       }
       val outcomes =
-          listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED)
+          listOf(ACCEPTED, MeetupResponse.DECLINED)
               .map { async { chat(requester).respondToMeetup(order.id, "meetup", it) } }
               .awaitAll()
       assertEquals(1, outcomes.count { it is OrderResult.Success })
-      val decided =
-          (chat(requester).observeChat(order.id).first() as OrderResult.Success)
-              .data
-              .messages
-              .single()
-              .meetup!!
+      val history = chat(requester).observeChat(order.id).first()
+      val decided = (history as OrderResult.Success).data.messages.single().meetup!!
       assertNotNull(decided.respondedAt)
       assertEquals(proposal.location, decided.location)
       assertEquals(proposal.at.truncatedTo(MICROS), decided.at)
@@ -134,13 +121,13 @@ class MeetupSecurityEmulatorTest {
       updateDocumentAsOwner("trips/${trip.id}", mapOf("status" to TripStatus.CANCELLED.name))
       assertEquals(
           OrderResult.Error(OrderError.PermissionDenied),
-          chat(requester).respondToMeetup(order.id, "pending", MeetupResponse.ACCEPTED),
+          chat(requester).respondToMeetup(order.id, "pending", ACCEPTED),
       )
       updateDocumentAsOwner("trips/${trip.id}", mapOf("status" to TripStatus.IN_PROGRESS.name))
       updateDocumentAsOwner("orders/${order.id}", mapOf("status" to OrderStatus.DELIVERED.name))
       assertEquals(
           OrderResult.Error(OrderError.PermissionDenied),
-          chat(requester).respondToMeetup(order.id, "pending", MeetupResponse.ACCEPTED),
+          chat(requester).respondToMeetup(order.id, "pending", ACCEPTED),
       )
       assertTrue(chat(owner).proposeMeetup(order.id, "late", proposal) is OrderResult.Error)
       assertEquals(ok, chat(requester).respondToMeetup(order.id, "meetup", decided.response))

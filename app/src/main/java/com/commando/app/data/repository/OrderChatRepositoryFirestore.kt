@@ -85,29 +85,24 @@ class OrderChatRepositoryFirestore(
     val stored = tx.get(ref)
     if (stored.getString("senderId") == uid) throw failure(Code.PERMISSION_DENIED)
     val proposal = decodeMessage(stored).meetup ?: throw failure(Code.INVALID_ARGUMENT)
-    if (proposal.response != response) {
-      if (proposal.response != MeetupResponse.PENDING) throw failure(Code.INVALID_ARGUMENT)
-      val trip =
-          tx.get(
-              firestore
-                  .collection("trips")
-                  .document(order.getString("tripId") ?: throw failure(Code.DATA_LOSS))
-          )
-      if (
-          !OrderStatus.valueOf(order.getString("status").orEmpty()).canSendChat ||
-              !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay ||
-              !proposal.at.isAfter(java.time.Instant.now())
-      )
-          throw failure(Code.PERMISSION_DENIED)
-      guard(uid)
-      tx.update(
-          ref,
-          mapOf(
-              "meetup.response" to response.name,
-              "meetup.respondedAt" to FieldValue.serverTimestamp(),
-          ),
-      )
-    }
+    if (proposal.response == response) return
+    if (proposal.response != MeetupResponse.PENDING) throw failure(Code.INVALID_ARGUMENT)
+    val tripId = order.getString("tripId") ?: throw failure(Code.DATA_LOSS)
+    val trip = tx.get(firestore.collection("trips").document(tripId))
+    if (
+        !OrderStatus.valueOf(order.getString("status").orEmpty()).canSendChat ||
+            !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay ||
+            !proposal.at.isAfter(java.time.Instant.now())
+    )
+        throw failure(Code.PERMISSION_DENIED)
+    guard(uid)
+    tx.update(
+        ref,
+        "meetup.response",
+        response.name,
+        "meetup.respondedAt",
+        FieldValue.serverTimestamp(),
+    )
   }
 
   private suspend fun send(
@@ -181,15 +176,7 @@ class OrderChatRepositoryFirestore(
       if (!status.canSendChat) throw failure(Code.PERMISSION_DENIED)
       if (meetup != null && !meetup.isFuturePending(java.time.Instant.now()))
           throw failure(Code.INVALID_ARGUMENT)
-      if (delay != null || meetup != null) {
-        val tripId = storedOrder.getString("tripId") ?: throw failure(Code.DATA_LOSS)
-        val trip = transaction.get(firestore.collection("trips").document(tripId))
-        if (
-            trip.getString("ownerId") != uid ||
-                !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay
-        )
-            throw failure(Code.PERMISSION_DENIED)
-      }
+      if (delay != null || meetup != null) requireActiveOwner(transaction, storedOrder, uid)
       guard(uid)
       transaction.set(
           messageRef,
@@ -211,6 +198,16 @@ class OrderChatRepositoryFirestore(
               } ?: emptyMap()),
       )
     }
+  }
+
+  private fun requireActiveOwner(transaction: Transaction, order: DocumentSnapshot, uid: String) {
+    val tripId = order.getString("tripId") ?: throw failure(Code.DATA_LOSS)
+    val trip = transaction.get(firestore.collection("trips").document(tripId))
+    if (
+        trip.getString("ownerId") != uid ||
+            !TripStatus.valueOf(trip.getString("status").orEmpty()).canReportDelay
+    )
+        throw failure(Code.PERMISSION_DENIED)
   }
 
   override fun observeChat(orderId: String): Flow<OrderResult<OrderChat>> =

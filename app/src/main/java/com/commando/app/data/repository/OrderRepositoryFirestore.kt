@@ -513,6 +513,8 @@ internal class FirebaseOrderFirestoreDataSource(
       } else document
     }
     suspend fun readBack() = attempt(write = false).await().also { ensureSession() }
+    // The owner cannot read the requester's ORDER_ACCEPTED event to select the late path directly.
+    // Firestore rules classify cancellation using server-side timing; denial alone proves nothing.
     val retryLateCancellation: (suspend () -> OrderFirestoreDocument)? =
         if (ownerTransition == OwnerOrderTransition.CANCEL_ACCEPTED) {
           { attempt(write = true, countLateCancellation = true).await() }

@@ -1097,6 +1097,63 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       }
 
   @Test
+  fun cancellationNineMinutesAfterAcceptancePreservesCounters() =
+      withReliability(late = false) { owner, requester, order ->
+        val acceptedAt =
+            eventTime(requester, order.id, NotificationEventType.ORDER_ACCEPTED)
+                .minus(COMMANDO_CANCELLATION_GRACE.minusMinutes(1))
+        updateDocumentAsOwner(
+            "orderEvents/${order.id}_ORDER_ACCEPTED",
+            mapOf("occurredAt" to Timestamp(acceptedAt)),
+        )
+        val before = counts(2, 1)
+        createDocumentAsOwner("reliabilitySummaries", owner.auth.currentUser!!.uid, before)
+
+        writeDecision(owner, order.id, "CANCELLED")
+
+        assertEquals(
+            OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)),
+            orders(requester).getOrderById(order.id),
+        )
+        assertTrue(
+            isPenaltyFreeCancellation(
+                acceptedAt,
+                eventTime(requester, order.id, NotificationEventType.ORDER_CANCELLED),
+            )
+        )
+        assertEquals(before, reliability(owner).get(Source.SERVER).await().data)
+      }
+
+  @Test
+  fun cancellationElevenMinutesAfterAcceptanceRequiresOneLateIncrement() =
+      withReliability(late = false) { owner, requester, order ->
+        val acceptedAt =
+            eventTime(requester, order.id, NotificationEventType.ORDER_ACCEPTED)
+                .minus(COMMANDO_CANCELLATION_GRACE.plusMinutes(1))
+        updateDocumentAsOwner(
+            "orderEvents/${order.id}_ORDER_ACCEPTED",
+            mapOf("occurredAt" to Timestamp(acceptedAt)),
+        )
+
+        assertPermissionDenied { writeDecision(owner, order.id, "CANCELLED") }
+        assertEquals(OrderResult.Success(order), orders(requester).getOrderById(order.id))
+        assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+
+        val cancelled = OrderResult.Success(order.copy(status = OrderStatus.CANCELLED))
+        assertEquals(cancelled, orders(owner).cancelAcceptedOrder(order.id))
+        assertEquals(cancelled, orders(requester).getOrderById(order.id))
+        assertFalse(
+            isPenaltyFreeCancellation(
+                acceptedAt,
+                eventTime(requester, order.id, NotificationEventType.ORDER_CANCELLED),
+            )
+        )
+        assertEquals(counts(0, 1), reliability(owner).get(Source.SERVER).await().data)
+        assertEquals(cancelled, orders(owner).cancelAcceptedOrder(order.id))
+        assertEquals(counts(0, 1), reliability(owner).get(Source.SERVER).await().data)
+      }
+
+  @Test
   fun concurrentLateCancellationsAndRetriesIncrementOnce() = withReliability { owner, _, order ->
     val gate = CompletableDeferred<Unit>()
     val calls =

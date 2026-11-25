@@ -12,7 +12,7 @@ for language in fr en; do
   printf '%s\n' "$output"
   [[ "$output" == *"OK (1 test)"* ]]
   "$adb" -s "$serial" shell am force-stop com.android.sample
-  "$adb" -s "$serial" shell am start -W -n com.android.sample/.MainActivity >/dev/null
+  "$adb" -s "$serial" shell am start -W -n com.android.sample/com.commando.app.MainActivity >/dev/null
   expected='Welcome back.'
   [[ "$language" != fr ]] || expected='Heureux de vous revoir.'
   for attempt in 1 2 3 4 5; do

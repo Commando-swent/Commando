@@ -105,6 +105,9 @@ sonar {
     property("sonar.organization", "commando-swent")
     property("sonar.host.url", "https://sonarcloud.io")
 
+    // Launcher previews are IDE-only fixtures compiled in debug, not release application code.
+    property("sonar.coverage.exclusions", "src/debug/java/**/MainActivityPreviews.kt")
+
     property(
         "sonar.junit.reportPaths",
         "${project.layout.buildDirectory.get()}/test-results/testDebugUnitTest/",
@@ -140,6 +143,7 @@ dependencies {
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
   implementation(libs.androidx.lifecycle.runtime.ktx)
+  implementation(libs.androidx.lifecycle.runtime.compose)
 
   // Firebase
   implementation(platform(libs.firebase.bom))

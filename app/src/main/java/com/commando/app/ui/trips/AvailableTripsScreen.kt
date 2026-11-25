@@ -27,12 +27,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.android.sample.R
-import com.android.sample.ui.navigation.NavigationTestTags
 import com.commando.app.model.CriteriaProblem
 import com.commando.app.model.HANDOFF_RADIUS_METERS
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
+import com.commando.app.ui.navigation.NavigationTestTags
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId

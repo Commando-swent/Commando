@@ -303,9 +303,11 @@ jobs:
           path: app/build/outputs/code_coverage/debugAndroidTest/connected/
           if-no-files-found: error
 
+  # Waits for the build too: SonarCloud is the only required check, so a failed build must also
+  # stop it, otherwise a pull request with a failing build could still be merged.
   coverage:
     name: Coverage and SonarCloud
-    needs: [unit-tests, firebase-emulator-tests, android-tests]
+    needs: [build, unit-tests, firebase-emulator-tests, android-tests]
     runs-on: ubuntu-latest
 
     steps:

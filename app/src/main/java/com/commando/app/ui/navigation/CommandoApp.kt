@@ -68,9 +68,11 @@ import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.profile.AppLanguage
 import com.commando.app.ui.profile.ProfilePhotoSnackbarHost
 import com.commando.app.ui.profile.ProfileViewModel
+import com.commando.app.ui.profile.PublicNameWritesViewModel
 import com.commando.app.ui.session.SessionViewModel
 import com.commando.app.ui.trips.SavedTripSearchViewModel
 import com.commando.app.ui.trips.TripLocationFilterViewModel
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** The form and session share the same repository; tests can inject an in-memory implementation. */
@@ -101,6 +103,13 @@ fun CommandoApp(
   val scope = rememberCoroutineScope()
   val sessionViewModel: SessionViewModel = viewModel { SessionViewModel(repository) }
   val sessionUiState by sessionViewModel.uiState.collectAsState()
+  // Submitted name writes outlive the authenticated graph, just like the activity's monitor.
+  val publicNameWrites: PublicNameWritesViewModel = viewModel {
+    PublicNameWritesViewModel(
+        { repository.currentUser?.uid },
+        sessionViewModel.uiState.map { it.user?.uid },
+    )
+  }
   // One monitor for the activity, kept across rotations and account changes (#393).
   val connectivity =
       connectivityMonitor ?: viewModel { ConnectivityViewModel(context.applicationContext) }.monitor
@@ -140,7 +149,7 @@ fun CommandoApp(
               )
           AuthenticatedApp(
               repository = repository,
-              sessionViewModel = sessionViewModel,
+              publicNameWrites = publicNameWrites,
               publicProfiles = session.publicProfiles,
               photoRepository = photoRepository,
               tripRepository = session.trips,
@@ -180,7 +189,7 @@ fun CommandoApp(
 @Composable
 private fun AuthenticatedApp(
     repository: AuthRepository,
-    sessionViewModel: SessionViewModel,
+    publicNameWrites: PublicNameWritesViewModel,
     publicProfiles: Lazy<PublicProfileRepository>,
     photoRepository: ProfilePhotoRepository?,
     tripRepository: TripRepository,
@@ -385,7 +394,7 @@ private fun AuthenticatedApp(
       profileRoutes(
           navController = navController,
           profileViewModel = profileViewModel,
-          sessionViewModel = sessionViewModel,
+          publicNameWrites = publicNameWrites,
           publicProfiles = publicProfiles,
           photoSnackbarHost = photoSnackbarHost,
           notifications = notifications,

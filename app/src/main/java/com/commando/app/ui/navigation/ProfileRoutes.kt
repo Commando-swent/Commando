@@ -5,7 +5,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,8 +31,9 @@ import com.commando.app.ui.profile.ProfileScreen
 import com.commando.app.ui.profile.ProfileUiState
 import com.commando.app.ui.profile.ProfileViewModel
 import com.commando.app.ui.profile.PublicNameEditor
+import com.commando.app.ui.profile.PublicNameViewModel
+import com.commando.app.ui.profile.PublicNameWritesViewModel
 import com.commando.app.ui.profile.rememberProfilePhotoActions
-import com.commando.app.ui.session.SessionViewModel
 
 /**
  * The app-level account actions Profile triggers: [signOut] reports a failure through
@@ -49,7 +49,7 @@ internal class ProfileRouteActions(
 internal fun NavGraphBuilder.profileRoutes(
     navController: NavHostController,
     profileViewModel: ProfileViewModel,
-    sessionViewModel: SessionViewModel,
+    publicNameWrites: PublicNameWritesViewModel,
     publicProfiles: Lazy<PublicProfileRepository>,
     photoSnackbarHost: SnackbarHostState,
     notifications: Lazy<NotificationRepository>,
@@ -121,23 +121,23 @@ internal fun NavGraphBuilder.profileRoutes(
     )
   }
   composable(route = CommandoScreens.EditProfile.name) { entry ->
-    val draft by profileViewModel.editState.collectAsState()
-    val publicName by sessionViewModel.publicName.collectAsState()
-    DisposableEffect(entry) {
-      sessionViewModel.beginPublicNameEditor(entry)
-      onDispose {
-        if (navController.currentBackStackEntry != entry) {
-          sessionViewModel.closePublicNameEditor(entry)
+    val names: PublicNameViewModel =
+        viewModel(viewModelStoreOwner = entry) {
+          PublicNameViewModel(
+              publicProfiles,
+              publicNameWrites,
+              orders::currentUserId,
+              orders.sessionChanges,
+          )
         }
-      }
-    }
+    val draft by profileViewModel.editState.collectAsState()
+    val publicName by names.publicName.collectAsState()
     val profile by profileViewModel.uiState.collectAsState()
     LaunchedEffect(profile, draft == null) {
       if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
     }
     val onCancel = {
       if (profileViewModel.editState.value?.isSaving != true) {
-        sessionViewModel.closePublicNameEditor(entry)
         profileViewModel.cancelEditing()
         navController.popBackStack()
       }
@@ -158,9 +158,9 @@ internal fun NavGraphBuilder.profileRoutes(
           publicNameEditor = {
             PublicNameEditor(
                 publicName,
-                { sessionViewModel.loadPublicName(publicProfiles, entry) },
-                { sessionViewModel.editPublicName(it, entry) },
-                { sessionViewModel.savePublicName(it, entry) },
+                names::loadPublicName,
+                names::editPublicName,
+                names::savePublicName,
                 Modifier.testTag(ProfileEditTestTags.PUBLIC_SECTION),
             )
           },

@@ -11,13 +11,13 @@ import com.commando.app.model.authentication.AuthRepository
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.model.authentication.ProfileUpdateResult
-import com.commando.app.ui.session.SessionViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -387,10 +387,22 @@ class ProfileViewModelTest {
   private val publicAuth = FakeAuthRepository(alice)
   private val profiles = PublicProfileTestRepository()
 
-  private fun TestScope.pendingPublicName(): Pair<SessionViewModel, CompletableDeferred<Unit>> {
-    val session = SessionViewModel(publicAuth).also { store.put("session", it) }
-    session.beginPublicNameEditor("profile")
-    session.loadPublicName(lazyOf(profiles))
+  private fun TestScope.pendingPublicName(): Pair<PublicNameViewModel, CompletableDeferred<Unit>> {
+    val writes =
+        PublicNameWritesViewModel(
+                { publicAuth.currentUser?.uid },
+                publicAuth.observeAuthState().map { it?.uid },
+            )
+            .also { store.put("writes", it) }
+    val session =
+        PublicNameViewModel(
+                lazyOf(profiles),
+                writes,
+                { publicAuth.currentUser?.uid },
+                publicAuth.observeAuthState().map { it?.uid },
+            )
+            .also { store.put("names", it) }
+    session.loadPublicName()
     runCurrent()
     val reply = profiles.deferWrite()
     session.savePublicName("Public alias")

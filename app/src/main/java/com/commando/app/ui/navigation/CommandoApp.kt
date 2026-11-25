@@ -39,6 +39,7 @@ import com.commando.app.data.repository.OrderChatRepositoryFirestore
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProfilePhotoRepository
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingRepositoryFirestore
 import com.commando.app.data.repository.SavedTripSearchRepository
@@ -82,6 +83,7 @@ fun CommandoApp(
     notificationRepositoryFactory: ((() -> String?) -> NotificationRepository)? = null,
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
     chatRepositoryFactory: ((() -> String?) -> OrderChatRepository)? = null,
+    publicProfileRepositoryFactory: ((() -> String?) -> PublicProfileRepository)? = null,
 ) {
   val context = LocalContext.current
   val clearSessionError = stringResource(R.string.auth_google_clear_error)
@@ -123,9 +125,12 @@ fun CommandoApp(
                   savedSearchRepositoryFactory = savedSearchRepositoryFactory,
                   notificationRepositoryFactory = notificationRepositoryFactory,
                   positionRepositoryFactory = positionRepositoryFactory,
+                  publicProfileRepositoryFactory = publicProfileRepositoryFactory,
               )
           AuthenticatedApp(
               repository = repository,
+              sessionViewModel = sessionViewModel,
+              publicProfiles = session.publicProfiles,
               photoRepository = photoRepository,
               tripRepository = session.trips,
               productRepository = productRepository,
@@ -163,6 +168,8 @@ fun CommandoApp(
 @Composable
 private fun AuthenticatedApp(
     repository: AuthRepository,
+    sessionViewModel: SessionViewModel,
+    publicProfiles: Lazy<PublicProfileRepository>,
     photoRepository: ProfilePhotoRepository?,
     tripRepository: TripRepository,
     productRepository: ProductRepository?,
@@ -360,6 +367,8 @@ private fun AuthenticatedApp(
       profileRoutes(
           navController = navController,
           profileViewModel = profileViewModel,
+          sessionViewModel = sessionViewModel,
+          publicProfiles = publicProfiles,
           photoSnackbarHost = photoSnackbarHost,
           notifications = notifications,
           orders = orders,

@@ -40,4 +40,31 @@ class EditProfileLayoutTest {
       compose.onNodeWithTag(ProfileEditTestTags.CANCEL).assertIsEnabled()
     }
   }
+
+  @Test
+  fun pendingAndRejectedPublicWriteKeepConfirmedNameVisible() {
+    val state = mutableStateOf(PublicNameEditState(true, "Confirmed", "Draft"))
+    compose.setContent {
+      SampleAppTheme {
+        PublicNameEditor(
+            state.value,
+            {},
+            { state.value = state.value.copy(draft = it) },
+            { state.value = state.value.copy(busy = true) },
+        )
+      }
+    }
+    compose.onNodeWithText("Update public name").performClick()
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_CONFIRMED)
+        .assertTextEquals("Published name: Confirmed")
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).assertIsNotEnabled()
+    compose.runOnIdle { state.value = state.value.copy(busy = false, failed = true) }
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_CONFIRMED)
+        .assertTextEquals("Published name: Confirmed")
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).assertTextEquals("Draft")
+    compose.onNodeWithText("Change not confirmed. Try again.").assertIsDisplayed()
+    compose.onNodeWithText("Update public name").assertIsEnabled()
+  }
 }

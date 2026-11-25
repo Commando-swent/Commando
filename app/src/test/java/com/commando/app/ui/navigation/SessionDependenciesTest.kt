@@ -63,6 +63,7 @@ class SessionDependenciesTest {
   private val checklists = Recorder(::FakeShoppingChecklistRepository)
   private val savedSearches = Recorder { SavedTripSearchRepositoryLocal(context, it) }
   private val notifications = Recorder { _ -> EmptyNotifications }
+  private val publicProfiles = Recorder { _ -> PublicProfileTestRepository() }
   private val positions = Recorder { _ ->
     FakeCommandoPositionRepository(MutableStateFlow<String?>("alice"))
   }
@@ -80,6 +81,7 @@ class SessionDependenciesTest {
             savedSearchRepositoryFactory = savedSearches,
             positionRepositoryFactory = positions,
             notificationRepositoryFactory = notifications,
+            publicProfileRepositoryFactory = publicProfiles,
         )
       }
     }
@@ -159,7 +161,7 @@ class SessionDependenciesTest {
     click(AppTestTags.REQUESTER_MODE)
     click(AppTestTags.ORDERS_BUTTON)
     click(AppTestTags.PROFILE_BUTTON)
-    assertUids(emptyList(), notifications, positions)
+    assertUids(emptyList(), notifications, positions, publicProfiles)
     scrollClick(NotificationTestTags.PREFERENCES)
     compose.onNodeWithTag(NotificationTestTags.NEW_ORDERS).assertIsDisplayed()
     back()

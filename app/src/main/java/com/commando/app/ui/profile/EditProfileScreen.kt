@@ -12,6 +12,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
@@ -26,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.android.sample.R
 import com.commando.app.model.authentication.AuthException
 
+/** Edits private account details and hosts independent, explicitly public-name controls. */
 @Composable
 fun EditProfileScreen(
     state: ProfileEditUiState,
@@ -37,6 +42,7 @@ fun EditProfileScreen(
     modifier: Modifier = Modifier,
     photo: PhotoUiState? = null,
     onPhotoClick: (() -> Unit)? = null,
+    publicNameEditor: @Composable () -> Unit = {},
 ) {
   val enabled = !state.isSaving && !state.saved
   Column(
@@ -181,6 +187,84 @@ fun EditProfileScreen(
         ) {
           Text(stringResource(R.string.profile_edit_cancel))
         }
+    publicNameEditor()
+  }
+}
+
+/**
+ * Shows confirmed publication separately from draft input. Only explicit actions submit changes;
+ * [onLoad] also retries failed reads. [modifier] controls the root of every editor state.
+ */
+@Composable
+internal fun PublicNameEditor(
+    state: PublicNameEditState?,
+    onLoad: () -> Unit,
+    onEdit: (String) -> Unit,
+    onSave: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  Column(modifier.fillMaxWidth().padding(top = 16.dp)) {
+    if (state == null) {
+      TextButton(onClick = onLoad, modifier = Modifier.testTag(ProfileEditTestTags.PUBLIC_MANAGE)) {
+        Text(stringResource(R.string.public_name_manage))
+      }
+    } else {
+      Text(
+          stringResource(R.string.public_name_visibility),
+          style = MaterialTheme.typography.bodySmall,
+      )
+      if (state.loaded) {
+        Text(
+            if (state.confirmed == null) stringResource(R.string.public_name_unpublished)
+            else stringResource(R.string.public_name_confirmed, state.confirmed),
+            Modifier.testTag(ProfileEditTestTags.PUBLIC_CONFIRMED),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        var edited by remember(state.confirmed) { mutableStateOf(false) }
+        ProfileEditField(
+            state.draft,
+            {
+              edited = true
+              onEdit(it)
+            },
+            R.string.public_name_label,
+            R.string.public_name_label,
+            ProfileEditTestTags.PUBLIC_NAME,
+            !state.busy,
+            if (state.nameInvalid && (edited || state.draft.isNotEmpty()))
+                R.string.public_name_invalid
+            else null,
+            false,
+            {},
+        )
+        TextButton(onClick = { onSave(state.draft) }, enabled = state.canSave) {
+          Text(
+              stringResource(
+                  if (state.confirmed == null) R.string.public_name_publish
+                  else R.string.public_name_update
+              )
+          )
+        }
+        if (state.confirmed != null) {
+          TextButton(onClick = { onSave(null) }, enabled = !state.busy) {
+            Text(stringResource(R.string.public_name_remove))
+          }
+        }
+      }
+      if (state.busy) CircularProgressIndicator()
+      if (state.failed) {
+        Text(
+            stringResource(
+                if (state.loaded) R.string.public_name_write_failed
+                else R.string.public_name_load_failed
+            ),
+            color = MaterialTheme.colorScheme.error,
+        )
+      }
+      if (!state.loaded && !state.busy) {
+        TextButton(onClick = onLoad) { Text(stringResource(R.string.trips_retry)) }
+      }
+    }
   }
 }
 

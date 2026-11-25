@@ -5,15 +5,19 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import com.commando.app.data.repository.NotificationRepository
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.model.authentication.AuthException
 import com.commando.app.ui.notifications.NotificationInboxScreen
 import com.commando.app.ui.notifications.NotificationPreferencesScreen
@@ -21,12 +25,15 @@ import com.commando.app.ui.notifications.NotificationsViewModel
 import com.commando.app.ui.orders.SessionOrderViewModel
 import com.commando.app.ui.profile.AppLanguage
 import com.commando.app.ui.profile.EditProfileScreen
+import com.commando.app.ui.profile.ProfileEditTestTags
 import com.commando.app.ui.profile.ProfileHelpScreen
 import com.commando.app.ui.profile.ProfileLanguageScreen
 import com.commando.app.ui.profile.ProfileScreen
 import com.commando.app.ui.profile.ProfileUiState
 import com.commando.app.ui.profile.ProfileViewModel
+import com.commando.app.ui.profile.PublicNameEditor
 import com.commando.app.ui.profile.rememberProfilePhotoActions
+import com.commando.app.ui.session.SessionViewModel
 
 /**
  * The app-level account actions Profile triggers: [signOut] reports a failure through
@@ -42,6 +49,8 @@ internal class ProfileRouteActions(
 internal fun NavGraphBuilder.profileRoutes(
     navController: NavHostController,
     profileViewModel: ProfileViewModel,
+    sessionViewModel: SessionViewModel,
+    publicProfiles: Lazy<PublicProfileRepository>,
     photoSnackbarHost: SnackbarHostState,
     notifications: Lazy<NotificationRepository>,
     orders: SessionOrderViewModel,
@@ -111,14 +120,24 @@ internal fun NavGraphBuilder.profileRoutes(
         onBack = { navController.popBackStack() },
     )
   }
-  composable(route = CommandoScreens.EditProfile.name) {
+  composable(route = CommandoScreens.EditProfile.name) { entry ->
     val draft by profileViewModel.editState.collectAsState()
+    val publicName by sessionViewModel.publicName.collectAsState()
+    DisposableEffect(entry) {
+      sessionViewModel.beginPublicNameEditor(entry)
+      onDispose {
+        if (navController.currentBackStackEntry != entry) {
+          sessionViewModel.closePublicNameEditor(entry)
+        }
+      }
+    }
     val profile by profileViewModel.uiState.collectAsState()
     LaunchedEffect(profile, draft == null) {
       if (profile is ProfileUiState.Content) profileViewModel.beginEditing()
     }
     val onCancel = {
       if (profileViewModel.editState.value?.isSaving != true) {
+        sessionViewModel.closePublicNameEditor(entry)
         profileViewModel.cancelEditing()
         navController.popBackStack()
       }
@@ -136,6 +155,15 @@ internal fun NavGraphBuilder.profileRoutes(
           (profile as? ProfileUiState.Content)?.fullName,
           photo = photo,
           onPhotoClick = onPhotoClick,
+          publicNameEditor = {
+            PublicNameEditor(
+                publicName,
+                { sessionViewModel.loadPublicName(publicProfiles, entry) },
+                { sessionViewModel.editPublicName(it, entry) },
+                { sessionViewModel.savePublicName(it, entry) },
+                Modifier.testTag(ProfileEditTestTags.PUBLIC_SECTION),
+            )
+          },
       )
     } ?: CircularProgressIndicator()
   }

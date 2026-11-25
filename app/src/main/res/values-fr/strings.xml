@@ -520,4 +520,15 @@
     <string name="rating_failure">Impossible d’envoyer votre note. Réessayez.</string>
     <string name="rating_success">Note envoyée.</string>
     <string name="rating_already">Cette commande a déjà été évaluée.</string>
+    <string name="public_name_manage">Gérer le nom public</string>
+    <string name="public_name_label">Nom public</string>
+    <string name="public_name_invalid">Saisissez de 1 à 80 caractères sur une ligne, dont au moins un caractère autre qu’un espace.</string>
+    <string name="public_name_visibility">Les autres utilisateurs connectés peuvent voir ce nom sur vos trajets et commandes.</string>
+    <string name="public_name_unpublished">Aucun nom public publié.</string>
+    <string name="public_name_confirmed">Nom publié : %1$s</string>
+    <string name="public_name_publish">Publier le nom</string>
+    <string name="public_name_update">Modifier le nom public</string>
+    <string name="public_name_remove">Retirer le nom public</string>
+    <string name="public_name_load_failed">Impossible de charger votre nom public.</string>
+    <string name="public_name_write_failed">Modification non confirmée. Réessayez.</string>
 </resources>

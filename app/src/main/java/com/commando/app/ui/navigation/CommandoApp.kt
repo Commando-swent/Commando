@@ -1,7 +1,7 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: OpenAI Codex (real-trip map integration and conflict resolution); Claude Code
-// (connectivity monitor wiring, #393).
+// (connectivity monitor wiring, #393; session cache closed on sign-out, #428).
 // Claude Code contributed the shared resume refresh, incoming orders (#147), checklist (#193)
 // and the trip owner's close and complete actions (#233), and moved the shared helpers, session
 // dependencies, authentication, trip and map routes into their own files (#322). OpenAI Codex
@@ -152,7 +152,7 @@ fun CommandoApp(
               savedSearches = session.savedSearches,
               userId = user.uid,
               onSignOut = {
-                if (sessionViewModel.signOut()) {
+                if (signOutClosing(session.cache, sessionViewModel::signOut)) {
                   scope.launch {
                     try {
                       googleClient.clearSession()

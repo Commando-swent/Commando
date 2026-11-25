@@ -41,6 +41,23 @@ Firestore read succeeds. Static OAuth configuration checks and demo-project emul
 tests do not replace this production-client/device check. Record the tested revision,
 device, signing source and outcome in the PR; leave unperformed checks explicitly pending.
 
+### Device-validation status for PR #415
+
+No device-validation result is recorded for this revision. The following checks
+remain pending and must stay unchecked in the PR description:
+
+| Required check | Tested revision / signing source | Device | Outcome |
+| --- | --- | --- | --- |
+| Interactive debug launch | Not tested | None | Pending |
+| Interactive release launch | Not tested | None | Pending |
+| Google Sign-In on the signed CI APK | No signed CI artifact installed for this check | None | Pending |
+| Authorized Firestore read on the same signed CI APK | No signed CI artifact installed for this check | None | Pending |
+
+Local builds, APK-manifest inspection and Firebase demo-project emulator suites
+are separate automated checks. They do not establish these interactive results.
+Before closing #349, record the actual commit, CI artifact/run, signing source,
+device/API and observed outcome for each required check.
+
 ## Future application-ID migration (not implemented here)
 
 Changing the application ID is a separate product and release decision:

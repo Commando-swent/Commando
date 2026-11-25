@@ -347,11 +347,13 @@ jobs:
           name: android-test-coverage
           path: app/build/outputs/code_coverage/debugAndroidTest/connected
 
-      # The tests already ran in the jobs above: compile the classes the report needs, without
-      # running the unit tests again.
+      # The tests already ran in the jobs above. The report reads the compiled classes, which it only
+      # depends on through testDebugUnitTest, so compile them in a separate Gradle invocation and
+      # generate the report without running the unit tests again.
       - name: Generate Coverage Report
         run: |
-          ./gradlew compileDebugKotlin jacocoTestReport -x testDebugUnitTest --build-cache
+          ./gradlew compileDebugKotlin --build-cache
+          ./gradlew jacocoTestReport -x testDebugUnitTest --build-cache
 
       - name: Validate Coverage Report
         run: >-

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AI assistance: Claude Code (#393). -->
+    <string name="connectivity_offline_title">Vous êtes hors ligne</string>
+    <string name="connectivity_offline_body">Certaines actions peuvent échouer jusqu’à votre reconnexion.</string>
+    <string name="connectivity_back_online_title">De nouveau en ligne</string>
+    <string name="connectivity_back_online_body">Votre connexion est rétablie.</string>
+</resources>

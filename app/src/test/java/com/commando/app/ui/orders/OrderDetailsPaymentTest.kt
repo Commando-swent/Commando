@@ -315,6 +315,29 @@ class OrderDetailsPaymentTest {
   }
 
   @Test
+  fun accountChangeSeenOnlyWhenThePaymentReadReturnsDiscardsTheResult() = runTest {
+    val gate = CompletableDeferred<PaymentResult<Payment?>>()
+    val delayed =
+        object : PaymentRepository by fake() {
+          override suspend fun getPayment(orderId: String) = gate.await()
+        }
+    val vm =
+        OrderDetailsViewModel(
+            order.id,
+            orders(),
+            FakeTripRepository(trip.ownerId, initialTrips = listOf(trip)),
+            { user },
+            paymentRepositoryFactory = { delayed },
+        )
+    runCurrent()
+    // No session event yet: only the identity check after the read can notice the change.
+    user = "other"
+    gate.complete(PaymentResult.Success(payment(PaymentStatus.CONFIRMED)))
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+  }
+
+  @Test
   fun pendingOrderCannotBePaid() = runTest {
     val pending = order.copy(status = OrderStatus.PENDING)
     assertFalse(loaded(fake(stored = pending), orders(pending)).canPay)

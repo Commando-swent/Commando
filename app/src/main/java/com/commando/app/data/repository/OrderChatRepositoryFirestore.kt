@@ -224,22 +224,32 @@ class OrderChatRepositoryFirestore(
             val orderRef = order(orderId)
             val orderSnapshots =
                 watch<DocumentSnapshot>(uid) { callback ->
-                      orderRef.addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE, callback)
-                    }
-                    .filter { !it.metadata.isFromCache && !it.metadata.hasPendingWrites() }
+                  orderRef.addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE, callback)
+                }
+
             val messages =
                 watch<QuerySnapshot>(uid) { callback ->
-                      orderRef
-                          .collection("messages")
-                          .orderBy("createdAt", Query.Direction.DESCENDING)
-                          .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
-                          .limit(CHAT_WINDOW_SIZE)
-                          .addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE, callback)
-                    }
-                    .filter { !it.metadata.isFromCache && !it.metadata.hasPendingWrites() }
+                  orderRef
+                      .collection("messages")
+                      .orderBy("createdAt", Query.Direction.DESCENDING)
+                      .orderBy(FieldPath.documentId(), Query.Direction.DESCENDING)
+                      .limit(CHAT_WINDOW_SIZE)
+                      .addSnapshotListener({ it.run() }, MetadataChanges.INCLUDE, callback)
+                }
+
             emitAll(
                 orderSnapshots.combine(messages) { snapshot, history ->
                   guard(uid)
+                  if (
+                      snapshot.metadata.isFromCache ||
+                          snapshot.metadata.hasPendingWrites() ||
+                          history.metadata.isFromCache ||
+                          history.metadata.hasPendingWrites()
+                  ) {
+                    return@combine OrderResult.Success(
+                        OrderChat(OrderStatus.PENDING, emptyList(), serverConfirmed = false)
+                    )
+                  }
                   if (!snapshot.exists()) throw failure(Code.NOT_FOUND)
                   val status = OrderStatus.valueOf(snapshot.getString("status").orEmpty())
                   if (status == OrderStatus.PENDING) throw failure(Code.PERMISSION_DENIED)

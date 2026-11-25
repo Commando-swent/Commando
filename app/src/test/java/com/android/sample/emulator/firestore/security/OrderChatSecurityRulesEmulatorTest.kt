@@ -28,6 +28,10 @@ import org.robolectric.Shadows.shadowOf
 /** Two-account SDK journeys and malicious writes against production rules. */
 @RunWith(RobolectricTestRunner::class)
 class OrderChatSecurityRulesEmulatorTest {
+  /** SDK cache markers are never authoritative history or authorization results. */
+  private fun OrderChatRepository.confirmedChat(id: String) =
+      observeChat(id).filter { it !is OrderResult.Success || it.data.serverConfirmed }
+
   private val sent = OrderResult.Success(Unit)
 
   @Test
@@ -145,12 +149,12 @@ class OrderChatSecurityRulesEmulatorTest {
       val requesterRepo = repo(requester)
       assertEquals(
           OrderResult.Success(OrderChat(OrderStatus.ACCEPTED, emptyList())),
-          ownerRepo.observeChat(id).first(),
+          ownerRepo.confirmedChat(id).first(),
       )
       val received =
           async(Dispatchers.IO) {
             withTimeout(20_000) {
-              ownerRepo.observeChat(id).first {
+              ownerRepo.confirmedChat(id).first {
                 it is OrderResult.Success && it.data.messages.size == 2
               }
             }
@@ -174,7 +178,7 @@ class OrderChatSecurityRulesEmulatorTest {
       val terminal =
           async(Dispatchers.IO) {
             withTimeout(20_000) {
-              requesterRepo.observeChat(id).first {
+              requesterRepo.confirmedChat(id).first {
                 it is OrderResult.Success && it.data.status == OrderStatus.DELIVERED
               }
             }
@@ -185,14 +189,14 @@ class OrderChatSecurityRulesEmulatorTest {
       assertFailure(OrderError.PermissionDenied, ownerRepo.sendMessage(id, "late", "Hi"))
       assertEquals(
           chat.messages,
-          (repo(requester).observeChat(id).first() as OrderResult.Success).data.messages,
+          (repo(requester).confirmedChat(id).first() as OrderResult.Success).data.messages,
       )
       val listening = CompletableDeferred<Unit>()
       val ended =
           async(Dispatchers.IO) {
             withTimeout(20_000) {
               ownerRepo
-                  .observeChat(id)
+                  .confirmedChat(id)
                   .onEach { listening.complete(Unit) }
                   .first { it is OrderResult.Error }
             }
@@ -205,7 +209,7 @@ class OrderChatSecurityRulesEmulatorTest {
       for (user in listOf(chat.messages.last().senderId, "")) {
         val expired = OrderChatRepositoryFirestore({ user }, owner.firestore)
         assertFailure(OrderError.NotAuthenticated, expired.sendMessage(id, "late", "text"))
-        assertFailure(OrderError.NotAuthenticated, expired.observeChat(id).first())
+        assertFailure(OrderError.NotAuthenticated, expired.confirmedChat(id).first())
       }
     }
   }
@@ -237,7 +241,7 @@ class OrderChatSecurityRulesEmulatorTest {
         assertPermissionDenied { messages.document("forged").set(data).await() }
         val expectedError =
             if (client == outsider) OrderError.PermissionDenied else OrderError.NotAuthenticated
-        assertFailure(expectedError, repo(client).observeChat(id).first())
+        assertFailure(expectedError, repo(client).confirmedChat(id).first())
       }
       for (invalid in
           listOf(
@@ -297,7 +301,7 @@ class OrderChatSecurityRulesEmulatorTest {
             "corrupt",
             data + ("createdAt" to Timestamp.now()) + (field to null),
         )
-        assertFailure(OrderError.InvalidData, repo(requester).observeChat(id).first())
+        assertFailure(OrderError.InvalidData, repo(requester).confirmedChat(id).first())
         deleteDocumentAsOwner("orders/$id/messages/corrupt")
       }
       assertPermissionDenied { ref.get(Source.SERVER).await() }
@@ -305,12 +309,40 @@ class OrderChatSecurityRulesEmulatorTest {
       for (invalidId in listOf("", "path/id")) {
         assertFailure(OrderError.InvalidData, repo(requester).sendMessage(invalidId, "id", "text"))
         assertFailure(OrderError.InvalidData, repo(requester).sendMessage(id, invalidId, "text"))
-        assertFailure(OrderError.InvalidData, repo(requester).observeChat(invalidId).first())
+        assertFailure(OrderError.InvalidData, repo(requester).confirmedChat(invalidId).first())
       }
       assertFailure(
           OrderError.NotFound,
           repo(requester).sendMessage(UUID.randomUUID().toString(), "id", "text"),
       )
+    }
+  }
+
+  @Test
+  fun sdkCachedHistoryIsUnconfirmedAndReconnectRetainsTheMessageIdentity() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val id = seed(owner, requester)
+      val chat = repo(requester)
+      val messageId = UUID.randomUUID().toString()
+      assertEquals(sent, chat.sendMessage(id, messageId, "Meet at EPFL"))
+      val confirmed = (chat.confirmedChat(id).first() as OrderResult.Success).data
+      requester.firestore.disableNetwork().await()
+      try {
+        val cached =
+            withContext(Dispatchers.IO) {
+              withTimeout(20_000) {
+                chat.observeChat(id).first { it is OrderResult.Success && !it.data.serverConfirmed }
+              }
+            }
+                as OrderResult.Success
+        assertTrue(cached.data.messages.isEmpty())
+      } finally {
+        requester.firestore.enableNetwork().await()
+      }
+      assertEquals(sent, chat.sendMessage(id, messageId, "Meet at EPFL"))
+      val refreshed = (chat.confirmedChat(id).first() as OrderResult.Success).data
+      assertEquals(confirmed, refreshed)
+      assertEquals(messageId, refreshed.messages.single().id)
     }
   }
 

@@ -76,6 +76,7 @@ class CatalogueNavigationTest {
 
         override suspend fun clearSession() {}
       }
+  private val publicProfiles = PublicProfileTestRepository()
   private var factoryCalls = 0
   private var createdOrders = 0
   private var orders: OrderRepository? = null
@@ -108,6 +109,7 @@ class CatalogueNavigationTest {
             trips,
             credentials,
             productRepository = products,
+            publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = factory,
         )
@@ -192,7 +194,10 @@ class CatalogueNavigationTest {
         .onNodeWithTag(CatalogueTestTags.SUMMARY)
         .assertTextContains("CHF 7.80", substring = true)
     click(CatalogueTestTags.CONTINUE)
-    compose.runOnIdle { assertEquals(listOf(migrosTrip.ownerId), ratingIds) }
+    compose.runOnIdle {
+      assertEquals(listOf(migrosTrip.ownerId), ratingIds)
+      assertEquals(listOf(migrosTrip.ownerId), publicProfiles.reads)
+    }
     // Review opens on the same draft, priced by the catalogue, with the trip it belongs to.
     compose.onNodeWithText(migrosTrip.store.name).assertIsDisplayed()
     compose.onNodeWithText(oat.name).assertIsDisplayed()

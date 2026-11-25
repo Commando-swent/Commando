@@ -42,6 +42,7 @@ import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingResult
@@ -264,6 +265,8 @@ class CommandoAppTest {
   // These fixtures use unsupported store names, so the catalogue never queries this stub.
   private val products = StubProductRepository()
 
+  private val publicProfiles = PublicProfileTestRepository()
+
   private fun show(
       repository: AuthRepository,
       picker: Picker = Picker(),
@@ -294,6 +297,7 @@ class CommandoAppTest {
             trips,
             picker,
             productRepository = products,
+            publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = ratings ?: { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
             positionRepositoryFactory = {
@@ -405,12 +409,14 @@ class CommandoAppTest {
   @Test
   @Config(qualifiers = "en-rUS-w412dp-h917dp-mdpi")
   fun ratingRetryDoesNotReloadTripAndFailureStillAllowsCatalogueNavigation() {
+    publicProfiles.name = "Public owner"
     val trips = ScriptedTripRepository(twoTrips(alice.uid))
     val ratings = RecordingRatings()
     ratings.load = { RatingResult.Error(RatingError.Unknown) }
     show(FakeAuthRepository(alice), trips, ratings = { ratings })
     click(HomeTestTags.TRIP_ACTION)
     compose.onTripCard(firstTrip.id).performClick()
+    compose.onNodeWithText("Public owner").performScrollTo().assertIsDisplayed()
     compose.onNodeWithTag(TripRatingTestTags.RETRY).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(listOf(firstTrip.id), trips.requestedIds)
@@ -1207,6 +1213,40 @@ class CommandoAppTest {
   }
 
   @Test
+  fun publicNameActionsUseInjectedRepositoryAndKeepPrivateProfile() {
+    show(FakeAuthRepository(alice))
+    click(AppTestTags.PROFILE_BUTTON)
+    click(ProfileTestTags.EDIT)
+    compose.runOnIdle { assertTrue(publicProfiles.reads.isEmpty()) }
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_MANAGE).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_CONFIRMED)
+        .assertTextEquals("No public name published.")
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME)
+        .performTextReplacement("  Public alias  ")
+    compose.runOnIdle { assertTrue(publicProfiles.writes.isEmpty()) }
+    compose.onNodeWithText("Publish name").performScrollTo().performClick()
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_CONFIRMED)
+        .assertTextEquals("Published name:   Public alias  ")
+    compose.onNodeWithTag(ProfileEditTestTags.PUBLIC_NAME).performTextReplacement("Updated alias")
+    compose.onNodeWithText("Update public name").performScrollTo().performClick()
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_CONFIRMED)
+        .assertTextEquals("Published name: Updated alias")
+    compose.onNodeWithText("Remove public name").performScrollTo().performClick()
+    compose
+        .onNodeWithTag(ProfileEditTestTags.PUBLIC_CONFIRMED)
+        .assertTextEquals("No public name published.")
+    compose.runOnIdle {
+      assertEquals(listOf(alice.uid), publicProfiles.reads)
+      assertEquals(listOf("  Public alias  ", "Updated alias", null), publicProfiles.writes)
+    }
+    compose.onNodeWithTag(ProfileEditTestTags.FULL_NAME).assertTextEquals(alice.displayName!!)
+  }
+
+  @Test
   fun failedProfileSaveCanRetryAndPendingEmailIsNotShownAsConfirmed() {
     val repository = FakeAuthRepository(alice)
     repository.updateProfileResult = Result.failure(AuthException.RequiresRecentLogin())
@@ -1482,6 +1522,7 @@ class CommandoAppTest {
             trips,
             Picker(),
             productRepository = products,
+            publicProfileRepositoryFactory = { publicProfiles },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
             savedSearchRepositoryFactory = savedSearches,
         )

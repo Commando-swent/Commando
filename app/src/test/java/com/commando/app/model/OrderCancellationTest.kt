@@ -1,6 +1,6 @@
 package com.commando.app.model
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code; OpenAI Codex split deterministic #387 boundary regressions.
 import java.time.Instant
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
@@ -18,10 +18,13 @@ class OrderCancellationTest {
   }
 
   @Test
-  fun cancellationAtOrAfterTheEndOfTheGracePeriodIsPenalized() {
-    val end = acceptedAt.plus(COMMANDO_CANCELLATION_GRACE)
-    assertFalse(isPenaltyFreeCancellation(acceptedAt, end))
-    assertFalse(isPenaltyFreeCancellation(acceptedAt, end.plusSeconds(60)))
+  fun cancellationAtExactlyTenMinutesIsPenalized() {
+    assertFalse(isPenaltyFreeCancellation(acceptedAt, acceptedAt.plusSeconds(600)))
+  }
+
+  @Test
+  fun cancellationAfterTenMinutesIsPenalized() {
+    assertFalse(isPenaltyFreeCancellation(acceptedAt, acceptedAt.plusSeconds(660)))
   }
 
   @Test

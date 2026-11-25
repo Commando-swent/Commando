@@ -64,13 +64,87 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
   fun confirmedRefundAllowsAtomicAcceptedCancellation() =
       acceptedCancellation(RefundStatus.CONFIRMED)
 
-  private fun acceptedCancellation(status: RefundStatus) =
+  // AI assistance: OpenAI Codex (#387): exercise all four writes with production rule budgets.
+  @Test fun pendingRefundBlocksLateCancellation() = acceptedCancellation(RefundStatus.PENDING, true)
+
+  @Test fun failedRefundBlocksLateCancellation() = acceptedCancellation(RefundStatus.FAILED, true)
+
+  @Test
+  fun uncertainRefundBlocksLateCancellation() = acceptedCancellation(RefundStatus.UNCERTAIN, true)
+
+  @Test
+  fun confirmedRefundAllowsFirstLateCounter() = acceptedCancellation(RefundStatus.CONFIRMED, true)
+
+  @Test
+  fun confirmedRefundAllowsExistingLateCounter() =
+      acceptedCancellation(RefundStatus.CONFIRMED, true, true)
+
+  @Test fun paidDeliveryAllowsFirstCounterWithinRuleBudget() = paidDelivery(false)
+
+  @Test fun paidDeliveryAllowsExistingCounterWithinRuleBudget() = paidDelivery(true)
+
+  private fun paidDelivery(existing: Boolean) =
+      withOrder(OrderStatus.READY_FOR_HANDOFF) {
+        val uid = owner.auth.currentUser!!.uid
+        if (existing)
+            createDocumentAsOwner(
+                "reliabilitySummaries",
+                uid,
+                mapOf("completedCount" to 4L, "lateCancellationCount" to 2L),
+            )
+        val orders =
+            OrderRepositoryFirestore({ requester.auth.currentUser?.uid }, requester.firestore)
+        assertEquals(
+            OrderResult.Success(order.copy(status = OrderStatus.DELIVERED)),
+            orders.confirmReceipt(order.id),
+        )
+        assertEquals(
+            mapOf(
+                "completedCount" to if (existing) 5L else 1L,
+                "lateCancellationCount" to if (existing) 2L else 0L,
+            ),
+            owner.firestore
+                .collection("reliabilitySummaries")
+                .document(uid)
+                .get(Source.SERVER)
+                .await()
+                .data,
+        )
+      }
+
+  private fun acceptedCancellation(
+      status: RefundStatus,
+      late: Boolean = false,
+      existing: Boolean = false,
+  ) =
       withOrder(OrderStatus.ACCEPTED) {
+        val ownerId = owner.auth.currentUser!!.uid
+        val summary = owner.firestore.collection("reliabilitySummaries").document(ownerId)
+        if (late)
+            createDocumentAsOwner(
+                "orderEvents",
+                "${order.id}_ORDER_ACCEPTED",
+                mapOf(
+                    "orderId" to order.id,
+                    "recipientId" to order.requesterId,
+                    "type" to "ORDER_ACCEPTED",
+                    "occurredAt" to Timestamp(0, 0),
+                ),
+            )
+        if (existing)
+            createDocumentAsOwner(
+                "reliabilitySummaries",
+                ownerId,
+                mapOf(
+                    "completedCount" to 4L,
+                    "lateCancellationCount" to 2L,
+                ),
+            )
         val refund = repo(owner, status).refundForCancellation(order.id)
         assertEquals(status, (refund as PaymentResult.Success).data.status)
         assertEquals(refund, repo().getRefund(order.id))
         val result = orders().cancelAcceptedOrder(order.id)
-        val events = events()
+        val events = events().filter { it.getString("type") == "ORDER_CANCELLED" }
         if (status == RefundStatus.CONFIRMED) {
           assertEquals(OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)), result)
           val event = events.single()
@@ -84,6 +158,16 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
         assertEquals(
             if (status == RefundStatus.CONFIRMED) "CANCELLED" else "ACCEPTED",
             doc("orders").get(Source.SERVER).await().getString("status"),
+        )
+        val counted = late && status == RefundStatus.CONFIRMED
+        assertEquals(
+            if (existing || counted)
+                mapOf(
+                    "completedCount" to if (existing) 4L else 0L,
+                    "lateCancellationCount" to (if (existing) 2L else 0L) + if (counted) 1L else 0L,
+                )
+            else null,
+            summary.get(Source.SERVER).await().data,
         )
       }
 

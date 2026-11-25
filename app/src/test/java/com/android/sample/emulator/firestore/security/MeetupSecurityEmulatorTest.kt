@@ -8,6 +8,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.Source
 import java.time.Instant
+import java.time.temporal.ChronoUnit.MICROS
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
@@ -40,7 +41,8 @@ class MeetupSecurityEmulatorTest {
       ownerOrders.decideOrder(order.id, OrderDecision.ACCEPT, order.revision)
       fun chat(client: EmulatorClient) =
           OrderChatRepositoryFirestore({ client.auth.currentUser?.uid }, client.firestore)
-      val proposal = MeetupProposal("Library entrance", Instant.now().plusSeconds(7200))
+      val at = Instant.ofEpochSecond(Instant.now().epochSecond + 7200, 123456789)
+      val proposal = MeetupProposal("Library entrance", at)
       val ok = OrderResult.Success(Unit)
       assertEquals(
           OrderResult.Error(OrderError.NotAuthenticated),
@@ -95,7 +97,7 @@ class MeetupSecurityEmulatorTest {
               .meetup!!
       assertNotNull(decided.respondedAt)
       assertEquals(proposal.location, decided.location)
-      assertEquals(proposal.at, decided.at)
+      assertEquals(proposal.at.truncatedTo(MICROS), decided.at)
       assertEquals(ok, chat(owner).proposeMeetup(order.id, "meetup", proposal))
       assertEquals(ok, chat(requester).respondToMeetup(order.id, "meetup", decided.response))
       assertPermissionDenied {

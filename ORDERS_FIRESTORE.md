@@ -155,3 +155,7 @@ existing `ORDER_ACCEPTED` event and the cancellation time is the `occurredAt` of
 `COMMANDO_CANCELLATION_GRACE` (10 minutes) as penalty-free; the reliability score (#387) consumes it.
 The inbox shows the event to the requester as an order decision. READY_FOR_HANDOFF and later cannot be
 cancelled. Refunds (#385) are out of scope while no payment exists on main.
+
+## Meetup proposals (#389)
+
+A chat message may carry `meetup: {location, at, response}` instead of `delayMinutes`, with readable fallback text. The Firestore adapter normalizes `at` to microsecond precision before writing and comparing retries. The trip owner creates a future PENDING proposal on an active trip and order. Only the requester can finalize it as ACCEPTED or DECLINED; rules preserve the location/time and require server `respondedAt`. Concurrent replies cannot overwrite the first decision. Identical creation/response retries are read-only, including after expiry or delivery. History remains participant-only and permanent; this does not change the trip’s configured handoff point.

@@ -13,6 +13,7 @@ import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
+import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
 import com.commando.app.model.Location
 import com.commando.app.model.Order
@@ -90,6 +91,8 @@ class TripRoutesNavigationTest {
         override suspend fun clearSession() {}
       }
 
+  private val publicProfiles = PublicProfileTestRepository()
+
   private fun show(trips: FakeTripRepository) {
     val presets =
         SavedTripSearchRepositoryLocal(
@@ -123,6 +126,7 @@ class TripRoutesNavigationTest {
               }
             },
             savedSearchRepositoryFactory = { presets },
+            publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
         )
       }

@@ -3,15 +3,22 @@ package com.commando.app.ui.trips
 // AI assistance: Claude Code for the close and complete actions (#233).
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Trip
 import com.commando.app.model.TripTransition
+import com.commando.app.ui.session.SessionGuard
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 sealed class TripDetailsUiState {
@@ -38,13 +45,68 @@ sealed class TripDetailsUiState {
 class TripDetailsViewModel(
     private val repository: TripRepository,
     private val tripId: String,
+    private val publicProfiles: Lazy<PublicProfileRepository>? = null,
+    currentUserId: (() -> String?)? = null,
+    sessionChanges: Flow<String?> = emptyFlow(),
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<TripDetailsUiState>(TripDetailsUiState.Loading)
   val uiState: StateFlow<TripDetailsUiState> = mutableState.asStateFlow()
   private var isLoading = false
+  private val session = currentUserId?.let(::SessionGuard)
+  private val mutablePublicName = MutableStateFlow<Pair<String, String?>?>(null)
+  /** Owner UID paired with its public name; null or a missing name uses the screen's fallback. */
+  val publicName = mutablePublicName.asStateFlow()
+  private var publicNameJob: Job? = null
 
   init {
+    viewModelScope.launch {
+      sessionChanges.collect { uid ->
+        if (session?.hasEnded(uid) == true) {
+          publicNameJob?.cancel()
+          mutablePublicName.value = null
+        }
+      }
+    }
     loadTrip()
+  }
+
+  /**
+   * Refreshes only the loaded owner's public name on Trip Details resume. Construction performs no
+   * profile query, so Review Order can reuse this ViewModel. Overlapping same-owner calls
+   * deduplicate; owner changes, cancellation and session changes discard late results independently
+   * of ratings.
+   */
+  fun refreshPublicName(ownerId: String?) {
+    val profiles = publicProfiles ?: return
+    if (mutablePublicName.value?.first == ownerId && publicNameJob?.isActive == true) return
+    publicNameJob?.cancel()
+    mutablePublicName.value = ownerId?.let { it to null }
+    if (
+        ownerId == null ||
+            session?.hasEnded() == true ||
+            (mutableState.value as? TripDetailsUiState.Content)?.trip?.ownerId != ownerId
+    )
+        return
+    val job =
+        viewModelScope.launch(start = CoroutineStart.LAZY) {
+          val name =
+              try {
+                profiles.value.getDisplayName(ownerId)
+              } catch (cancelled: CancellationException) {
+                throw cancelled
+              } catch (_: Exception) {
+                null
+              }
+          ensureActive()
+          if (
+              session?.hasEnded() != true &&
+                  (mutableState.value as? TripDetailsUiState.Content)?.trip?.ownerId == ownerId
+          ) {
+            mutablePublicName.value = ownerId to name
+          }
+        }
+    publicNameJob = job
+    job.start()
   }
 
   /** Reloads the trip, e.g. after an error. */

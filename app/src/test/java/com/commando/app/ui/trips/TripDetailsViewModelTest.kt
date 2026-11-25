@@ -2,6 +2,7 @@ package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
 import com.commando.app.data.repository.FakeTripRepository
+import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
@@ -14,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -347,5 +349,78 @@ class TripDetailsViewModelTest {
       failure?.let { throw it }
       return result ?: fake.getTripById(tripId)
     }
+  }
+
+  private val profiles = PublicProfileTestRepository()
+
+  private fun TestScope.publicTrip(user: MutableStateFlow<String?> = MutableStateFlow("viewer")) =
+      TripDetailsViewModel(repository, trip.id, lazyOf(profiles), { user.value }, user).also {
+        runCurrent()
+      }
+
+  @Test
+  fun constructionUsedByReviewOrderNeverLooksUpPublicNames() = runTest {
+    publicTrip()
+    assertTrue(profiles.reads.isEmpty())
+  }
+
+  @Test
+  fun publicNameUsesLoadedOwnerAndDeduplicatesPendingRequests() = runTest {
+    val response = profiles.deferRead()
+    val model = publicTrip()
+    model.refreshPublicName("wrong-owner")
+    model.refreshPublicName(trip.ownerId)
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(listOf(trip.ownerId), profiles.reads)
+    response.complete("Public owner")
+    runCurrent()
+    assertEquals(trip.ownerId to "Public owner", model.publicName.value)
+  }
+
+  @Test
+  fun missingAndFailedPublicNamesKeepTripContentAndFallback() = runTest {
+    val model = publicTrip()
+    for (fails in listOf(false, true)) {
+      profiles.read = { if (fails) error("Offline") else null }
+      model.refreshPublicName(trip.ownerId)
+      runCurrent()
+      assertEquals(trip.ownerId to null, model.publicName.value)
+      assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
+    }
+  }
+
+  @Test
+  fun changedOwnerRejectsLateNameResponse() = runTest {
+    val response = profiles.deferRead()
+    val model = publicTrip()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    repository.result = TripResult.Success(trip.copy(ownerId = "next"))
+    profiles.read = { "Next" }
+    model.retry()
+    runCurrent()
+    model.refreshPublicName("next")
+    runCurrent()
+    response.complete("Old")
+    runCurrent()
+    assertEquals("next" to "Next", model.publicName.value)
+  }
+
+  @Test
+  fun sessionChangeClearsPublicNameAndRejectsLateResponse() = runTest {
+    val user = MutableStateFlow<String?>("viewer")
+    val response = profiles.deferRead()
+    val model = publicTrip(user)
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    user.value = "other"
+    runCurrent()
+    response.complete("Old")
+    runCurrent()
+    assertNull(model.publicName.value)
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(1, profiles.reads.size)
   }
 }

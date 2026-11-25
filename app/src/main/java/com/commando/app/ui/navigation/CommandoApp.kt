@@ -300,10 +300,10 @@ private fun AuthenticatedApp(
                   userId = userId,
                   mode = { appUiState.mode },
                   ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
-                  commandoName = { ownerId ->
-                    repository.currentUser?.takeIf { it.uid == ownerId }?.displayName
-                  },
                   orderRepository = orders.repository,
+                  publicProfiles = publicProfiles,
+                  currentUserId = orders::currentUserId,
+                  sessionChanges = orders.sessionChanges,
               ),
           locationFilter = locationFilter,
           savedSearchViewModel = savedSearchViewModel,

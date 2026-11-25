@@ -335,12 +335,14 @@ class CommandoAppTest {
   @Test
   @Config(qualifiers = "en-rUS-w412dp-h917dp-mdpi")
   fun ratingRetryDoesNotReloadTripAndFailureStillAllowsCatalogueNavigation() {
+    publicProfiles.name = "Public owner"
     val trips = ScriptedTripRepository(twoTrips(alice.uid))
     val ratings = RecordingRatings()
     ratings.load = { RatingResult.Error(RatingError.Unknown) }
     show(FakeAuthRepository(alice), trips, ratings = { ratings })
     click(HomeTestTags.TRIP_ACTION)
     compose.onTripCard(firstTrip.id).performClick()
+    compose.onNodeWithText("Public owner").performScrollTo().assertIsDisplayed()
     compose.onNodeWithTag(TripRatingTestTags.RETRY).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(listOf(firstTrip.id), trips.requestedIds)

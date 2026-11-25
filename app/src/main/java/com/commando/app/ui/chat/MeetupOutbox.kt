@@ -16,18 +16,14 @@ internal data class PendingMeetup(
 /** Saves only Android-supported primitive values; no Firebase or UI objects enter saved state. */
 internal class MeetupOutbox(private val saved: SavedStateHandle) {
   var pending: PendingMeetup?
-    get() =
-        saved.get<String>(ID)?.let { id ->
-          saved.get<String>(RESPONSE)?.let {
-            PendingMeetup(id, response = MeetupResponse.valueOf(it))
-          }
-              ?: saved.get<String>(PLACE)?.let {
-                PendingMeetup(
-                    id,
-                    MeetupProposal(it, Instant.ofEpochMilli(checkNotNull(saved.get<Long>(AT)))),
-                )
-              }
-        }
+    get() {
+      val id = saved.get<String>(ID) ?: return null
+      val response = saved.get<String>(RESPONSE)
+      if (response != null) return PendingMeetup(id, response = MeetupResponse.valueOf(response))
+      val place = saved.get<String>(PLACE) ?: return null
+      val at = saved.get<Long>(AT) ?: return null
+      return PendingMeetup(id, MeetupProposal(place, Instant.ofEpochMilli(at)))
+    }
     set(action) {
       if (action == null) for (key in listOf(ID, PLACE, AT, RESPONSE)) saved.remove<Any>(key)
       else {

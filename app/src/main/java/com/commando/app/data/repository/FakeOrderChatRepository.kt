@@ -28,20 +28,11 @@ class FakeOrderChatStore(val orders: StateFlow<Map<String, FakeChatOrder>>) {
     _messages.value = _messages.value + (orderId to (_messages.value[orderId].orEmpty() + message))
   }
 
-  internal fun respond(
-      orderId: String,
-      id: String,
-      response: MeetupResponse,
-      at: java.time.Instant,
-  ) {
+  internal fun respond(orderId: String, message: ChatMessage) {
     _messages.value =
         _messages.value +
             (orderId to
-                _messages.value[orderId].orEmpty().map {
-                  if (it.id == id)
-                      it.copy(meetup = it.meetup?.copy(response = response, respondedAt = at))
-                  else it
-                })
+                _messages.value.getValue(orderId).map { if (it.id == message.id) message else it })
   }
 
   internal val mutex = Mutex()
@@ -94,7 +85,10 @@ class FakeOrderChatRepository(
                 !meetup.at.isAfter(clock.instant())
         )
             return OrderResult.Error(OrderError.PermissionDenied)
-        store.respond(orderId, messageId, response, clock.instant())
+        store.respond(
+            orderId,
+            message.copy(meetup = meetup.copy(response = response, respondedAt = clock.instant())),
+        )
         OrderResult.Success(Unit)
       }
 

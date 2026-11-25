@@ -21,12 +21,14 @@ class MeetupRepositoryTest {
   private val ok = OrderResult.Success(Unit)
 
   private suspend fun stored() =
-      (repo.observeChat("order").first() as OrderResult.Success).data.messages.single().meetup!!
+      (repo.observeChat("order").first() as OrderResult.Success).data.messages.first().meetup!!
 
   @Test
   fun ownerProposesAndRequesterRespondsOnce() = runTest {
     assertEquals(ok, repo.proposeMeetup("order", "meeting", proposal))
+    assertEquals(ok, repo.sendMessage("order", "z", "Hello"))
     uid.value = "requester"
+    assertTrue(repo.respondToMeetup("order", "z", MeetupResponse.ACCEPTED) is OrderResult.Error)
     assertEquals(proposal, stored())
     val outcomes =
         listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED)
@@ -73,6 +75,9 @@ class MeetupRepositoryTest {
   @Test
   fun invalidRepliesAndMissingRecordsReturnTypedFailures() = runTest {
     uid.value = "requester"
+    assertTrue(
+        repo.respondToMeetup("order", "bad/id", MeetupResponse.ACCEPTED) is OrderResult.Error
+    )
     assertEquals(
         OrderResult.Error(OrderError.InvalidData),
         repo.respondToMeetup("", "meeting", MeetupResponse.ACCEPTED),
@@ -98,6 +103,8 @@ class MeetupRepositoryTest {
 
   @Test
   fun invalidProposalFieldsAndMessageIdentityCannotChangeHistory() = runTest {
+    assertFalse(isValidChatPayload("Other text", null, proposal))
+    assertFalse(isValidChatPayload(CHAT_MEETUP_FALLBACK, 1, proposal))
     for (bad in
         listOf(
             proposal.copy(location = " "),

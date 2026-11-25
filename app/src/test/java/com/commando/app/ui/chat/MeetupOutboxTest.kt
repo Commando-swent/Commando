@@ -10,8 +10,10 @@ import org.junit.Test
 class MeetupOutboxTest {
   @Test
   fun creationAndReplyRoundTripAndClearAcrossRestoration() {
-    val saved = SavedStateHandle()
+    val saved = SavedStateHandle(mapOf("meetupActionId" to "incomplete"))
     val outbox = MeetupOutbox(saved)
+    assertNull(outbox.pending)
+    saved["meetupPlace"] = "Library"
     assertNull(outbox.pending)
     for (action in
         listOf(

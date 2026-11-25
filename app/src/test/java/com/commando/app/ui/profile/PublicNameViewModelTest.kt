@@ -11,6 +11,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
@@ -358,5 +359,127 @@ class PublicNameViewModelTest {
     write.complete(Unit)
     runCurrent()
     assertEquals("Old", profiles.name)
+  }
+
+  @Test
+  fun writeCoordinatorRejectsInvalidOrDifferentOwnerWithoutSubmission() = runTest {
+    for (uid in listOf("", " ", bob.uid)) {
+      assertTrue(
+          runCatching { writes.submit(uid, lazyOf(profiles), "New") }.exceptionOrNull()
+              is IllegalStateException
+      )
+    }
+    assertTrue(profiles.writes.isEmpty())
+  }
+
+  @Test
+  fun writeCoordinatorRejectsEndedSessionBeforeObserverRuns() = runTest {
+    val coordinator = writes
+    publicAuth.signOut()
+    assertTrue(
+        runCatching { coordinator.submit(alice.uid, lazyOf(profiles), "New") }.exceptionOrNull()
+            is IllegalStateException
+    )
+    assertTrue(profiles.writes.isEmpty())
+  }
+
+  @Test
+  fun queuedWriteIsInvalidatedWhenItsOriginalSessionEnds() = runTest {
+    val reply = profiles.deferWrite()
+    val first = writes.submit(alice.uid, lazyOf(profiles), "Submitted")
+    runCurrent()
+    val queued = writes.submit(alice.uid, lazyOf(profiles), "Queued")
+    runCurrent()
+    switchAccount(bob)
+    reply.complete(Unit)
+    runCurrent()
+    first.await()
+    assertTrue(runCatching { queued.await() }.exceptionOrNull() is IllegalStateException)
+    assertEquals(listOf("Submitted"), profiles.writes)
+  }
+
+  @Test
+  fun unopenedEditorIgnoresDraftAndSaveCallbacks() = runTest {
+    val model = replaceEditor()
+    model.editPublicName("Draft")
+    model.savePublicName("Draft")
+    model.savePublicName(null)
+    runCurrent()
+    assertNull(model.publicName.value)
+    assertTrue(profiles.reads.isEmpty())
+    assertTrue(profiles.writes.isEmpty())
+  }
+
+  @Test
+  fun pendingReadDeduplicatesLoadsAndRejectsEditsAndWrites() = runTest {
+    val reply = profiles.deferRead()
+    val model = replaceEditor()
+    model.loadPublicName()
+    model.loadPublicName()
+    model.editPublicName("Ignored")
+    model.savePublicName("Ignored")
+    runCurrent()
+    assertEquals(PublicNameEditState(busy = true), model.publicName.value)
+    assertEquals(listOf(alice.uid), profiles.reads)
+    assertTrue(profiles.writes.isEmpty())
+    reply.complete(null)
+    runCurrent()
+    assertEquals(PublicNameEditState(loaded = true), model.publicName.value)
+  }
+
+  @Test
+  fun unchangedPublicNameDoesNotSubmitAWrite() = runTest {
+    openNames("Confirmed")
+    names.savePublicName("Confirmed")
+    runCurrent()
+    assertEquals(PublicNameEditState(true, "Confirmed", "Confirmed"), names.publicName.value)
+    assertTrue(profiles.writes.isEmpty())
+  }
+
+  @Test
+  fun removingUnpublishedNamePreservesTheDraftWithoutWriting() = runTest {
+    openNames()
+    names.editPublicName("Unsaved")
+    names.savePublicName(null)
+    runCurrent()
+    assertEquals(PublicNameEditState(loaded = true, draft = "Unsaved"), names.publicName.value)
+    assertTrue(profiles.writes.isEmpty())
+  }
+
+  @Test
+  fun editorWithoutValidInitialUidCannotLoad() = runTest {
+    for (uid in listOf(null, " ")) {
+      val model = PublicNameViewModel(lazyOf(profiles), writes, { uid }, emptyFlow())
+      editorStore.put("invalid", model)
+      model.loadPublicName()
+      runCurrent()
+      assertNull(model.publicName.value)
+    }
+    assertTrue(profiles.reads.isEmpty())
+  }
+
+  @Test
+  fun queuedReadCannotStartAfterSnapshotSignsOut() = runTest {
+    val model = replaceEditor()
+    model.loadPublicName()
+    publicAuth.signOut()
+    runCurrent()
+    assertNull(model.publicName.value)
+    assertTrue(profiles.reads.isEmpty())
+  }
+
+  @Test
+  fun publicSaveRequiresLoadedIdleValidChangedDraft() {
+    val changed = PublicNameEditState(true, "Old", "New")
+    assertTrue(changed.canSave)
+    for (state in
+        listOf(
+            changed.copy(loaded = false),
+            changed.copy(busy = true),
+            changed.copy(draft = " "),
+            changed.copy(draft = "Old"),
+        )) {
+      assertFalse(state.canSave)
+    }
   }
 }

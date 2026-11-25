@@ -298,4 +298,34 @@ class IncomingOrdersViewModelTest {
     runCurrent()
     assertEquals(1, profiles.reads.size)
   }
+
+  @Test
+  fun sessionSnapshotChangeDuringOrderFetchCannotPublishRowsOrStartNameQueries() = runTest {
+    val repository =
+        object : OrderRepository by orders {
+          override suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>> {
+            sessionUser = null
+            return OrderResult.Success(listOf(newer))
+          }
+        }
+    val model = publicOrders(repository)
+    runCurrent()
+    assertEquals(IncomingOrdersUiState.Loading, model.uiState.value)
+    assertEquals(emptyList<String>(), profiles.reads)
+    model.refresh()
+    assertEquals(IncomingOrdersUiState.Error(OrderError.PermissionDenied), model.uiState.value)
+  }
+
+  @Test
+  fun requesterReplyAfterSnapshotSessionEndsCannotExposeName() = runTest {
+    profiles.read = {
+      sessionUser = null
+      "Stale"
+    }
+    val model = publicOrders()
+    runCurrent()
+    assertEquals(listOf(null, null), names(model))
+    model.refresh()
+    assertEquals(IncomingOrdersUiState.Error(OrderError.PermissionDenied), model.uiState.value)
+  }
 }

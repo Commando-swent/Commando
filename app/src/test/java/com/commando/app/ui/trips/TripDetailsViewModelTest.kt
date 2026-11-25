@@ -428,4 +428,43 @@ class TripDetailsViewModelTest {
     runCurrent()
     assertEquals(2, profiles.reads.size)
   }
+
+  @Test
+  fun absentPublicRepositoryLeavesTripDetailsUsable() = runTest {
+    val model = TripDetailsViewModel(repository, trip.id)
+    runCurrent()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertNull(model.publicName.value)
+    assertEquals(TripDetailsUiState.Content(trip), model.uiState.value)
+  }
+
+  @Test
+  fun publicLookupRequiresLoadedTripContent() = runTest {
+    repository.result = TripResult.Error(TripError.NotFound)
+    val model = publicTrip()
+    model.refreshPublicName(trip.ownerId)
+    model.refreshPublicName(null)
+    runCurrent()
+    assertTrue(profiles.reads.isEmpty())
+    assertNull(model.publicName.value)
+    assertEquals(TripDetailsUiState.Error(TripError.NotFound), model.uiState.value)
+  }
+
+  @Test
+  fun snapshotChangeInsidePublicReadRejectsNameWithoutSessionEmission() = runTest {
+    var uid: String? = "viewer"
+    profiles.read = {
+      uid = null
+      "Stale"
+    }
+    val model = TripDetailsViewModel(repository, trip.id, lazyOf(profiles), { uid })
+    runCurrent()
+    model.refreshPublicName(trip.ownerId)
+    runCurrent()
+    assertEquals(trip.ownerId to null, model.publicName.value)
+    model.refreshPublicName(trip.ownerId)
+    assertNull(model.publicName.value)
+    assertEquals(listOf(trip.ownerId), profiles.reads)
+  }
 }

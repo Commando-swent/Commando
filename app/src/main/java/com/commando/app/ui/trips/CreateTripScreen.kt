@@ -1,6 +1,7 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code. Layout from the Command'o Figma "Publish a trip" frames.
+// AI assistance: Claude Code. Layout from the Command'o Figma "Publish a trip" frames; uncertain
+// publication lock (#394).
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -84,7 +85,8 @@ fun CreateTripContent(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     today: LocalDate = LocalDate.now(),
 ) {
-  val editable = !state.isPublishing && state.publishedTrip == null
+  val editable =
+      !state.isPublishing && state.publishedTrip == null && !state.hasUncertainPublication
   var showDatePicker by rememberSaveable { mutableStateOf(false) }
   var showTimePicker by rememberSaveable { mutableStateOf(false) }
 

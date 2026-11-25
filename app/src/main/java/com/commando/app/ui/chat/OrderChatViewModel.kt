@@ -79,9 +79,11 @@ class OrderChatViewModel(
   private var sender: Job? = null
   private var active = false
   private var ended = false
+  internal val meetups = MeetupActions(orderId, messages, mutableState, saved, viewModelScope)
 
   init {
     if (session.initialUserId == null || saved.get<String>(USER) != session.initialUserId) {
+      meetups.clear()
       saved[DRAFT] = ""
       saved[OUTBOUND] = null
       saved[DELAY] = null
@@ -93,6 +95,7 @@ class OrderChatViewModel(
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
             failedDelayMinutes = saved[DELAY],
+            sending = meetups.hasPending,
         )
     viewModelScope.launch { sessionChanges.collect { if (session.hasEnded(it)) endSession() } }
   }
@@ -141,6 +144,7 @@ class OrderChatViewModel(
       is OrderResult.Success -> {
         mutableState.update { it.copy(chat = result.data, loading = false, error = null) }
         if (!mutableState.value.sending && confirmed(saved[OUTBOUND])) completeSend()
+        meetups.reconcile()
       }
     }
   }
@@ -150,6 +154,7 @@ class OrderChatViewModel(
    */
   fun stop() {
     active = false
+    meetups.stop()
     if (saved.get<String>(OUTBOUND) == null) saved[DELAY] = null
     observer?.cancel()
     timeout?.cancel()
@@ -159,6 +164,7 @@ class OrderChatViewModel(
             draft = saved[DRAFT] ?: "",
             sendError = if (saved.get<String>(OUTBOUND) != null) OrderError.Unknown else null,
             failedDelayMinutes = saved[DELAY],
+            sending = meetups.hasPending,
         )
   }
 
@@ -268,6 +274,7 @@ class OrderChatViewModel(
 
   private fun endSession() {
     ended = true
+    meetups.clear()
     saved[DRAFT] = ""
     saved[OUTBOUND] = null
     saved[DELAY] = null

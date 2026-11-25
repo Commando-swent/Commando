@@ -83,10 +83,7 @@ class PublicNameWritesViewModel(
     }
   }
 
-  private fun forget(ownerId: String, write: Deferred<Unit>): Unit {
-    synchronized(pending) {
-      if (pending[ownerId] === write) pending.remove(ownerId, write)
-      Unit
-    }
+  private fun forget(ownerId: String, write: Deferred<Unit>) {
+    synchronized(pending) { pending.remove(ownerId, write) }
   }
 }

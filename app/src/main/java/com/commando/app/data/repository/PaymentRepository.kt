@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
 import com.commando.app.model.Payment
+import com.commando.app.model.PaymentMethod
 import com.commando.app.model.Refund
 
 /** Payment/refund failures; they never expose another account's stored payload. */
@@ -33,6 +34,13 @@ sealed interface PaymentResult<out T> {
 interface PaymentRepository {
   /** Reads the stored payment, or null, for the order's requester or its trip owner. */
   suspend fun getPayment(orderId: String): PaymentResult<Payment?>
+
+  /**
+   * Begins or retries the requester's simulated payment for an ACCEPTED order. Identity, amount and
+   * eligibility come from storage; retries reuse the order ID and never reprocess a confirmed,
+   * pending or uncertain payment.
+   */
+  suspend fun processPayment(orderId: String, method: PaymentMethod): PaymentResult<Payment>
 
   /** Reads the same refund operation after reload, including an uncertain write response. */
   suspend fun getRefund(orderId: String): PaymentResult<Refund?>

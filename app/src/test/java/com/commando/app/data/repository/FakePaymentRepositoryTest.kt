@@ -35,7 +35,7 @@ class FakePaymentRepositoryTest {
           owner?.let { mapOf(order.tripId to it) }.orEmpty(),
           listOfNotNull(storedPayment),
           listOfNotNull(refund),
-          simulate,
+          simulateRefund = simulate,
       )
 
   @Test
@@ -310,6 +310,8 @@ class FakePaymentRepositoryTest {
     override suspend fun <T> transaction(action: (PaymentTransaction) -> T): T = action(this)
 
     override fun read(orderId: String) = context
+
+    override fun save(payment: Payment) = error("Malformed data must not be written")
 
     override fun save(refund: Refund) = error("Malformed data must not be written")
   }

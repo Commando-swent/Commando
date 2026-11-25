@@ -5,7 +5,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
-/** All relationships are read in the same backend transaction before any refund write. */
+/** All relationships are read in the same backend transaction before any payment/refund write. */
 internal data class PaymentContext(
     val order: Order?,
     val tripOwnerId: String?,
@@ -13,9 +13,11 @@ internal data class PaymentContext(
     val refund: Refund?,
 )
 
-/** Authoritative read set and staged refund write within one transaction. */
+/** Authoritative read set and staged writes within one transaction. */
 internal interface PaymentTransaction {
   fun read(orderId: String): PaymentContext
+
+  fun save(payment: Payment)
 
   fun save(refund: Refund)
 }
@@ -38,17 +40,35 @@ private fun Payment.refundOperationId() = "refund-$id"
 internal class TransactionalPaymentRepository(
     private val source: PaymentDataSource,
     private val currentUserId: () -> String?,
-    private val simulate: (Refund) -> RefundStatus = { RefundStatus.CONFIRMED },
+    private val simulatePayment: (Payment) -> PaymentStatus = { PaymentStatus.CONFIRMED },
+    private val simulateRefund: (Refund) -> RefundStatus = { RefundStatus.CONFIRMED },
 ) : PaymentRepository {
   override suspend fun getPayment(orderId: String) =
-      operation(orderId) { context, _ -> context.payment }
+      operation(orderId) { context, _, _ -> context.payment }
+
+  override suspend fun processPayment(orderId: String, method: PaymentMethod) =
+      operation(orderId) { context, order, uid ->
+        requirePayment(uid == order.requesterId, PaymentError.PERMISSION_DENIED)
+        val previous = context.payment
+        if (previous != null && previous.status != PaymentStatus.FAILED) return@operation previous
+        requirePayment(order.status == OrderStatus.ACCEPTED, PaymentError.INELIGIBLE)
+        val payment =
+            Payment(
+                orderId,
+                orderId,
+                order.requesterId,
+                order.totalCents,
+                method,
+                PaymentStatus.PENDING,
+            )
+        payment.copy(status = simulatePayment(payment)).also { save(it) }
+      }
 
   override suspend fun getRefund(orderId: String) =
-      operation(orderId) { context, _ -> context.refund }
+      operation(orderId) { context, _, _ -> context.refund }
 
   override suspend fun refundForCancellation(orderId: String) =
-      operation(orderId) { context, uid ->
-        val order = checkNotNull(context.order)
+      operation(orderId) { context, order, uid ->
         val payment = context.payment ?: throw PaymentFailure(PaymentError.NOT_CAPTURED)
         requirePayment(payment.status == PaymentStatus.CONFIRMED, PaymentError.NOT_CAPTURED)
         val previous = context.refund
@@ -73,12 +93,12 @@ internal class TransactionalPaymentRepository(
                     payment.amountCents,
                     RefundStatus.PENDING,
                 )
-        refund.copy(status = simulate(refund)).also { save(it) }
+        refund.copy(status = simulateRefund(refund)).also { save(it) }
       }
 
   private suspend fun <T> operation(
       orderId: String,
-      action: PaymentTransaction.(PaymentContext, String) -> T,
+      action: PaymentTransaction.(PaymentContext, Order, String) -> T,
   ): PaymentResult<T> {
     val caller = currentCoroutineContext()
     caller.ensureActive()
@@ -94,8 +114,8 @@ internal class TransactionalPaymentRepository(
       val value = source.transaction { transaction ->
         guard()
         val context = transaction.read(orderId)
-        authorize(context, orderId, uid)
-        transaction.action(context, uid).also { guard() }
+        val order = authorize(context, orderId, uid)
+        transaction.action(context, order, uid).also { guard() }
       }
       guard()
       PaymentResult.Success(value)
@@ -107,7 +127,7 @@ internal class TransactionalPaymentRepository(
     }
   }
 
-  private fun authorize(context: PaymentContext, id: String, uid: String) {
+  private fun authorize(context: PaymentContext, id: String, uid: String): Order {
     val order = context.order ?: throw PaymentFailure(PaymentError.NOT_FOUND)
     val owner = context.tripOwnerId
     requirePayment(uid == order.requesterId || uid == owner, PaymentError.PERMISSION_DENIED)
@@ -140,5 +160,6 @@ internal class TransactionalPaymentRepository(
                 refund.amountCents == payment.amountCents &&
                 refund.requestedBy in listOf(order.requesterId, owner),
         )
+    return order
   }
 }

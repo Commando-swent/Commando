@@ -66,6 +66,17 @@ class PaymentFirestoreDataTest {
   }
 
   @Test
+  fun paymentEncoderPersistsOnlyTheStableContractFields() {
+    for (method in PaymentMethod.entries) for (status in PaymentStatus.entries) {
+      val payment = PaymentFixtures.captured.copy(method = method, status = status)
+      assertEquals(
+          capture + ("method" to method.name) + ("status" to status.name),
+          payment.firestoreFields(),
+      )
+    }
+  }
+
+  @Test
   fun refundDecoderRejectsMissingFieldsAndUnknownOutcome() {
     val fields = PaymentFixtures.refund().firestoreFields() + ("updatedAt" to Timestamp(0, 0))
     for (name in fields.keys) assertInvalid { FirestoreDocument("order", fields - name).toRefund() }

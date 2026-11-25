@@ -13,8 +13,9 @@ interface OrderChatRepository {
    * failure emits Error and ends collection; collect again to retry. Collect only during the
    * foreground screen/session lifetime; cancellation removes listeners. Account changes end the
    * stream with NotAuthenticated, and the caller must clear its previous screen state.
-   * Cache-only/offline snapshots emit nothing: the UI must bound its initial loading wait and offer
-   * retry (PR 2), rather than infer an empty conversation or enable offline sending.
+   * Cache-only/pending snapshots emit a serverConfirmed=false marker with no messages. It is never
+   * an authoritative empty history or permission to send. The UI may retain its own previously
+   * confirmed history read-only and must bound its initial loading wait.
    */
   fun observeChat(orderId: String): Flow<OrderResult<OrderChat>>
 

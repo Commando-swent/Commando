@@ -53,13 +53,7 @@ internal class MeetupActions(
   private fun perform(action: PendingMeetup) {
     val current = chat.value
     val uid = current.context?.viewerId ?: return
-    if (
-        current.loading ||
-            current.error != null ||
-            mutable.value.busy ||
-            (!hasPending && !current.canEditDraft)
-    )
-        return
+    if (!current.canWrite || mutable.value.busy || (!hasPending && !current.canEditDraft)) return
     outbox.pending = action
     chat.update { it.copy(sending = true) }
     mutable.value = MeetupActionState(busy = true)

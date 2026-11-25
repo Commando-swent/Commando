@@ -31,7 +31,7 @@ sealed interface CheckoutUiState {
     val status: PaymentStatus?
       get() = payment?.status
 
-    /** PENDING and UNCERTAIN retries reconcile the same operation, so they keep its method. */
+    /** PENDING and UNCERTAIN keep their method; the screen only re-reads their status. */
     val methodLocked: Boolean
       get() = status == PaymentStatus.PENDING || status == PaymentStatus.UNCERTAIN
 
@@ -42,12 +42,13 @@ sealed interface CheckoutUiState {
     val needsReconciliation: Boolean
       get() = error == PaymentError.UNKNOWN
 
+    /** Other errors (ineligible, denied, signed out) have their own states; retrying can't help. */
     val canPay: Boolean
       get() =
           !processing &&
               order.status == OrderStatus.ACCEPTED &&
               status != PaymentStatus.CONFIRMED &&
-              !needsReconciliation
+              (error == null || error in RETRYABLE_ERRORS)
   }
 
   /** The viewer is not the requester, or the order can no longer be paid. */
@@ -59,3 +60,6 @@ sealed interface CheckoutUiState {
 
   data object LoadFailed : CheckoutUiState
 }
+
+/** Rejections a new attempt may fix; UNKNOWN is reconciled by a status read instead. */
+private val RETRYABLE_ERRORS = setOf(PaymentError.INVALID_DATA, PaymentError.NOT_CAPTURED)

@@ -3,12 +3,27 @@ package com.commando.app.ui.orders
 // AI assistance: Claude Code (checkout UI following Figma #283, #419).
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,14 +31,22 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.*
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.commando.app.R
 import com.commando.app.data.repository.PaymentError
-import com.commando.app.model.*
+import com.commando.app.model.PaymentMethod
+import com.commando.app.model.PaymentStatus
+import com.commando.app.model.itemCount
+import com.commando.app.model.totalCents
 
 object CheckoutTestTags {
   const val BACK = "checkout_back"
@@ -190,8 +213,8 @@ private fun ColumnScope.PaymentForm(
                 stringResource(R.string.payment_try_again)
             else -> stringResource(R.string.payment_pay, total)
           },
-      // PENDING/UNCERTAIN retries reconcile the same operation; UNKNOWN failures re-read first.
-      onClick = if (state.needsReconciliation) onRefresh else onPay,
+      // "Check payment status" only re-reads the stored payment; it never submits one.
+      onClick = if (state.needsReconciliation || state.methodLocked) onRefresh else onPay,
       enabled = state.canPay || state.needsReconciliation,
       processing = state.processing,
       footer =
@@ -248,7 +271,12 @@ private fun ColumnScope.ConfirmedPayment(state: CheckoutUiState.Content, onDone:
           Modifier.size(80.dp).background(colors.primaryContainer, CircleShape),
           contentAlignment = Alignment.Center,
       ) {
-        Text("✓", color = colors.primary, fontSize = 36.sp)
+        Text(
+            "✓",
+            Modifier.clearAndSetSemantics {},
+            color = colors.primary,
+            fontSize = 36.sp,
+        )
       }
       Text(
           stringResource(R.string.payment_confirmed_title),

@@ -4,10 +4,24 @@ package com.commando.app.ui.orders
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.commando.app.data.repository.PaymentError
-import com.commando.app.model.*
+import com.commando.app.model.OrderItem
+import com.commando.app.model.PaymentMethod
+import com.commando.app.model.PaymentStatus
 import com.commando.app.ui.orders.OrderPaymentFixture.order
 import com.commando.app.ui.orders.OrderPaymentFixture.payment
 import com.commando.app.ui.orders.OrderPaymentFixture.trip
@@ -135,13 +149,18 @@ class CheckoutScreenTest {
         .onNodeWithTag(CheckoutTestTags.PRIMARY)
         .assertTextEquals("Check payment status")
         .performClick()
-    assertEquals(listOf("pay"), events)
+    assertEquals(listOf("refresh"), events)
   }
 
   @Test
-  fun pendingPaymentIsShownAsInProgress() {
+  fun pendingPaymentIsShownAsInProgressAndOnlyChecksItsStatus() {
     show(CheckoutUiState.Content(order, trip, payment(PaymentStatus.PENDING)))
     compose.onNodeWithTag(CheckoutTestTags.NOTICE).assert(hasText("Payment in progress", true))
+    compose
+        .onNodeWithTag(CheckoutTestTags.PRIMARY)
+        .assertTextEquals("Check payment status")
+        .performClick()
+    assertEquals(listOf("refresh"), events)
   }
 
   @Test
@@ -163,7 +182,14 @@ class CheckoutScreenTest {
   fun rejectedRequestShowsAnErrorAndAllowsRetry() {
     show(CheckoutUiState.Content(order, trip, null, error = PaymentError.INVALID_DATA))
     compose.onNodeWithText("This payment couldn’t be processed. Try again later.").assertExists()
-    compose.onNodeWithTag(CheckoutTestTags.PRIMARY).assertTextEquals("Try again")
+    compose.onNodeWithTag(CheckoutTestTags.PRIMARY).assertTextEquals("Try again").assertIsEnabled()
+  }
+
+  @Test
+  fun nonRetryableRejectionDoesNotOfferAnotherAttempt() {
+    show(CheckoutUiState.Content(order, trip, null, error = PaymentError.INELIGIBLE))
+    compose.onNodeWithTag(CheckoutTestTags.PRIMARY).assertIsNotEnabled()
+    compose.onNodeWithTag(CheckoutTestTags.METHOD_CARD).assertIsNotEnabled()
   }
 
   @Test

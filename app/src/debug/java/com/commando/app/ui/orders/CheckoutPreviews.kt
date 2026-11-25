@@ -4,7 +4,16 @@ package com.commando.app.ui.orders
 // Android Studio while checkout is not yet reachable from Order Details.
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
-import com.commando.app.model.*
+import com.commando.app.model.Location
+import com.commando.app.model.Order
+import com.commando.app.model.OrderItem
+import com.commando.app.model.OrderStatus
+import com.commando.app.model.Payment
+import com.commando.app.model.PaymentMethod
+import com.commando.app.model.PaymentStatus
+import com.commando.app.model.Trip
+import com.commando.app.model.TripStatus
+import com.commando.app.model.totalCents
 import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 

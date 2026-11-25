@@ -5,6 +5,7 @@
     <string name="payment_intro">Vos courses et la commission, en un seul paiement.</string>
     <plurals name="payment_items">
         <item quantity="one">%1$d article</item>
+        <item quantity="many">%1$d d’articles</item>
         <item quantity="other">%1$d articles</item>
     </plurals>
     <string name="payment_handoff">Remise · %1$s</string>

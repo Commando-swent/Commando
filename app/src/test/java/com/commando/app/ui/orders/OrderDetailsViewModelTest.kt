@@ -1749,7 +1749,8 @@ class OrderDetailsViewModelTest {
       return lookup()
     }
 
-    override suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> = error("Not used")
+    override suspend fun publishTrip(tripId: String, newTrip: NewTrip): TripResult<Trip> =
+        error("Not used")
 
     override suspend fun getUpcomingTrips(): TripResult<List<Trip>> = error("Not used")
 

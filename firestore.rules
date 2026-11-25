@@ -211,6 +211,73 @@ service cloud.firestore {
           productAt(items, 3), productAt(items, 4)].removeAll([null]).toSet().size() == items.size();
     }
 
+    // Checkout owns payment writes (#385); refunds use one immutable association per order.
+    function paymentMatchesOrder(orderId, payment, order) {
+      return payment.orderId == orderId && payment.requesterId == order.requesterId
+        && payment.status == "CONFIRMED" && payment.amountCents is int
+        && payment.method in ["TWINT", "CARD"]
+        && payment.amountCents > 0
+        && payment.amountCents == order.commissionCents + checkedTotal(order.items, 0)
+          + checkedTotal(order.items, 1) + checkedTotal(order.items, 2)
+          + checkedTotal(order.items, 3) + checkedTotal(order.items, 4);
+    }
+
+    function hasNoPayment(orderId) {
+      let path = /databases/$(database)/documents/payments/$(orderId);
+      return !existsAfter(path) || getAfter(path).data.status == "FAILED";
+    }
+
+    function refundMatchesPayment(orderId, refund, payment, order) {
+      return paymentMatchesOrder(orderId, payment, order)
+        && refund.operationId == "refund-" + orderId && refund.paymentId == orderId
+        && refund.orderId == orderId && refund.requesterId == order.requesterId
+        && refund.updatedAt is timestamp && refund.updatedAt <= request.time
+        && refund.requestedBy in [order.requesterId,
+          get(/databases/$(database)/documents/trips/$(order.tripId)).data.ownerId]
+        && refund.amountCents is int && refund.amountCents == payment.amountCents;
+    }
+
+    function paidCancellationAllowed(orderId, order) {
+      let path = /databases/$(database)/documents/refunds/$(orderId);
+      return hasNoPayment(orderId) ? !existsAfter(path)
+        : existsAfter(path) && getAfter(path).data.status == "CONFIRMED"
+          && refundMatchesPayment(orderId, getAfter(path).data,
+            getAfter(/databases/$(database)/documents/payments/$(orderId)).data, order);
+    }
+
+    function paymentParticipant(orderId) {
+      let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+      return isAuthenticated() && (order.requesterId == request.auth.uid || ownsOrderTrip(order));
+    }
+
+    match /payments/{orderId} {
+      allow get: if paymentParticipant(orderId);
+      // Capture/checkout writes need the agreed #385 contract; clients cannot forge paid records.
+      allow list, create, update, delete: if false;
+    }
+
+    match /refunds/{orderId} {
+      function validRefund(data) {
+        let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
+        let payment = get(/databases/$(database)/documents/payments/$(orderId)).data;
+        return data.keys().hasAll(["operationId", "orderId", "paymentId", "requesterId",
+            "requestedBy", "amountCents", "status", "updatedAt"])
+          && data.keys().hasOnly(["operationId", "orderId", "paymentId", "requesterId",
+            "requestedBy", "amountCents", "status", "updatedAt"])
+          && refundMatchesPayment(orderId, data, payment, order)
+          && data.requestedBy == request.auth.uid && data.updatedAt == request.time
+          && data.status in ["PENDING", "CONFIRMED", "FAILED", "UNCERTAIN"]
+          && ((order.status == "PENDING" && order.requesterId == request.auth.uid)
+            || (order.status == "ACCEPTED" && ownsOrderTrip(order)));
+      }
+      allow get: if paymentParticipant(orderId);
+      allow create: if isAuthenticated() && validRefund(request.resource.data);
+      allow update: if isAuthenticated() && validRefund(request.resource.data)
+        && resource.data.status != "CONFIRMED"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"]);
+      allow list, delete: if false;
+    }
+
     match /orders/{orderId} {
       allow create: if isAuthenticated()
         && request.resource.data.keys().hasAll(["tripId", "requesterId", "items", "commissionCents", "status", "createdAt"])
@@ -239,6 +306,14 @@ service cloud.firestore {
       allow list: if isAuthenticated()
         && (resource.data.requesterId == request.auth.uid || ownsOrderTrip(resource.data));
       allow update: if isAuthenticated()
+        && (request.resource.data.status != "REJECTED" || hasNoPayment(orderId))
+        && (request.resource.data.status != "READY_FOR_HANDOFF"
+          || !existsAfter(/databases/$(database)/documents/payments/$(orderId))
+          || paymentMatchesOrder(orderId,
+            getAfter(/databases/$(database)/documents/payments/$(orderId)).data, resource.data))
+        && (request.resource.data.status == "CANCELLED"
+          ? paidCancellationAllowed(orderId, resource.data)
+          : !existsAfter(/databases/$(database)/documents/refunds/$(orderId)))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
         && ((ownsOrderTrip(resource.data)
               && resource.data.requesterId != request.auth.uid
@@ -259,6 +334,8 @@ service cloud.firestore {
               && request.resource.data.status == "DELIVERED"));
       // Requester edits preserve identity/status and independently revalidate the whole payload.
       allow update: if isAuthenticated()
+        && hasNoPayment(orderId)
+        && !existsAfter(/databases/$(database)/documents/refunds/$(orderId))
         && resource.data.requesterId == request.auth.uid
         && resource.data.status == "PENDING"
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["items", "commissionCents", "revision"])
@@ -289,12 +366,23 @@ service cloud.firestore {
         allow get: if chatParticipant();
         allow list: if chatParticipant() && request.query.limit <= 100;
         function validChatContent(data) {
-          return (!('delayMinutes' in data)
+          return (!('delayMinutes' in data) && !('meetup' in data)
               && data.text.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
               && data.text.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000)
-            || ('delayMinutes' in data && data.delayMinutes is int
+            || ('delayMinutes' in data && !('meetup' in data) && data.delayMinutes is int
               && data.delayMinutes >= 1 && data.delayMinutes <= 240
               && data.text == "The commando is running late." && ownsOrderTrip(chatOrder())
+              && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status
+                in ["PUBLISHED", "IN_PROGRESS"])
+            || ('meetup' in data && !('delayMinutes' in data)
+              && data.text == "The commando proposed a meetup. Open the updated app to respond."
+              && data.meetup is map && data.meetup.keys().hasAll(["location", "at", "response"])
+              && data.meetup.keys().hasOnly(["location", "at", "response"])
+              && data.meetup.location is string
+              && data.meetup.location.matches('(?s).*[^\\s\\p{Z}\\x{001c}-\\x{001f}].*')
+              && data.meetup.location.replace('[\\x{10000}-\\x{10ffff}]', 'xx').size() <= 1000
+              && data.meetup.at is timestamp && data.meetup.at > request.time
+              && data.meetup.response == "PENDING" && ownsOrderTrip(chatOrder())
               && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status
                 in ["PUBLISHED", "IN_PROGRESS"]);
         }
@@ -302,11 +390,20 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status
             in ["ACCEPTED", "READY_FOR_HANDOFF"]
           && request.resource.data.keys().hasAll(["senderId", "text", "createdAt"])
-          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt", "delayMinutes"])
+          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt", "delayMinutes", "meetup"])
           && request.resource.data.senderId == request.auth.uid
           && request.resource.data.createdAt == request.time
           && request.resource.data.text is string && validChatContent(request.resource.data);
-        allow update, delete: if false;
+        allow update: if chatParticipant() && chatOrder().requesterId == request.auth.uid
+          && resource.data.senderId != request.auth.uid && 'meetup' in resource.data
+          && getAfter(/databases/$(database)/documents/orders/$(orderId)).data.status in ["ACCEPTED", "READY_FOR_HANDOFF"]
+          && getAfter(/databases/$(database)/documents/trips/$(chatOrder().tripId)).data.status in ["PUBLISHED", "IN_PROGRESS"]
+          && resource.data.meetup.at > request.time && resource.data.meetup.response == "PENDING"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["meetup"])
+          && request.resource.data.meetup.diff(resource.data.meetup).affectedKeys().hasOnly(["response", "respondedAt"])
+          && request.resource.data.meetup.response in ["ACCEPTED", "DECLINED"]
+          && request.resource.data.meetup.respondedAt == request.time;
+        allow delete: if false;
       }
     }
 
@@ -478,6 +575,23 @@ service cloud.firestore {
         && request.query.limit != null
         && request.query.limit <= 50;
       allow create, update, delete: if false;
+    }
+
+    match /publicProfiles/{userId} {
+      function validPublicName(data) {
+        return data.keys().hasOnly(["displayName"])
+          && data.displayName is string
+          // RE2 counts Unicode code points, including one per supplementary character.
+          && data.displayName.matches("[^\\r\\n]{1,80}")
+          && !data.displayName.matches("[\\p{Z}\\x09-\\x0D\\x1C-\\x1F\\x85]*");
+      }
+
+      allow get: if isAuthenticated()
+        && (resource == null || validPublicName(resource.data));
+      allow list: if false;
+      allow create, update: if isAuthenticated() && request.auth.uid == userId
+        && validPublicName(request.resource.data);
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
     }
 
     match /profilePhotos/{userId} {

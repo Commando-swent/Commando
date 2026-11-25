@@ -1,8 +1,9 @@
 package com.commando.app.ui.navigation
 
-// AI assistance: OpenAI Codex (real-trip map integration).
+// AI assistance: OpenAI Codex (real-trip map integration). Claude Code: connectivity banner (#393).
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.semantics.SemanticsActions
@@ -33,8 +34,11 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.credentials.Credential
 import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
+import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import com.commando.app.R
+import com.commando.app.data.connectivity.ConnectivityMonitor
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -63,6 +67,7 @@ import com.commando.app.ui.auth.GoogleSignInNotConfiguredException
 import com.commando.app.ui.auth.WelcomeTestTags
 import com.commando.app.ui.catalogue.CatalogueTestTags
 import com.commando.app.ui.catalogue.StubProductRepository
+import com.commando.app.ui.components.ConnectivityBannerTestTags
 import com.commando.app.ui.home.HomeTestTags
 import com.commando.app.ui.map.LiveMapTags
 import com.commando.app.ui.map.MapTestTags
@@ -81,6 +86,10 @@ import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.assertTripCard
 import com.commando.app.ui.trips.discoveryTrip
 import com.commando.app.ui.trips.onTripCard
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.unmockkAll
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -99,7 +108,9 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 import org.robolectric.shadows.ShadowToast
 
 private const val SEEDED_TRIP_ID = "known-trip"
@@ -177,6 +188,60 @@ class CommandoAppTest {
     compose.onNodeWithTag(ProfileTestTags.HELP_SCREEN).assertDoesNotExist()
   }
 
+  @Test
+  fun signedInScreensShowTheOfflineBannerThenBackOnline() {
+    val connectivity = FakeConnectivityMonitor(online = false)
+    show(FakeAuthRepository(alice), connectivity = connectivity)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
+    compose.onNodeWithTag(AppTestTags.PROFILE_BUTTON).performClick()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
+    compose.mainClock.autoAdvance = false
+    connectivity.setOnline(true)
+    compose.waitForIdle()
+    compose.mainClock.advanceTimeByFrame()
+    compose.mainClock.advanceTimeByFrame()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.BACK_ONLINE).assertIsDisplayed()
+  }
+
+  @Test
+  fun stoppedAppReleasesConnectivityCallbackAndRefreshesOnReturn() {
+    val manager = compose.activity.application.getSystemService(ConnectivityManager::class.java)
+    show(FakeAuthRepository(alice))
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
+    compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+    ShadowLooper.idleMainLooper(6_000)
+    assertEquals(0, shadowOf(manager).networkCallbacks.size)
+    mockkObject(manager)
+    every { manager.getNetworkCapabilities(any()) } returns
+        mockk { every { hasCapability(any()) } returns true }
+    compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+    assertEquals(1, shadowOf(manager).networkCallbacks.size)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+  }
+
+  @Test
+  fun signedInOnlineSessionShowsNoConnectivityBanner() {
+    show(FakeAuthRepository(alice), connectivity = FakeConnectivityMonitor(online = true))
+    compose.onNodeWithTag(AppTestTags.APP_SCAFFOLD).assertIsDisplayed()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(ConnectivityBannerTestTags.BACK_ONLINE).assertDoesNotExist()
+  }
+
+  @Test
+  fun welcomeAndLoginNeverShowTheConnectivityBanner() {
+    show(
+        FakeAuthRepository(),
+        openForm = false,
+        connectivity = FakeConnectivityMonitor(online = false),
+    )
+    assertScreen(WelcomeTestTags.SCREEN)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(WelcomeTestTags.LOGIN).performScrollTo().performClick()
+    assertScreen(NavigationTestTags.LOGIN_SCREEN)
+    compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertDoesNotExist()
+  }
+
   private class Picker : GoogleCredentialClient {
     var credential: Credential? = null
     var error: Exception? = null
@@ -203,8 +268,15 @@ class CommandoAppTest {
       repository: AuthRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
+      connectivity: ConnectivityMonitor? = null,
   ) {
-    show(repository, FakeTripRepository(currentUserId = "alice"), picker, openForm)
+    show(
+        repository,
+        FakeTripRepository(currentUserId = "alice"),
+        picker,
+        openForm,
+        connectivity = connectivity,
+    )
   }
 
   private fun show(
@@ -213,6 +285,7 @@ class CommandoAppTest {
       picker: Picker = Picker(),
       openForm: Boolean = true,
       ratings: ((() -> String?) -> RatingRepository)? = null,
+      connectivity: ConnectivityMonitor? = null,
   ) {
     compose.setContent {
       SampleAppTheme {
@@ -226,6 +299,7 @@ class CommandoAppTest {
             positionRepositoryFactory = {
               FakeCommandoPositionRepository(MutableStateFlow(repository.currentUser?.uid))
             },
+            connectivityMonitor = connectivity,
         )
       }
     }
@@ -1180,6 +1254,7 @@ class CommandoAppTest {
   @After
   fun resetProvider() {
     AuthRepositoryProvider.reset()
+    unmockkAll()
   }
 
   private fun fillEmailForm() {

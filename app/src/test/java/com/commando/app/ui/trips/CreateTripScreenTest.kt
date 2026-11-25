@@ -1,6 +1,6 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code, including the uncertain publication lock test (#394).
 import androidx.compose.runtime.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -107,6 +107,17 @@ class CreateTripScreenTest {
   }
 
   @Test
+  fun uncertainPublication_locksTheFieldsButAllowsARetry() {
+    state = READY.copy(publishError = TripError.NetworkError, hasUncertainPublication = true)
+    setContent()
+
+    FIELD_TAGS.forEach { node(it).assertIsNotEnabled() }
+    node(CreateTripScreenTestTags.PUBLISH_BUTTON).assertIsEnabled()
+    state = state.copy(publishError = TripError.InvalidData, hasUncertainPublication = false)
+    FIELD_TAGS.forEach { node(it).assertIsEnabled() }
+  }
+
+  @Test
   fun screen_confirmsThePublicationBeforeLeaving() {
     val repository = FakeTripRepository(currentUserId = "me", now = { NOW })
     val viewModel = CreateTripViewModel(repository, Clock.fixed(NOW, ZONE))
@@ -192,5 +203,8 @@ class CreateTripScreenTest {
             CreateTripScreenTestTags.TIME_ERROR,
             CreateTripScreenTestTags.HANDOFF_LOCATION_ERROR,
         )
+    val FIELD_TAGS =
+        CreateTripScreenTestTags.run { listOf(STORE_FIELD, DATE_FIELD, TIME_FIELD) } +
+            CreateTripScreenTestTags.HANDOFF_LOCATION_FIELD
   }
 }

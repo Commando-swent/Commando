@@ -38,6 +38,12 @@ import java.time.format.FormatStyle
 
 /** Stable selectors independent of text, locale and ordering of controls. */
 object OrderChatTestTags {
+  const val MEETUP = "chat_meetup"
+  const val MEETUP_LOCATION = "chat_meetup_location"
+  const val MEETUP_SEND = "chat_meetup_send"
+  const val MEETUP_STATE = "chat_meetup_state_"
+  const val MEETUP_RESPONSE = "chat_meetup_response_"
+  const val MEETUP_RETRY = "chat_meetup_retry"
   const val DELAY = "chat_delay"
   const val DELAY_INPUT = "chat_delay_input"
   const val DELAY_SEND = "chat_delay_send"
@@ -76,6 +82,7 @@ internal fun OrderChatHost(model: OrderChatViewModel, onBack: () -> Unit) {
     }
   }
   val state by model.uiState.collectAsState()
+  val meetupState by model.meetups.state.collectAsState()
   OrderChatScreen(
       state,
       onBack,
@@ -83,6 +90,10 @@ internal fun OrderChatHost(model: OrderChatViewModel, onBack: () -> Unit) {
       model::updateDraft,
       model::send,
       onDelay = model::sendDelay,
+      meetupState = meetupState,
+      onPropose = model.meetups::propose,
+      onRespond = model.meetups::respond,
+      onMeetupRetry = model.meetups::retry,
   )
 }
 
@@ -96,6 +107,10 @@ fun OrderChatScreen(
     onSend: () -> Unit,
     modifier: Modifier = Modifier,
     onDelay: (Int) -> Unit = {},
+    meetupState: MeetupActionState = MeetupActionState(),
+    onPropose: (String, java.time.Instant) -> Unit = { _, _ -> },
+    onRespond: (String, MeetupResponse) -> Unit = { _, _ -> },
+    onMeetupRetry: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   Column(
@@ -124,7 +139,9 @@ fun OrderChatScreen(
             when (state.chat) {
               null -> Spacer(Modifier.weight(1f))
               else -> {
-                Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state) }
+                Box(Modifier.weight(1f).fillMaxWidth()) { ChatHistory(state, onRespond) }
+                MeetupComposer(state, onPropose)
+                MeetupFeedback(meetupState, onMeetupRetry)
                 ChatDelayComposer(state, onDelay)
                 ChatComposer(state, onDraft, onSend, onDelay)
               }
@@ -264,7 +281,7 @@ private fun ChatOrderContext(context: ChatContext, onInfo: () -> Unit) {
 }
 
 @Composable
-private fun ChatHistory(state: OrderChatUiState) {
+private fun ChatHistory(state: OrderChatUiState, onRespond: (String, MeetupResponse) -> Unit) {
   val chat = requireNotNull(state.chat)
   val locale = LocalConfiguration.current.locales[0]
   val zone = ZoneId.systemDefault()
@@ -323,6 +340,8 @@ private fun ChatHistory(state: OrderChatUiState) {
                 message,
                 state.context?.viewerId == message.senderId,
                 timeFormat.format(message.createdAt),
+                state,
+                onRespond,
             )
           }
         }
@@ -330,7 +349,13 @@ private fun ChatHistory(state: OrderChatUiState) {
 }
 
 @Composable
-private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
+private fun ChatBubble(
+    message: ChatMessage,
+    mine: Boolean,
+    time: String,
+    state: OrderChatUiState,
+    onRespond: (String, MeetupResponse) -> Unit,
+) {
   val colors = MaterialTheme.colorScheme
   val noticeLabel = stringResource(R.string.chat_delay_notice)
   BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -350,10 +375,13 @@ private fun ChatBubble(message: ChatMessage, mine: Boolean, time: String) {
                 noticeLabel,
                 style = MaterialTheme.typography.labelMedium,
             )
-        Text(
-            message.delayMinutes?.let { pluralStringResource(R.plurals.chat_delay_message, it, it) }
-                ?: message.text
-        )
+        if (message.meetup != null) MeetupCard(message, state, onRespond)
+        else
+            Text(
+                message.delayMinutes?.let {
+                  pluralStringResource(R.plurals.chat_delay_message, it, it)
+                } ?: message.text
+            )
         Text(time, Modifier.align(Alignment.End), style = MaterialTheme.typography.bodySmall)
       }
     }

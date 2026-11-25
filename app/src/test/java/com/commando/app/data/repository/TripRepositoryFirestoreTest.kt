@@ -1,6 +1,6 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transition tests (#233).
+// AI assistance: Claude Code for trip transition tests (#233) and idempotent publication (#394).
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
@@ -38,11 +38,11 @@ class TripRepositoryFirestoreTest {
 
   @Test
   fun publishTrip_withValidData_persistsFirestoreSchemaAndReturnsRoundTrip() = runTest {
-    val dataSource = InMemoryTripFirestoreDataSource(nextDocumentId = "firestore-document-id")
+    val dataSource = InMemoryTripFirestoreDataSource()
     val repository = createRepository(dataSource)
     val newTrip = newTripAt(currentTime.plusSeconds(3_600))
 
-    val trip = repository.publishTrip(newTrip).successData()
+    val trip = repository.publishTrip("firestore-document-id", newTrip).successData()
 
     assertEquals("firestore-document-id", trip.id)
     assertEquals("authenticated-user", trip.ownerId)
@@ -186,6 +186,96 @@ class TripRepositoryFirestoreTest {
         createRepository(dataSource).publishTrip(newTripAt(currentTime.plusSeconds(1))),
     )
     assertTrue(dataSource.documents.isEmpty())
+  }
+
+  @Test
+  fun publishTrip_repeatedWithSameId_returnsTheFirstTripWithoutSecondTripOrChange() = runTest {
+    val dataSource = InMemoryTripFirestoreDataSource()
+    val newTrip = newTripAt(currentTime.plusSeconds(3_600))
+    val first = createRepository(dataSource).publishTrip(TRIP_ID, newTrip).successData()
+    val stored = dataSource.documents.getValue(TRIP_ID)
+
+    val later = createRepository(dataSource, clock = { currentTime.plusSeconds(60) })
+    val retry = later.publishTrip(TRIP_ID, newTrip)
+
+    assertEquals(TripResult.Success(first), retry)
+    assertEquals(mapOf(TRIP_ID to stored), dataSource.documents)
+  }
+
+  @Test
+  fun publishTrip_retryAfterUnacknowledgedCommit_returnsStoredTripEvenOnceAdvancedOrDeparted() =
+      runTest {
+        val dataSource = dataSourceWithTrip(IN_PROGRESS)
+        val stored = dataSource.documents.getValue(TRIP_ID)
+        val newTrip = newTripAt(currentTime.plusSeconds(3_600))
+
+        val beforeDeparture = createRepository(dataSource).publishTrip(TRIP_ID, newTrip)
+        assertEquals(IN_PROGRESS, beforeDeparture.successData().status)
+        assertEquals(1, dataSource.createCalls)
+
+        val departed = createRepository(dataSource, clock = { currentTime.plusSeconds(7_200) })
+        assertEquals(beforeDeparture, departed.publishTrip(TRIP_ID, newTrip))
+        assertEquals("A departed retry only reads", 1, dataSource.createCalls)
+        assertEquals(1, dataSource.getTripCalls)
+        assertEquals(mapOf(TRIP_ID to stored), dataSource.documents)
+      }
+
+  @Test
+  fun publishTrip_withConflictingStoredTrip_failsAndLeavesItUnchanged() = runTest {
+    val newTrip = newTripAt(currentTime.plusSeconds(3_600))
+    val cases =
+        listOf(
+            validStoredTrip(ownerId = "someone-else") to PermissionDenied,
+            validStoredTrip() + ("store" to handoff.toStoredLocation()) to InvalidData,
+            validStoredTrip(scheduledAt = currentTime.plusSeconds(3_601)) to InvalidData,
+            validStoredTrip() + ("handoffLocation" to store.toStoredLocation()) to InvalidData,
+        )
+    for (departed in listOf(false, true)) {
+      cases.forEach { (stored, error) ->
+        val dataSource = InMemoryTripFirestoreDataSource().apply { documents[TRIP_ID] = stored }
+        val clock = { if (departed) currentTime.plusSeconds(7_200) else currentTime }
+
+        val result = createRepository(dataSource, clock = clock).publishTrip(TRIP_ID, newTrip)
+
+        assertTripError(error, result, "$stored, departed=$departed")
+        assertEquals(mapOf(TRIP_ID to stored), dataSource.documents)
+      }
+    }
+  }
+
+  @Test
+  fun publishTrip_rejectsInvalidIdsAndDepartedNewTripsWithoutCreating() = runTest {
+    val dataSource = InMemoryTripFirestoreDataSource()
+    val repository = createRepository(dataSource)
+    val future = newTripAt(currentTime.plusSeconds(3_600))
+
+    listOf("", "  ", "a/b", ".", "..").forEach { id ->
+      assertTripError(InvalidData, repository.publishTrip(id, future), "id '$id'")
+    }
+    assertEquals(0, dataSource.getTripCalls)
+    listOf(currentTime, currentTime.minusSeconds(1)).forEach { departure ->
+      assertTripError(InvalidData, repository.publishTrip(TRIP_ID, newTripAt(departure)))
+    }
+
+    assertEquals(0, dataSource.createCalls)
+    assertTrue(dataSource.documents.isEmpty())
+  }
+
+  @Test
+  fun publishTrip_matchesStoredDepartureAtFirestoreMicrosecondPrecision() = runTest {
+    val departure = currentTime.plusSeconds(3_600).plusNanos(123_456_789)
+    val truncated = Timestamp(departure.epochSecond, 123_456_000)
+    val dataSource =
+        InMemoryTripFirestoreDataSource().apply {
+          documents[TRIP_ID] = validStoredTrip() + ("scheduledAt" to truncated)
+        }
+    val repository = createRepository(dataSource)
+
+    assertTrue(repository.publishTrip(TRIP_ID, newTripAt(departure)) is TripResult.Success)
+    assertTripError(
+        InvalidData,
+        repository.publishTrip(TRIP_ID, newTripAt(departure.plusNanos(1_000))),
+    )
   }
 
   @Test
@@ -621,9 +711,7 @@ class TripRepositoryFirestoreTest {
           "longitude" to longitude,
       )
 
-  private class InMemoryTripFirestoreDataSource(
-      private var nextDocumentId: String = "generated-1"
-  ) : TripFirestoreDataSource {
+  private class InMemoryTripFirestoreDataSource : TripFirestoreDataSource {
     val documents = linkedMapOf<String, Map<String, Any?>>()
     var upcomingDocuments = emptyList<TripFirestoreDocument>()
     var ownerDocuments = emptyList<TripFirestoreDocument>()
@@ -642,14 +730,16 @@ class TripRepositoryFirestoreTest {
     /** Runs after the write and before the trip is read back, e.g. another device's change. */
     var afterTransition: (() -> Unit)? = null
 
-    override suspend fun createTrip(data: Map<String, Any?>): String {
+    /** Mirrors the transaction: an existing trip is returned unchanged, never overwritten. */
+    override suspend fun createTripIfAbsent(
+        tripId: String,
+        data: Map<String, Any?>,
+    ): TripFirestoreDocument {
       createCalls += 1
       throwFailureIfPresent()
       createGate?.await()
-      val documentId = nextDocumentId
-      documents[documentId] = data
-      nextDocumentId = "generated-${createCalls + 1}"
-      return documentId
+      val stored = documents.getOrPut(tripId) { data }
+      return TripFirestoreDocument(tripId, stored)
     }
 
     override suspend fun getTrip(tripId: String): TripFirestoreDocument? {

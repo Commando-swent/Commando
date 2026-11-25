@@ -1,7 +1,7 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex.
-// AI assistance: Claude Code for the trip transition (#233).
+// AI assistance: Claude Code for the trip transition (#233) and idempotent publication (#394).
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus
@@ -16,6 +16,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -41,9 +42,9 @@ internal constructor(
       now = now,
   )
 
-  override suspend fun publishTrip(newTrip: NewTrip): TripResult<Trip> {
+  override suspend fun publishTrip(tripId: String, newTrip: NewTrip): TripResult<Trip> {
     val creationTime = now()
-    if (!newTrip.isValid(creationTime)) {
+    if (!tripId.isDocumentId() || !newTrip.store.isValid() || !newTrip.handoffLocation.isValid()) {
       return TripResult.Error(TripError.InvalidData)
     }
 
@@ -52,20 +53,19 @@ internal constructor(
             ?: return TripResult.Error(TripError.PermissionDenied)
 
     return runRepositoryOperation {
-      val data = newTrip.toFirestoreData(ownerId, creationTime)
-      val documentId = dataSource.createTrip(data)
-      TripResult.Success(
-          Trip(
-              id = documentId,
-              ownerId = ownerId,
-              store = newTrip.store,
-              scheduledAt = newTrip.scheduledAt,
-              handoffLocation = newTrip.handoffLocation,
-              status = TripStatus.PUBLISHED,
-              createdAt = creationTime,
-              updatedAt = creationTime,
-          )
-      )
+      // A passed departure can still confirm an earlier attempt, but never creates a trip.
+      val stored =
+          if (newTrip.scheduledAt > creationTime) {
+            dataSource.createTripIfAbsent(tripId, newTrip.toFirestoreData(ownerId, creationTime))
+          } else {
+            dataSource.getTrip(tripId) ?: return@runRepositoryOperation invalidData()
+          }
+      val trip = stored.toTrip() ?: return@runRepositoryOperation invalidData()
+      when {
+        trip.ownerId != ownerId -> TripResult.Error(TripError.PermissionDenied)
+        !trip.isPublicationOf(newTrip) -> invalidData()
+        else -> TripResult.Success(trip)
+      }
     }
   }
 
@@ -168,8 +168,12 @@ internal constructor(
   private fun String?.toOrderStatus(): OrderStatus? =
       OrderStatus.entries.firstOrNull { it.name == this }
 
-  private fun NewTrip.isValid(currentTime: Instant): Boolean =
-      store.isValid() && handoffLocation.isValid() && scheduledAt > currentTime
+  /** Firestore keeps microseconds, so a stored departure is compared at that precision. */
+  private fun Trip.isPublicationOf(intent: NewTrip): Boolean =
+      store == intent.store &&
+          handoffLocation == intent.handoffLocation &&
+          scheduledAt.truncatedTo(ChronoUnit.MICROS) ==
+              intent.scheduledAt.truncatedTo(ChronoUnit.MICROS)
 }
 
 /** Raw trip transport; [FirestoreDocument] is decoded with Trip-specific validation below. */
@@ -187,9 +191,11 @@ internal data class TripTransitionWrite(val document: TripFirestoreDocument, val
  */
 internal interface TripFirestoreDataSource {
   /**
-   * Stores supplied fields under a generated document ID and returns that ID after confirmation.
+   * In one server transaction, stores [data] under [tripId] only if no trip exists there, and
+   * returns the stored trip: the existing one, unchanged, or the created one. Fails while offline
+   * instead of queueing a write.
    */
-  suspend fun createTrip(data: Map<String, Any?>): String
+  suspend fun createTripIfAbsent(tripId: String, data: Map<String, Any?>): TripFirestoreDocument
 
   /** Uses the SDK default read source; returns null only for a readable missing document. */
   suspend fun getTrip(tripId: String): TripFirestoreDocument?
@@ -231,10 +237,24 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
 
   private val trips = firestore.collection(TRIPS_COLLECTION)
 
-  override suspend fun createTrip(data: Map<String, Any?>): String {
-    val document = trips.document()
-    document.set(data).await()
-    return document.id
+  // A transaction, unlike set(), is never queued offline, so a failed attempt leaves nothing to
+  // replay on reconnection.
+  override suspend fun createTripIfAbsent(
+      tripId: String,
+      data: Map<String, Any?>,
+  ): TripFirestoreDocument {
+    val reference = trips.document(tripId)
+    return firestore
+        .runTransaction { transaction ->
+          val stored = transaction.get(reference)
+          if (stored.exists()) {
+            stored.toFirestoreDocument()
+          } else {
+            transaction.set(reference, data)
+            TripFirestoreDocument(tripId, data)
+          }
+        }
+        .await()
   }
 
   override suspend fun getTrip(tripId: String): TripFirestoreDocument? {

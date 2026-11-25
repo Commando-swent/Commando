@@ -160,7 +160,10 @@ class HomeFirestoreIntegrationTest {
       return documents.filter { it.data["ownerId"] == ownerId }
     }
 
-    override suspend fun createTrip(data: Map<String, Any?>): String = error("Not used by Home")
+    override suspend fun createTripIfAbsent(
+        tripId: String,
+        data: Map<String, Any?>,
+    ): TripFirestoreDocument = error("Not used by Home")
 
     override suspend fun getTrip(tripId: String): TripFirestoreDocument? = error("Not used by Home")
 

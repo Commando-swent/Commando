@@ -60,16 +60,28 @@ class MeetupActionsTest {
 
   @Test
   fun uncertainProposalRestoresSameIdentityAndReconcilesWithoutLosingText() = runTest {
-    val scope = backgroundScope
     val saved = SavedStateHandle()
-    var actions = MeetupActions(order.id, repository, chat, saved, scope)
+    var actions = MeetupActions(order.id, repository, chat, saved, backgroundScope)
     result = OrderResult.Error(OrderError.Unknown)
     actions.propose("Entrance", now.plusSeconds(3600))
+    actions.retry()
     runCurrent()
     assertTrue(actions.hasPending)
     assertFalse(chat.value.canEditDraft)
+    val pending = chat.value
+    for (blocked in
+        listOf(
+            pending.copy(context = null),
+            pending.copy(loading = true),
+            pending.copy(error = OrderError.PermissionDenied),
+        )) {
+      chat.value = blocked
+      actions.retry()
+    }
+    chat.value = pending
+    actions.respond("meeting", MeetupResponse.PENDING)
     actions.stop()
-    actions = MeetupActions(order.id, repository, chat, saved, scope)
+    actions = MeetupActions(order.id, repository, chat, saved, backgroundScope)
     actions.retry()
     runCurrent()
     assertEquals(2, ids.size)
@@ -80,6 +92,7 @@ class MeetupActionsTest {
     assertNull(actions.state.value.error)
     assertEquals("typed message", chat.value.draft)
     assertTrue(chat.value.canEditDraft)
+    actions.respond("meeting", MeetupResponse.PENDING)
   }
 
   @Test
@@ -121,11 +134,13 @@ class MeetupActionsTest {
     actions.propose("Entrance", now.plusSeconds(7200))
     runCurrent()
     assertTrue(actions.hasPending)
+    actions.retry()
     actions.clear()
+    chat.value = chat.value.copy(context = null)
     assertFalse(actions.hasPending)
     actions.retry()
     runCurrent()
-    assertEquals(1, ids.size)
+    assertEquals(2, ids.size)
   }
 
   @Test

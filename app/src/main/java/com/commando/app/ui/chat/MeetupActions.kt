@@ -14,9 +14,7 @@ import kotlinx.coroutines.flow.*
 /** Feedback for the order-scoped structured mutation, independent of the typed message draft. */
 data class MeetupActionState(val busy: Boolean = false, val error: OrderError? = null)
 
-/**
- * Owned by the chat ViewModel; saved primitive fields retain uncertain mutations across recreation.
- */
+/** Owns saved structured mutations for the chat ViewModel. */
 internal class MeetupActions(
     private val orderId: String,
     private val repository: OrderChatRepository,
@@ -35,12 +33,7 @@ internal class MeetupActions(
 
   fun propose(location: String, at: Instant) {
     val proposal = MeetupProposal(location, Instant.ofEpochMilli(at.toEpochMilli()))
-    if (
-        !chat.value.canSendDelay ||
-            !proposal.at.isAfter(Instant.now()) ||
-            !isValidChatPayload(CHAT_MEETUP_FALLBACK, null, proposal)
-    )
-        return
+    if (!chat.value.canSendDelay) return
     perform(PendingMeetup(UUID.randomUUID().toString(), proposal))
   }
 
@@ -103,11 +96,12 @@ internal class MeetupActions(
               chat.update { it.copy(sending = true) }
               return
             }
+    val proposal = message.meetup ?: return
     val confirmed =
         action.proposal?.let {
           message.senderId == chat.value.context?.viewerId &&
-              message.meetup?.copy(response = MeetupResponse.PENDING, respondedAt = null) == it
-        } ?: (message.meetup?.response?.let { it != MeetupResponse.PENDING } == true)
+              proposal.copy(response = MeetupResponse.PENDING, respondedAt = null) == it
+        } ?: (proposal.response != MeetupResponse.PENDING)
     if (confirmed) clear()
   }
 

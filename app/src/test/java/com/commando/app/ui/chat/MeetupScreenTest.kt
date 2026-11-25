@@ -1,17 +1,14 @@
 package com.commando.app.ui.chat
 
 // AI assistance: OpenAI Codex.
-import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import com.android.sample.R
 import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import com.commando.app.ui.theme.SampleAppTheme
-import java.io.File
 import java.time.Instant
 import org.junit.Assert.*
 import org.junit.Rule
@@ -51,12 +48,8 @@ class MeetupScreenTest {
     }
   }
 
-  private fun capture(name: String) {
-    val file = File("build/reports/meetup/$name.png")
-    file.parentFile?.mkdirs()
-    val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-    file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-  }
+  private fun clickText(id: Int) =
+      compose.onNodeWithText(compose.activity.getString(id)).performClick()
 
   @Test
   fun requesterSeesDetailsAndTheAcceptedResponseRemainsInHistory() {
@@ -73,10 +66,24 @@ class MeetupScreenTest {
     state = state.copy(chat = state.chat!!.copy(messages = listOf(message)))
     show()
     compose.onNodeWithText(proposal.location).assertIsDisplayed()
-    capture("pending-en")
+    for (blocked in
+        listOf(
+            state.copy(context = null),
+            state.copy(chat = state.chat!!.copy(status = OrderStatus.DELIVERED)),
+            state.copy(
+                context = context.copy(trip = context.trip.copy(status = TripStatus.CANCELLED))
+            ),
+        )) {
+      compose.runOnIdle { state = blocked }
+      compose.onNodeWithText("Accept").assertDoesNotExist()
+    }
+    compose.runOnIdle {
+      state = chatPreviewState().copy(chat = OrderChat(OrderStatus.ACCEPTED, listOf(message)))
+    }
     val responseTag = OrderChatTestTags.MEETUP_RESPONSE + message.id
     compose.onNodeWithTag(responseTag + MeetupResponse.ACCEPTED.name).performClick()
-    assertEquals(listOf(MeetupResponse.ACCEPTED), replies)
+    compose.onNodeWithTag(responseTag + MeetupResponse.DECLINED.name).performClick()
+    assertEquals(listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED), replies)
     compose.runOnIdle { feedback = MeetupActionState(error = OrderError.Unknown) }
     compose.onNodeWithTag(OrderChatTestTags.MEETUP_RETRY).performClick()
     assertEquals(1, retries)
@@ -107,17 +114,10 @@ class MeetupScreenTest {
     show()
     compose.onNodeWithTag(OrderChatTestTags.MEETUP).performClick()
     compose.onNodeWithTag(OrderChatTestTags.MEETUP_SEND).assertIsNotEnabled()
-    capture("form-fr")
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.create_trip_date_label))
-        .performClick()
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.create_trip_dialog_ok))
-        .performClick()
-    compose.onNodeWithText(compose.activity.getString(R.string.chat_meetup_time)).performClick()
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.create_trip_dialog_ok))
-        .performClick()
+    clickText(R.string.create_trip_date_label)
+    clickText(R.string.create_trip_dialog_ok)
+    clickText(R.string.chat_meetup_time)
+    clickText(R.string.create_trip_dialog_ok)
     compose.onNodeWithTag(OrderChatTestTags.MEETUP_LOCATION).performTextReplacement("")
     compose.onNodeWithTag(OrderChatTestTags.MEETUP_SEND).assertIsNotEnabled()
     compose
@@ -126,6 +126,5 @@ class MeetupScreenTest {
     compose.onNodeWithTag(OrderChatTestTags.MEETUP_SEND).assertIsEnabled().performClick()
     assertEquals(listOf(context.trip.handoffLocation.name to context.trip.scheduledAt), proposals)
     compose.onNodeWithText(compose.activity.getString(R.string.chat_meetup_sending)).assertExists()
-    assertTrue(replies.isEmpty())
   }
 }

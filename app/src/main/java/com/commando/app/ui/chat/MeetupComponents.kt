@@ -34,10 +34,8 @@ internal fun MeetupComposer(state: OrderChatUiState, onPropose: (String, Instant
   )
       return
   val zone = ZoneId.systemDefault()
-  val time =
-      chosen?.let { Instant.ofEpochMilli(it).atZone(zone) }
-          ?: context.trip.scheduledAt.takeIf { it.isAfter(Instant.now()) }?.atZone(zone)
-          ?: ZonedDateTime.now(zone)
+  val suggested = maxOf(context.trip.scheduledAt, Instant.now()).toEpochMilli()
+  val time = Instant.ofEpochMilli(chosen ?: suggested).atZone(zone)
   TextButton(
       onClick = {
         open = true
@@ -76,7 +74,7 @@ internal fun MeetupComposer(state: OrderChatUiState, onPropose: (String, Instant
           confirmButton = {
             TextButton(
                 onClick = {
-                  chosen?.let { onPropose(location, Instant.ofEpochMilli(it)) }
+                  onPropose(location, Instant.ofEpochMilli(requireNotNull(chosen)))
                   open = false
                 },
                 enabled =
@@ -113,27 +111,25 @@ internal fun MeetupCard(
     state: OrderChatUiState,
     onRespond: (String, MeetupResponse) -> Unit,
 ) {
-  val proposal = requireNotNull(message.meetup)
+  val proposal = message.meetup ?: return
+  val context = state.context ?: return
   Text(stringResource(R.string.chat_meetup_title), style = MaterialTheme.typography.labelMedium)
   Text(proposal.location)
   Text(meetupTime(proposal.at))
-  Text(
-      stringResource(
-          when (proposal.response) {
-            MeetupResponse.PENDING ->
-                if (proposal.at.isAfter(Instant.now())) R.string.chat_meetup_pending
-                else R.string.chat_meetup_expired
-            MeetupResponse.ACCEPTED -> R.string.chat_meetup_accepted
-            MeetupResponse.DECLINED -> R.string.chat_meetup_declined
-          }
-      ),
-      Modifier.testTag(OrderChatTestTags.MEETUP_STATE + message.id),
-  )
+  val label =
+      when (proposal.response) {
+        MeetupResponse.PENDING ->
+            if (proposal.at.isAfter(Instant.now())) R.string.chat_meetup_pending
+            else R.string.chat_meetup_expired
+        MeetupResponse.ACCEPTED -> R.string.chat_meetup_accepted
+        MeetupResponse.DECLINED -> R.string.chat_meetup_declined
+      }
+  Text(stringResource(label), Modifier.testTag(OrderChatTestTags.MEETUP_STATE + message.id))
   if (
       proposal.isFuturePending(Instant.now()) &&
-          state.context?.partnerIsCommando == true &&
-          state.context.viewerId != message.senderId &&
-          state.context.trip.status.canReportDelay &&
+          context.partnerIsCommando &&
+          context.viewerId != message.senderId &&
+          context.trip.status.canReportDelay &&
           state.chat?.status?.canSendChat == true
   ) {
     Row {
@@ -144,12 +140,10 @@ internal fun MeetupCard(
             modifier =
                 Modifier.testTag(OrderChatTestTags.MEETUP_RESPONSE + message.id + response.name),
         ) {
-          Text(
-              stringResource(
-                  if (response == MeetupResponse.ACCEPTED) R.string.order_decision_accept
-                  else R.string.order_decision_reject
-              )
-          )
+          val label =
+              if (response == MeetupResponse.ACCEPTED) R.string.order_decision_accept
+              else R.string.order_decision_reject
+          Text(stringResource(label))
         }
       }
     }

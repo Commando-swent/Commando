@@ -4,6 +4,7 @@ package com.commando.app.ui.chat
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
 import com.commando.app.MainDispatcherRule
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -16,7 +17,9 @@ import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.data.repository.context
 import com.commando.app.model.*
+import java.time.Clock
 import java.time.Instant
+import java.time.ZoneOffset
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.test.*
@@ -103,10 +106,25 @@ class OrderChatViewModelTest {
   private suspend fun TestScope.withModel(
       saved: SavedStateHandle = SavedStateHandle(),
       start: Boolean = true,
+      cache: SessionCache = SessionCache { user.value },
+      online: MutableStateFlow<Boolean> = MutableStateFlow(true),
+      clock: Clock = Clock.fixed(now, ZoneOffset.UTC),
       block: suspend (OrderChatViewModel) -> Unit,
   ) {
     val store = ViewModelStore()
-    val model = OrderChatViewModel(order.id, orders, trips, repository, { user.value }, user, saved)
+    val model =
+        OrderChatViewModel(
+            order.id,
+            orders,
+            trips,
+            repository,
+            { user.value },
+            user,
+            saved,
+            cache,
+            online,
+            clock,
+        )
     store.put("chat", model)
     try {
       if (start) startChat(model)
@@ -614,5 +632,270 @@ class OrderChatViewModelTest {
         assertEquals(text, model.uiState.value.draft)
       }
     }
+  }
+
+  @Test
+  fun sessionCacheSurvivesARecreatedChatWhileOffline() = runTest {
+    val cache = SessionCache { user.value }
+    val saved = SavedStateHandle()
+    val message = ChatMessage("confirmed", trip.ownerId, "Meet at EPFL", now)
+    history.value = OrderResult.Success(OrderChat(order.status, listOf(message)))
+    withModel(saved, cache = cache) { it.updateDraft("Unsent draft") }
+    load = { error("Offline reopening must not request the server") }
+    withModel(
+        saved,
+        cache = cache,
+        online = MutableStateFlow(false),
+        clock = Clock.fixed(now.plusSeconds(60), ZoneOffset.UTC),
+    ) { model ->
+      assertEquals(listOf(message), model.uiState.value.chat!!.messages)
+      assertTrue(model.uiState.value.cached)
+      assertEquals(now, model.uiState.value.lastConfirmedAt)
+      assertEquals("Unsent draft", model.uiState.value.draft)
+      model.send()
+      model.sendDelay(5)
+      assertTrue(requests.isEmpty())
+      assertTrue(delays.isEmpty())
+      model.updateDraft("Edited offline")
+      assertEquals("Edited offline", model.uiState.value.draft)
+    }
+  }
+
+  @Test
+  fun reconnectRevalidatesAccessAndDoesNotAutomaticallySendTheDraft() = runTest {
+    val network = MutableStateFlow(true)
+    withModel(online = network) { model ->
+      model.updateDraft("Keep for manual send")
+      network.value = false
+      runCurrent()
+      assertTrue(model.uiState.value.cached)
+      model.send()
+      assertTrue(requests.isEmpty())
+      network.value = true
+      runCurrent()
+      assertFalse(model.uiState.value.cached)
+      assertTrue(model.uiState.value.canSend)
+      assertTrue(requests.isEmpty())
+      network.value = false
+      runCurrent()
+      load = { OrderResult.Error(OrderError.PermissionDenied) }
+      network.value = true
+      runCurrent()
+      assertEquals(OrderError.PermissionDenied, model.uiState.value.error)
+      assertNull(model.uiState.value.chat)
+    }
+  }
+
+  @Test
+  fun cachedOwnerHistoryCannotSendADelayWithoutServerReconfirmation() = runTest {
+    user.value = trip.ownerId
+    withModel { model ->
+      history.value = OrderResult.Error(OrderError.Unknown)
+      runCurrent()
+      assertTrue(model.uiState.value.online)
+      assertTrue(model.uiState.value.cached)
+      model.sendDelay(5)
+      assertFalse(model.uiState.value.canSendDelay)
+      assertTrue(delays.isEmpty())
+    }
+  }
+
+  @Test
+  fun anImmediateDisconnectCannotStageADelayForTheNextTextSend() = runTest {
+    user.value = trip.ownerId
+    val network = MutableStateFlow(true)
+    withModel(online = network) { model ->
+      model.updateDraft("Typed text")
+      network.value = false
+      model.sendDelay(5)
+      network.value = true
+      runCurrent()
+      model.send()
+      runCurrent()
+      assertTrue(delays.isEmpty())
+      assertEquals("Typed text", requests.single().second)
+    }
+  }
+
+  @Test
+  fun aClosedSessionCacheRejectsALateConfirmedSnapshot() = runTest {
+    val cache = SessionCache { user.value }
+    withModel(cache = cache) { model ->
+      cache.close()
+      history.value = OrderResult.Success(OrderChat(OrderStatus.READY_FOR_HANDOFF, emptyList()))
+      runCurrent()
+      assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
+      assertNull(model.uiState.value.chat)
+    }
+  }
+
+  @Test
+  fun aDifferentOrderCannotReadTheCachedConversation() = runTest {
+    val cache = SessionCache { user.value }
+    withModel(cache = cache) { assertNotNull(it.uiState.value.chat) }
+    order = order.copy(id = "another-order")
+    withModel(cache = cache, online = MutableStateFlow(false)) {
+      assertNull(it.uiState.value.chat)
+      assertFalse(it.uiState.value.canSend)
+    }
+  }
+
+  @Test
+  fun coldOfflineChatHasNoPrivateHistoryAndKeepsTheDraftEditable() = runTest {
+    load = { error("Offline entry must not request the server") }
+    withModel(online = MutableStateFlow(false)) { model ->
+      assertNull(model.uiState.value.chat)
+      assertEquals(OrderError.Unknown, model.uiState.value.error)
+      assertFalse(model.uiState.value.online)
+      model.updateDraft("Write offline")
+      assertEquals("Write offline", model.uiState.value.draft)
+      assertFalse(model.uiState.value.canSend)
+    }
+  }
+
+  @Test
+  fun unconfirmedSnapshotUsesOnlyPreviouslyConfirmedHistoryAndDisablesSending() = runTest {
+    val known = ChatMessage("known", "owner", "Meet at EPFL", now)
+    history.value = OrderResult.Success(OrderChat(order.status, listOf(known)))
+    withModel { model ->
+      model.updateDraft("My draft")
+      history.value =
+          OrderResult.Success(
+              OrderChat(
+                  OrderStatus.DELIVERED,
+                  listOf(known.copy(id = "untrusted")),
+                  serverConfirmed = false,
+              )
+          )
+      runCurrent()
+      assertTrue(model.uiState.value.cached)
+      assertEquals(listOf(known), model.uiState.value.chat?.messages)
+      assertEquals(now, model.uiState.value.lastConfirmedAt)
+      model.send()
+      runCurrent()
+      assertTrue(requests.isEmpty())
+      assertEquals("My draft", model.uiState.value.draft)
+    }
+  }
+
+  @Test
+  fun emptyCacheNeverTurnsUnconfirmedHistoryIntoReadableMessages() = runTest {
+    history.value =
+        OrderResult.Success(
+            OrderChat(
+                order.status,
+                listOf(ChatMessage("cached-sdk", "owner", "private", now)),
+                serverConfirmed = false,
+            )
+        )
+    withModel { model ->
+      assertNull(model.uiState.value.chat)
+      assertTrue(model.uiState.value.loading)
+      advanceTimeBy(OrderChatViewModel.RESPONSE_TIMEOUT_MS)
+      runCurrent()
+      assertEquals(OrderError.Unknown, model.uiState.value.error)
+      assertFalse(model.uiState.value.canSend)
+    }
+  }
+
+  @Test
+  fun reconnectRevalidatesStatusBeforeAllowingANewSend() = runTest {
+    withModel { model ->
+      model.updateDraft("Kept draft")
+      history.value = OrderResult.Error(OrderError.Unknown)
+      runCurrent()
+      assertTrue(model.uiState.value.cached)
+      history.value = OrderResult.Success(OrderChat(OrderStatus.DELIVERED, emptyList()))
+      startChat(model)
+      assertFalse(model.uiState.value.cached)
+      assertEquals(OrderStatus.DELIVERED, model.uiState.value.chat?.status)
+      assertFalse(model.uiState.value.canSend)
+      assertEquals("Kept draft", model.uiState.value.draft)
+      model.send()
+      runCurrent()
+      assertTrue(requests.isEmpty())
+    }
+  }
+
+  @Test
+  fun uncertainSendCannotRetryFromCacheAndKeepsItsIdAfterReconnect() = runTest {
+    write = { _, _ -> OrderResult.Error(OrderError.Unknown) }
+    withModel { model ->
+      sendDraft(model, "same text")
+      val initial = requests.single()
+      history.value = OrderResult.Error(OrderError.Unknown)
+      runCurrent()
+      model.send()
+      runCurrent()
+      assertEquals(1, requests.size)
+      history.value = OrderResult.Success(OrderChat(order.status, emptyList()))
+      startChat(model)
+      write = { _, _ -> OrderResult.Success(Unit) }
+      sendDraft(model)
+      assertEquals(listOf(initial, initial), requests)
+    }
+  }
+
+  @Test
+  fun authorizationFailureEvictsHistoryBeforeAnyLaterNetworkFailure() = runTest {
+    withModel { model ->
+      history.value = OrderResult.Error(OrderError.PermissionDenied)
+      runCurrent()
+      assertNull(model.uiState.value.chat)
+      load = { OrderResult.Error(OrderError.Unknown) }
+      startChat(model)
+      assertNull(model.uiState.value.chat)
+      assertFalse(model.uiState.value.cached)
+    }
+  }
+
+  @Test
+  fun accountSwitchPermanentlyDiscardsCachedHistoryAndDraft() = runTest {
+    withModel { model ->
+      model.updateDraft("private draft")
+      history.value = OrderResult.Error(OrderError.Unknown)
+      runCurrent()
+      user.value = "another"
+      runCurrent()
+      user.value = "requester"
+      startChat(model)
+      assertNull(model.uiState.value.chat)
+      assertEquals("", model.uiState.value.draft)
+      assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
+    }
+  }
+
+  @Test
+  fun returningToTheSameEntryRetainsHistoryWhenServerConfirmationTimesOut() = runTest {
+    withModel { model ->
+      model.updateDraft("saved draft")
+      model.stop()
+      observe = { flow { awaitCancellation() } }
+      startChat(model)
+      advanceTimeBy(OrderChatViewModel.RESPONSE_TIMEOUT_MS)
+      runCurrent()
+      assertTrue(model.uiState.value.cached)
+      assertEquals("saved draft", model.uiState.value.draft)
+      assertNotNull(model.uiState.value.chat)
+      assertFalse(model.uiState.value.canSend)
+    }
+  }
+
+  @Test
+  fun sameSessionAuthenticationFailureDoesNotCloseOtherFeaturesCache() = runTest {
+    val cache = SessionCache { user.value }
+    val otherKey = SessionCache.key<String>("trip-discovery")
+    cache.put(otherKey, "Other confirmed feature", now)
+    withModel(cache = cache) { model ->
+      history.value = OrderResult.Error(OrderError.NotAuthenticated)
+      runCurrent()
+      assertEquals(OrderError.NotAuthenticated, model.uiState.value.error)
+      assertNull(model.uiState.value.chat)
+      assertEquals("Other confirmed feature", cache.get(otherKey)?.value)
+      assertEquals(now, cache.get(otherKey)?.confirmedAt)
+      assertTrue(cache.put(otherKey, "Still usable", now.plusSeconds(1)))
+      assertEquals("Still usable", cache.get(otherKey)?.value)
+    }
+    withModel(cache = cache, online = MutableStateFlow(false)) { assertNull(it.uiState.value.chat) }
   }
 }

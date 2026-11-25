@@ -146,7 +146,7 @@ internal fun MeetupCard(
         for (response in listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED)) {
           TextButton(
               onClick = { onRespond(message.id, response) },
-              enabled = state.canEditDraft,
+              enabled = state.canWrite && state.canEditDraft,
               modifier =
                   Modifier.testTag(OrderChatTestTags.MEETUP_RESPONSE + message.id + response.name),
           ) {

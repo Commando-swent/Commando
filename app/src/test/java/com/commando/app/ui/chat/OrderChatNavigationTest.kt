@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import com.commando.app.R
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
@@ -49,6 +50,8 @@ class OrderChatNavigationTest {
         override suspend fun clearSession() {}
       }
 
+  private val network = FakeConnectivityMonitor()
+
   private fun show(viewer: String) {
     auth = FakeAuthRepository(AuthUser(viewer))
     compose.setContent {
@@ -57,6 +60,7 @@ class OrderChatNavigationTest {
             auth,
             trips,
             credentials,
+            connectivityMonitor = network,
             orderRepositoryFactory = { uid ->
               FakeOrderRepository(uid, initialOrders = listOf(order), tripRepository = trips)
             },
@@ -154,5 +158,28 @@ class OrderChatNavigationTest {
     click(OrderChatTestTags.INFO)
     compose.waitUntil(5_000) { subscriptions == 0 }
     compose.onNodeWithTag(OrderDetailsTestTags.CHAT).assertExists()
+  }
+
+  @Test
+  fun cachedConversationCanBeReopenedOfflineAndRefreshesOnReconnect() {
+    show(order.requesterId)
+    click(AppTestTags.ORDERS_BUTTON)
+    click(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id)
+    openFromDetails()
+    compose.onNodeWithTag(OrderChatTestTags.INPUT).performTextInput("Keep my draft")
+    compose.runOnIdle { network.setOnline(false) }
+    compose.waitUntil(5_000) { subscriptions == 0 }
+    compose.onNodeWithTag(OrderChatTestTags.CACHED).assertExists()
+    click(OrderChatTestTags.BACK)
+    compose.onNodeWithTag(OrderDetailsTestTags.CHAT).performScrollTo().performClick()
+    compose.onNodeWithTag(OrderChatTestTags.MESSAGE + "incoming").assertIsDisplayed()
+    compose.onNodeWithTag(OrderChatTestTags.CACHED).assertExists()
+    compose.onNodeWithTag(OrderChatTestTags.INPUT).assertTextContains("Keep my draft")
+    compose.onNodeWithTag(OrderChatTestTags.SEND).assertIsNotEnabled()
+    assertEquals(1, opened.size)
+    compose.runOnIdle { network.setOnline(true) }
+    compose.waitUntil(5_000) { subscriptions == 1 }
+    compose.onNodeWithTag(OrderChatTestTags.CACHED).assertDoesNotExist()
+    assertEquals(2, opened.size)
   }
 }

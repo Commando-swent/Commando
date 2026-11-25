@@ -16,6 +16,8 @@
     </plurals>
     <string name="chat_locked_pending">La discussion s’ouvre après acceptation de la commande.</string>
     <string name="chat_message_partner">Contacter : %1$s</string>
+    <string name="chat_cached_history">Historique en cache — connexion non confirmée. Actualisez après reconnexion pour envoyer.</string>
+    <string name="chat_last_confirmed">Dernière actualisation confirmée : %1$s</string>
     <string name="chat_delay_action">Signaler un retard</string>
     <string name="chat_delay_minutes">Minutes de retard</string>
     <string name="chat_delay_range">Entre 1 et %1$d</string>
@@ -42,4 +44,5 @@
     <string name="chat_meetup_sending">Envoi du rendez-vous…</string>
     <string name="chat_meetup_failure">Impossible de confirmer le rendez-vous. Réessayez ou actualisez la conversation.</string>
     <string name="chat_meetup_time">Heure du rendez-vous</string>
+    <string name="chat_offline_empty">Vous êtes hors ligne. Ouvrez cette conversation une première fois en ligne pour conserver son historique confirmé.</string>
 </resources>

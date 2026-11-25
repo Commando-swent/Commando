@@ -201,4 +201,27 @@ class MeetupScreenTest {
       compose.onNodeWithTag(tag).assertIsDisplayed()
     }
   }
+
+  @Test
+  fun cachedProposalKeepsHistoryVisibleAndDisablesBothReplies() {
+    val context = state.context!!
+    val proposal = MeetupProposal("Library entrance", Instant.now().plusSeconds(3600))
+    val message =
+        ChatMessage(
+            "cached-meeting",
+            context.trip.ownerId,
+            CHAT_MEETUP_FALLBACK,
+            Instant.now(),
+            meetup = proposal,
+        )
+    state = state.copy(cached = true, chat = state.chat!!.copy(messages = listOf(message)))
+    show()
+    compose.onNodeWithText(proposal.location).assertIsDisplayed()
+    for (response in listOf(MeetupResponse.ACCEPTED, MeetupResponse.DECLINED)) {
+      compose
+          .onNodeWithTag(OrderChatTestTags.MEETUP_RESPONSE + message.id + response.name)
+          .assertIsNotEnabled()
+    }
+    assertTrue(replies.isEmpty())
+  }
 }

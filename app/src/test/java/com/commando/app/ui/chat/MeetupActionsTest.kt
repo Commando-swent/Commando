@@ -29,6 +29,15 @@ class MeetupActionsTest {
   private var result: OrderResult<Unit>? = null
   private val repository =
       object : OrderChatRepository by fake {
+        override suspend fun respondToMeetup(
+            orderId: String,
+            messageId: String,
+            response: MeetupResponse,
+        ): OrderResult<Unit> {
+          fake.respondToMeetup(orderId, messageId, response)
+          throw java.io.IOException("Acknowledgement lost")
+        }
+
         override suspend fun proposeMeetup(
             orderId: String,
             messageId: String,
@@ -38,6 +47,8 @@ class MeetupActionsTest {
           if (result != null && result != OrderResult.Error(OrderError.Unknown))
               return checkNotNull(result)
           val committed = fake.proposeMeetup(orderId, messageId, proposal)
+          if (result == OrderResult.Error(OrderError.Unknown))
+              throw java.io.IOException("Acknowledgement lost")
           return result ?: committed
         }
       }
@@ -80,7 +91,8 @@ class MeetupActionsTest {
     assertFalse(actions.hasPending)
     assertTrue(chat.value.canEditDraft)
     chat.value = chat.value.copy(sendError = OrderError.Unknown)
-    actions.retry(); runCurrent()
+    actions.retry()
+    runCurrent()
     assertEquals(1, ids.size)
     chat.value = chat.value.copy(sendError = null)
     result = null
@@ -100,6 +112,7 @@ class MeetupActionsTest {
     actions.respond("meeting", MeetupResponse.ACCEPTED)
     runCurrent()
     refresh()
+    actions.reconcile()
     assertEquals(MeetupResponse.ACCEPTED, chat.value.chat!!.messages.single().meetup!!.response)
     assertFalse(actions.hasPending)
     uid.value = trip.ownerId

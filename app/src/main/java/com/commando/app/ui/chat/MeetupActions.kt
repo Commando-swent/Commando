@@ -21,7 +21,7 @@ internal class MeetupActions(
     private val orderId: String,
     private val repository: OrderChatRepository,
     private val chat: MutableStateFlow<OrderChatUiState>,
-    private val saved: SavedStateHandle,
+    saved: SavedStateHandle,
     private val scope: CoroutineScope,
 ) {
   private val outbox = MeetupOutbox(saved)
@@ -45,32 +45,17 @@ internal class MeetupActions(
   }
 
   fun respond(id: String, response: MeetupResponse) {
-    val current = chat.value
-    val proposal = current.chat?.messages?.find { it.id == id }?.meetup ?: return
-    if (
-        !current.canEditDraft ||
-            current.loading ||
-            current.error != null ||
-            current.context?.let {
-              it.viewerId == it.order.requesterId && it.viewerId != it.trip.ownerId
-            } != true ||
-            current.chat.status.canSendChat != true ||
-            proposal.response != MeetupResponse.PENDING ||
-            response == MeetupResponse.PENDING
-    )
-        return
+    if (!chat.value.canEditDraft || response == MeetupResponse.PENDING) return
     perform(PendingMeetup(id, response = response))
   }
 
   fun retry() {
-    val action = restored() ?: failed ?: return
+    val action = outbox.pending ?: failed ?: return
     perform(
         if (!hasPending && action.proposal != null) action.copy(id = UUID.randomUUID().toString())
         else action
     )
   }
-
-  private fun restored() = outbox.pending
 
   private fun perform(action: PendingMeetup) {
     val current = chat.value
@@ -97,12 +82,12 @@ internal class MeetupActions(
             OrderResult.Error(OrderError.Unknown)
           }
       currentCoroutineContext().ensureActive()
-      if (chat.value.context?.viewerId != uid || restored() != action) return@launch
+      if (chat.value.context?.viewerId != uid || outbox.pending != action) return@launch
       if (result is OrderResult.Success) clear()
       else {
         val error = (result as OrderResult.Error).error
         failed = action
-        if (error != OrderError.Unknown) clearSaved()
+        if (error != OrderError.Unknown) outbox.pending = null
         mutable.value = MeetupActionState(error = error)
         chat.update { it.copy(sending = error == OrderError.Unknown) }
         reconcile()
@@ -111,7 +96,7 @@ internal class MeetupActions(
   }
 
   fun reconcile() {
-    val action = restored() ?: return
+    val action = outbox.pending ?: return
     val message =
         chat.value.chat?.messages?.find { it.id == action.id }
             ?: run {
@@ -122,12 +107,8 @@ internal class MeetupActions(
         action.proposal?.let {
           message.senderId == chat.value.context?.viewerId &&
               message.meetup?.copy(response = MeetupResponse.PENDING, respondedAt = null) == it
-        } ?: (message.meetup?.response == action.response)
+        } ?: (message.meetup?.response?.let { it != MeetupResponse.PENDING } == true)
     if (confirmed) clear()
-    else if (action.response != null && message.meetup?.response != MeetupResponse.PENDING) {
-      clear()
-      mutable.value = MeetupActionState(error = OrderError.InvalidData)
-    }
   }
 
   fun stop() {
@@ -136,11 +117,9 @@ internal class MeetupActions(
   }
 
   fun clear() {
-    clearSaved()
+    outbox.pending = null
     failed = null
     mutable.value = MeetupActionState()
     chat.update { it.copy(sending = false) }
   }
-
-  private fun clearSaved() { outbox.pending = null }
 }

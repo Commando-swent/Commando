@@ -34,7 +34,10 @@ internal fun MeetupComposer(state: OrderChatUiState, onPropose: (String, Instant
   )
       return
   val zone = ZoneId.systemDefault()
-  val time = chosen?.let { Instant.ofEpochMilli(it).atZone(zone) } ?: ZonedDateTime.now(zone)
+  val time =
+      chosen?.let { Instant.ofEpochMilli(it).atZone(zone) }
+          ?: context.trip.scheduledAt.takeIf { it.isAfter(Instant.now()) }?.atZone(zone)
+          ?: ZonedDateTime.now(zone)
   TextButton(
       onClick = {
         open = true
@@ -127,11 +130,10 @@ internal fun MeetupCard(
       Modifier.testTag(OrderChatTestTags.MEETUP_STATE + message.id),
   )
   if (
-      proposal.response == MeetupResponse.PENDING &&
-          proposal.at.isAfter(Instant.now()) &&
-          state.context?.let {
-            it.viewerId == it.order.requesterId && it.viewerId != message.senderId
-          } == true &&
+      proposal.isFuturePending(Instant.now()) &&
+          state.context?.partnerIsCommando == true &&
+          state.context.viewerId != message.senderId &&
+          state.context.trip.status.canReportDelay &&
           state.chat?.status?.canSendChat == true
   ) {
     Row {

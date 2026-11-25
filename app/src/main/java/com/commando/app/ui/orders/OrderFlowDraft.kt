@@ -4,7 +4,7 @@ package com.commando.app.ui.orders
 import androidx.compose.runtime.*
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.TripRepository
 
 /**

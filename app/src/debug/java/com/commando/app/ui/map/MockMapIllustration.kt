@@ -19,7 +19,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
-import com.android.sample.R
+import com.commando.app.R
 
 @Composable
 internal fun MapIllustration(modifier: Modifier) {

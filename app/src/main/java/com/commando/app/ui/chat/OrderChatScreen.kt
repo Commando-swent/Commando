@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.repository.OrderError
 import com.commando.app.model.*
 import com.commando.app.ui.orders.OrderStatusBadge

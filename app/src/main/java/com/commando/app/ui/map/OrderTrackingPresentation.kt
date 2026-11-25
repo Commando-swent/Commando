@@ -2,7 +2,7 @@ package com.commando.app.ui.map
 
 // AI assistance: OpenAI Codex.
 import androidx.annotation.StringRes
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.model.CommandoPosition
 import com.commando.app.model.Location
 import java.time.Duration

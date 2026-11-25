@@ -36,7 +36,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.exceptions.ClearCredentialUnknownException
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import com.commando.app.data.connectivity.ConnectivityMonitor
 import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeCommandoPositionRepository

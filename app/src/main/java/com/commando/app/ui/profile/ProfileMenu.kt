@@ -22,7 +22,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 
 /** Groups related Profile actions using the existing theme and the Figma card layout. */
 @Composable

@@ -17,7 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.android.sample.R
+import com.commando.app.R
 import kotlinx.coroutines.delay
 
 object ConnectivityBannerTestTags {

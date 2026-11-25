@@ -13,7 +13,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.core.app.ApplicationProvider
-import com.android.sample.R
+import com.commando.app.R
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

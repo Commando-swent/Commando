@@ -11,6 +11,9 @@ sealed class OrderError {
 
   data object InvalidData : OrderError()
 
+  /** Creation was rejected because the authenticated requester owns the persisted trip. */
+  data object OwnTrip : OrderError()
+
   /**
    * An authorized operation conflicts with persisted status or revision; the order need not be
    * terminal.

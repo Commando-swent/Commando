@@ -284,7 +284,7 @@ class FakeOrderRepositoryTest {
             tripRepository = trips(),
         )
     userId = "commando"
-    assertEquals(failure(OrderError.InvalidData), repository.createOrder(input))
+    assertEquals(failure(OrderError.OwnTrip), repository.createOrder(input))
     assertEquals(0, generatedIds)
     assertEquals(listOf(legacy), repository.getMyOrders().data())
     assertEquals(OrderResult.Success(legacy), repository.getOrderById(legacy.id))

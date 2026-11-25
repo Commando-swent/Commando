@@ -13,6 +13,7 @@ import androidx.navigation.navArgument
 import com.commando.app.data.repository.ProductRepository
 import com.commando.app.data.repository.ProductRepositoryFirestore
 import com.commando.app.data.repository.TripRepository
+import com.commando.app.model.storeIdFor
 import com.commando.app.ui.catalogue.CatalogueRoute
 import com.commando.app.ui.catalogue.CatalogueViewModel
 import com.commando.app.ui.orders.OrderFlowDraft
@@ -106,6 +107,13 @@ internal fun NavGraphBuilder.orderFlowRoutes(
                 onViewOrders = { openOrders() },
                 tripSubtitle = formatTripDeparture(state.trip.scheduledAt, locale),
                 isDemo = orders.isDemo,
+                onBrowseTrips = {
+                  draft.prepareTripRecovery(storeIdFor(state.trip.store.name))
+                  navController.navigate(CommandoScreens.AvailableTrips.name) {
+                    popUpTo(CommandoScreens.AvailableTrips.name) { inclusive = true }
+                    launchSingleTop = true
+                  }
+                },
             )
         // Reuse Trip Details for the loading and failure states of the same lookup.
         else ->

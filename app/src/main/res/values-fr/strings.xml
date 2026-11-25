@@ -532,4 +532,5 @@
     <string name="public_name_load_failed">Impossible de charger votre nom public.</string>
     <string name="public_name_write_failed">Modification non confirmée. Réessayez.</string>
     <string name="incoming_orders_requester">De %1$s</string>
+    <string name="order_own_trip_error">Vous ne pouvez pas commander sur votre propre trajet.</string>
 </resources>

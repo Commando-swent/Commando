@@ -14,7 +14,11 @@ interface OrderRepository {
   /** Observe confirmed requester orders; null means unconfirmed, never an empty list. */
   fun observeMyOrders(): Flow<OrderResult<List<Order>>?> = flow { error("Live orders unsupported") }
 
-  /** Derives requester identity from the session; does not clear the caller's draft. */
+  /**
+   * Derives requester identity from the session; never clears the caller's draft. Returns
+   * [OrderError.OwnTrip] when the persisted trip belongs to that requester; backend ownership
+   * restrictions remain authoritative even when UI validation is bypassed.
+   */
   suspend fun createOrder(draft: OrderDraft): OrderResult<Order>
 
   /**

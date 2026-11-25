@@ -199,6 +199,7 @@ class FakeRatingRepositoryTest {
             OrderError.NotFound to RatingError.NotFound,
             OrderError.PermissionDenied to RatingError.PermissionDenied,
             OrderError.InvalidData to RatingError.InvalidData,
+            OrderError.OwnTrip to RatingError.InvalidData,
             OrderError.AlreadyDecided(order()) to RatingError.Unknown,
             OrderError.Unknown to RatingError.Unknown,
         )

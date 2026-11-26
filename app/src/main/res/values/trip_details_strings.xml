@@ -39,7 +39,7 @@
     </plurals>
     <string name="trip_details_reliability_title">Reliability</string>
     <string name="trip_details_reliability_loading">Loading reliability…</string>
-    <string name="trip_details_reliability_empty">Not available</string>
+    <string name="trip_details_reliability_empty">No history yet</string>
     <string name="trip_details_reliability_insufficient">Not enough history</string>
     <string name="trip_details_reliability_error">Reliability unavailable. Try again.</string>
     <plurals name="trip_details_reliability_count">

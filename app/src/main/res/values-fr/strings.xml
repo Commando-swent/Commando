@@ -539,7 +539,7 @@
     <string name="order_own_trip_error">Vous ne pouvez pas commander sur votre propre trajet.</string>
     <string name="trip_details_reliability_title">Fiabilité</string>
     <string name="trip_details_reliability_loading">Chargement de la fiabilité…</string>
-    <string name="trip_details_reliability_empty">Non disponible</string>
+    <string name="trip_details_reliability_empty">Pas encore d’historique</string>
     <string name="trip_details_reliability_insufficient">Historique insuffisant</string>
     <string name="trip_details_reliability_error">Fiabilité indisponible. Réessayez.</string>
     <plurals name="trip_details_reliability_count">

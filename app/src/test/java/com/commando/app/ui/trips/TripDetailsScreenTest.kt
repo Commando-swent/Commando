@@ -143,7 +143,22 @@ class TripDetailsScreenTest {
     reliability(RatingResult.Success(ReliabilitySummary("owner", 0, 0)))
     compose
         .onNodeWithText("Reliability")
-        .assertTextEquals("Reliability", "Not available", "0 evaluated commitments")
+        .assertTextEquals("Reliability", "No history yet", "0 evaluated commitments")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun zeroHistoryHasFrenchMergedSemantics() {
+    reliability(RatingResult.Success(ReliabilitySummary("owner", 0, 0)))
+    compose
+        .onNodeWithText("Fiabilité")
+        .assertTextEquals("Fiabilité", "Pas encore d’historique", "0 engagement évalué")
+  }
+
+  @Test
+  fun unauthenticatedReliabilityHidesRetry() {
+    reliability(RatingResult.Error(RatingError.NotAuthenticated))
+    compose.onNodeWithTag(TripReliabilityTestTags.RETRY).assertDoesNotExist()
   }
 
   @Test

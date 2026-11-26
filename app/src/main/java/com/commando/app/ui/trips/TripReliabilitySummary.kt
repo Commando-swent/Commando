@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.commando.app.R
+import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingResult
 import com.commando.app.model.ReliabilitySummary
 import java.text.NumberFormat
@@ -105,7 +106,7 @@ internal fun TripReliabilitySummary(
         )
       }
     }
-    if (state is RatingResult.Error) {
+    if (state is RatingResult.Error && state.error != RatingError.NotAuthenticated) {
       TextButton(onClick = onRetry, modifier = Modifier.testTag(TripReliabilityTestTags.RETRY)) {
         Text(stringResource(R.string.trips_retry))
       }

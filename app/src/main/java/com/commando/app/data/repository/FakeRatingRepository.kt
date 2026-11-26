@@ -171,6 +171,7 @@ class FakeRatingRepository(
         OrderError.OwnTrip,
         OrderError.InvalidData -> RatingError.InvalidData
         is OrderError.AlreadyDecided,
+        OrderError.NetworkError,
         OrderError.Unknown -> RatingError.Unknown
       }
 

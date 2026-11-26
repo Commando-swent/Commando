@@ -15,7 +15,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
-import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.WriteBatch
@@ -84,12 +83,16 @@ internal constructor(
     return result
   }
 
-  override suspend fun getMyOrders(): OrderResult<List<Order>> = session { uid ->
-    val orders =
-        source.getMine(uid).map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
-    if (orders.any { it.requesterId != uid }) return@session failure(OrderError.PermissionDenied)
-    OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
-  }
+  override suspend fun getMyOrders(): OrderResult<List<Order>> =
+      session(distinguishNetworkFailure = true) { uid ->
+        val orders =
+            source.getMine(uid).map {
+              it.toOrder() ?: return@session failure(OrderError.InvalidData)
+            }
+        if (orders.any { it.requesterId != uid })
+            return@session failure(OrderError.PermissionDenied)
+        OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
+      }
 
   override fun observeMyOrders(): Flow<OrderResult<List<Order>>?> = flow {
     val uid = currentUserId()
@@ -218,7 +221,10 @@ internal constructor(
         source.cancel(orderId, uid)
       }
 
-  private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
+  private suspend fun <T> session(
+      distinguishNetworkFailure: Boolean = false,
+      action: suspend (String) -> OrderResult<T>,
+  ): OrderResult<T> {
     currentCoroutineContext().ensureActive()
     val uid =
         currentUserId()?.takeIf { it.isNotBlank() } ?: return failure(OrderError.NotAuthenticated)
@@ -230,7 +236,12 @@ internal constructor(
     } catch (exception: Exception) {
       currentCoroutineContext().ensureActive()
       if (!sameSession(uid)) return failure(OrderError.NotAuthenticated)
-      failure(exception.toOrderError())
+      val error = exception.toFirestoreFailure()
+      failure(
+          if (distinguishNetworkFailure && error == FirestoreFailure.NETWORK_UNAVAILABLE)
+              OrderError.NetworkError
+          else error.toOrderError()
+      )
     }
   }
 
@@ -340,7 +351,7 @@ internal class FirebaseOrderFirestoreDataSource(
           .document(id)
           .get(Source.SERVER)
           .await()
-          .also { it.metadata.requireConfirmedOrderRead() }
+          .also { it.metadata.requireServerConfirmation() }
           .takeIf { it.exists() }
           ?.let { it.toFirestoreDocument() }
 
@@ -356,7 +367,7 @@ internal class FirebaseOrderFirestoreDataSource(
           .whereEqualTo(field, value)
           .get(Source.SERVER)
           .await()
-          .also { it.metadata.requireConfirmedOrderRead() }
+          .also { it.metadata.requireServerConfirmation() }
           .documents
           .map { it.toFirestoreDocument() }
 
@@ -690,12 +701,3 @@ internal fun FirestoreFailure.toOrderError(): OrderError =
 
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)
-
-/** Reject local overlays even when the read requested the server. */
-internal fun SnapshotMetadata.requireConfirmedOrderRead() {
-  if (isFromCache || hasPendingWrites())
-      throw FirebaseFirestoreException(
-          "Order read is not server-confirmed",
-          FirebaseFirestoreException.Code.UNAVAILABLE,
-      )
-}

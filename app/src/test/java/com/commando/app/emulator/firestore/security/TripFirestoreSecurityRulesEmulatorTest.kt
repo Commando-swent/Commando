@@ -46,9 +46,10 @@ class TripFirestoreSecurityRulesEmulatorTest {
             .set(storedTrip(ownerId))
             .await()
       }
-      // Publication must start the open-order counter at exactly 0 (#449), so an older client
-      // cannot publish a trip that no order could ever be placed on.
-      for (counter in listOf(null, 1, "0")) assertPermissionDenied("openOrderCount $counter") {
+      // Publication must start the open-order counter at an integer 0 (#449), so an older client
+      // cannot publish a trip that no order could ever be placed on. A 0.0 would stay a double
+      // after the first increment, which the order rules refuse.
+      for (counter in listOf(null, 1, "0", 0.0)) assertPermissionDenied("openOrderCount $counter") {
         val trip = storedTrip(ownerId) - "openOrderCount"
         trips
             .document()

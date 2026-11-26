@@ -202,6 +202,7 @@ service cloud.firestore {
         && isValidTrip(request.resource.data)
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.status == "PUBLISHED"
+        && request.resource.data.openOrderCount is int
         && request.resource.data.openOrderCount == 0
         && request.resource.data.createdAt == request.resource.data.updatedAt;
 

@@ -255,7 +255,8 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
 
   override suspend fun getTrip(tripId: String): TripFirestoreDocument? {
     val snapshot = trips.document(tripId).get(Source.SERVER).await()
-    // SERVER reads can still include latency-compensated local writes.
+    // The cache check is defensive. SERVER reads can still include latency-compensated local
+    // writes.
     if (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) {
       throw FirebaseFirestoreException(
           "Trip is not server-confirmed",

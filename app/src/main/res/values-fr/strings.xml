@@ -544,6 +544,7 @@
     <string name="trip_details_reliability_error">Fiabilité indisponible. Réessayez.</string>
     <plurals name="trip_details_reliability_count">
         <item quantity="one">%s engagement évalué</item>
+        <item quantity="many">%s engagements évalués</item>
         <item quantity="other">%s engagements évalués</item>
     </plurals>
 </resources>

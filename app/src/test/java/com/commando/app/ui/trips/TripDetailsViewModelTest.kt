@@ -1,7 +1,7 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
-// AI assistance: OpenAI Codex for public-name refresh regression coverage.
+// AI assistance: OpenAI Codex for public-name refresh and offline transition regression coverage.
 import com.commando.app.MainDispatcherRule
 import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.FakeTripRepository
@@ -81,6 +81,35 @@ class TripDetailsViewModelTest {
     advanceUntilIdle()
     assertEquals(saved.trip, content(vm).trip)
     assertNull(content(vm).cachedAt)
+  }
+
+  @Test
+  fun failedOwnerTransitionEvictsSavedTripAfterDisconnect() = runTest {
+    val online = MutableStateFlow(true)
+    val cache = SessionCache { "owner" }
+    val key = SessionCache.key<Trip>("trip-details/${trip.id}")
+    val transitionGate = CompletableDeferred<Unit>()
+    repository.transitionGate = transitionGate
+    repository.transitionResult = TripResult.Error(TripError.NetworkError)
+    val vm = TripDetailsViewModel(repository, trip.id, cache = cache, online = online)
+    advanceUntilIdle()
+    assertEquals(trip, cache.get(key)?.value)
+
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    runCurrent()
+    online.value = false
+    runCurrent()
+    assertTrue(content(vm).transitionInProgress)
+
+    transitionGate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(
+        TripDetailsUiState.Error(TripError.NetworkError, offlineUnavailable = true),
+        vm.uiState.value,
+    )
+    assertNull(cache.get(key))
   }
 
   @Test
@@ -334,9 +363,15 @@ class TripDetailsViewModelTest {
   }
 
   @Test
-  fun failedTransitionKeepsTheTripAndTheNextRequestClearsTheError() = runTest {
+  fun connectedTransitionFailureEvictsSavedTripAndKeepsLiveErrorUntilNextRequest() = runTest {
+    val cache = SessionCache { "owner" }
+    val key = SessionCache.key<Trip>("trip-details/${trip.id}")
     repository.transitionResult = TripResult.Error(TripError.OrdersStillOpen)
-    val viewModel = loaded()
+    val viewModel =
+        TripDetailsViewModel(repository, trip.id, cache = cache, online = MutableStateFlow(true))
+    advanceUntilIdle()
+    assertEquals(trip, cache.get(key)?.value)
+
     viewModel.requestTransition(TripTransition.CLOSE)
     viewModel.confirmTransition()
     advanceUntilIdle()
@@ -344,6 +379,7 @@ class TripDetailsViewModelTest {
         TripDetailsUiState.Content(trip, transitionError = TripError.OrdersStillOpen),
         viewModel.uiState.value,
     )
+    assertNull(cache.get(key))
 
     viewModel.requestTransition(TripTransition.CLOSE)
     assertEquals(

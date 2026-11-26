@@ -180,8 +180,9 @@ class TripDetailsViewModel(
             is TripResult.Success -> confirmed(result.data)
             is TripResult.Error -> {
               cache?.remove(key)
-              if (online?.value == false) fallback(result.error)
-              else content.copy(pendingTransition = null, transitionError = result.error)
+              if (online?.value == false) {
+                TripDetailsUiState.Error(result.error, offlineUnavailable = true)
+              } else content.copy(pendingTransition = null, transitionError = result.error)
             }
           }
     }

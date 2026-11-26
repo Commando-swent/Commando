@@ -219,6 +219,30 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun tripWithoutCounterCannotEndUntilItsOrdersAreCounted() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publishWithOrder(owner, requester)
+      val (order) = ordersOf(owner, trip)
+      val empty = publish(owner, "PUBLISHED")
+      for (legacy in listOf(trip, empty)) asLegacy(owner, legacy)
+
+      // Without a counter the app and the rules assume open orders, even on a trip without any.
+      for (legacy in listOf(trip, empty)) {
+        assertEquals(TripResult.Error(OrdersStillOpen), trips(owner).transitionTrip(legacy, CANCEL))
+      }
+      assertPermissionDenied("cancel") { tripRef(owner, trip).update(move("CANCELLED")).await() }
+      // Settling an uncounted order would take the counter below zero.
+      val denied = OrderResult.Error(OrderError.PermissionDenied)
+      assertEquals(denied, orders(requester).cancelOrder(order.id))
+
+      updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // tools/trip-counters
+      assertTrue(orders(requester).cancelOrder(order.id) is OrderResult.Success)
+      val cancelled = trips(owner).transitionTrip(trip, CANCEL).successData()
+      assertEquals(TripStatus.CANCELLED, cancelled.status)
+    }
+  }
+
+  @Test
   fun orderPlacedAfterTheOrderCheckStillBlocksCancellation() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
       val trip = publish(owner, "PUBLISHED")
@@ -269,6 +293,13 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
 
   private suspend fun statusOf(client: EmulatorClient, id: String) =
       tripRef(client, id).get(Source.SERVER).await().getString("status")
+
+  /** Rewrites [trip] as written before #449: no counter, so its orders were never counted. */
+  private suspend fun asLegacy(owner: EmulatorClient, trip: String) {
+    val data = tripRef(owner, trip).get(Source.SERVER).await().data!!
+    deleteDocumentAsOwner("trips/$trip")
+    createDocumentAsOwner("trips", trip, data - "openOrderCount" - "counterOrderId")
+  }
 
   private suspend fun openOrderCount(client: EmulatorClient, id: String) =
       tripRef(client, id).get(Source.SERVER).await().getLong("openOrderCount")

@@ -393,7 +393,7 @@ export async function writeCategories(client, store, categories, log = console.l
   return true;
 }
 
-const documentName = (path) => `${DATABASE}/documents/${path}`;
+export const documentName = (path) => `${DATABASE}/documents/${path}`;
 const encode = (value) => {
   if (value === null) return { nullValue: null };
   if (Array.isArray(value)) return { arrayValue: { values: value.map(encode) } };
@@ -484,6 +484,13 @@ export async function firestoreClient(target) {
       return found.map(({ found: doc }) => [doc.name.split('/documents/')[1], { data: decode({ mapValue: doc }), updateTime: doc.updateTime }]);
     },
     commit: (writes) => call('/documents:commit', { writes }),
+    // Every document of a top-level collection, reduced to `fields` (used by tools/trip-counters).
+    query: async (collectionId, fields) => {
+      const select = { fields: fields.map((fieldPath) => ({ fieldPath })) };
+      const rows = await call('/documents:runQuery', { structuredQuery: { from: [{ collectionId }], select } });
+      return rows.filter((row) => row.document).map(({ document: doc }) =>
+        [doc.name.split('/documents/')[1], { data: decode({ mapValue: doc }), updateTime: doc.updateTime }]);
+    },
   };
 }
 

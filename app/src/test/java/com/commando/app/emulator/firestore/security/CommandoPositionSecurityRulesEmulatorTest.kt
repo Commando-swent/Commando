@@ -217,6 +217,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
         val uid = owner.auth.currentUser!!.uid
         repo(owner).publish(trip, fix())
         val orderId = order(requester, trip)
+        updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // seeded order (#449)
         owner.firestore
             .collection("trips")
             .document(trip)

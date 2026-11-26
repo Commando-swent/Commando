@@ -173,7 +173,17 @@ Rules cannot query orders, so each trip counts them in `openOrderCount`: creatin
 and settling it removes one, in the same atomic write that names the order in `counterOrderId`. The
 rules require that move, refuse any other counter change, and allow Cancel and Complete only at zero,
 even for a direct write. The transition transaction re-reads the counter, so an order placed after the
-order query still refuses with `OrdersStillOpen`. Trips from before #449 count as zero.
+order query still refuses with `OrdersStillOpen`. The counter never goes below zero.
+
+Trips written before #449 have no counter: they cannot be cancelled or completed, and their open
+orders cannot be settled, until `tools/trip-counters/backfill.mjs` sets it from their orders.
+Rollout (Ghali, in one sitting; older app versions cannot create or settle orders under these rules,
+and this version cannot under the old ones):
+
+1. Release the app version that includes #449.
+2. Deploy the rules: `firebase deploy --only firestore:rules --project command-o`.
+3. Set the counters: `node tools/trip-counters/backfill.mjs --project command-o` (dry run), then the
+   same with `--write`. A trip changed meanwhile fails its commit; rerun until no counter is left.
 
 ## Meetup proposals (#389)
 

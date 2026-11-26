@@ -65,6 +65,7 @@ class TripRepositoryFirestoreTest {
     assertEquals("PUBLISHED", storedData["status"])
     assertEquals(Timestamp(currentTime.epochSecond, currentTime.nano), storedData["createdAt"])
     assertEquals(storedData["createdAt"], storedData["updatedAt"])
+    assertEquals(0L, storedData["openOrderCount"])
   }
 
   @Test

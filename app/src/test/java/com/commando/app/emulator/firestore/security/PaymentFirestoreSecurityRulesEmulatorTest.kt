@@ -603,7 +603,12 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       createDocumentAsOwner(
           "trips",
           order.tripId,
-          mapOf("ownerId" to owner.auth.currentUser!!.uid, "status" to "PUBLISHED"),
+          mapOf(
+              "ownerId" to owner.auth.currentUser!!.uid,
+              "status" to "PUBLISHED",
+              // The seeded order is counted as the order writes count it (#449).
+              "openOrderCount" to if (status.blocksTripCompletion()) 1L else 0L,
+          ),
       )
       createDocumentAsOwner(
           "orders",

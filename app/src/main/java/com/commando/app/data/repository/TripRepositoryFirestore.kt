@@ -324,7 +324,8 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
             .runTransaction { transaction ->
               val snapshot = transaction.get(reference)
               val matches = snapshot.exists() && snapshot.getString(FIELD_STATUS) == from
-              val openOrders = snapshot.getLong(FIELD_OPEN_ORDER_COUNT) ?: 0L
+              // A trip without a counter (before #449) is treated as having open orders.
+              val openOrders = snapshot.getLong(FIELD_OPEN_ORDER_COUNT) ?: 1L
               val ordersOpen = matches && requireSettledOrders && openOrders > 0L
               if (matches && !ordersOpen) {
                 transaction.update(
@@ -349,6 +350,7 @@ private fun NewTrip.toFirestoreData(ownerId: String, creationTime: Instant): Map
         FIELD_STATUS to TripStatus.PUBLISHED.name,
         FIELD_CREATED_AT to creationTime.toTimestamp(),
         FIELD_UPDATED_AT to creationTime.toTimestamp(),
+        FIELD_OPEN_ORDER_COUNT to 0L,
     )
 
 private fun Location.toFirestoreData(): Map<String, Any> =

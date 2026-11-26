@@ -69,7 +69,7 @@ jobs:
         run: >-
           npx --yes "firebase-tools@${FIREBASE_TOOLS_VERSION}" emulators:exec
           --non-interactive --project demo-commando --config firebase.firestore-open-test.json --only firestore
-          'node --test tools/catalog-import/import.test.mjs'
+          'node --test tools/catalog-import/import.test.mjs tools/trip-counters/backfill.test.mjs'
 
       - name: Test CI discovery and coverage checks
         run: python3 scripts/ci/test_ci_checks.py

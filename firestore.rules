@@ -22,7 +22,8 @@ service cloud.firestore {
         "handoffLocation",
         "status",
         "createdAt",
-        "updatedAt"
+        "updatedAt",
+        "openOrderCount"
       ]);
     }
 
@@ -149,7 +150,8 @@ service cloud.firestore {
     }
 
     // Open orders of a trip (#449): creating an order adds one and settling it removes one, in the
-    // same atomic write that names the order in counterOrderId. Older trips count as zero.
+    // same atomic write that names the order in counterOrderId. It never goes below zero. Trips
+    // written before #449 get it from tools/trip-counters; until then they cannot end.
     function openOrderCount(trip) {
       return trip.get("openOrderCount", 0);
     }
@@ -162,7 +164,8 @@ service cloud.firestore {
       let path = /databases/$(database)/documents/trips/$(tripId);
       let after = getAfter(path).data;
       return after.get("counterOrderId", "") == orderId
-        && openOrderCount(after) == openOrderCount(get(path).data) + delta;
+        && openOrderCount(after) == openOrderCount(get(path).data) + delta
+        && openOrderCount(after) >= 0;
     }
 
     // A counter-only trip change needs the creation or settlement of the order it names.
@@ -175,6 +178,7 @@ service cloud.firestore {
           .hasOnly(["openOrderCount", "counterOrderId"])
         && orderId is string && orderId.matches('[^/]+')
         && request.resource.data.openOrderCount is int
+        && request.resource.data.openOrderCount >= 0
         && after.tripId == tripId
         && ((!exists(orderPath) && after.status == "PENDING" && delta == 1)
           || (exists(orderPath) && !isSettledOrderStatus(get(orderPath).data.status)
@@ -186,6 +190,7 @@ service cloud.firestore {
         && isValidTrip(request.resource.data)
         && request.resource.data.ownerId == request.auth.uid
         && request.resource.data.status == "PUBLISHED"
+        && request.resource.data.get("openOrderCount", 0) == 0
         && request.resource.data.createdAt == request.resource.data.updatedAt;
 
       // Requesters keep the trip of their order after it closes or is cancelled (#449); listing
@@ -205,7 +210,7 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time
         && isAllowedTripTransition(resource.data.status, request.resource.data.status)
         && (!(request.resource.data.status in ["COMPLETED", "CANCELLED"])
-          || openOrderCount(resource.data) <= 0);
+          || resource.data.get("openOrderCount", -1) == 0);
 
       allow update: if isAuthenticated() && isOpenOrderCountUpdate(tripId);
 

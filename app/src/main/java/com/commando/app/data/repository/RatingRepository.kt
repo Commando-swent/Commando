@@ -6,6 +6,7 @@ import com.commando.app.model.NewRating
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Rating
 import com.commando.app.model.RatingSummary
+import com.commando.app.model.ReliabilitySummary
 
 /**
  * Submits immutable order feedback and provides authorized rating reads.
@@ -56,4 +57,12 @@ interface RatingRepository {
    * @throws kotlinx.coroutines.CancellationException When the calling coroutine is cancelled.
    */
   suspend fun getRatingSummary(commandoId: String): RatingResult<RatingSummary>
+
+  /**
+   * Reads trusted cumulative outcomes for the authenticated session. A confirmed absent document
+   * means zero tracked commitments; malformed or unavailable data returns a typed failure.
+   *
+   * @throws kotlinx.coroutines.CancellationException When the calling coroutine is cancelled.
+   */
+  suspend fun getReliabilitySummary(commandoId: String): RatingResult<ReliabilitySummary>
 }

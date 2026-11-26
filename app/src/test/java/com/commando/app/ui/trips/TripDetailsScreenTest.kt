@@ -14,10 +14,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.commando.app.R
 import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.RatingSummary
+import com.commando.app.model.ReliabilitySummary
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
@@ -36,6 +39,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -97,6 +101,93 @@ class TripDetailsScreenTest {
         }
       }
     }
+  }
+
+  private fun reliability(state: RatingResult<ReliabilitySummary>?, onRetry: () -> Unit = {}) {
+    compose.setContent { MaterialTheme { TripReliabilitySummary(state, onRetry) } }
+  }
+
+  @Test
+  fun establishedReliabilityHasEnglishMergedSemantics() {
+    reliability(RatingResult.Success(ReliabilitySummary("owner", 4, 1)))
+    compose
+        .onNodeWithText("Reliability")
+        .assertTextEquals("Reliability", "80%", "5 evaluated commitments")
+    compose
+        .onNodeWithTag(TripReliabilityTestTags.SECTION)
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.LiveRegion,
+                androidx.compose.ui.semantics.LiveRegionMode.Polite,
+            )
+        )
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun establishedReliabilityHasFrenchMergedSemantics() {
+    reliability(RatingResult.Success(ReliabilitySummary("owner", 4, 1)))
+    compose
+        .onNodeWithText("Fiabilité")
+        .assertTextEquals("Fiabilité", "80\u00a0%", "5 engagements évalués")
+  }
+
+  @Test
+  fun insufficientReliabilityShowsSingularCountWithoutPercentage() {
+    reliability(RatingResult.Success(ReliabilitySummary("owner", 1, 0)))
+    compose
+        .onNodeWithText("Reliability")
+        .assertTextEquals("Reliability", "Not enough history", "1 evaluated commitment")
+  }
+
+  @Test
+  fun zeroHistoryShowsCountWithoutInventingNewAccountStatus() {
+    reliability(RatingResult.Success(ReliabilitySummary("owner", 0, 0)))
+    compose
+        .onNodeWithText("Reliability")
+        .assertTextEquals("Reliability", "No history yet", "0 evaluated commitments")
+  }
+
+  @Test
+  @Config(qualifiers = "fr-rFR")
+  fun zeroHistoryHasFrenchMergedSemantics() {
+    reliability(RatingResult.Success(ReliabilitySummary("owner", 0, 0)))
+    compose
+        .onNodeWithText("Fiabilité")
+        .assertTextEquals("Fiabilité", "Pas encore d’historique", "0 engagement évalué")
+  }
+
+  @Test
+  fun unauthenticatedReliabilityHidesRetry() {
+    reliability(RatingResult.Error(RatingError.NotAuthenticated))
+    compose.onNodeWithTag(TripReliabilityTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun unauthenticatedStarsHideRetry() {
+    show(
+        TripDetailsUiState.Content(trip),
+        ratingState = TripRatingUiState.Error(RatingError.NotAuthenticated),
+    )
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun unavailableReliabilityOffersRetryWithoutInventingACount() {
+    var retries = 0
+    reliability(RatingResult.Error(RatingError.Unknown), onRetry = { retries++ })
+    compose
+        .onNodeWithText("Reliability")
+        .assertTextEquals("Reliability", "Reliability unavailable. Try again.")
+    compose.onNodeWithTag(TripReliabilityTestTags.RETRY).performClick()
+    compose.runOnIdle { assertEquals(1, retries) }
+  }
+
+  @Test
+  fun loadingReliabilityHasNoCountOrRetry() {
+    reliability(null)
+    compose.onNodeWithText("Reliability").assertTextEquals("Reliability", "Loading reliability…")
+    compose.onNodeWithTag(TripReliabilityTestTags.RETRY).assertDoesNotExist()
   }
 
   @Test
@@ -431,8 +522,9 @@ class TripDetailsScreenTest {
     }
   }
 
+  // AI assistance: OpenAI Codex for the trip details error states (#453).
   @Test
-  fun otherErrorDisplaysExactMessageAndRetryAndBackWork() {
+  fun networkErrorDisplaysConnectionMessageAndRetryAndBackWork() {
     var retries = 0
     var backs = 0
     show(
@@ -440,10 +532,8 @@ class TripDetailsScreenTest {
         onRetry = { retries++ },
         onBack = { backs++ },
     )
-    compose
-        .onNodeWithText("Something went wrong while loading this trip.")
-        .assertIsDisplayed()
-        .assertTextEquals("Something went wrong while loading this trip.")
+    val message = RuntimeEnvironment.getApplication().getString(R.string.trip_details_error_network)
+    compose.onNodeWithText(message).assertIsDisplayed()
     compose.runOnIdle {
       assertEquals(0, retries)
       assertEquals(0, backs)
@@ -458,6 +548,13 @@ class TripDetailsScreenTest {
       assertEquals(1, retries)
       assertEquals(1, backs)
     }
+  }
+
+  @Test
+  fun unknownErrorDisplaysGenericMessage() {
+    show(TripDetailsUiState.Error(TripError.Unknown))
+    val message = RuntimeEnvironment.getApplication().getString(R.string.trip_details_error)
+    compose.onNodeWithText(message).assertIsDisplayed()
   }
 
   @Test

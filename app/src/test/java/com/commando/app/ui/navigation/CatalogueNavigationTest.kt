@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
+import com.commando.app.R
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -112,6 +114,7 @@ class CatalogueNavigationTest {
             publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = factory,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }
@@ -388,7 +391,9 @@ class CatalogueNavigationTest {
     click(CatalogueTestTags.add(oat.id))
     compose.runOnIdle { trips.forcedError = TripError.NetworkError }
     click(CatalogueTestTags.CONTINUE)
-    compose.onNodeWithText("Something went wrong while loading this trip.").assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.trip_details_error_network))
+        .assertIsDisplayed()
     compose.onNodeWithTag(ReviewOrderTags.SUBMIT).assertDoesNotExist()
     back()
     // The draft survives the failed lookup, so nothing selected is lost.

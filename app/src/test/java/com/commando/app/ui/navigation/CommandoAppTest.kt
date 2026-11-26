@@ -83,6 +83,7 @@ import com.commando.app.ui.trips.RecordingRatings
 import com.commando.app.ui.trips.SavedTripSearchTestTags
 import com.commando.app.ui.trips.ScriptedTripRepository
 import com.commando.app.ui.trips.TripRatingTestTags
+import com.commando.app.ui.trips.TripReliabilityTestTags
 import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.assertTripCard
 import com.commando.app.ui.trips.discoveryTrip
@@ -208,7 +209,7 @@ class CommandoAppTest {
   @Test
   fun stoppedAppReleasesConnectivityCallbackAndRefreshesOnReturn() {
     val manager = compose.activity.application.getSystemService(ConnectivityManager::class.java)
-    show(FakeAuthRepository(alice))
+    show(FakeAuthRepository(alice), connectivity = null)
     compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
     compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
     ShadowLooper.idleMainLooper(6_000)
@@ -271,7 +272,7 @@ class CommandoAppTest {
       repository: AuthRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
-      connectivity: ConnectivityMonitor? = null,
+      connectivity: ConnectivityMonitor? = FakeConnectivityMonitor(),
   ) {
     show(
         repository,
@@ -288,7 +289,7 @@ class CommandoAppTest {
       picker: Picker = Picker(),
       openForm: Boolean = true,
       ratings: ((() -> String?) -> RatingRepository)? = null,
-      connectivity: ConnectivityMonitor? = null,
+      connectivity: ConnectivityMonitor? = FakeConnectivityMonitor(),
   ) {
     compose.setContent {
       SampleAppTheme {
@@ -413,10 +414,16 @@ class CommandoAppTest {
     val trips = ScriptedTripRepository(twoTrips(alice.uid))
     val ratings = RecordingRatings()
     ratings.load = { RatingResult.Error(RatingError.Unknown) }
+    ratings.loadReliability = { RatingResult.Error(RatingError.Unknown) }
     show(FakeAuthRepository(alice), trips, ratings = { ratings })
     click(HomeTestTags.TRIP_ACTION)
     compose.onTripCard(firstTrip.id).performClick()
     compose.onNodeWithText("Public owner").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(TripReliabilityTestTags.RETRY).performScrollTo().performClick()
+    compose.runOnIdle {
+      assertEquals(listOf(firstTrip.ownerId), ratings.ids)
+      assertEquals(List(2) { firstTrip.ownerId }, ratings.reliabilityIds)
+    }
     compose.onNodeWithTag(TripRatingTestTags.RETRY).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(listOf(firstTrip.id), trips.requestedIds)
@@ -511,7 +518,7 @@ class CommandoAppTest {
     compose.onNodeWithTag(AppTestTags.BACK_BUTTON).performClick()
     assertAvailableTripsRestored()
     compose.onTripCard(secondTrip.id).performClick()
-    compose.onNodeWithText("Something went wrong while loading this trip.").assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.trip_details_error_network)).assertIsDisplayed()
     click(AppTestTags.BACK_BUTTON)
     assertAvailableTripsRestored()
     compose.runOnIdle { assertTrue(ratingIds.isEmpty()) }
@@ -1352,6 +1359,7 @@ class CommandoAppTest {
         CommandoApp(
             tripRepository = trips,
             googleCredentials = picker,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }
@@ -1525,6 +1533,7 @@ class CommandoAppTest {
             publicProfileRepositoryFactory = { publicProfiles },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
             savedSearchRepositoryFactory = savedSearches,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

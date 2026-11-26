@@ -40,4 +40,13 @@
         <item quantity="one">Commission from %d delivered order</item>
         <item quantity="other">Commission from %d delivered orders</item>
     </plurals>
+    <string name="trip_details_reliability_title">Reliability</string>
+    <string name="trip_details_reliability_loading">Loading reliability…</string>
+    <string name="trip_details_reliability_empty">No history yet</string>
+    <string name="trip_details_reliability_insufficient">Not enough history</string>
+    <string name="trip_details_reliability_error">Reliability unavailable. Try again.</string>
+    <plurals name="trip_details_reliability_count">
+        <item quantity="one">%s evaluated commitment</item>
+        <item quantity="other">%s evaluated commitments</item>
+    </plurals>
 </resources>

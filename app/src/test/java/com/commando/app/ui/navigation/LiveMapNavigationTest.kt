@@ -4,6 +4,7 @@ package com.commando.app.ui.navigation
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
@@ -100,6 +101,7 @@ class LiveMapNavigationTest {
                 }
               }
             },
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

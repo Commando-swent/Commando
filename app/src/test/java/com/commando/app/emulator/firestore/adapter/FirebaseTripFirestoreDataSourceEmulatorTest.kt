@@ -1,5 +1,6 @@
 package com.commando.app.emulator.firestore.adapter
 
+// AI assistance: OpenAI Codex for server-confirmed by-ID read regressions (#391).
 // AI assistance: Claude Code for idempotent and offline publication tests (#394).
 import com.commando.app.data.repository.FirebaseTripFirestoreDataSource
 import com.commando.app.data.repository.TripError
@@ -226,6 +227,85 @@ class FirebaseTripFirestoreDataSourceEmulatorTest {
     withFirestoreEmulator(projectId) { online ->
       val reference = online.collection(TRIPS_COLLECTION).document(tripId)
       assertFalse(reference.get(Source.SERVER).await().exists())
+    }
+  }
+
+  @Test
+  fun byIdRead_rejectsWarmCacheOfflineAndRefreshesAfterReconnection() = runTest {
+    withFirestoreEmulator { firestore ->
+      val source = FirebaseTripFirestoreDataSource(firestore)
+      val repository = createRepository(source)
+      val id = source.createStoredTrip(scheduledAt = currentTime.plusSeconds(3_600))
+      val reference = firestore.collection(TRIPS_COLLECTION).document(id)
+      // Keep the document pinned: this fixture's eager memory cache otherwise evicts it as
+      // soon as a one-shot read removes its listener.
+      val retained = reference.addSnapshotListener({ it.run() }) { _, _ -> }
+      try {
+        val confirmed = repository.getTripById(id).successData()
+        firestore.disableNetwork().await()
+        try {
+          val cached = reference.get().await()
+          assertTrue(cached.exists())
+          assertTrue(cached.metadata.isFromCache)
+          assertEquals(TripResult.Error(TripError.NetworkError), repository.getTripById(id))
+        } finally {
+          firestore.enableNetwork().await()
+        }
+        reference.update("status", TripStatus.IN_PROGRESS.name).await()
+        assertEquals(
+            TripResult.Success(confirmed.copy(status = TripStatus.IN_PROGRESS)),
+            repository.getTripById(id),
+        )
+        reference.delete().await()
+        assertEquals(TripResult.Error(TripError.NotFound), repository.getTripById(id))
+      } finally {
+        retained.remove()
+      }
+    }
+  }
+
+  @Test
+  fun byIdRead_withoutCacheOfflineIsNetworkErrorNotMissing() = runTest {
+    withFirestoreEmulator { firestore ->
+      firestore.disableNetwork().await()
+      try {
+        assertEquals(
+            TripResult.Error(TripError.NetworkError),
+            createRepository(FirebaseTripFirestoreDataSource(firestore)).getTripById("never-read"),
+        )
+      } finally {
+        firestore.enableNetwork().await()
+      }
+    }
+  }
+
+  @Test
+  fun expiredPublicationRetry_cannotConfirmFromOfflineCache() = runTest {
+    withFirestoreEmulator { firestore ->
+      val source = FirebaseTripFirestoreDataSource(firestore)
+      val input = NewTrip(store, currentTime.plusSeconds(60), handoff)
+      val trip = createRepository(source).publishTrip("expired-intent", input).successData()
+      val later =
+          TripRepositoryFirestore(
+              source,
+              FakeAuthRepository(AuthUser(uid = AUTHENTICATED_USER_ID)),
+              now = { currentTime.plusSeconds(120) },
+          )
+      val reference = firestore.collection(TRIPS_COLLECTION).document(trip.id)
+      val retained = reference.addSnapshotListener({ it.run() }) { _, _ -> }
+      try {
+        assertEquals(TripResult.Success(trip), later.getTripById(trip.id))
+        firestore.disableNetwork().await()
+        try {
+          assertTrue(reference.get().await().metadata.isFromCache)
+          assertEquals(TripResult.Error(TripError.NetworkError), later.publishTrip(trip.id, input))
+        } finally {
+          firestore.enableNetwork().await()
+        }
+        assertEquals(TripResult.Success(trip), later.publishTrip(trip.id, input))
+      } finally {
+        retained.remove()
+      }
     }
   }
 

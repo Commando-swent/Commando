@@ -44,17 +44,23 @@ interface OrderRepository {
       expectedRevision: Int,
   ): OrderResult<Order>
 
-  /** Current requester's orders, newest first; equal timestamps are ordered by ID. */
+  /**
+   * Current requester's orders, newest first; equal timestamps are ordered by ID. Firestore reports
+   * [OrderError.NetworkError] when the snapshot cannot be confirmed, including pending writes.
+   */
   suspend fun getMyOrders(): OrderResult<List<Order>>
 
   /**
    * Allows the requester or authenticated owner of the associated Trip; unrelated users are denied.
+   * The Firestore read rejects cached data and pending writes as an unavailable result.
    */
   suspend fun getOrderById(orderId: String): OrderResult<Order>
 
   /**
    * Orders of [tripId] for the authenticated owner of that Trip, newest first; equal timestamps are
    * ordered by ID. Requesters and unrelated users are denied, even for orders they placed.
+   * Firestore rejects an unconfirmed snapshot before decoding, so incoming orders and the shopping
+   * checklist never render a local overlay as settled server state.
    */
   suspend fun getOrdersForTrip(tripId: String): OrderResult<List<Order>>
 

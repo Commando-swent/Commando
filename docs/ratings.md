@@ -69,6 +69,15 @@ The agreed reliability contract is:
   `READY_FOR_HANDOFF` contribute to neither counter; readiness alone is not completion.
 - No historical backfill.
 
+For #448, display the nearest whole percentage, rounding exact halves upward. Compute
+`(completedCount.toLong() * 100 + evaluatedCount / 2) / evaluatedCount` only at five or more
+evaluated commitments; the Int-bounded counters make the Long arithmetic overflow-safe.
+A successful server read of an absent summary means zero tracked commitments, not proof of a
+newly registered Commando. Zero and insufficient history show a count without a percentage.
+Malformed documents and failed reads mean unavailable reliability: never fabricate a zero count
+or percentage. Reliability loads and retries independently of customer stars; reads remain
+server-only, with no offline fallback. AI assistance: OpenAI Codex contributed the #448 UI.
+
 Receipt confirmation atomically increments completedCount with READY_FOR_HANDOFF -> DELIVERED.
 An eligible ACCEPTED -> CANCELLED owner transition increments lateCancellationCount only when the
 server cancellation time is at least ten minutes after the immutable ORDER_ACCEPTED event time.

@@ -1,8 +1,9 @@
 package com.commando.app.ui.orders
 
-// AI assistance: Claude (Anthropic).
+// AI assistance: Claude (Anthropic) and OpenAI Codex.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
@@ -11,12 +12,14 @@ import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Order
 import com.commando.app.model.Trip
 import com.commando.app.model.itemCount
+import java.time.Instant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 /** One My Orders row: the stored order and its trip, or null when the trip could not be read. */
@@ -29,7 +32,10 @@ data class MyOrderRow(val order: Order, val trip: Trip?) {
 sealed class MyOrdersUiState {
   data object Loading : MyOrdersUiState()
 
-  data class Content(val rows: List<MyOrderRow>) : MyOrdersUiState()
+  data class Content(val rows: List<MyOrderRow>, val confirmedAt: Instant? = null) :
+      MyOrdersUiState()
+
+  data object OfflineUnavailable : MyOrdersUiState()
 
   data object Empty : MyOrdersUiState()
 
@@ -49,6 +55,8 @@ class MyOrdersViewModel(
     private val tripRepository: TripRepository,
     private var requesterId: String,
     loadImmediately: Boolean = true,
+    private val cache: SessionCache? = null,
+    private val online: StateFlow<Boolean>? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<MyOrdersUiState>(MyOrdersUiState.Loading)
   val uiState: StateFlow<MyOrdersUiState> = mutableState.asStateFlow()
@@ -57,6 +65,11 @@ class MyOrdersViewModel(
 
   init {
     // Navigation may own the first load through ON_RESUME, as well as refreshes on return.
+    online?.let {
+      viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        it.drop(1).collect { load() }
+      }
+    }
     if (loadImmediately) load()
   }
 
@@ -75,10 +88,34 @@ class MyOrdersViewModel(
     // A repository may still return after cancellation; the counter discards superseded results.
     val load = ++latestLoad
     val requester = requesterId
-    mutableState.value = MyOrdersUiState.Loading
+    val key = historyKey(requester)
+    fun cached(): MyOrdersUiState.Content? =
+        cache?.get(key)?.let { MyOrdersUiState.Content(it.value, it.confirmedAt) }
+    if (online?.value == false) {
+      mutableState.value = cached() ?: MyOrdersUiState.OfflineUnavailable
+      return
+    }
+    // Keep the last confirmation visible while a potentially slow reconnect is in flight.
+    mutableState.value = cached() ?: MyOrdersUiState.Loading
     loadJob = viewModelScope.launch {
       val state = fetch(requester)
-      if (load == latestLoad) mutableState.value = state
+      if (load != latestLoad) return@launch
+      mutableState.value =
+          when {
+            cache == null -> state
+            // Only a known temporary failure can reuse the saved rows. Unknown does not
+            // establish that fallback is safe, so discard the copy before a later offline load.
+            state is MyOrdersUiState.Error && state.error != OrderError.NetworkError -> {
+              cache.remove(key)
+              state
+            }
+            online?.value == false -> cached() ?: MyOrdersUiState.OfflineUnavailable
+            state is MyOrdersUiState.Error -> cached() ?: state
+            else -> {
+              val rows = (state as? MyOrdersUiState.Content)?.rows.orEmpty()
+              if (cache.put(key, rows)) state else MyOrdersUiState.Loading
+            }
+          }
     }
   }
 
@@ -112,3 +149,5 @@ class MyOrdersViewModel(
         null
       }
 }
+
+internal fun historyKey(uid: String) = SessionCache.key<List<MyOrderRow>>("my-orders/$uid")

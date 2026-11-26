@@ -290,6 +290,41 @@ class TripFirestoreSecurityRulesEmulatorTest {
     }
   }
 
+  // AI assistance: OpenAI Codex for the deleted trip read regression (#453).
+  @Test
+  fun byIdRead_afterDeletionDoesNotReturnPreviouslyCachedTrip() = runTest {
+    withClients("owner" to true, "reader" to true) { (owner, reader) ->
+      val ownerId = checkNotNull(owner.auth.currentUser).uid
+      val readerId = checkNotNull(reader.auth.currentUser).uid
+      val id = "deleted-${UUID.randomUUID()}"
+      owner.firestore.collection(TRIPS_COLLECTION).document(id).set(storedTrip(ownerId)).await()
+      val repository =
+          TripRepositoryFirestore(
+              FakeAuthRepository(AuthUser(uid = readerId)),
+              reader.firestore,
+              now = { NOW },
+          )
+      val reference = reader.firestore.collection(TRIPS_COLLECTION).document(id)
+      // Keep the document in the reader's memory cache after the initial server read.
+      val retained = reference.addSnapshotListener({ it.run() }) { _, _ -> }
+      try {
+        assertEquals(id, repository.getTripById(id).successData().id)
+        reader.firestore.disableNetwork().await()
+        try {
+          deleteDocumentAsOwner("$TRIPS_COLLECTION/$id")
+          val cached = reference.get().await()
+          assertTrue(cached.exists())
+          assertTrue(cached.metadata.isFromCache)
+        } finally {
+          reader.firestore.enableNetwork().await()
+        }
+        assertEquals(TripResult.Error(TripError.NotFound), repository.getTripById(id))
+      } finally {
+        retained.remove()
+      }
+    }
+  }
+
   /** Owners can no longer set arbitrary statuses (#233), so seed them as the emulator admin. */
   private fun setStatusAsAdmin(tripId: String, status: TripStatus) =
       updateDocumentAsOwner("$TRIPS_COLLECTION/$tripId", mapOf("status" to status.name))

@@ -24,6 +24,7 @@ import com.commando.app.ui.orders.OrderDetailsUiState
 import com.commando.app.ui.orders.OrderDetailsViewModel
 import com.commando.app.ui.orders.ShoppingChecklistScreen
 import com.commando.app.ui.orders.ShoppingChecklistViewModel
+import kotlinx.coroutines.flow.StateFlow
 
 internal const val ORDER_REFRESH_AFTER_CHAT = "refreshOrderAfterChat"
 
@@ -42,6 +43,7 @@ internal fun NavGraphBuilder.ordersRoutes(
     userId: String,
     ratingRepositoryFactory: (() -> String?) -> RatingRepository,
     paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)?,
+    online: StateFlow<Boolean>,
     onBrowseTrips: () -> Unit,
 ) {
   val orders = session.orders
@@ -49,7 +51,14 @@ internal fun NavGraphBuilder.ordersRoutes(
   composable(route = CommandoScreens.MyOrders.name) { entry ->
     val model: MyOrdersViewModel =
         viewModel(viewModelStoreOwner = entry) {
-          MyOrdersViewModel(orders.repository, tripRepository, userId, loadImmediately = false)
+          MyOrdersViewModel(
+              orders.repository,
+              tripRepository,
+              userId,
+              loadImmediately = false,
+              cache = session.cache,
+              online = online,
+          )
         }
     RefreshOnResume(model, model::retry)
     MyOrdersScreen(

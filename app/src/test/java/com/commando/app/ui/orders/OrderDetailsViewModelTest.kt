@@ -23,6 +23,7 @@ import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Rating
 import com.commando.app.model.RatingSummary
+import com.commando.app.model.ReliabilitySummary
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
@@ -1656,6 +1657,10 @@ class OrderDetailsViewModelTest {
 
     override suspend fun getRatingSummary(commandoId: String): RatingResult<RatingSummary> =
         error("Unused")
+
+    override suspend fun getReliabilitySummary(
+        commandoId: String
+    ): RatingResult<ReliabilitySummary> = error("Unused")
   }
 
   /** suspendCoroutine deliberately delivers a result even after the calling job is cancelled. */

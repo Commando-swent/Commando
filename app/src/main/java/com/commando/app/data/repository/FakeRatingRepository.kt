@@ -7,6 +7,7 @@ import com.commando.app.model.Order
 import com.commando.app.model.OrderStatus
 import com.commando.app.model.Rating
 import com.commando.app.model.RatingSummary
+import com.commando.app.model.ReliabilitySummary
 import com.commando.app.model.Trip
 import com.commando.app.model.normalizeRatingComment
 import java.time.Instant
@@ -36,6 +37,7 @@ class FakeRatingRepository(
     private val orderRepository: OrderRepository,
     private val tripRepository: TripRepository,
     private val now: () -> Instant = Instant::now,
+    private val reliabilitySummaries: Map<String, ReliabilitySummary> = emptyMap(),
 ) : RatingRepository {
   private val mutex = Mutex()
   private val ratings = mutableMapOf<String, Rating>()
@@ -91,6 +93,16 @@ class FakeRatingRepository(
             if (matching.isEmpty()) null
             else matching.sumOf { it.score.toLong() }.toDouble() / matching.size
         RatingResult.Success(RatingSummary(commandoId, matching.size, average))
+      }
+
+  /** Uses explicitly seeded tracked outcomes, never customer-star counts or inferred history. */
+  override suspend fun getReliabilitySummary(commandoId: String): RatingResult<ReliabilitySummary> =
+      withSession { _ ->
+        if (!commandoId.isDocumentId())
+            return@withSession RatingResult.Error(RatingError.InvalidData)
+        val summary = reliabilitySummaries[commandoId] ?: ReliabilitySummary(commandoId, 0, 0)
+        if (summary.commandoId != commandoId) RatingResult.Error(RatingError.InvalidData)
+        else RatingResult.Success(summary)
       }
 
   private suspend fun <T> withOrderTrip(
@@ -171,6 +183,7 @@ class FakeRatingRepository(
         OrderError.OwnTrip,
         OrderError.InvalidData -> RatingError.InvalidData
         is OrderError.AlreadyDecided,
+        OrderError.NetworkError,
         OrderError.Unknown -> RatingError.Unknown
       }
 

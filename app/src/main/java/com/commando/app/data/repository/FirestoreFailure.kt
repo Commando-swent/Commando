@@ -2,6 +2,7 @@ package com.commando.app.data.repository
 
 // AI assistance: Claude Code.
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.SnapshotMetadata
 import java.io.IOException
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -50,3 +51,13 @@ internal suspend fun <T> runFirestoreOperation(
     } catch (exception: Exception) {
       onFailure(exception.toFirestoreFailure())
     }
+
+/** Rejects local cache and pending writes, including local overlays on a server read. */
+internal fun SnapshotMetadata.requireServerConfirmation() {
+  if (isFromCache || hasPendingWrites()) {
+    throw FirebaseFirestoreException(
+        "Read is not server-confirmed",
+        FirebaseFirestoreException.Code.UNAVAILABLE,
+    )
+  }
+}

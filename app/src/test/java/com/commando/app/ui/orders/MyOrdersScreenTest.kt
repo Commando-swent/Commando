@@ -2,6 +2,7 @@ package com.commando.app.ui.orders
 
 // AI assistance: OpenAI Codex (cancellation regression tests).
 // AI assistance: Claude (Anthropic).
+import android.content.Context
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +14,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
+import com.commando.app.R
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderError
@@ -24,8 +27,10 @@ import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.ui.theme.SampleAppTheme
 import com.commando.app.ui.trips.formatTripDeparture
+import java.text.DateFormat
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import org.junit.After
@@ -121,6 +126,25 @@ class MyOrdersScreenTest {
     compose.setContent {
       SampleAppTheme { MyOrdersScreen(state, onRetry, onOrderClick, onBrowseTrips) }
     }
+  }
+
+  @Test
+  fun coldOfflineHistoryExplainsTheMissingCopy() {
+    show(MyOrdersUiState.OfflineUnavailable)
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    compose.onNodeWithText(context.getString(R.string.offline_no_copy)).assertIsDisplayed()
+  }
+
+  @Test
+  fun confirmedEmptyHistoryDisplaysItsConfirmationDateOffline() {
+    show(MyOrdersUiState.Content(emptyList(), created))
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val timestamp = DateFormat.getDateTimeInstance().format(Date.from(created))
+    compose.onNodeWithText(context.getString(R.string.my_orders_empty)).assertIsDisplayed()
+    compose
+        .onNodeWithText(context.getString(R.string.offline_confirmed_time, timestamp))
+        .assertIsDisplayed()
+    compose.onNodeWithText(context.getString(R.string.offline_no_copy)).assertDoesNotExist()
   }
 
   @Test

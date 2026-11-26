@@ -85,12 +85,16 @@ internal constructor(
     return result
   }
 
-  override suspend fun getMyOrders(): OrderResult<List<Order>> = session { uid ->
-    val orders =
-        source.getMine(uid).map { it.toOrder() ?: return@session failure(OrderError.InvalidData) }
-    if (orders.any { it.requesterId != uid }) return@session failure(OrderError.PermissionDenied)
-    OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
-  }
+  override suspend fun getMyOrders(): OrderResult<List<Order>> =
+      session(distinguishNetworkFailure = true) { uid ->
+        val orders =
+            source.getMine(uid).map {
+              it.toOrder() ?: return@session failure(OrderError.InvalidData)
+            }
+        if (orders.any { it.requesterId != uid })
+            return@session failure(OrderError.PermissionDenied)
+        OrderResult.Success(orders.sortedWith(NEWEST_ORDER_FIRST))
+      }
 
   override fun observeMyOrders(): Flow<OrderResult<List<Order>>?> = flow {
     val uid = currentUserId()
@@ -219,7 +223,10 @@ internal constructor(
         source.cancel(orderId, uid)
       }
 
-  private suspend fun <T> session(action: suspend (String) -> OrderResult<T>): OrderResult<T> {
+  private suspend fun <T> session(
+      distinguishNetworkFailure: Boolean = false,
+      action: suspend (String) -> OrderResult<T>,
+  ): OrderResult<T> {
     currentCoroutineContext().ensureActive()
     val uid =
         currentUserId()?.takeIf { it.isNotBlank() } ?: return failure(OrderError.NotAuthenticated)
@@ -231,7 +238,12 @@ internal constructor(
     } catch (exception: Exception) {
       currentCoroutineContext().ensureActive()
       if (!sameSession(uid)) return failure(OrderError.NotAuthenticated)
-      failure(exception.toOrderError())
+      val error = exception.toFirestoreFailure()
+      failure(
+          if (distinguishNetworkFailure && error == FirestoreFailure.NETWORK_UNAVAILABLE)
+              OrderError.NetworkError
+          else error.toOrderError()
+      )
     }
   }
 
@@ -342,6 +354,7 @@ internal class FirebaseOrderFirestoreDataSource(
           .document(id)
           .get(Source.SERVER)
           .await()
+          .also { it.metadata.requireServerConfirmation() }
           .takeIf { it.exists() }
           ?.let { it.toFirestoreDocument() }
 
@@ -353,9 +366,13 @@ internal class FirebaseOrderFirestoreDataSource(
       orders.whereEqualTo("requesterId", uid).observeServerDocuments(firestore, uid)
 
   private suspend fun whereEqualTo(field: String, value: String) =
-      orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {
-        it.toFirestoreDocument()
-      }
+      orders
+          .whereEqualTo(field, value)
+          .get(Source.SERVER)
+          .await()
+          .also { it.metadata.requireServerConfirmation() }
+          .documents
+          .map { it.toFirestoreDocument() }
 
   override suspend fun getTrip(id: String) =
       firestore

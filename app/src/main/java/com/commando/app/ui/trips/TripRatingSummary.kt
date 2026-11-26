@@ -14,6 +14,9 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.commando.app.R
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingResult
+import com.commando.app.model.ReliabilitySummary
 import com.commando.app.ui.profile.ProfileAvatar
 import com.commando.app.ui.theme.RatingAmber
 
@@ -44,7 +47,8 @@ private val RETRY_CONTENT_PADDING = 0.dp
 /**
  * Shows the trip creator and overall rating [state]; [onRetry] reloads only the rating summary.
  * [commandoName] must belong to that creator; absent names use a generic label and neutral avatar.
- * The caller supplies state and owns all loading, identity resolution and navigation.
+ * The caller owns identity resolution and navigation; [reliabilityState] and [onRetryReliability]
+ * provide independent reliability loading (null), results and retry below customer stars.
  */
 @Composable
 internal fun TripRatingSummary(
@@ -52,6 +56,8 @@ internal fun TripRatingSummary(
     onRetry: () -> Unit,
     commandoName: String?,
     modifier: Modifier = Modifier,
+    reliabilityState: RatingResult<ReliabilitySummary>? = null,
+    onRetryReliability: () -> Unit = {},
 ) {
   val colors = MaterialTheme.colorScheme
   val typography = MaterialTheme.typography
@@ -159,15 +165,22 @@ internal fun TripRatingSummary(
               style = detailStyle,
               color = colors.onSurfaceVariant,
           )
-          TextButton(
-              onClick = onRetry,
-              modifier = Modifier.testTag(TripRatingTestTags.RETRY),
-              contentPadding = PaddingValues(RETRY_CONTENT_PADDING),
-          ) {
-            Text(stringResource(R.string.trips_retry))
+          if (state.error != RatingError.NotAuthenticated) {
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.testTag(TripRatingTestTags.RETRY),
+                contentPadding = PaddingValues(RETRY_CONTENT_PADDING),
+            ) {
+              Text(stringResource(R.string.trips_retry))
+            }
           }
         }
       }
     }
+    TripReliabilitySummary(
+        reliabilityState,
+        onRetryReliability,
+        Modifier.fillMaxWidth().padding(start = CREATOR_TEXT_INSET),
+    )
   }
 }

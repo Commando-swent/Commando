@@ -141,12 +141,44 @@ service cloud.firestore {
 
     // Trip lifecycle (#233, #449): the owner closes (PUBLISHED -> IN_PROGRESS), then completes
     // (IN_PROGRESS -> COMPLETED), or cancels a trip that has not started (PUBLISHED -> CANCELLED);
-    // nothing else changes. Completion and cancellation also need every order settled, which needs
-    // a query, so the app enforces it.
+    // nothing else changes. Completion and cancellation also need every order settled.
     function isAllowedTripTransition(from, to) {
       return (from == "PUBLISHED" && to == "IN_PROGRESS")
         || (from == "IN_PROGRESS" && to == "COMPLETED")
         || (from == "PUBLISHED" && to == "CANCELLED");
+    }
+
+    // Open orders of a trip (#449): creating an order adds one and settling it removes one, in the
+    // same atomic write that names the order in counterOrderId. Older trips count as zero.
+    function openOrderCount(trip) {
+      return trip.get("openOrderCount", 0);
+    }
+
+    function isSettledOrderStatus(status) {
+      return status in ["REJECTED", "CANCELLED", "DELIVERED"];
+    }
+
+    function movesOpenOrderCount(tripId, orderId, delta) {
+      let path = /databases/$(database)/documents/trips/$(tripId);
+      let after = getAfter(path).data;
+      return after.get("counterOrderId", "") == orderId
+        && openOrderCount(after) == openOrderCount(get(path).data) + delta;
+    }
+
+    // A counter-only trip change needs the creation or settlement of the order it names.
+    function isOpenOrderCountUpdate(tripId) {
+      let orderId = request.resource.data.counterOrderId;
+      let orderPath = /databases/$(database)/documents/orders/$(orderId);
+      let after = getAfter(orderPath).data;
+      let delta = request.resource.data.openOrderCount - openOrderCount(resource.data);
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["openOrderCount", "counterOrderId"])
+        && orderId is string && orderId.matches('[^/]+')
+        && request.resource.data.openOrderCount is int
+        && after.tripId == tripId
+        && ((!exists(orderPath) && after.status == "PENDING" && delta == 1)
+          || (exists(orderPath) && !isSettledOrderStatus(get(orderPath).data.status)
+            && isSettledOrderStatus(after.status) && delta == -1));
     }
 
     match /trips/{tripId} {
@@ -171,7 +203,11 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt"])
         && request.resource.data.updatedAt == request.time
-        && isAllowedTripTransition(resource.data.status, request.resource.data.status);
+        && isAllowedTripTransition(resource.data.status, request.resource.data.status)
+        && (!(request.resource.data.status in ["COMPLETED", "CANCELLED"])
+          || openOrderCount(resource.data) <= 0);
+
+      allow update: if isAuthenticated() && isOpenOrderCountUpdate(tripId);
 
       // The app never deletes trips; deleting and recreating one would bypass the transitions and
       // strand its orders.
@@ -383,6 +419,7 @@ service cloud.firestore {
         && validOrderItems(request.resource.data.items, request.resource.data.commissionCents)
         && request.resource.data.status == "PENDING"
         && request.resource.data.createdAt == request.time
+        && movesOpenOrderCount(request.resource.data.tripId, orderId, 1)
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.ownerId != request.auth.uid
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.status == "PUBLISHED"
         && get(/databases/$(database)/documents/trips/$(request.resource.data.tripId)).data.scheduledAt > request.time
@@ -403,6 +440,8 @@ service cloud.firestore {
           ? paidCancellationAllowed(orderId, resource.data)
           : !existsAfter(/databases/$(database)/documents/refunds/$(orderId)))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
+        && (!isSettledOrderStatus(request.resource.data.status)
+          || movesOpenOrderCount(resource.data.tripId, orderId, -1))
         && ((ownsOrderTrip(resource.data)
               && resource.data.requesterId != request.auth.uid
               && ((resource.data.status == "PENDING"

@@ -595,6 +595,11 @@ class TripRepositoryFirestoreTest {
         d.documents[TRIP_ID] = validStoredTrip(status = status)
       }
     }
+    val lateOrder = { status: TripStatus ->
+      { d: InMemoryTripFirestoreDataSource ->
+        d.documents[TRIP_ID] = validStoredTrip(status = status) + ("openOrderCount" to 1L)
+      }
+    }
     val failWith = { code: Code ->
       { d: InMemoryTripFirestoreDataSource -> d.failure = firebaseException(code) }
     }
@@ -631,6 +636,9 @@ class TripRepositoryFirestoreTest {
             Row(CANCEL, PUBLISHED, error = PermissionDenied, user = "requester"),
             // Closed by another device between the order check and the write.
             Row(CANCEL, PUBLISHED, error = InvalidTransition, hook = raceTo(IN_PROGRESS)),
+            Row(CANCEL, PUBLISHED, error = OrdersStillOpen, hook = lateOrder(PUBLISHED)),
+            Row(COMPLETE, IN_PROGRESS, error = OrdersStillOpen, hook = lateOrder(IN_PROGRESS)),
+            Row(CLOSE, PUBLISHED, hook = lateOrder(PUBLISHED)), // closing ignores open orders
         ) +
             listOf(COMPLETE to IN_PROGRESS, CANCEL to PUBLISHED).flatMap { (transition, status) ->
               open.map { Row(transition, status, settled + it, OrdersStillOpen) }
@@ -655,6 +663,9 @@ class TripRepositoryFirestoreTest {
       assertEquals(message, if (writes) 1 else 0, dataSource.transitionCalls)
       assertEquals(message, if (queriesOrders) 1 else 0, dataSource.orderStatusCalls)
       if (writes && row.hook == null) assertEquals(SERVER_TIME, result.successData().updatedAt)
+      if (row.error == OrdersStillOpen) {
+        assertEquals(message, row.status.name, dataSource.documents[TRIP_ID]?.get("status"))
+      }
     }
   }
 
@@ -790,17 +801,21 @@ class TripRepositoryFirestoreTest {
         tripId: String,
         from: String,
         to: String,
+        requireSettledOrders: Boolean,
     ): TripTransitionWrite? {
       transitionCalls += 1
       beforeTransition?.invoke()
       throwFailureIfPresent()
       val stored = documents[tripId] ?: return null
-      val written = stored["status"] == from
+      val openOrders = stored["openOrderCount"] as? Long ?: 0L
+      val ordersOpen = stored["status"] == from && requireSettledOrders && openOrders > 0L
+      val written = stored["status"] == from && !ordersOpen
       if (written) {
         documents[tripId] = stored + mapOf("status" to to, "updatedAt" to SERVER_TIMESTAMP)
       }
       afterTransition?.invoke()
-      return TripTransitionWrite(TripFirestoreDocument(tripId, documents.getValue(tripId)), written)
+      val document = TripFirestoreDocument(tripId, documents.getValue(tripId))
+      return TripTransitionWrite(document, written, ordersOpen)
     }
 
     private fun throwFailureIfPresent() {

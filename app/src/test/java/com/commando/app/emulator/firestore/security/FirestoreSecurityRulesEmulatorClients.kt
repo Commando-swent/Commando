@@ -1,6 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: Claude Code for updateDocumentAsOwner (#233).
+// AI assistance: Claude Code for updateDocumentAsOwner (#233) and moveOpenOrderCount (#449).
 
 import com.commando.app.data.repository.parseEmulatorHostAndPort
 import com.google.firebase.FirebaseApp
@@ -24,6 +24,20 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 import org.robolectric.RuntimeEnvironment
+
+/** Adds the trip counter move the rules require with an order creation (+1) or settlement (-1). */
+internal fun WriteBatch.moveOpenOrderCount(
+    client: EmulatorClient,
+    tripId: String,
+    orderId: String,
+    delta: Long,
+) {
+  set(
+      client.firestore.collection("trips").document(tripId),
+      mapOf("openOrderCount" to FieldValue.increment(delta), "counterOrderId" to orderId),
+      SetOptions.merge(),
+  )
+}
 
 /** Runs [test] with one Firebase client per configuration, signed in anonymously when `true`. */
 internal suspend fun withClients(
@@ -64,8 +78,10 @@ internal fun WriteBatch.recordDelivery(
     id: String,
     ownerId: String,
     witnessOrderId: String? = id,
+    tripId: String? = null,
 ) {
   update(client.firestore.collection("orders").document(id), "status", "DELIVERED")
+  tripId?.let { moveOpenOrderCount(client, it, id, -1) }
   set(
       client.firestore.collection("reliabilitySummaries").document(ownerId),
       mapOf(

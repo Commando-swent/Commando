@@ -182,19 +182,62 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun ordersPlacedWhileTheTripIsCancelledCanStillBeSettled() = runTest {
+  fun rulesRefuseCancelOrCompleteWhileTheTripCountsAnOpenOrder() = runTest {
     withClients("owner" to true, "requester" to true) { (owner, requester) ->
-      // Seeds the documented race: orders placed between the order check and the cancellation.
-      val trip = publishWithOrder(owner, requester, listOf(150, 300))
-      val (a, b) = ordersOf(owner, trip).sortedBy { it.commissionCents }
-      updateDocumentAsOwner("trips/$trip", mapOf("status" to "CANCELLED"))
+      val trip = publishWithOrder(owner, requester)
+      val (order) = ordersOf(owner, trip)
+      assertEquals(1L, openOrderCount(owner, trip))
+      val steps =
+          listOf<suspend () -> Unit>(
+              {}, // PENDING
+              { orders(owner).decideOrder(order.id, ACCEPT, order.revision) },
+              { orders(owner).markReadyForHandoff(order.id) },
+          )
+      // A direct write skips the repository's order check; the rules still refuse it.
+      for (step in steps) {
+        step()
+        assertPermissionDenied("cancel") { tripRef(owner, trip).update(move("CANCELLED")).await() }
+        updateDocumentAsOwner("trips/$trip", mapOf("status" to "IN_PROGRESS"))
+        assertPermissionDenied("complete") {
+          tripRef(owner, trip).update(move("COMPLETED")).await()
+        }
+        updateDocumentAsOwner("trips/$trip", mapOf("status" to "PUBLISHED"))
+      }
+      // Nobody can lower the counter without settling the order it names.
+      for (actor in listOf(owner, requester)) {
+        assertPermissionDenied("counter reset by ${actor.app.name}") {
+          tripRef(actor, trip)
+              .update(mapOf("openOrderCount" to 0, "counterOrderId" to order.id))
+              .await()
+        }
+      }
+      assertTrue(orders(requester).confirmReceipt(order.id) is OrderResult.Success)
+      assertEquals(0L, openOrderCount(owner, trip))
+      tripRef(owner, trip).update(move("CANCELLED")).await()
+      assertEquals("CANCELLED", statusOf(owner, trip))
+    }
+  }
 
-      assertTrue(
-          "reject",
-          orders(owner).decideOrder(a.id, REJECT, a.revision) is OrderResult.Success,
-      )
-      assertTrue("cancel", orders(requester).cancelOrder(b.id) is OrderResult.Success)
-      assertTrue(ordersOf(owner, trip).none { it.status.blocksTripCompletion() })
+  @Test
+  fun orderPlacedAfterTheOrderCheckStillBlocksCancellation() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publish(owner, "PUBLISHED")
+      val firestore = FirebaseTripFirestoreDataSource(owner.firestore)
+      // The order arrives after the repository's order query, before its transaction.
+      val racing =
+          object : TripFirestoreDataSource by firestore {
+            override suspend fun getOrderStatuses(tripId: String): List<String?> =
+                firestore.getOrderStatuses(tripId).also {
+                  val placed = orders(requester).createOrder(OrderDraft(trip, listOf(ITEM)))
+                  assertTrue(placed is OrderResult.Success)
+                }
+          }
+      val ownerTrips =
+          TripRepositoryFirestore(racing, AuthRepositoryFirebase(owner.auth), Instant::now)
+
+      assertEquals(TripResult.Error(OrdersStillOpen), ownerTrips.transitionTrip(trip, CANCEL))
+      assertEquals("PUBLISHED", statusOf(owner, trip))
+      assertEquals(1, ordersOf(owner, trip).size)
     }
   }
 
@@ -223,6 +266,9 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
 
   private suspend fun statusOf(client: EmulatorClient, id: String) =
       tripRef(client, id).get(Source.SERVER).await().getString("status")
+
+  private suspend fun openOrderCount(client: EmulatorClient, id: String) =
+      tripRef(client, id).get(Source.SERVER).await().getLong("openOrderCount")
 
   private suspend fun ordersOf(owner: EmulatorClient, trip: String) =
       (orders(owner).getOrdersForTrip(trip) as OrderResult.Success).data

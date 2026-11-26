@@ -147,8 +147,14 @@ internal constructor(
         }
       }
       val stored =
-          dataSource.transitionTrip(tripId, transition.source.name, transition.target.name)
-              ?: return@runRepositoryOperation notFound()
+          dataSource.transitionTrip(
+              tripId,
+              transition.source.name,
+              transition.target.name,
+              transition.requiresSettledOrders,
+          ) ?: return@runRepositoryOperation notFound()
+      if (stored.ordersOpen)
+          return@runRepositoryOperation TripResult.Error(TripError.OrdersStillOpen)
       val updated = stored.document.toTrip() ?: return@runRepositoryOperation invalidData()
       // A change this call wrote is a success even if another device changed the trip right after.
       if (stored.written || updated.status == transition.target) TripResult.Success(updated)
@@ -158,11 +164,7 @@ internal constructor(
 
   /**
    * InvalidData for an unreadable order status, OrdersStillOpen while an order of [tripId]
-   * [blocksTripCompletion], otherwise null. For COMPLETE the trip is already IN_PROGRESS, so no
-   * order can be created any more (the rules require PUBLISHED) and this server read cannot go
-   * stale. For CANCEL the trip is still PUBLISHED: an order created between this read and the
-   * transaction stays PENDING on the cancelled trip, where its requester can still cancel it and
-   * the owner can still reject it. Client transactions cannot run queries, so this window remains.
+   * [blocksTripCompletion], otherwise null. Later orders are caught by the trip's counter (#449).
    */
   private suspend fun openOrdersError(tripId: String): TripResult.Error? {
     val statuses = dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() }
@@ -187,9 +189,14 @@ internal typealias TripFirestoreDocument = FirestoreDocument
 
 /**
  * Outcome of [TripFirestoreDataSource.transitionTrip]: [document] is the trip read after the
- * transaction, and [written] is true when that transaction wrote the requested status itself.
+ * transaction, [written] is true when that transaction wrote the requested status itself, and
+ * [ordersOpen] is true when it refused because the trip still counted open orders.
  */
-internal data class TripTransitionWrite(val document: TripFirestoreDocument, val written: Boolean)
+internal data class TripTransitionWrite(
+    val document: TripFirestoreDocument,
+    val written: Boolean,
+    val ordersOpen: Boolean = false,
+)
 
 /**
  * SDK-independent trip persistence; typed validation and missing-trip policy stay in the
@@ -230,11 +237,16 @@ internal interface TripFirestoreDataSource {
   suspend fun getOrderStatuses(tripId: String): List<String?>
 
   /**
-   * In one transaction, reads trip [tripId] and, only if its stored status is [from], writes status
-   * [to] and a server `updatedAt`. Then returns the stored trip read from the server and whether
-   * the transaction wrote, or null if the trip does not exist.
+   * In one transaction, reads trip [tripId] and, only if its status is [from] and, when
+   * [requireSettledOrders], it counts no open order, writes status [to] and a server `updatedAt`.
+   * Returns the stored trip read from the server and the outcome, or null if the trip is missing.
    */
-  suspend fun transitionTrip(tripId: String, from: String, to: String): TripTransitionWrite?
+  suspend fun transitionTrip(
+      tripId: String,
+      from: String,
+      to: String,
+      requireSettledOrders: Boolean,
+  ): TripTransitionWrite?
 }
 
 /** Trip SDK adapter; intentionally preserves default-source reads and existing query filters. */
@@ -306,24 +318,28 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
       tripId: String,
       from: String,
       to: String,
+      requireSettledOrders: Boolean,
   ): TripTransitionWrite? {
     val reference = trips.document(tripId)
-    val written =
+    // First: whether this transaction wrote; second: whether open orders refused the change.
+    val outcome =
         firestore
             .runTransaction { transaction ->
               val snapshot = transaction.get(reference)
               val matches = snapshot.exists() && snapshot.getString(FIELD_STATUS) == from
-              if (matches) {
+              val openOrders = snapshot.getLong(FIELD_OPEN_ORDER_COUNT) ?: 0L
+              val ordersOpen = matches && requireSettledOrders && openOrders > 0L
+              if (matches && !ordersOpen) {
                 transaction.update(
                     reference,
                     mapOf(FIELD_STATUS to to, FIELD_UPDATED_AT to FieldValue.serverTimestamp()),
                 )
               }
-              matches
+              (matches && !ordersOpen) to ordersOpen
             }
             .await()
     val stored = reference.get(Source.SERVER).await().takeIf { it.exists() } ?: return null
-    return TripTransitionWrite(stored.toFirestoreDocument(), written)
+    return TripTransitionWrite(stored.toFirestoreDocument(), outcome.first, outcome.second)
   }
 }
 
@@ -420,7 +436,11 @@ private fun FirestoreFailure.toTripError(notFoundError: TripError): TripError =
       FirestoreFailure.UNKNOWN -> TripError.Unknown
     }
 
-private const val TRIPS_COLLECTION = "trips"
+internal const val TRIPS_COLLECTION = "trips"
+/** Open orders of a trip, kept by the order writes and checked by the rules (#449). */
+internal const val FIELD_OPEN_ORDER_COUNT = "openOrderCount"
+/** Order whose creation or settlement last moved [FIELD_OPEN_ORDER_COUNT]. */
+internal const val FIELD_COUNTER_ORDER_ID = "counterOrderId"
 private const val ORDERS_COLLECTION = "orders"
 private const val FIELD_ORDER_TRIP_ID = "tripId"
 private const val FIELD_OWNER_ID = "ownerId"

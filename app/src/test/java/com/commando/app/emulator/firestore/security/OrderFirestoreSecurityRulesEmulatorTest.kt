@@ -1,7 +1,8 @@
 package com.commando.app.emulator.firestore.security
 
 // AI assistance: OpenAI Codex; trip-owner query tests (#147), trip seeding (#233), Commando
-// cancellation (#401) and its race with handoff readiness (#449): Claude Code.
+// cancellation (#401), its race with handoff readiness and the open-order counter fixtures (#449):
+// Claude Code.
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FirebaseOrderFirestoreDataSource
 import com.commando.app.data.repository.NEWEST_ORDER_FIRST
@@ -593,7 +594,12 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         assertPermissionDenied { ref.update(mutation + ("status" to "CANCELLED")).await() }
       }
       assertEquals(original, ref.get(Source.SERVER).await().data)
-      ref.update("status", "CANCELLED").await()
+      requester.firestore
+          .runBatch {
+            it.update(ref, "status", "CANCELLED")
+            it.moveOpenOrderCount(requester, saved.tripId, saved.id, -1)
+          }
+          .await()
       assertEquals(original + ("status" to "CANCELLED"), ref.get(Source.SERVER).await().data)
       for (client in listOf(requester, owner)) for (status in OrderStatus.entries) {
         assertPermissionDenied {
@@ -945,7 +951,14 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       orders(owner).decideOrder(direct.id, ACCEPT, 0)
       orders(owner).markReadyForHandoff(direct.id)
       requester.firestore
-          .runBatch { it.recordDelivery(requester, direct.id, owner.auth.currentUser!!.uid) }
+          .runBatch {
+            it.recordDelivery(
+                requester,
+                direct.id,
+                owner.auth.currentUser!!.uid,
+                tripId = direct.tripId,
+            )
+          }
           .await()
       assertEquals(
           OrderResult.Success(direct.copy(status = OrderStatus.DELIVERED)),
@@ -976,6 +989,9 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               client.firestore.collection("orderEvents").document("${ref.id}_ORDER_PLACED"),
               event(ref.id, recipient, "ORDER_PLACED"),
           )
+          (data["tripId"] as? String)?.let { trip ->
+            it.moveOpenOrderCount(client, trip, ref.id, 1)
+          }
         }
         .await()
     return ref
@@ -989,7 +1005,10 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       mutation: Map<String, Any> = emptyMap(),
   ) {
     val ref = client.firestore.collection("orders").document(id)
-    val requester = recipient ?: ref.get(Source.SERVER).await().getString("requesterId")!!
+    // Outsiders cannot read the order: their write then also lacks the counter move.
+    val stored = runCatching { ref.get(Source.SERVER).await() }.getOrNull()
+    val requester = recipient ?: stored!!.getString("requesterId")!!
+    val tripId = stored?.getString("tripId")
     client.firestore
         .runBatch {
           it.update(ref, mutation + ("status" to status))
@@ -997,6 +1016,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               client.firestore.collection("orderEvents").document("${id}_ORDER_$status"),
               event(id, requester, "ORDER_$status"),
           )
+          if (status != "ACCEPTED" && tripId != null) it.moveOpenOrderCount(client, tripId, id, -1)
         }
         .await()
   }
@@ -1314,7 +1334,9 @@ class OrderFirestoreSecurityRulesEmulatorTest {
     orders(owner).markReadyForHandoff(order.id)
     for (id in listOf<String?>(null, "another-order")) assertPermissionDenied {
       requester.firestore
-          .runBatch { it.recordDelivery(requester, order.id, owner.auth.currentUser!!.uid, id) }
+          .runBatch {
+            it.recordDelivery(requester, order.id, owner.auth.currentUser!!.uid, id, order.tripId)
+          }
           .await()
     }
   }
@@ -1421,7 +1443,8 @@ class OrderFirestoreSecurityRulesEmulatorTest {
           assertPermissionDenied("wrong summary owner") {
             requester.firestore
                 .runBatch {
-                  it.recordDelivery(requester, order.id, clients[0].auth.currentUser!!.uid)
+                  val other = clients[0].auth.currentUser!!.uid
+                  it.recordDelivery(requester, order.id, other, tripId = order.tripId)
                 }
                 .await()
           }

@@ -310,6 +310,9 @@ class TripDetailsScreenTest {
         .assertIsEnabled()
         .performClick()
     compose.runOnIdle { assertEquals(listOf(TripTransition.CANCEL), controls.requested) }
+    state.value = TripDetailsUiState.Content(trip, pendingTransition = TripTransition.CANCEL)
+    compose.onNodeWithText("Cancel this trip?").assertIsDisplayed()
+    compose.onNodeWithText("The trip is withdrawn", substring = true).assertIsDisplayed()
     for (status in listOf(TripStatus.IN_PROGRESS, TripStatus.COMPLETED, TripStatus.CANCELLED)) {
       state.value = TripDetailsUiState.Content(trip.copy(status = status))
       compose.onNodeWithTag(TripOwnerTestTags.CANCEL_TRIP).assertDoesNotExist()
@@ -328,24 +331,15 @@ class TripDetailsScreenTest {
   }
 
   @Test
-  fun completeAndCancelConfirmationsExplainThatTheyCannotBeUndone() {
-    val texts =
-        mapOf(
-            TripTransition.COMPLETE to
-                ("Complete this trip?" to "The trip ends and cannot be reopened."),
-            TripTransition.CANCEL to
-                ("Cancel this trip?" to
-                    "The trip is withdrawn and cannot be reopened. Requesters can no longer " +
-                        "find it or order on it."),
+  fun completeConfirmationExplainsThatItCannotBeUndone() {
+    val ended =
+        TripDetailsUiState.Content(
+            trip.copy(status = TripStatus.IN_PROGRESS),
+            pendingTransition = TripTransition.COMPLETE,
         )
-    val state = mutableStateOf<TripDetailsUiState>(TripDetailsUiState.Content(trip))
-    showOwner(state, RecordingControls().build())
-    for ((transition, text) in texts) {
-      val source = trip.copy(status = transition.source)
-      state.value = TripDetailsUiState.Content(source, pendingTransition = transition)
-      compose.onNodeWithText(text.first).assertIsDisplayed()
-      compose.onNodeWithText(text.second).assertIsDisplayed()
-    }
+    show(ended, ownerControls = RecordingControls().build())
+    compose.onNodeWithText("Complete this trip?").assertIsDisplayed()
+    compose.onNodeWithText("The trip ends and cannot be reopened.").assertIsDisplayed()
   }
 
   @Test

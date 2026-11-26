@@ -166,13 +166,14 @@ AI assistance: Claude Code.
 `transitionTrip(id, TripTransition.CANCEL)` lets the trip owner withdraw a PUBLISHED trip (PUBLISHED to
 CANCELLED) through the same transaction as Close and Complete. Like Complete, it is refused with
 `OrdersStillOpen` while an order is PENDING, ACCEPTED or READY_FOR_HANDOFF, so the owner must first
-settle them (reject, cancel or deliver). The rules allow only the owner, only from PUBLISHED; a cancelled
-trip leaves discovery, refuses new orders and order edits, and stays readable by id so requesters keep
-the trip of their past orders.
+settle them (reject, cancel or deliver). A cancelled trip leaves discovery, refuses new orders and
+order edits, and stays readable by id so requesters keep the trip of their past orders.
 
-Known limit: client transactions cannot run queries, so an order created between the order check and the
-cancellation write stays PENDING on the cancelled trip. Its requester can still cancel it and the owner
-can still reject it; neither rule depends on the trip status.
+Rules cannot query orders, so each trip counts them in `openOrderCount`: creating an order adds one
+and settling it removes one, in the same atomic write that names the order in `counterOrderId`. The
+rules require that move, refuse any other counter change, and allow Cancel and Complete only at zero,
+even for a direct write. The transition transaction re-reads the counter, so an order placed after the
+order query still refuses with `OrdersStillOpen`. Trips from before #449 count as zero.
 
 ## Meetup proposals (#389)
 

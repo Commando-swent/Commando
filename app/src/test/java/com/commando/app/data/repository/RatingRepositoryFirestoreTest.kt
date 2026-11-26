@@ -3,6 +3,7 @@ package com.commando.app.data.repository
 // AI assistance: OpenAI Codex.
 import com.commando.app.model.MAX_RATING_COMMENT_LENGTH
 import com.commando.app.model.NewRating
+import com.commando.app.model.ReliabilitySummary
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
@@ -17,6 +18,64 @@ class RatingRepositoryFirestoreTest {
   private val source = MemorySource()
   private val repository = RatingRepositoryFirestore(source) { uid }
   private val input = NewRating("order", 4)
+
+  @Test
+  fun absentReliabilityIsConfirmedZeroHistory() = runTest {
+    assertEquals(
+        RatingResult.Success(ReliabilitySummary("owner", 0, 0)),
+        repository.getReliabilitySummary("owner"),
+    )
+    assertEquals(0, source.transactions)
+  }
+
+  @Test
+  fun reliabilityPreservesBothIntegralCounterRepresentations() = runTest {
+    source.documents["reliabilitySummaries/owner"] =
+        mapOf("completedCount" to Int.MAX_VALUE, "lateCancellationCount" to Int.MAX_VALUE.toLong())
+    assertEquals(
+        RatingResult.Success(ReliabilitySummary("owner", Int.MAX_VALUE, Int.MAX_VALUE)),
+        repository.getReliabilitySummary("owner"),
+    )
+  }
+
+  @Test
+  fun malformedReliabilityNeverBecomesZeroHistory() = runTest {
+    val valid = mapOf<String, Any?>("completedCount" to 4L, "lateCancellationCount" to 1L)
+    val malformed =
+        listOf(valid - "completedCount", valid - "lateCancellationCount", valid + ("extra" to 0)) +
+            listOf("completedCount", "lateCancellationCount").flatMap { field ->
+              listOf(null, -1L, Int.MAX_VALUE.toLong() + 1, Long.MAX_VALUE, 1.0, "1").map {
+                valid + (field to it)
+              }
+            }
+    for (data in malformed) {
+      source.documents["reliabilitySummaries/owner"] = data
+      assertEquals(
+          data.toString(),
+          RatingResult.Error(RatingError.InvalidData),
+          repository.getReliabilitySummary("owner"),
+      )
+    }
+  }
+
+  @Test
+  fun unavailableReliabilityDoesNotFabricateHistory() = runTest {
+    source.failRead = true
+    assertEquals(RatingResult.Error(RatingError.Unknown), repository.getReliabilitySummary("owner"))
+  }
+
+  @Test
+  fun reliabilityRequiresAuthenticationAndAValidOwner() = runTest {
+    assertEquals(
+        RatingResult.Error(RatingError.InvalidData),
+        repository.getReliabilitySummary("owners/owner"),
+    )
+    uid = null
+    assertEquals(
+        RatingResult.Error(RatingError.NotAuthenticated),
+        repository.getReliabilitySummary("owner"),
+    )
+  }
 
   @Test
   fun invalidInputsFailBeforeTransactionsOrWrites() = runTest {

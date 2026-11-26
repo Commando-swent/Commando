@@ -67,6 +67,22 @@ private fun Any?.integer(): Long? =
       else -> null
     }
 
+/** Only confirmed absence means zero history; malformed counters never receive defaults. */
+internal fun FirestoreDocument?.reliabilitySummary(id: String): ReliabilitySummary {
+  if (this == null) return ReliabilitySummary(id, 0, 0)
+  val completed = data["completedCount"].integer()
+  val late = data["lateCancellationCount"].integer()
+  requireRating(
+      this.id == id &&
+          data.keys == setOf("completedCount", "lateCancellationCount") &&
+          completed != null &&
+          completed in 0..Int.MAX_VALUE.toLong() &&
+          late != null &&
+          late in 0..Int.MAX_VALUE.toLong()
+  )
+  return ReliabilitySummary(id, completed!!.toInt(), late!!.toInt())
+}
+
 /** Decodes integral counters; an absent summary represents an unrated Commando. */
 internal fun FirestoreDocument?.summary(id: String): Pair<Int, Long> {
   if (this == null) return 0 to 0L

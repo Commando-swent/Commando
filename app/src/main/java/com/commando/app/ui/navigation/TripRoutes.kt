@@ -32,7 +32,6 @@ import com.commando.app.ui.trips.TripDetailsUiState
 import com.commando.app.ui.trips.TripDetailsViewModel
 import com.commando.app.ui.trips.TripEarningsViewModel
 import com.commando.app.ui.trips.TripLocationFilterViewModel
-import com.commando.app.ui.trips.TripRatingUiState
 import com.commando.app.ui.trips.TripRatingViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -159,7 +158,7 @@ internal fun NavGraphBuilder.tripRoutes(
     RefreshOnResume(tripDetailsViewModel to ownerId) {
       tripDetailsViewModel.refreshPublicName(ownerId)
     }
-    val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
+    val ratings = rememberTripRating(ownerId, entry, session)
     // The entry point is for the owner only; the repository and rules check ownership again.
     val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == session.userId
     val showOwnerActions = session.mode() == AppMode.Commando && ownsTrip
@@ -181,8 +180,10 @@ internal fun NavGraphBuilder.tripRoutes(
               }
             } else null,
         showOwnerActions = showOwnerActions,
-        ratingState = ratingState,
-        onRetryRating = onRetryRating,
+        ratingState = key(ownerId) { ratings?.uiState?.collectAsState()?.value },
+        onRetryRating = { ratings?.retry() },
+        reliabilityState = key(ownerId) { ratings?.reliabilityState?.collectAsState()?.value },
+        onRetryReliability = { ratings?.retryReliability() },
         commandoName = publicName?.takeIf { it.first == ownerId }?.second,
         earningsViewModel =
             rememberTripEarnings(showOwnerActions, tripId, entry, session.orderRepository),
@@ -212,23 +213,26 @@ private fun rememberTripEarnings(
 }
 
 /**
- * Retains owner-specific ratings in the Trip Details entry; [ratingRepository] is bound to the
- * signed-in session by the caller.
+ * Retains owner-specific ratings in the Trip Details entry; [session] is bound to the signed-in
+ * session by the caller.
  */
 @Composable
 private fun rememberTripRating(
     ownerId: String?,
     entry: NavBackStackEntry,
-    ratingRepository: () -> RatingRepository,
-): Pair<TripRatingUiState?, () -> Unit> {
-  if (ownerId == null) return null to {}
+    session: TripRouteSession,
+): TripRatingViewModel? {
+  if (ownerId == null) return null
   return key(ownerId) {
     val model: TripRatingViewModel =
         viewModel(viewModelStoreOwner = entry, key = "trip-rating/$ownerId") {
-          TripRatingViewModel(ratingRepository())
+          TripRatingViewModel(
+              session.ratingRepository(),
+              session.currentUserId,
+              session.sessionChanges,
+          )
         }
-    val state by model.uiState.collectAsState()
-    RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
-    state to model::retry
+    RefreshOnResume(model to ownerId) { model.refreshAll(ownerId) }
+    model
   }
 }

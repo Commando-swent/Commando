@@ -14,7 +14,6 @@ import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.Source
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -311,7 +310,9 @@ class TripFirestoreSecurityRulesEmulatorTest {
         reader.firestore.disableNetwork().await()
         try {
           deleteDocumentAsOwner("$TRIPS_COLLECTION/$id")
-          assertTrue(reference.get(Source.CACHE).await().exists())
+          val cached = reference.get().await()
+          assertTrue(cached.exists())
+          assertTrue(cached.metadata.isFromCache)
         } finally {
           reader.firestore.enableNetwork().await()
         }

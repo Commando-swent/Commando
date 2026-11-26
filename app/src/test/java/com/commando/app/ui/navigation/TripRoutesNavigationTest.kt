@@ -1,6 +1,7 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: Claude Code (characterization tests for trip routes, #322; owner earnings, #301).
+// AI assistance: OpenAI Codex for offline owner controls regression coverage.
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
@@ -15,14 +16,22 @@ import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.PublicProfileTestRepository
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
+import com.commando.app.data.repository.TripError
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
+import com.commando.app.model.RatingSummary
 import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripTransition
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.GoogleCredentialClient
@@ -34,9 +43,11 @@ import com.commando.app.ui.trips.CreateTripScreenTestTags
 import com.commando.app.ui.trips.MyTripsTestTags
 import com.commando.app.ui.trips.TripEarningsTestTags
 import com.commando.app.ui.trips.TripOwnerTestTags
+import com.commando.app.ui.trips.TripRatingTestTags
 import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.discoveryTrip
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -93,8 +104,12 @@ class TripRoutesNavigationTest {
       }
 
   private val publicProfiles = PublicProfileTestRepository()
+  private val connectivity = FakeConnectivityMonitor()
 
-  private fun show(trips: FakeTripRepository) {
+  private fun show(
+      trips: TripRepository,
+      ratingResult: RatingResult<RatingSummary>? = null,
+  ) {
     val presets =
         SavedTripSearchRepositoryLocal(
             ApplicationProvider.getApplicationContext(),
@@ -128,8 +143,16 @@ class TripRoutesNavigationTest {
             },
             savedSearchRepositoryFactory = { presets },
             publicProfileRepositoryFactory = { publicProfiles },
-            ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
-            connectivityMonitor = FakeConnectivityMonitor(),
+            ratingRepositoryFactory = {
+              val ratings = FakeRatingRepository(it, FakeOrderRepository(it), trips)
+              object : RatingRepository by ratings {
+                override suspend fun getRatingSummary(
+                    commandoId: String
+                ): RatingResult<RatingSummary> =
+                    ratingResult ?: ratings.getRatingSummary(commandoId)
+              }
+            },
+            connectivityMonitor = connectivity,
         )
       }
     }
@@ -202,6 +225,119 @@ class TripRoutesNavigationTest {
     click(AppTestTags.REQUESTER_MODE)
     click(AppTestTags.TRIPS_BUTTON)
     openCoopAsRequester()
+  }
+
+  @Test
+  fun cachedOwnerTripKeepsIncomingOrdersNavigationAndHidesLiveOwnerActions() {
+    show(trips(migros, coop))
+    openCoopAsOwner()
+    compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
+    earnings().assertDoesNotExist()
+    viewOrders().performScrollTo().performClick()
+    compose.onNodeWithText(string(R.string.incoming_orders_title)).assertExists()
+  }
+
+  @Test
+  fun ownerControlsStayVisibleAndDisabledWhenAnInFlightWriteLosesConnection() {
+    val fake = trips(coop)
+    val transitionGate = CompletableDeferred<Unit>()
+    show(
+        object : TripRepository by fake {
+          override suspend fun transitionTrip(
+              tripId: String,
+              transition: TripTransition,
+          ): TripResult<Trip> {
+            transitionGate.await()
+            return fake.transitionTrip(tripId, transition)
+          }
+        }
+    )
+    openCoopAsOwner()
+    val transition = compose.onNodeWithTag(TripOwnerTestTags.TRANSITION)
+    val back = compose.onNodeWithText(string(R.string.trip_details_back))
+    transition.performScrollTo().performClick()
+    click(TripOwnerTestTags.CONFIRM)
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    transition.assertIsNotEnabled()
+    viewOrders().assertIsNotEnabled()
+    back.assertIsNotEnabled()
+
+    compose.runOnIdle { transitionGate.complete(Unit) }
+
+    transition.assertDoesNotExist()
+    viewOrders().assertIsEnabled()
+    back.assertIsEnabled()
+  }
+
+  @Test
+  fun cachedRequesterTripKeepsTheKnownPublicNameWithoutEnablingOrdering() {
+    publicProfiles.name = "Alice Commando"
+    show(trips(migros, coop))
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    compose.onNodeWithText("Alice Commando").assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    compose.onNodeWithText("Alice Commando").assertExists()
+    addItems().assertIsNotEnabled()
+    viewOrders().assertDoesNotExist()
+  }
+
+  @Test
+  fun cachedRequesterTripKeepsAnAlreadyLoadedRating() {
+    show(trips(coop), RatingResult.Success(RatingSummary(coop.ownerId, 2, 4.5)))
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    val count =
+        compose.activity.resources.getQuantityString(R.plurals.trip_details_rating_count, 2, 2)
+    val rating =
+        compose.onNodeWithContentDescription(
+            string(R.string.trip_details_rating_description, "4.5", count)
+        )
+    rating.assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    rating.assertExists()
+  }
+
+  @Test
+  fun cachedRequesterTripKeepsNameWithoutShowingFailedRatingRetry() {
+    publicProfiles.name = "Alice Commando"
+    show(trips(coop), RatingResult.Error(RatingError.Unknown))
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    compose.onNodeWithText("Alice Commando").assertExists()
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun cachedTripStillBlocksOrderingWhenServerIsUnreachableAfterReconnect() {
+    val fake = trips(coop)
+    show(fake)
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    compose.runOnIdle { connectivity.setOnline(false) }
+    addItems().assertIsNotEnabled()
+
+    compose.runOnIdle {
+      fake.forcedError = TripError.NetworkError
+      connectivity.setOnline(true)
+    }
+
+    addItems().assertIsNotEnabled()
+    compose.onNodeWithText(coop.store.name).assertExists()
   }
 
   @Test

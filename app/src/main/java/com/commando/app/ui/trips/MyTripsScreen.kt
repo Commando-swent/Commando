@@ -3,11 +3,9 @@ package com.commando.app.ui.trips
 // AI assistance: Claude Code.
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,10 +20,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.commando.app.R
 import com.commando.app.model.Trip
-import com.commando.app.model.TripStatus
 import com.commando.app.ui.components.SkeletonCard
 import com.commando.app.ui.components.StateCard
 import com.commando.app.ui.components.TripDepartureRow
+import com.commando.app.ui.components.TripStatusBadge
 
 object MyTripsTestTags {
   const val SCREEN = "my_trips_screen"
@@ -35,7 +33,6 @@ object MyTripsTestTags {
   const val RETRY = "my_trips_retry"
   const val PUBLISH_TRIP = "my_trips_publish_trip"
   const val TRIP_CARD_PREFIX = "my_trips_card_"
-  const val STATUS_PREFIX = "my_trips_status_"
 }
 
 @Composable
@@ -166,7 +163,7 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
         )
         Text("›", Modifier.clearAndSetSemantics {}, color = colors.onSurfaceVariant)
       }
-      StatusBadge(trip)
+      TripStatusBadge(trip)
       TripDepartureRow(trip.scheduledAt)
       Text(
           stringResource(R.string.my_trips_handoff, trip.handoffLocation.name),
@@ -175,29 +172,4 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
       )
     }
   }
-}
-
-/** Shows the stored status; closed trips use a muted style, as in the Figma. */
-@Composable
-private fun StatusBadge(trip: Trip) {
-  val colors = MaterialTheme.colorScheme
-  val (label, active) =
-      when (trip.status) {
-        TripStatus.PUBLISHED -> R.string.my_trips_status_published to true
-        TripStatus.IN_PROGRESS -> R.string.my_trips_status_in_progress to true
-        TripStatus.COMPLETED -> R.string.my_trips_status_completed to false
-        TripStatus.CANCELLED -> R.string.my_trips_status_cancelled to false
-      }
-  Text(
-      stringResource(label),
-      Modifier.testTag(MyTripsTestTags.STATUS_PREFIX + trip.id)
-          .background(
-              if (active) colors.secondaryContainer else colors.surfaceContainerHigh,
-              CircleShape,
-          )
-          .border(1.dp, colors.outline, CircleShape)
-          .padding(horizontal = 10.dp, vertical = 2.dp),
-      color = if (active) colors.onSecondaryContainer else colors.onSurfaceVariant,
-      style = MaterialTheme.typography.labelSmall,
-  )
 }

@@ -1,8 +1,9 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete tests (#233).
-// AI assistance: OpenAI Codex for public-name refresh regression coverage.
+// AI assistance: OpenAI Codex for public-name refresh and offline transition regression coverage.
 import com.commando.app.MainDispatcherRule
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.TripError
@@ -48,6 +49,140 @@ class TripDetailsViewModelTest {
   private val repository = RecordingRepository(fake)
 
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
+
+  @Test
+  fun confirmedOwnerTransitionReplacesSavedTripAfterDisconnect() = runTest {
+    val online = MutableStateFlow(true)
+    val cache = SessionCache { "owner" }
+    val vm =
+        TripDetailsViewModel(
+            repository,
+            trip.id,
+            currentUserId = { "owner" },
+            cache = cache,
+            online = online,
+        )
+    advanceUntilIdle()
+    repository.transitionGate = CompletableDeferred()
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    runCurrent()
+    online.value = false
+    advanceUntilIdle()
+    repository.transitionGate!!.complete(Unit)
+    advanceUntilIdle()
+    val saved = content(vm)
+    assertEquals(TripStatus.IN_PROGRESS, saved.trip.status)
+    assertNotNull(saved.cachedAt)
+    assertFalse(saved.transitionInProgress)
+    assertEquals(saved.trip, cache.get(SessionCache.key<Trip>("trip-details/${trip.id}"))?.value)
+
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(saved.trip, content(vm).trip)
+    assertNull(content(vm).cachedAt)
+  }
+
+  @Test
+  fun failedOwnerTransitionEvictsSavedTripAfterDisconnect() = runTest {
+    val online = MutableStateFlow(true)
+    val cache = SessionCache { "owner" }
+    val key = SessionCache.key<Trip>("trip-details/${trip.id}")
+    val transitionGate = CompletableDeferred<Unit>()
+    repository.transitionGate = transitionGate
+    repository.transitionResult = TripResult.Error(TripError.NetworkError)
+    val vm = TripDetailsViewModel(repository, trip.id, cache = cache, online = online)
+    advanceUntilIdle()
+    assertEquals(trip, cache.get(key)?.value)
+
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    runCurrent()
+    online.value = false
+    runCurrent()
+    assertTrue(content(vm).transitionInProgress)
+
+    transitionGate.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(
+        TripDetailsUiState.Error(TripError.NetworkError, offlineUnavailable = true),
+        vm.uiState.value,
+    )
+    assertNull(cache.get(key))
+  }
+
+  @Test
+  fun expiredSessionDropsLateTripReadAndAllSubsequentActions() = runTest {
+    var uid: String? = "owner"
+    val session = MutableStateFlow(uid)
+    val cache = SessionCache { uid }
+    repository.gate = CompletableDeferred()
+    val vm =
+        TripDetailsViewModel(
+            repository,
+            trip.id,
+            currentUserId = { uid },
+            sessionChanges = session,
+            cache = cache,
+        )
+    runCurrent()
+    uid = "new-owner"
+    session.value = uid
+    runCurrent()
+    repository.gate!!.complete(Unit)
+    advanceUntilIdle()
+    vm.retry()
+    assertEquals(TripDetailsUiState.Error(TripError.PermissionDenied), vm.uiState.value)
+    assertEquals(listOf(trip.id), repository.requestedIds)
+  }
+
+  @Test
+  fun staleTripWhileConnectedCannotStartOrCommitATransition() = runTest {
+    val online = MutableStateFlow(true)
+    val cache = SessionCache { "owner" }
+    val vm = TripDetailsViewModel(repository, trip.id, online = online, cache = cache)
+    advanceUntilIdle()
+    fake.forcedError = TripError.Unknown
+    vm.retry()
+    advanceUntilIdle()
+    val state = content(vm)
+    assertNotNull(state.cachedAt)
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    assertTrue(repository.transitions.isEmpty())
+    assertEquals(state, vm.uiState.value)
+    cache.close()
+    fake.forcedError = null
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.PermissionDenied), vm.uiState.value)
+  }
+
+  @Test
+  fun offlineTripRetainsTimeRejectsTransitionsAndEvictsDeniedData() = runTest {
+    val online = MutableStateFlow(false)
+    val cache = SessionCache { "owner" }
+    val vm = TripDetailsViewModel(repository, trip.id, cache = cache, online = online)
+    assertEquals(TripDetailsUiState.Error(TripError.NetworkError, true), vm.uiState.value)
+    online.value = true
+    advanceUntilIdle()
+    online.value = false
+    advanceUntilIdle()
+    val stale = vm.uiState.value as TripDetailsUiState.Content
+    assertNotNull(stale.cachedAt)
+    vm.retry()
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    assertEquals(stale, vm.uiState.value)
+    fake.forcedError = TripError.PermissionDenied
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.PermissionDenied), vm.uiState.value)
+    online.value = false
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.NetworkError, true), vm.uiState.value)
+  }
 
   @Test
   fun startsLoadingAndAutomaticallyRequestsSuppliedTripId() = runTest {
@@ -228,9 +363,15 @@ class TripDetailsViewModelTest {
   }
 
   @Test
-  fun failedTransitionKeepsTheTripAndTheNextRequestClearsTheError() = runTest {
+  fun connectedTransitionFailureEvictsSavedTripAndKeepsLiveErrorUntilNextRequest() = runTest {
+    val cache = SessionCache { "owner" }
+    val key = SessionCache.key<Trip>("trip-details/${trip.id}")
     repository.transitionResult = TripResult.Error(TripError.OrdersStillOpen)
-    val viewModel = loaded()
+    val viewModel =
+        TripDetailsViewModel(repository, trip.id, cache = cache, online = MutableStateFlow(true))
+    advanceUntilIdle()
+    assertEquals(trip, cache.get(key)?.value)
+
     viewModel.requestTransition(TripTransition.CLOSE)
     viewModel.confirmTransition()
     advanceUntilIdle()
@@ -238,6 +379,7 @@ class TripDetailsViewModelTest {
         TripDetailsUiState.Content(trip, transitionError = TripError.OrdersStillOpen),
         viewModel.uiState.value,
     )
+    assertNull(cache.get(key))
 
     viewModel.requestTransition(TripTransition.CLOSE)
     assertEquals(
@@ -285,20 +427,18 @@ class TripDetailsViewModelTest {
   }
 
   @Test
-  fun reloadDuringATransitionShowsTheReloadedTrip() = runTest {
+  fun retryDuringTransitionWaitsForTheAuthoritativeWriteResult() = runTest {
     repository.transitionGate = CompletableDeferred()
     val viewModel = loaded()
     viewModel.requestTransition(TripTransition.CLOSE)
     viewModel.confirmTransition()
     runCurrent()
 
-    repository.gate = CompletableDeferred()
     viewModel.retry()
-    repository.transitionGate!!.complete(Unit)
-    runCurrent()
-    assertEquals(TripDetailsUiState.Loading, viewModel.uiState.value)
+    assertTrue(content(viewModel).transitionInProgress)
+    assertEquals(listOf(trip.id), repository.requestedIds)
 
-    repository.gate!!.complete(Unit)
+    repository.transitionGate!!.complete(Unit)
     advanceUntilIdle()
     assertEquals(TripStatus.IN_PROGRESS, content(viewModel).trip.status)
   }

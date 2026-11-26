@@ -22,6 +22,7 @@ import com.commando.app.model.RatingSummary
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.TripTransition
+import com.commando.app.ui.components.TripStatusBadgeTestTags
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -99,6 +100,21 @@ class TripDetailsScreenTest {
         }
       }
     }
+  }
+
+  @Test
+  fun missingOfflineTripOffersRetryWithoutShowingPrivateFields() {
+    show(TripDetailsUiState.Error(TripError.NetworkError, offlineUnavailable = true))
+    compose.onNodeWithText("No saved copy is available offline.").assertExists()
+    compose.onNodeWithText(trip.store.name).assertDoesNotExist()
+  }
+
+  @Test
+  fun cachedTripShowsItsLastKnownStatusAndBlocksOrdering() {
+    show(TripDetailsUiState.Content(trip, cachedAt = departure))
+    compose.onNodeWithText("Saved copy", substring = true).assertExists()
+    compose.onNodeWithTag(TripStatusBadgeTestTags.STATUS_PREFIX + trip.id).assertExists()
+    compose.onNodeWithText("Add items to this run").assertIsNotEnabled()
   }
 
   @Test

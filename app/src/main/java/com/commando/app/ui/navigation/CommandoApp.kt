@@ -323,6 +323,7 @@ private fun AuthenticatedApp(
           session =
               TripRouteSession(
                   userId = userId,
+                  cache = session.cache,
                   mode = { appUiState.mode },
                   ratingRepository = { ratingRepositoryFactory(orders::currentUserId) },
                   orderRepository = orders.repository,

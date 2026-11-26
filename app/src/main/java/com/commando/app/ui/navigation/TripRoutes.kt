@@ -14,6 +14,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
@@ -51,6 +52,7 @@ internal class TripRouteSession(
     val publicProfiles: Lazy<PublicProfileRepository>,
     val currentUserId: () -> String?,
     val sessionChanges: Flow<String?>,
+    val cache: SessionCache? = null,
 )
 
 /** Registers trip creation, discovery, the owner's list and Trip Details. */
@@ -151,29 +153,36 @@ internal fun NavGraphBuilder.tripRoutes(
               session.publicProfiles,
               session.currentUserId,
               session.sessionChanges,
+              session.cache,
+              isOnline,
           )
         }
     val tripState by tripDetailsViewModel.uiState.collectAsState()
-    val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
+    val connected by isOnline.collectAsState()
+    val content = tripState as? TripDetailsUiState.Content
+    val ownerId = content?.trip?.ownerId
+    val canReadLive = connected && content != null && content.cachedAt == null
     val publicName by tripDetailsViewModel.publicName.collectAsState()
-    RefreshOnResume(tripDetailsViewModel to ownerId) {
-      tripDetailsViewModel.refreshPublicName(ownerId)
+    if (canReadLive) {
+      RefreshOnResume(tripDetailsViewModel to ownerId) {
+        tripDetailsViewModel.refreshPublicName(ownerId)
+      }
     }
-    val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
-    // The entry point is for the owner only; the repository and rules check ownership again.
-    val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == session.userId
-    val showOwnerActions = session.mode() == AppMode.Commando && ownsTrip
+    val (ratingState, onRetryRating) =
+        rememberTripRating(ownerId, entry, session.ratingRepository, canReadLive)
+    val isTripOwner = session.mode() == AppMode.Commando && ownerId == session.userId
+    val showOwnerActions = isTripOwner && (canReadLive || content.transitionInProgress)
     TripDetailsScreen(
         viewModel = tripDetailsViewModel,
         onBack = { navController.popBackStack() },
         onAddItems =
-            if (session.mode() == AppMode.Requester) {
+            if (canReadLive && session.mode() == AppMode.Requester) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
               }
             } else null,
         onViewOrders =
-            if (showOwnerActions) {
+            if (isTripOwner) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
                   launchSingleTop = true
@@ -185,7 +194,12 @@ internal fun NavGraphBuilder.tripRoutes(
         onRetryRating = onRetryRating,
         commandoName = publicName?.takeIf { it.first == ownerId }?.second,
         earningsViewModel =
-            rememberTripEarnings(showOwnerActions, tripId, entry, session.orderRepository),
+            rememberTripEarnings(
+                isTripOwner && canReadLive,
+                tripId,
+                entry,
+                session.orderRepository,
+            ),
     )
   }
 }
@@ -220,6 +234,7 @@ private fun rememberTripRating(
     ownerId: String?,
     entry: NavBackStackEntry,
     ratingRepository: () -> RatingRepository,
+    canReadLive: Boolean,
 ): Pair<TripRatingUiState?, () -> Unit> {
   if (ownerId == null) return null to {}
   return key(ownerId) {
@@ -228,7 +243,11 @@ private fun rememberTripRating(
           TripRatingViewModel(ratingRepository())
         }
     val state by model.uiState.collectAsState()
-    RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
-    state to model::retry
+    if (canReadLive) {
+      RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
+    }
+    state.takeIf {
+      canReadLive || it is TripRatingUiState.Content || it == TripRatingUiState.Empty
+    } to model::retry
   }
 }

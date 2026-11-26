@@ -26,6 +26,8 @@ import com.commando.app.R
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.components.CachedDataLabel
+import com.commando.app.ui.components.TripStatusBadge
 
 /**
  * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);
@@ -78,9 +80,9 @@ fun TripDetailsScreen(
  * Stateless trip details for [state]. Both actions receive the trip ID: [onAddItems] opens the
  * catalogue (disabled when null, or once the trip is no longer published) and [onViewOrders] opens
  * the incoming orders (hidden when null). [ownerControls] shows the owner's section when not null.
- * Back is blocked while a close or complete is being written. Optional [ratingState] is independent
- * of trip actions; [onRetryRating] reloads only ratings. [commandoName] must belong to the trip
- * owner; null uses a generic label without exposing IDs.
+ * Back and View orders are disabled while a close or complete is being written. Optional
+ * [ratingState] is independent of trip actions; [onRetryRating] reloads only ratings.
+ * [commandoName] must belong to the trip owner; null uses a generic label without exposing IDs.
  */
 @Composable
 fun TripDetailsScreen(
@@ -118,19 +120,25 @@ fun TripDetailsScreen(
       when (state) {
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
+          state.cachedAt?.let { CachedDataLabel(it) }
+          if (state.cachedAt != null) TripStatusBadge(state.trip)
           TripDetailsContent(state.trip, ratingState, onRetryRating, commandoName)
-          ownerControls?.let { TripOwnerSection(state, it) }
+          if (state.cachedAt == null) ownerControls?.let { TripOwnerSection(state, it) }
           if (onViewOrders != null) {
             TripDetailsButton(
                 text = stringResource(R.string.trip_details_view_orders),
                 onClick = { onViewOrders(state.trip.id) },
+                enabled = !writing,
             )
           }
           TripDetailsButton(
               text = stringResource(R.string.trip_details_add_items),
               onClick = { onAddItems?.invoke(state.trip.id) },
               // A closed trip refuses new orders, so only a published trip can be shopped from.
-              enabled = onAddItems != null && state.trip.status == TripStatus.PUBLISHED,
+              enabled =
+                  state.cachedAt == null &&
+                      onAddItems != null &&
+                      state.trip.status == TripStatus.PUBLISHED,
           )
         }
         is TripDetailsUiState.Error -> {
@@ -138,11 +146,13 @@ fun TripDetailsScreen(
           TripDetailsError(
               message =
                   stringResource(
-                      when (state.error) {
-                        TripError.NotFound -> R.string.trip_details_not_found
-                        TripError.NetworkError -> R.string.trip_details_error_network
-                        else -> R.string.trip_details_error
-                      }
+                      if (state.offlineUnavailable) R.string.offline_no_copy
+                      else
+                          when (state.error) {
+                            TripError.NotFound -> R.string.trip_details_not_found
+                            TripError.NetworkError -> R.string.trip_details_error_network
+                            else -> R.string.trip_details_error
+                          }
                   ),
               onRetry = if (notFound) null else onRetry,
           )
@@ -177,7 +187,7 @@ private fun TripDetailsContent(
         label = stringResource(R.string.trip_details_handoff),
         value = trip.handoffLocation.name,
     )
-    if (ratingState != null) {
+    if (ratingState != null || commandoName != null) {
       HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
       TripRatingSummary(ratingState, onRetryRating, commandoName)
     }

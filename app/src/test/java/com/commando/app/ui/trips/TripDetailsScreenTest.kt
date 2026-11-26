@@ -14,6 +14,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.commando.app.R
 import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
@@ -37,6 +38,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -424,8 +426,9 @@ class TripDetailsScreenTest {
     }
   }
 
+  // AI assistance: OpenAI Codex for the trip details error states (#453).
   @Test
-  fun otherErrorDisplaysExactMessageAndRetryAndBackWork() {
+  fun networkErrorDisplaysConnectionMessageAndRetryAndBackWork() {
     var retries = 0
     var backs = 0
     show(
@@ -433,10 +436,8 @@ class TripDetailsScreenTest {
         onRetry = { retries++ },
         onBack = { backs++ },
     )
-    compose
-        .onNodeWithText("Something went wrong while loading this trip.")
-        .assertIsDisplayed()
-        .assertTextEquals("Something went wrong while loading this trip.")
+    val message = RuntimeEnvironment.getApplication().getString(R.string.trip_details_error_network)
+    compose.onNodeWithText(message).assertIsDisplayed()
     compose.runOnIdle {
       assertEquals(0, retries)
       assertEquals(0, backs)
@@ -451,6 +452,13 @@ class TripDetailsScreenTest {
       assertEquals(1, retries)
       assertEquals(1, backs)
     }
+  }
+
+  @Test
+  fun unknownErrorDisplaysGenericMessage() {
+    show(TripDetailsUiState.Error(TripError.Unknown))
+    val message = RuntimeEnvironment.getApplication().getString(R.string.trip_details_error)
+    compose.onNodeWithText(message).assertIsDisplayed()
   }
 
   @Test

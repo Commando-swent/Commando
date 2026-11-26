@@ -85,6 +85,10 @@ interface OrderRepository {
    * [OrderStatus.CANCELLED] and publishes an `ORDER_CANCELLED` event to the requester, whose server
    * time is the trusted cancellation time. Authorized repeats at CANCELLED return Success without
    * writing; every other status returns [OrderError.AlreadyDecided] with the persisted order.
+   * Firestore also records late cancellations atomically in the trip owner's reliability counts.
+   * Server rules apply the grace boundary from [com.commando.app.model.isPenaltyFreeCancellation];
+   * missing historical acceptance evidence is penalty-free. A denied write does not classify an
+   * order as late: a bounded alternative must independently pass timing, refund and access rules.
    *
    * @param orderId Firestore document ID; blank IDs and document paths are invalid.
    * @return Persisted order or typed failure, including [OrderError.NotAuthenticated] for ended
@@ -111,6 +115,8 @@ interface OrderRepository {
    * Authenticated requester only; atomically changes READY_FOR_HANDOFF to DELIVERED, preserving
    * every other field. Authorized repeats at DELIVERED return Success without writing; other
    * statuses return AlreadyDecided with the persisted order. Authorization precedes both outcomes.
+   * Firestore increments the trip owner's completed reliability count in the same transaction;
+   * repeated confirmation does not increment it again. Customer-star ratings remain separate.
    */
   suspend fun confirmReceipt(orderId: String): OrderResult<Order>
 }

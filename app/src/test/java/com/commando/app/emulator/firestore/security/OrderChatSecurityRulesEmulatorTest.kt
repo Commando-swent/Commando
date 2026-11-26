@@ -285,11 +285,7 @@ class OrderChatSecurityRulesEmulatorTest {
         requester.firestore
             .batch()
             .apply {
-              update(
-                  requester.firestore.collection("orders").document(id),
-                  "status",
-                  OrderStatus.DELIVERED.name,
-              )
+              recordDelivery(requester, id, owner.auth.currentUser!!.uid)
               set(ref.document("terminal-batch"), data)
             }
             .commit()

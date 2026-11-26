@@ -79,9 +79,9 @@ fun TripDetailsScreen(
  * Stateless trip details for [state]. Both actions receive the trip ID: [onAddItems] opens the
  * catalogue (disabled when null, or once the trip is no longer published) and [onViewOrders] opens
  * the incoming orders (hidden when null). [ownerControls] shows the owner's section when not null.
- * Back is blocked while a close or complete is being written. Optional [ratingState] is independent
- * of trip actions; [onRetryRating] reloads only ratings. [commandoName] must belong to the trip
- * owner; null uses a generic label without exposing IDs.
+ * Back and View orders are disabled while a close or complete is being written. Optional
+ * [ratingState] is independent of trip actions; [onRetryRating] reloads only ratings.
+ * [commandoName] must belong to the trip owner; null uses a generic label without exposing IDs.
  */
 @Composable
 fun TripDetailsScreen(
@@ -127,6 +127,7 @@ fun TripDetailsScreen(
             TripDetailsButton(
                 text = stringResource(R.string.trip_details_view_orders),
                 onClick = { onViewOrders(state.trip.id) },
+                enabled = !writing,
             )
           }
           TripDetailsButton(

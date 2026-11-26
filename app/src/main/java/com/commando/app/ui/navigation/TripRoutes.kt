@@ -171,7 +171,7 @@ internal fun NavGraphBuilder.tripRoutes(
     val (ratingState, onRetryRating) =
         rememberTripRating(ownerId, entry, session.ratingRepository, canReadLive)
     val isTripOwner = session.mode() == AppMode.Commando && ownerId == session.userId
-    val showOwnerActions = canReadLive && isTripOwner
+    val showOwnerActions = isTripOwner && (canReadLive || content.transitionInProgress)
     TripDetailsScreen(
         viewModel = tripDetailsViewModel,
         onBack = { navController.popBackStack() },
@@ -194,7 +194,12 @@ internal fun NavGraphBuilder.tripRoutes(
         onRetryRating = onRetryRating,
         commandoName = publicName?.takeIf { it.first == ownerId }?.second,
         earningsViewModel =
-            rememberTripEarnings(showOwnerActions, tripId, entry, session.orderRepository),
+            rememberTripEarnings(
+                isTripOwner && canReadLive,
+                tripId,
+                entry,
+                session.orderRepository,
+            ),
     )
   }
 }

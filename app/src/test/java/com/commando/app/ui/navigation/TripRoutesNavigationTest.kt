@@ -1,6 +1,7 @@
 package com.commando.app.ui.navigation
 
 // AI assistance: Claude Code (characterization tests for trip routes, #322; owner earnings, #301).
+// AI assistance: OpenAI Codex for offline owner controls regression coverage.
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
@@ -16,6 +17,8 @@ import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.PublicProfileTestRepository
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
+import com.commando.app.data.repository.TripRepository
+import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem
@@ -23,6 +26,7 @@ import com.commando.app.model.OrderStatus
 import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
+import com.commando.app.model.TripTransition
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.commando.app.ui.auth.GoogleCredentialClient
@@ -37,6 +41,7 @@ import com.commando.app.ui.trips.TripOwnerTestTags
 import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.discoveryTrip
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -95,7 +100,7 @@ class TripRoutesNavigationTest {
   private val publicProfiles = PublicProfileTestRepository()
   private val connectivity = FakeConnectivityMonitor()
 
-  private fun show(trips: FakeTripRepository) {
+  private fun show(trips: TripRepository) {
     val presets =
         SavedTripSearchRepositoryLocal(
             ApplicationProvider.getApplicationContext(),
@@ -217,6 +222,40 @@ class TripRoutesNavigationTest {
     earnings().assertDoesNotExist()
     viewOrders().performScrollTo().performClick()
     compose.onNodeWithText(string(R.string.incoming_orders_title)).assertExists()
+  }
+
+  @Test
+  fun ownerControlsStayVisibleAndDisabledWhenAnInFlightWriteLosesConnection() {
+    val fake = trips(coop)
+    val transitionGate = CompletableDeferred<Unit>()
+    show(
+        object : TripRepository by fake {
+          override suspend fun transitionTrip(
+              tripId: String,
+              transition: TripTransition,
+          ): TripResult<Trip> {
+            transitionGate.await()
+            return fake.transitionTrip(tripId, transition)
+          }
+        }
+    )
+    openCoopAsOwner()
+    val transition = compose.onNodeWithTag(TripOwnerTestTags.TRANSITION)
+    val back = compose.onNodeWithText(string(R.string.trip_details_back))
+    transition.performScrollTo().performClick()
+    click(TripOwnerTestTags.CONFIRM)
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    transition.assertIsNotEnabled()
+    viewOrders().assertIsNotEnabled()
+    back.assertIsNotEnabled()
+
+    compose.runOnIdle { transitionGate.complete(Unit) }
+
+    transition.assertDoesNotExist()
+    viewOrders().assertIsEnabled()
+    back.assertIsEnabled()
   }
 
   @Test

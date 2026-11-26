@@ -1,6 +1,5 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: OpenAI Codex for revoked-access read regression (#391).
 // AI assistance: Claude Code for trip status seeding (#233) and trip ID reuse (#394).
 
 import com.commando.app.data.repository.TripError
@@ -15,6 +14,7 @@ import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.Source
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.tasks.await
@@ -289,12 +289,13 @@ class TripFirestoreSecurityRulesEmulatorTest {
     }
   }
 
+  // AI assistance: OpenAI Codex for the deleted trip read regression (#453).
   @Test
-  fun byIdRead_afterAccessRevocationDoesNotReturnPreviouslyCachedTrip() = runTest {
+  fun byIdRead_afterDeletionDoesNotReturnPreviouslyCachedTrip() = runTest {
     withClients("owner" to true, "reader" to true) { (owner, reader) ->
       val ownerId = checkNotNull(owner.auth.currentUser).uid
       val readerId = checkNotNull(reader.auth.currentUser).uid
-      val id = "revoked-${UUID.randomUUID()}"
+      val id = "deleted-${UUID.randomUUID()}"
       owner.firestore.collection(TRIPS_COLLECTION).document(id).set(storedTrip(ownerId)).await()
       val repository =
           TripRepositoryFirestore(
@@ -302,11 +303,22 @@ class TripFirestoreSecurityRulesEmulatorTest {
               reader.firestore,
               now = { NOW },
           )
-      assertEquals(id, repository.getTripById(id).successData().id)
-
-      setStatusAsAdmin(id, TripStatus.CANCELLED)
-
-      assertEquals(TripResult.Error(TripError.PermissionDenied), repository.getTripById(id))
+      val reference = reader.firestore.collection(TRIPS_COLLECTION).document(id)
+      // Keep the document in the reader's memory cache after the initial server read.
+      val retained = reference.addSnapshotListener({ it.run() }) { _, _ -> }
+      try {
+        assertEquals(id, repository.getTripById(id).successData().id)
+        reader.firestore.disableNetwork().await()
+        try {
+          deleteDocumentAsOwner("$TRIPS_COLLECTION/$id")
+          assertTrue(reference.get(Source.CACHE).await().exists())
+        } finally {
+          reader.firestore.enableNetwork().await()
+        }
+        assertEquals(TripResult.Error(TripError.NotFound), repository.getTripById(id))
+      } finally {
+        retained.remove()
+      }
     }
   }
 

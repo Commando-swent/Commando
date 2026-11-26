@@ -140,6 +140,35 @@ class MyOrdersViewModelTest {
   }
 
   @Test
+  fun temporaryReadFailureWithoutSavedHistoryShowsTheNetworkError() = runTest {
+    val cache = SessionCache { sessionUser }
+    orders.forcedError = OrderError.NetworkError
+    val vm =
+        MyOrdersViewModel(orders, trips, "alice", cache = cache, online = MutableStateFlow(true))
+
+    advanceUntilIdle()
+
+    assertEquals(MyOrdersUiState.Error(OrderError.NetworkError), vm.uiState.value)
+    assertNull(cache.get(historyKey("alice")))
+  }
+
+  @Test
+  fun completedRefreshDoesNotSaveRowsWhenConnectivityHasAlreadyDropped() = runTest {
+    val cache = SessionCache { sessionUser }
+    val online = MutableStateFlow(true)
+    val delayed = GatedOrderRepository()
+    val vm = MyOrdersViewModel(delayed, trips, "alice", cache = cache, online = online)
+    runCurrent()
+
+    delayed.gates.single().complete(OrderResult.Success(listOf(aliceOld)))
+    online.value = false
+    advanceUntilIdle()
+
+    assertEquals(MyOrdersUiState.OfflineUnavailable, vm.uiState.value)
+    assertNull(cache.get(historyKey("alice")))
+  }
+
+  @Test
   fun permissionDenialEvictsSavedRowsAndClearsThemFromTheUi() = runTest {
     val cache = cacheWithConfirmedHistory()
     orders.forcedError = OrderError.PermissionDenied

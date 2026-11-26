@@ -60,6 +60,15 @@ class OrderRepositoryFirestoreTest {
   }
 
   @Test
+  fun requesterHistoryRejectsMalformedRowsInsteadOfReturningPartialSuccess() = runTest {
+    assertTrue(repository.createOrder(draft) is OrderResult.Success)
+    val original = source.documents.getValue("b")
+    source.documents["bad"] = original.copy(id = "bad", data = original.data - "items")
+
+    assertEquals(error(OrderError.InvalidData), repository.getMyOrders())
+  }
+
+  @Test
   fun rejectsInvalidDraftsAndIneligibleTripsBeforeWriting() = runTest {
     listOf(
             draft.copy(items = emptyList()),

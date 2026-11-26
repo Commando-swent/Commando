@@ -335,6 +335,7 @@ private fun AuthenticatedApp(
           isOnline = connectivity.isOnline,
       )
       ordersRoutes(
+          online = connectivity.isOnline,
           navController = navController,
           session = session,
           userId = userId,

@@ -537,6 +537,8 @@
     <string name="public_name_write_failed">Modification non confirmée. Réessayez.</string>
     <string name="incoming_orders_requester">De %1$s</string>
     <string name="order_own_trip_error">Vous ne pouvez pas commander sur votre propre trajet.</string>
+    <string name="offline_confirmed_time">Copie enregistrée · Dernière confirmation le %1$s</string>
+    <string name="offline_no_copy">Aucune copie disponible hors connexion.</string>
     <string name="trip_details_reliability_title">Fiabilité</string>
     <string name="trip_details_reliability_loading">Chargement de la fiabilité…</string>
     <string name="trip_details_reliability_empty">Pas encore d’historique</string>

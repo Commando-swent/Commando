@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeRatingRepository
 import com.commando.app.data.repository.FakeShoppingChecklistRepository
@@ -89,6 +90,7 @@ class IncomingOrdersNavigationTest {
             orderRepositoryFactory = factory,
             ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
             checklistRepositoryFactory = ::FakeShoppingChecklistRepository,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

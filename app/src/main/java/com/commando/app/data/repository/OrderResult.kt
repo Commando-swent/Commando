@@ -20,6 +20,9 @@ sealed class OrderError {
    */
   data class AlreadyDecided(val persistedOrder: Order) : OrderError()
 
+  /** The requester history could not be confirmed by the server. */
+  data object NetworkError : OrderError()
+
   data object Unknown : OrderError()
 }
 

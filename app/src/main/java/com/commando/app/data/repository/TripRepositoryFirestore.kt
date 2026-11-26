@@ -13,7 +13,6 @@ import com.commando.app.model.blocksTripCompletion
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.time.Instant
@@ -255,14 +254,7 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
 
   override suspend fun getTrip(tripId: String): TripFirestoreDocument? {
     val snapshot = trips.document(tripId).get(Source.SERVER).await()
-    // The cache check is defensive. SERVER reads can still include latency-compensated local
-    // writes.
-    if (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) {
-      throw FirebaseFirestoreException(
-          "Trip is not server-confirmed",
-          FirebaseFirestoreException.Code.UNAVAILABLE,
-      )
-    }
+    snapshot.metadata.requireServerConfirmation()
     return snapshot.takeIf { it.exists() }?.let { it.toFirestoreDocument() }
   }
 

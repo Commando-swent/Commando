@@ -32,6 +32,7 @@ import com.commando.app.model.OrderStatus
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 import com.commando.app.model.totalCents
+import com.commando.app.ui.components.CachedDataLabel
 import com.commando.app.ui.components.SkeletonCard
 import com.commando.app.ui.components.StateCard
 import com.commando.app.ui.components.TripDepartureRow
@@ -103,7 +104,12 @@ fun MyOrdersScreen(
           style = MaterialTheme.typography.bodySmall,
       )
     }
+    if (state is MyOrdersUiState.Content && state.confirmedAt != null) {
+      CachedDataLabel(state.confirmedAt)
+      if (state.rows.isEmpty()) Text(stringResource(R.string.my_orders_empty))
+    }
     when (state) {
+      MyOrdersUiState.OfflineUnavailable -> Text(stringResource(R.string.offline_no_copy))
       MyOrdersUiState.Loading -> {
         val loading = stringResource(R.string.my_orders_loading)
         Column(

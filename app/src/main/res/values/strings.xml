@@ -44,4 +44,6 @@
         <item quantity="other">Position captured %1$d seconds ago</item>
     </plurals>
     <string name="order_tracking_retry">Retry tracking</string>
+    <string name="offline_confirmed_time">Saved copy · Last confirmed %1$s</string>
+    <string name="offline_no_copy">No saved copy is available offline.</string>
 </resources>

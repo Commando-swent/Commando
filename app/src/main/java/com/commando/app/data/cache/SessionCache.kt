@@ -52,6 +52,22 @@ class SessionCache(private val currentUserId: () -> String?) {
     synchronized(lock) { if (isActive()) entries.remove(key) }
   }
 
+  /** Invalidates entries in a typed namespace whose cached values match [predicate]. */
+  internal inline fun <reified T> removeMatching(
+      prefix: String,
+      noinline predicate: (T) -> Boolean,
+  ) = removeMatching(prefix, typeOf<T>(), predicate)
+
+  @Suppress("UNCHECKED_CAST") // The key type is checked before casting its value.
+  private fun <T> removeMatching(prefix: String, type: KType, predicate: (T) -> Boolean) {
+    synchronized(lock) {
+      if (!isActive()) return
+      entries.entries.removeAll { (key, entry) ->
+        key.type == type && key.name.startsWith(prefix) && predicate(entry.value as T)
+      }
+    }
+  }
+
   /** Ends the session: drops every entry and rejects later reads and writes. */
   fun close() {
     synchronized(lock) {

@@ -39,6 +39,38 @@ class SessionCacheTest {
   }
 
   @Test
+  fun matchingRemovalLeavesOtherTypesNamespacesAndValuesIntact() {
+    val cache = SessionCache { uid }
+    val matching = SessionCache.key<String>("details/1")
+    val otherValue = SessionCache.key<String>("details/2")
+    val otherType = SessionCache.key<Int>("details/1")
+    val otherNamespace = SessionCache.key<String>("other/1")
+    cache.put(matching, "stale")
+    cache.put(otherValue, "fresh")
+    cache.put(otherType, 1)
+    cache.put(otherNamespace, "stale")
+
+    cache.removeMatching<String>("details/") { it == "stale" }
+
+    assertNull(cache.get(matching))
+    assertEquals("fresh", cache.get(otherValue)?.value)
+    assertEquals(1, cache.get(otherType)?.value)
+    assertEquals("stale", cache.get(otherNamespace)?.value)
+  }
+
+  @Test
+  fun matchingRemovalNeverReadsValuesAfterAccountChange() {
+    val cache = SessionCache { uid }
+    val details = SessionCache.key<String>("details/1")
+    cache.put(details, "private")
+    uid = "bob"
+
+    cache.removeMatching<String>("details/") { error("Must not read previous account data") }
+
+    assertTrue(cache.isEmpty())
+  }
+
+  @Test
   fun accountChangeHidesDataAndRejectsLateWrites() {
     val alice = SessionCache { uid }
     alice.put(orders, listOf("alice order"), confirmed)

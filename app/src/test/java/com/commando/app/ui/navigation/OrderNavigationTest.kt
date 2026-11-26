@@ -146,6 +146,22 @@ class OrderNavigationTest {
   private fun card() = compose.onNodeWithTag(MyOrdersTestTags.ORDER_CARD_PREFIX + order.id)
 
   @Test
+  fun offlineHistoryOpensCachedDetailsAndRevalidatesOnReturn() {
+    show()
+    click(AppTestTags.ORDERS_BUTTON)
+    card().performClick()
+    compose.onNodeWithText("Order details").assertExists()
+    compose.runOnIdle { connectivity.setOnline(false) }
+    compose.onNodeWithText("Saved copy", substring = true).assertExists()
+    back()
+    compose.onNodeWithText("Saved copy", substring = true).assertExists()
+    card().performClick()
+    compose.onNodeWithText("Saved copy", substring = true).assertExists()
+    compose.runOnIdle { connectivity.setOnline(true) }
+    compose.onNodeWithText("Saved copy", substring = true).assertDoesNotExist()
+  }
+
+  @Test
   fun failedCleanupBlocksSignOutAndRoleExitRequiresFreshSharingConsent() {
     shadowOf(ApplicationProvider.getApplicationContext<Application>())
         .grantPermissions(Manifest.permission.ACCESS_COARSE_LOCATION)

@@ -99,6 +99,18 @@ class MyOrdersViewModelTest {
       (state as MyOrdersUiState.Content).rows.map { it.order.id }
 
   @Test
+  fun historyRefreshDropsDetailsOfAnOrderRemovedFromTheServerList() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
+    cache.put(historyKey("alice"), listOf(MyOrderRow(aliceNew, trip)))
+    cache.put(orderDetailsKey(aliceNew.id), aliceNew to trip)
+    val empty = FakeOrderRepository({ sessionUser })
+    val vm = MyOrdersViewModel(empty, trips, "alice", cache = cache)
+    advanceUntilIdle()
+    assertEquals(MyOrdersUiState.Empty, vm.uiState.value)
+    assertNull(cache.get(orderDetailsKey(aliceNew.id)))
+  }
+
+  @Test
   fun closingTheSessionDuringAnOrderReadDropsTheResult() = runTest {
     val cache = com.commando.app.data.cache.SessionCache { sessionUser }
     val delayed = GatedOrderRepository()
@@ -109,6 +121,59 @@ class MyOrdersViewModelTest {
     advanceUntilIdle()
     assertEquals(MyOrdersUiState.Loading, vm.uiState.value)
     assertNull(cache.get(historyKey("alice")))
+  }
+
+  @Test
+  fun historyRefreshInvalidatesDetailsOnlyForOrdersThatChanged() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
+    val vm = MyOrdersViewModel(orders, trips, "alice", cache = cache)
+    advanceUntilIdle()
+    cache.put(orderDetailsKey(aliceNew.id), aliceNew to trip)
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip)
+    // The order can remain unchanged while its trip changes on another device.
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip.copy(status = TripStatus.IN_PROGRESS))
+    vm.retry()
+    advanceUntilIdle()
+    assertNull(cache.get(orderDetailsKey(aliceOld.id)))
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip)
+    orders.cancelOrder(aliceNew.id)
+    vm.retry()
+    advanceUntilIdle()
+    assertNull(cache.get(orderDetailsKey(aliceNew.id)))
+    assertEquals(aliceOld, cache.get(orderDetailsKey(aliceOld.id))!!.value.first)
+  }
+
+  @Test
+  fun historyRefreshInvalidatesAnotherOrderEvenAfterCancellationEvictsHistory() = runTest {
+    val cache = SessionCache { sessionUser }
+    var other = aliceOld
+    val repository =
+        object : OrderRepository by orders {
+          override suspend fun getMyOrders(): OrderResult<List<Order>> =
+              OrderResult.Success(
+                  listOf((orders.getOrderById(aliceNew.id) as OrderResult.Success).data, other)
+              )
+        }
+    val history = MyOrdersViewModel(repository, trips, "alice", cache = cache)
+    val details =
+        OrderDetailsViewModel(aliceNew.id, repository, trips, { sessionUser }, cache = cache)
+    advanceUntilIdle()
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip)
+    cache.put(orderDetailsKey(bobOrder.id), bobOrder to trip)
+
+    details.cancel()
+    advanceUntilIdle()
+    assertNull(cache.get(historyKey("alice")))
+    assertEquals(aliceOld, cache.get(orderDetailsKey(aliceOld.id))?.value?.first)
+
+    other = aliceOld.copy(status = OrderStatus.ACCEPTED)
+    history.retry()
+    advanceUntilIdle()
+
+    val rows = (history.uiState.value as MyOrdersUiState.Content).rows
+    assertEquals(OrderStatus.ACCEPTED, rows.single { it.order.id == aliceOld.id }.order.status)
+    assertNull(cache.get(orderDetailsKey(aliceOld.id)))
+    assertEquals(bobOrder, cache.get(orderDetailsKey(bobOrder.id))?.value?.first)
   }
 
   @Test

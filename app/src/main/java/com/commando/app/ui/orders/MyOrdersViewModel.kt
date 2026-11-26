@@ -113,9 +113,22 @@ class MyOrdersViewModel(
             state is MyOrdersUiState.Error -> cached() ?: state
             else -> {
               val rows = (state as? MyOrdersUiState.Content)?.rows.orEmpty()
+              reconcileSavedOrderDetails(cache, requester, rows)
               if (cache.put(key, rows)) state else MyOrdersUiState.Loading
             }
           }
+    }
+  }
+
+  private fun reconcileSavedOrderDetails(
+      cache: SessionCache,
+      requesterId: String,
+      rows: List<MyOrderRow>,
+  ) {
+    val confirmed = rows.associateBy { it.order.id }
+    cache.removeMatching<Pair<Order, Trip>>(ORDER_DETAILS_CACHE_PREFIX) { (order, trip) ->
+      val latest = confirmed[order.id]
+      order.requesterId == requesterId && (latest?.order != order || latest.trip != trip)
     }
   }
 

@@ -23,7 +23,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.commando.app.R
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.TripError
+import com.commando.app.model.ReliabilitySummary
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
 
@@ -33,7 +35,8 @@ import com.commando.app.model.TripStatus
  * [showOwnerActions] is true only for the trip's owner and adds the close and complete actions, and
  * the earnings of [earningsViewModel] when it is not null. [ratingState] enables the creator
  * section; [onRetryRating] retries only its summary. [commandoName] is the owner's known name, or
- * null to show the generic Commando label.
+ * null to show the generic Commando label. [reliabilityState] loads independently (null means
+ * loading); [onRetryReliability] retries only reliability.
  */
 @Composable
 fun TripDetailsScreen(
@@ -47,6 +50,8 @@ fun TripDetailsScreen(
     onRetryRating: () -> Unit = {},
     commandoName: String? = null,
     earningsViewModel: TripEarningsViewModel? = null,
+    reliabilityState: RatingResult<ReliabilitySummary>? = null,
+    onRetryReliability: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
   val earnings = earningsViewModel?.uiState?.collectAsState()?.value
@@ -71,6 +76,8 @@ fun TripDetailsScreen(
       ratingState,
       onRetryRating,
       commandoName,
+      reliabilityState,
+      onRetryReliability,
   )
 }
 
@@ -80,7 +87,8 @@ fun TripDetailsScreen(
  * the incoming orders (hidden when null). [ownerControls] shows the owner's section when not null.
  * Back is blocked while a close or complete is being written. Optional [ratingState] is independent
  * of trip actions; [onRetryRating] reloads only ratings. [commandoName] must belong to the trip
- * owner; null uses a generic label without exposing IDs.
+ * owner; null uses a generic label without exposing IDs. [reliabilityState] loads independently
+ * (null means loading); [onRetryReliability] retries only reliability.
  */
 @Composable
 fun TripDetailsScreen(
@@ -94,6 +102,8 @@ fun TripDetailsScreen(
     ratingState: TripRatingUiState? = null,
     onRetryRating: () -> Unit = {},
     commandoName: String? = null,
+    reliabilityState: RatingResult<ReliabilitySummary>? = null,
+    onRetryReliability: () -> Unit = {},
 ) {
   Column(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()
@@ -118,7 +128,18 @@ fun TripDetailsScreen(
       when (state) {
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
-          TripDetailsContent(state.trip, ratingState, onRetryRating, commandoName)
+          TripDetailsContent(state.trip) {
+            if (ratingState != null) {
+              HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+              TripRatingSummary(
+                  ratingState,
+                  onRetryRating,
+                  commandoName,
+                  reliabilityState = reliabilityState,
+                  onRetryReliability = onRetryReliability,
+              )
+            }
+          }
           ownerControls?.let { TripOwnerSection(state, it) }
           if (onViewOrders != null) {
             TripDetailsButton(
@@ -155,9 +176,7 @@ fun TripDetailsScreen(
 @Composable
 private fun TripDetailsContent(
     trip: Trip,
-    ratingState: TripRatingUiState?,
-    onRetryRating: () -> Unit,
-    commandoName: String?,
+    creator: @Composable () -> Unit,
 ) {
   val locale = LocalConfiguration.current.locales[0]
   TripDetailsCard {
@@ -177,10 +196,7 @@ private fun TripDetailsContent(
         label = stringResource(R.string.trip_details_handoff),
         value = trip.handoffLocation.name,
     )
-    if (ratingState != null) {
-      HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-      TripRatingSummary(ratingState, onRetryRating, commandoName)
-    }
+    creator()
   }
 }
 

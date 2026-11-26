@@ -23,6 +23,27 @@ class FakeRatingRepositoryTest {
   private val invalidIds = listOf("", " \t", "a/b", ".", "..")
 
   @Test
+  fun seededReliabilityDoesNotDependOnCustomerStars() = runTest {
+    val summary = ReliabilitySummary("commando", 4, 1)
+    val f = Fixture(reliabilitySummaries = mapOf("commando" to summary))
+    assertEquals(RatingResult.Success(summary), f.rating.getReliabilitySummary("commando"))
+  }
+
+  @Test
+  fun reliabilityRejectsInvalidOwnerIds() = runTest {
+    val f = Fixture()
+    for (id in invalidIds) {
+      assertEquals(id, failure(RatingError.InvalidData), f.rating.getReliabilitySummary(id))
+    }
+  }
+
+  @Test
+  fun reliabilityRejectsSeedBelongingToAnotherOwner() = runTest {
+    val f = Fixture(reliabilitySummaries = mapOf("commando" to ReliabilitySummary("other", 5, 0)))
+    assertEquals(failure(RatingError.InvalidData), f.rating.getReliabilitySummary("commando"))
+  }
+
+  @Test
   fun deliveredOrdersDeriveIdentitiesAndAcceptBoundaryScoresWithoutTripCompletion() = runTest {
     for (status in TripStatus.entries) {
       for (score in listOf(1, 5)) {
@@ -282,6 +303,7 @@ class FakeRatingRepositoryTest {
       orders: List<Order> = listOf(order()),
       trips: List<Trip> = listOf(trip()),
       now: () -> Instant = { time },
+      reliabilitySummaries: Map<String, ReliabilitySummary> = emptyMap(),
   ) {
     var beforeOrder: suspend () -> Unit = {}
     var beforeTrip: suspend () -> Unit = {}
@@ -303,7 +325,14 @@ class FakeRatingRepositoryTest {
             return tripResult ?: tripSource.getTripById(tripId)
           }
         }
-    val rating = FakeRatingRepository({ userId }, orderRepository, tripRepository, now)
+    val rating =
+        FakeRatingRepository(
+            { userId },
+            orderRepository,
+            tripRepository,
+            now,
+            reliabilitySummaries,
+        )
 
     suspend fun read() = rating.getRatingForOrder("order")
 

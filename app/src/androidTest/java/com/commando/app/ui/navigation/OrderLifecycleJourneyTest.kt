@@ -89,13 +89,14 @@ class OrderLifecycleJourneyTest {
 
             override suspend fun clearSession() = Unit
           }
+      val connectivity = FakeConnectivityMonitor()
       compose.setContent {
         SampleAppTheme {
           CommandoApp(
               auth,
               trips,
               google,
-              connectivityMonitor = FakeConnectivityMonitor(),
+              connectivityMonitor = connectivity,
               productRepository = ProductRepositoryFirestore(client.firestore),
               ratingRepositoryFactory = {
                 FakeRatingRepository(
@@ -170,6 +171,17 @@ class OrderLifecycleJourneyTest {
       openRequesterOrder(pending.id)
       assertStatus(OrderStatus.PENDING)
       assertActions(OrderDetailsTestTags.EDIT, OrderDetailsTestTags.CANCEL)
+      connectivity.setOnline(false)
+      compose.waitUntil(ORDER_JOURNEY_WAIT_MILLIS) {
+        compose.onAllNodesWithTag(OrderDetailsTestTags.EDIT).fetchSemanticsNodes().isEmpty()
+      }
+      back()
+      click(MyOrdersTestTags.ORDER_CARD_PREFIX + pending.id)
+      assertStatus(OrderStatus.PENDING)
+      compose.onNodeWithTag(OrderDetailsTestTags.CANCEL).assertDoesNotExist()
+      connectivity.setOnline(true)
+      awaitTag(OrderDetailsTestTags.EDIT)
+
       assertEquals(
           OrderResult.Error(OrderError.PermissionDenied),
           orders.decideOrder(pending.id, OrderDecision.ACCEPT, pending.revision),

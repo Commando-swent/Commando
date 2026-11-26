@@ -86,6 +86,8 @@ internal fun NavGraphBuilder.ordersRoutes(
               orders.sessionChanges,
               ratingRepositoryFactory = ratingRepositoryFactory,
               paymentRepositoryFactory = paymentRepositoryFactory,
+              cache = session.cache,
+              online = online,
           )
         }
     RefreshOrderAfterChat(entry, model)

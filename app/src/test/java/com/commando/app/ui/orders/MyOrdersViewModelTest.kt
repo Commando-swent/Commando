@@ -99,6 +99,18 @@ class MyOrdersViewModelTest {
       (state as MyOrdersUiState.Content).rows.map { it.order.id }
 
   @Test
+  fun historyRefreshDropsDetailsOfAnOrderRemovedFromTheServerList() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
+    cache.put(historyKey("alice"), listOf(MyOrderRow(aliceNew, trip)))
+    cache.put(orderDetailsKey(aliceNew.id), aliceNew to trip)
+    val empty = FakeOrderRepository({ sessionUser })
+    val vm = MyOrdersViewModel(empty, trips, "alice", cache = cache)
+    advanceUntilIdle()
+    assertEquals(MyOrdersUiState.Empty, vm.uiState.value)
+    assertNull(cache.get(orderDetailsKey(aliceNew.id)))
+  }
+
+  @Test
   fun closingTheSessionDuringAnOrderReadDropsTheResult() = runTest {
     val cache = com.commando.app.data.cache.SessionCache { sessionUser }
     val delayed = GatedOrderRepository()
@@ -109,6 +121,26 @@ class MyOrdersViewModelTest {
     advanceUntilIdle()
     assertEquals(MyOrdersUiState.Loading, vm.uiState.value)
     assertNull(cache.get(historyKey("alice")))
+  }
+
+  @Test
+  fun historyRefreshInvalidatesDetailsOnlyForOrdersThatChanged() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
+    val vm = MyOrdersViewModel(orders, trips, "alice", cache = cache)
+    advanceUntilIdle()
+    cache.put(orderDetailsKey(aliceNew.id), aliceNew to trip)
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip)
+    // The order can remain unchanged while its trip changes on another device.
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip.copy(status = TripStatus.IN_PROGRESS))
+    vm.retry()
+    advanceUntilIdle()
+    assertNull(cache.get(orderDetailsKey(aliceOld.id)))
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip)
+    orders.cancelOrder(aliceNew.id)
+    vm.retry()
+    advanceUntilIdle()
+    assertNull(cache.get(orderDetailsKey(aliceNew.id)))
+    assertEquals(aliceOld, cache.get(orderDetailsKey(aliceOld.id))!!.value.first)
   }
 
   @Test

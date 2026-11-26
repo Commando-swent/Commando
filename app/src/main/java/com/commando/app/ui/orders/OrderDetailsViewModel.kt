@@ -3,6 +3,7 @@ package com.commando.app.ui.orders
 // AI assistance: OpenAI Codex (shared session guard); Commando cancellation (#402): Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
@@ -28,6 +29,7 @@ import com.commando.app.model.TripStatus
 import com.commando.app.model.isActiveForTracking
 import com.commando.app.model.normalizeRatingComment
 import com.commando.app.ui.session.SessionGuard
+import java.time.Instant
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -35,6 +37,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
@@ -90,10 +93,13 @@ sealed class OrderDetailsUiState {
        * reuses this result and reads only the refund, so Order Details shows one payment card.
        */
       val payment: PaymentResult<Payment?>? = null,
+      val live: Boolean = true,
+      val cachedAt: Instant? = null,
   ) : OrderDetailsUiState() {
     private val isEligibleOwner: Boolean
       get() =
-          viewerId != null &&
+          live &&
+              viewerId != null &&
               viewerId == trip.ownerId &&
               order.tripId == trip.id &&
               order.requesterId != trip.ownerId
@@ -101,7 +107,8 @@ sealed class OrderDetailsUiState {
     /** Requester-only entry point; the tracking repository independently checks access. */
     val canTrack: Boolean
       get() =
-          viewerId != null &&
+          live &&
+              viewerId != null &&
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status.isActiveForTracking()
@@ -127,7 +134,8 @@ sealed class OrderDetailsUiState {
      */
     val canConfirmReceipt: Boolean
       get() =
-          !viewerId.isNullOrBlank() &&
+          live &&
+              !viewerId.isNullOrBlank() &&
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status == OrderStatus.READY_FOR_HANDOFF
@@ -135,7 +143,8 @@ sealed class OrderDetailsUiState {
     /** Presentation eligibility; session validity and the one-time offer are checked separately. */
     val canRate: Boolean
       get() =
-          !viewerId.isNullOrBlank() &&
+          live &&
+              !viewerId.isNullOrBlank() &&
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.requesterId != trip.ownerId &&
@@ -147,7 +156,8 @@ sealed class OrderDetailsUiState {
     /** Requester checkout entry; fails closed until the persisted payment was read. */
     val canPay: Boolean
       get() =
-          !viewerId.isNullOrBlank() &&
+          live &&
+              !viewerId.isNullOrBlank() &&
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status == OrderStatus.ACCEPTED &&
@@ -159,7 +169,8 @@ sealed class OrderDetailsUiState {
      */
     val canCancel: Boolean
       get() =
-          viewerId != null &&
+          live &&
+              viewerId != null &&
               viewerId == order.requesterId &&
               order.tripId == trip.id &&
               order.status == OrderStatus.PENDING
@@ -177,6 +188,8 @@ sealed class OrderDetailsUiState {
   }
 
   data object NotFound : OrderDetailsUiState()
+
+  data object OfflineUnavailable : OrderDetailsUiState()
 
   data object SessionEnded : OrderDetailsUiState()
 
@@ -202,6 +215,8 @@ class OrderDetailsViewModel(
     sessionChanges: Flow<String?> = emptyFlow(),
     ratingRepositoryFactory: ((() -> String?) -> RatingRepository)? = null,
     paymentRepositoryFactory: ((() -> String?) -> PaymentRepository)? = null,
+    private val cache: SessionCache? = null,
+    private val online: StateFlow<Boolean>? = null,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<OrderDetailsUiState>(OrderDetailsUiState.Loading)
   val uiState: StateFlow<OrderDetailsUiState> = mutableState.asStateFlow()
@@ -209,7 +224,14 @@ class OrderDetailsViewModel(
   val ratingState: StateFlow<RatingDialogState> = mutableRating.asStateFlow()
   private var ratingOffered = false
   private var ratingUncertain = false
-  private var isLoading = false
+  private val detailsKey = orderDetailsKey(orderId)
+  private var readJob: Job? = null
+  private val isLoading: Boolean
+    get() = readJob?.isActive == true
+
+  private val isOffline: Boolean
+    get() = online?.value == false
+
   private val ratingsConfigured = ratingRepositoryFactory != null
   private var ratingReadJob: Job? = null
   private var ratingReadGeneration = 0L
@@ -236,7 +258,53 @@ class OrderDetailsViewModel(
         }
       }
     }
+    online?.let {
+      viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+        it.drop(1).collect { connected -> if (connected) load() else offline() }
+      }
+    }
     load()
+  }
+
+  private fun offline() {
+    readJob?.cancel()
+    invalidateRatingRead()
+    invalidatePaymentRead()
+    mutableRating.value = RatingDialogState()
+    val current = mutableState.value as? OrderDetailsUiState.Content
+    mutableState.value =
+        if (endSessionIfChanged()) OrderDetailsUiState.SessionEnded
+        else
+            cachedDetails()?.copy(mutation = current?.mutation ?: OrderMutationState.Idle)
+                ?: OrderDetailsUiState.OfflineUnavailable
+  }
+
+  private fun cachedDetails(): OrderDetailsUiState.Content? =
+      cache?.get(detailsKey)?.let {
+        OrderDetailsUiState.Content(
+            it.value.first,
+            it.value.second,
+            session.initialUserId,
+            live = false,
+            cachedAt = it.confirmedAt,
+        )
+      }
+
+  private fun rememberDetails(state: OrderDetailsUiState): OrderDetailsUiState {
+    if (cache == null) return state
+    return when {
+      state is OrderDetailsUiState.Content ->
+          if (cache.put(detailsKey, state.order to state.trip)) state
+          else OrderDetailsUiState.SessionEnded
+      state == OrderDetailsUiState.Error.OrderFailure(OrderError.Unknown) ||
+          state == OrderDetailsUiState.Error.TripFailure(TripError.NetworkError) ||
+          state == OrderDetailsUiState.Error.TripFailure(TripError.Unknown) ->
+          cachedDetails() ?: state
+      else -> {
+        cache.remove(detailsKey)
+        state
+      }
+    }
   }
 
   /**
@@ -247,6 +315,10 @@ class OrderDetailsViewModel(
   }
 
   private fun load() {
+    if (isOffline) {
+      offline()
+      return
+    }
     // Preserve modal input during reloads; the independent session observer still clears it.
     if (
         isLoading ||
@@ -256,24 +328,22 @@ class OrderDetailsViewModel(
     )
         return
     // Set before launching so rapid retries cannot start simultaneous loads.
-    isLoading = true
     invalidateRatingRead()
     invalidatePaymentRead()
     mutableState.value = OrderDetailsUiState.Loading
-    viewModelScope.launch {
-      try {
-        val state = fetchOrder()
-        // A repository may return even after the destination's coroutine was cancelled.
-        currentCoroutineContext().ensureActive()
-        if (!endSessionIfChanged()) {
-          mutableState.value = state
-          loadPayment()
-          loadSubmittedRating()
+    val job =
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+          val state = fetchOrder()
+          currentCoroutineContext().ensureActive()
+          if (endSessionIfChanged()) return@launch
+          mutableState.value = rememberDetails(state)
+          if ((mutableState.value as? OrderDetailsUiState.Content)?.live == true) {
+            loadPayment()
+            loadSubmittedRating()
+          }
         }
-      } finally {
-        isLoading = false
-      }
-    }
+    readJob = job
+    job.start()
   }
 
   private fun endSessionIfChanged(): Boolean {
@@ -421,7 +491,12 @@ class OrderDetailsViewModel(
    * Retries only Unknown failures, reconciling uncertain writes before attempting another write.
    */
   fun submitRating() {
-    if (endSessionIfChanged()) return
+    if (
+        endSessionIfChanged() ||
+            isOffline ||
+            (mutableState.value as? OrderDetailsUiState.Content)?.live != true
+    )
+        return
     val state = mutableRating.value
     if (!state.visible || state.submitting || !state.valid || state.terminalError) return
     invalidateRatingRead()
@@ -491,7 +566,7 @@ class OrderDetailsViewModel(
   ) {
     if (endSessionIfChanged()) return
     val content = mutableState.value as? OrderDetailsUiState.Content ?: return
-    if (!isAllowed(content) || content.isSaving || isLoading) return
+    if (isOffline || !isAllowed(content) || content.isSaving || isLoading) return
     mutableState.value = content.copy(mutation = OrderMutationState.Saving)
     viewModelScope.launch {
       val result =
@@ -505,9 +580,12 @@ class OrderDetailsViewModel(
       if (!endSessionIfChanged()) {
         // Saving keeps the screen in Content; payment may have completed while the write was
         // active.
-        val latest = mutableState.value as OrderDetailsUiState.Content
+        cache?.remove(detailsKey)
+        cache?.remove(historyKey(content.order.requesterId))
+        val latest = mutableState.value as? OrderDetailsUiState.Content ?: return@launch
         mutableState.value = mutationResult(latest, result)
-        if (result is OrderResult.Success) onSuccess(result.data)
+        if (result is OrderResult.Success && latest.live) onSuccess(result.data)
+        if (!latest.live && !isOffline) load()
       }
     }
   }
@@ -580,3 +658,5 @@ class OrderDetailsViewModel(
     }
   }
 }
+
+internal fun orderDetailsKey(id: String) = SessionCache.key<Pair<Order, Trip>>("order-details/$id")

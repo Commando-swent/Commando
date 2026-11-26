@@ -63,6 +63,12 @@ class OrderDetailsScreenTest {
   }
 
   @Test
+  fun missingOfflineOrderExplainsWhyTheDetailsCannotBeShown() {
+    show(OrderDetailsUiState.OfflineUnavailable)
+    compose.onNodeWithText("No saved copy is available offline.").assertExists()
+  }
+
+  @Test
   fun ratingDialogValidatesScoreAndCommentBeforeSubmission() {
     showRating()
     val submit = compose.onNodeWithTag(RatingDialogTestTags.SUBMIT)

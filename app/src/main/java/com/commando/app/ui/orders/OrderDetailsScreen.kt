@@ -171,6 +171,7 @@ fun OrderDetailsScreen(
       notice?.let { Text(it, color = colors.error, style = MaterialTheme.typography.bodyMedium) }
       when (state) {
         is OrderDetailsUiState.Content -> {
+          state.cachedAt?.let { com.commando.app.ui.components.CachedDataLabel(it) }
           OrderDetailsContent(state.order, state.trip)
           state.payment?.let { OrderPaymentStatus(state, it, onPay) }
           if (onChat != null && state.isChatParticipant) OrderChatEntry(state, onChat)
@@ -194,6 +195,8 @@ fun OrderDetailsScreen(
           }
           OrderStatusActions(state, onDecision, onMarkReadyForHandoff, onCancel, onConfirmReceipt)
         }
+        OrderDetailsUiState.OfflineUnavailable ->
+            OrderDetailsMessage(true, onRetry, R.string.offline_no_copy)
         OrderDetailsUiState.Loading -> OrderDetailsSkeleton()
         OrderDetailsUiState.NotFound -> OrderDetailsMessage(false, onRetry)
         OrderDetailsUiState.SessionEnded ->

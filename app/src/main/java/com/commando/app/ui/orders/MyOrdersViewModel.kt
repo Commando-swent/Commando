@@ -111,6 +111,14 @@ class MyOrdersViewModel(
             }
             else -> {
               val rows = (state as? MyOrdersUiState.Content)?.rows.orEmpty()
+              val currentOrders = rows.associateBy { it.order.id }
+              for (previous in cache.get(key)?.value.orEmpty()) {
+                val id = previous.order.id
+                val detail = cache.get(orderDetailsKey(id))?.value ?: continue
+                val latest = currentOrders[id]
+                if (latest?.order != detail.first || latest.trip != detail.second)
+                    cache.remove(orderDetailsKey(id))
+              }
               if (cache.put(key, rows)) state else MyOrdersUiState.Loading
             }
           }

@@ -50,6 +50,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -91,6 +92,19 @@ class OrderDetailsViewModelTest {
   private val orders = RecordingOrders()
   private val trips = RecordingTrips()
 
+  @Test
+  fun ratingSubmissionChecksSessionEvenBeforeTheNextStateUpdate() = runTest {
+    var viewer = order.requesterId
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { viewer })
+    vm.submitRating()
+    assertEquals(OrderDetailsUiState.Loading, vm.uiState.value)
+    advanceUntilIdle()
+    assertTrue(vm.uiState.value is OrderDetailsUiState.Content)
+    viewer = "other-requester"
+    vm.submitRating()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+  }
+
   @Before
   fun setUp() {
     Dispatchers.setMain(StandardTestDispatcher())
@@ -102,6 +116,194 @@ class OrderDetailsViewModelTest {
   }
 
   private fun viewModel() = OrderDetailsViewModel(order.id, orders, trips)
+
+  @Test
+  fun reconnectDuringCancellationRefreshesAfterTheServerDecision() = runTest {
+    val online = kotlinx.coroutines.flow.MutableStateFlow(true)
+    val gate = CompletableDeferred<OrderResult<Order>>()
+    var persisted = order
+    orders.lookup = { OrderResult.Success(persisted) }
+    orders.decision = { gate.await() }
+    val vm =
+        OrderDetailsViewModel(
+            order.id,
+            orders,
+            trips,
+            { order.requesterId },
+            online = online,
+            cache = com.commando.app.data.cache.SessionCache { order.requesterId },
+        )
+    advanceUntilIdle()
+    vm.cancel()
+    runCurrent()
+    online.value = false
+    advanceUntilIdle()
+    vm.submitRating()
+    online.value = true
+    advanceUntilIdle()
+    persisted = order.copy(status = OrderStatus.CANCELLED)
+    gate.complete(OrderResult.Success(persisted))
+    advanceUntilIdle()
+    assertEquals(persisted, (vm.uiState.value as OrderDetailsUiState.Content).order)
+    assertTrue((vm.uiState.value as OrderDetailsUiState.Content).live)
+    assertEquals(1, orders.cancellations)
+  }
+
+  @Test
+  fun successfulCancellationInvalidatesHistoryAndDetailsForOfflineReopening() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { order.requesterId }
+    val online = kotlinx.coroutines.flow.MutableStateFlow(true)
+    cache.put(historyKey(order.requesterId), listOf(MyOrderRow(order, trip)))
+    val vm =
+        OrderDetailsViewModel(
+            order.id,
+            orders,
+            trips,
+            { order.requesterId },
+            cache = cache,
+            online = online,
+        )
+    advanceUntilIdle()
+    orders.decision = { OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)) }
+    vm.cancel()
+    advanceUntilIdle()
+    assertNull(cache.get(historyKey(order.requesterId)))
+    online.value = false
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.OfflineUnavailable, vm.uiState.value)
+  }
+
+  @Test
+  fun staleStatusNeverGrantsLiveActionsForEitherParticipant() {
+    for (status in OrderStatus.entries) {
+      for (viewer in listOf(null, "", " ", order.requesterId, trip.ownerId)) {
+        val stale =
+            OrderDetailsUiState.Content(order.copy(status = status), trip, viewer, live = false)
+        assertFalse(stale.canCancel || stale.canCancelAccepted || stale.canDecide)
+        assertFalse(stale.canConfirmReceipt || stale.canRate || stale.canPay)
+        assertFalse(stale.canEdit || stale.canTrack || stale.canMarkReadyForHandoff)
+        if (viewer.isNullOrBlank()) {
+          val live = stale.copy(live = true)
+          assertFalse(live.canRate || live.canPay || live.canConfirmReceipt)
+        }
+      }
+    }
+  }
+
+  @Test
+  fun coldOfflineRetryAndRatingSubmitNeverStartRepositoryCalls() = runTest {
+    val online = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId }, online = online)
+    vm.retry()
+    vm.submitRating()
+    vm.cancel()
+    advanceUntilIdle()
+    assertTrue(orders.ids.isEmpty())
+    assertEquals(0, orders.cancellations)
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(listOf(order.id), orders.ids)
+  }
+
+  @Test
+  fun transientOrderAndTripFailuresKeepOnlyAnExistingConfirmation() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { order.requesterId }
+    val online = kotlinx.coroutines.flow.MutableStateFlow(true)
+    fun model() =
+        OrderDetailsViewModel(
+            order.id,
+            orders,
+            trips,
+            { order.requesterId },
+            cache = cache,
+            online = online,
+        )
+    val vm = model()
+    advanceUntilIdle()
+    orders.lookup = { OrderResult.Error(OrderError.Unknown) }
+    vm.retry()
+    advanceUntilIdle()
+    val stale = vm.uiState.value as OrderDetailsUiState.Content
+    assertTrue(stale.cachedAt != null)
+    vm.cancel()
+    vm.submitRating()
+    assertEquals(0, orders.cancellations)
+    orders.lookup = { OrderResult.Success(order) }
+    for (error in listOf(TripError.NetworkError, TripError.Unknown)) {
+      trips.lookup = { TripResult.Error(error) }
+      vm.retry()
+      advanceUntilIdle()
+      assertEquals(stale, vm.uiState.value)
+    }
+    trips.lookup = { TripResult.Error(TripError.NotFound) }
+    vm.retry()
+    advanceUntilIdle()
+    trips.lookup = { TripResult.Error(TripError.NetworkError) }
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.Error.TripFailure(TripError.NetworkError), vm.uiState.value)
+    online.value = false
+    advanceUntilIdle()
+    vm.retry()
+    assertEquals(OrderDetailsUiState.OfflineUnavailable, vm.uiState.value)
+    cache.close()
+    trips.lookup = { TripResult.Success(trip) }
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.SessionEnded, vm.uiState.value)
+  }
+
+  @Test
+  fun offlineDetailsReopenAtOriginalTimeAndDisappearAfterAccessIsRevoked() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { order.requesterId }
+    val online = kotlinx.coroutines.flow.MutableStateFlow(true)
+    fun model() =
+        OrderDetailsViewModel(
+            order.id,
+            orders,
+            trips,
+            { order.requesterId },
+            cache = cache,
+            online = online,
+        )
+    val first = model()
+    advanceUntilIdle()
+    online.value = false
+    advanceUntilIdle()
+    val stale = first.uiState.value as OrderDetailsUiState.Content
+    assertFalse(stale.live)
+    assertEquals(order, stale.order)
+    assertTrue(stale.cachedAt != null)
+    val reopened = model()
+    assertEquals(stale, reopened.uiState.value)
+    orders.lookup = { OrderResult.Error(OrderError.PermissionDenied) }
+    online.value = true
+    advanceUntilIdle()
+    online.value = false
+    advanceUntilIdle()
+    assertEquals(OrderDetailsUiState.OfflineUnavailable, reopened.uiState.value)
+  }
+
+  @Test
+  fun losingConnectivityBlocksCancellationUntilServerRevalidation() = runTest {
+    val online = kotlinx.coroutines.flow.MutableStateFlow(true)
+    val vm = OrderDetailsViewModel(order.id, orders, trips, { order.requesterId }, online = online)
+    advanceUntilIdle()
+    assertTrue((vm.uiState.value as OrderDetailsUiState.Content).canCancel)
+    online.value = false
+    vm.cancel()
+    advanceUntilIdle()
+    assertEquals(0, orders.cancellations)
+    online.value = true
+    val response = CompletableDeferred<OrderResult<Order>>()
+    orders.lookup = { response.await() }
+    runCurrent()
+    vm.cancel()
+    assertEquals(0, orders.cancellations)
+    response.complete(OrderResult.Success(order))
+    advanceUntilIdle()
+    assertTrue((vm.uiState.value as OrderDetailsUiState.Content).canCancel)
+  }
 
   @Test
   fun cancellationKeepsConfirmedContentWhileSavingThenDisplaysPersistedSuccess() = runTest {

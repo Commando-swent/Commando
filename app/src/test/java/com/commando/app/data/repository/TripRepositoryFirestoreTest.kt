@@ -639,6 +639,7 @@ class TripRepositoryFirestoreTest {
             Row(CANCEL, PUBLISHED, error = OrdersStillOpen, hook = lateOrder(PUBLISHED)),
             Row(COMPLETE, IN_PROGRESS, error = OrdersStillOpen, hook = lateOrder(IN_PROGRESS)),
             Row(CLOSE, PUBLISHED, hook = lateOrder(PUBLISHED)), // closing ignores open orders
+            Row(CANCEL, PUBLISHED, error = NotFound, hook = { it.documents.remove(TRIP_ID) }),
         ) +
             listOf(COMPLETE to IN_PROGRESS, CANCEL to PUBLISHED).flatMap { (transition, status) ->
               open.map { Row(transition, status, settled + it, OrdersStillOpen) }

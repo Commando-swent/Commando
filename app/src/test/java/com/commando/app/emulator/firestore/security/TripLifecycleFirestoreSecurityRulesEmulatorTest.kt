@@ -238,6 +238,9 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
       assertEquals(TripResult.Error(OrdersStillOpen), ownerTrips.transitionTrip(trip, CANCEL))
       assertEquals("PUBLISHED", statusOf(owner, trip))
       assertEquals(1, ordersOf(owner, trip).size)
+      // A status that no longer matches is neither written nor reported as open orders.
+      val stale = firestore.transitionTrip(trip, "IN_PROGRESS", "COMPLETED", true)!!
+      assertEquals(false to false, stale.written to stale.ordersOpen)
     }
   }
 

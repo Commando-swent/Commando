@@ -167,13 +167,10 @@ internal constructor(
    * [blocksTripCompletion], otherwise null. Later orders are caught by the trip's counter (#449).
    */
   private suspend fun openOrdersError(tripId: String): TripResult.Error? {
-    val statuses = dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() }
-    return when {
-      null in statuses -> invalidData()
-      statuses.any { it?.blocksTripCompletion() == true } ->
-          TripResult.Error(TripError.OrdersStillOpen)
-      else -> null
-    }
+    val statuses =
+        dataSource.getOrderStatuses(tripId).map { it.toOrderStatus() ?: return invalidData() }
+    val open = statuses.any(OrderStatus::blocksTripCompletion)
+    return if (open) TripResult.Error(TripError.OrdersStillOpen) else null
   }
 
   private fun notFound() = TripResult.Error(TripError.NotFound)

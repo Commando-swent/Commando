@@ -15,6 +15,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.WriteBatch
@@ -339,6 +340,7 @@ internal class FirebaseOrderFirestoreDataSource(
           .document(id)
           .get(Source.SERVER)
           .await()
+          .also { it.metadata.requireConfirmedOrderRead() }
           .takeIf { it.exists() }
           ?.let { it.toFirestoreDocument() }
 
@@ -350,9 +352,13 @@ internal class FirebaseOrderFirestoreDataSource(
       orders.whereEqualTo("requesterId", uid).observeServerDocuments(firestore, uid)
 
   private suspend fun whereEqualTo(field: String, value: String) =
-      orders.whereEqualTo(field, value).get(Source.SERVER).await().documents.map {
-        it.toFirestoreDocument()
-      }
+      orders
+          .whereEqualTo(field, value)
+          .get(Source.SERVER)
+          .await()
+          .also { it.metadata.requireConfirmedOrderRead() }
+          .documents
+          .map { it.toFirestoreDocument() }
 
   override suspend fun getTrip(id: String) =
       firestore
@@ -684,3 +690,12 @@ internal fun FirestoreFailure.toOrderError(): OrderError =
 
 private fun decode(document: OrderFirestoreDocument): OrderResult<Order> =
     document.toOrder()?.let { OrderResult.Success(it) } ?: failure(OrderError.InvalidData)
+
+/** Reject local overlays even when the read requested the server. */
+internal fun SnapshotMetadata.requireConfirmedOrderRead() {
+  if (isFromCache || hasPendingWrites())
+      throw FirebaseFirestoreException(
+          "Order read is not server-confirmed",
+          FirebaseFirestoreException.Code.UNAVAILABLE,
+      )
+}

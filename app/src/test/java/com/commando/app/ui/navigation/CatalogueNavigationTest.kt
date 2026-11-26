@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.credentials.Credential
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
@@ -112,6 +113,7 @@ class CatalogueNavigationTest {
             publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = { RecordingRatings(it, ratingIds) },
             orderRepositoryFactory = factory,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

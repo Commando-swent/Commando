@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.location.DeviceLocationProvider
 import com.commando.app.data.location.DeviceLocationResult
 import com.commando.app.data.repository.*
@@ -104,6 +105,7 @@ class OrderNavigationTest {
     decorate(orders)
   }
 
+  private val connectivity = FakeConnectivityMonitor()
   private lateinit var content: @Composable () -> Unit
 
   private fun show(
@@ -128,6 +130,7 @@ class OrderNavigationTest {
               positions ?: FakeCommandoPositionRepository(MutableStateFlow(auth.currentUser?.uid))
             },
             locationProvider = source,
+            connectivityMonitor = connectivity,
         )
       }
     }

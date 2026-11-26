@@ -124,6 +124,19 @@ class MyOrdersScreenTest {
   }
 
   @Test
+  fun coldOfflineHistoryExplainsTheMissingCopy() {
+    show(MyOrdersUiState.OfflineUnavailable)
+    compose.onNodeWithText("No saved copy is available offline.").assertIsDisplayed()
+  }
+
+  @Test
+  fun confirmedEmptyHistoryDisplaysItsConfirmationDateOffline() {
+    show(MyOrdersUiState.Content(emptyList(), created))
+    compose.onNodeWithText("Saved copy", substring = true).assertIsDisplayed()
+    compose.onNodeWithText("No saved copy is available offline.").assertDoesNotExist()
+  }
+
+  @Test
   fun loadingShowsThreeSkeletonCardsWithDescription() {
     show(MyOrdersUiState.Loading)
     compose

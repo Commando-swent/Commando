@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.model.authentication.AuthUser
 import com.commando.app.model.authentication.FakeAuthRepository
@@ -36,6 +37,7 @@ class OrderProviderTest {
     every { firestore.collection("orders") } returns collection
     every { collection.whereEqualTo("requesterId", "alice") } returns query
     every { query.get(Source.SERVER) } returns Tasks.forResult(snapshot)
+    every { snapshot.metadata } returns mockk(relaxed = true)
     every { snapshot.documents } returns listOf(document)
     every { document.id } returns "persistent-order"
     every { document.data } returns
@@ -66,7 +68,12 @@ class OrderProviderTest {
       every { FirebaseFirestore.getInstance() } returns firestore
       compose.setContent {
         SampleAppTheme {
-          CommandoApp(FakeAuthRepository(AuthUser("alice")), FakeTripRepository("alice"), google)
+          CommandoApp(
+              FakeAuthRepository(AuthUser("alice")),
+              FakeTripRepository("alice"),
+              google,
+              connectivityMonitor = FakeConnectivityMonitor(),
+          )
         }
       }
       compose.onNodeWithTag(AppTestTags.ORDERS_BUTTON).performClick()

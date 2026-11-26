@@ -9,6 +9,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.credentials.Credential
 import androidx.test.core.app.ApplicationProvider
+import com.commando.app.data.connectivity.FakeConnectivityMonitor
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.FakeCommandoPositionRepository
 import com.commando.app.data.repository.FakeOrderRepository
@@ -82,6 +83,7 @@ class SessionDependenciesTest {
             positionRepositoryFactory = positions,
             notificationRepositoryFactory = notifications,
             publicProfileRepositoryFactory = publicProfiles,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

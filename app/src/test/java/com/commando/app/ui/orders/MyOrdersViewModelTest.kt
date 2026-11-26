@@ -3,6 +3,7 @@ package com.commando.app.ui.orders
 // AI assistance: OpenAI Codex (requester cancellation).
 // AI assistance: Claude (Anthropic), including the #401 test double.
 
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.FakeOrderRepository
 import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderError
@@ -27,6 +28,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -37,6 +39,7 @@ import kotlinx.coroutines.withContext
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -94,6 +97,91 @@ class MyOrdersViewModelTest {
 
   private fun rowIds(state: MyOrdersUiState) =
       (state as MyOrdersUiState.Content).rows.map { it.order.id }
+
+  @Test
+  fun closingTheSessionDuringAnOrderReadDropsTheResult() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
+    val delayed = GatedOrderRepository()
+    val vm = MyOrdersViewModel(delayed, trips, "alice", cache = cache)
+    runCurrent()
+    cache.close()
+    delayed.gates.single().complete(OrderResult.Success(listOf(aliceOld)))
+    advanceUntilIdle()
+    assertEquals(MyOrdersUiState.Loading, vm.uiState.value)
+    assertNull(cache.get(historyKey("alice")))
+  }
+
+  @Test
+  fun cachedHistoryKeepsConfirmationThroughNetworkFailureAndEvictsAfterDenial() = runTest {
+    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
+    val online = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val model = MyOrdersViewModel(orders, trips, "alice", cache = cache, online = online)
+    advanceUntilIdle()
+    assertEquals(MyOrdersUiState.OfflineUnavailable, model.uiState.value)
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(listOf(aliceNew.id, aliceOld.id), rowIds(model.uiState.value))
+    online.value = false
+    advanceUntilIdle()
+    val stale = model.uiState.value as MyOrdersUiState.Content
+    assertEquals(cache.get(historyKey("alice"))!!.confirmedAt, stale.confirmedAt)
+    orders.forcedError = OrderError.Unknown
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(stale, model.uiState.value)
+    orders.forcedError = OrderError.PermissionDenied
+    model.retry()
+    advanceUntilIdle()
+    assertNull(cache.get(historyKey("alice")))
+  }
+
+  @Test
+  fun savedRowsStayVisibleDuringReconnectionUntilTheServerConfirmsNewRows() = runTest {
+    val cache = SessionCache { sessionUser }
+    val savedRows = listOf(MyOrderRow(aliceOld, trip))
+    cache.put(historyKey("alice"), savedRows, confirmedAt = now)
+    val online = MutableStateFlow(false)
+    val delayed = GatedOrderRepository()
+    val vm = MyOrdersViewModel(delayed, trips, "alice", cache = cache, online = online)
+    val savedState = MyOrdersUiState.Content(savedRows, now)
+    assertEquals(savedState, vm.uiState.value)
+
+    online.value = true
+    runCurrent()
+    assertEquals(savedState, vm.uiState.value)
+    assertEquals(now, cache.get(historyKey("alice"))?.confirmedAt)
+
+    val updated = aliceOld.copy(status = OrderStatus.CANCELLED)
+    delayed.gates.single().complete(OrderResult.Success(listOf(updated)))
+    advanceUntilIdle()
+    val updatedRows = listOf(MyOrderRow(updated, trip))
+    assertEquals(MyOrdersUiState.Content(updatedRows), vm.uiState.value)
+    assertEquals(updatedRows, cache.get(historyKey("alice"))?.value)
+    assertTrue(requireNotNull(cache.get(historyKey("alice"))).confirmedAt > now)
+  }
+
+  @Test
+  fun secondDisconnectKeepsPreviouslyConfirmedEmptyHistoryAndIgnoresLateRefresh() = runTest {
+    val cache = SessionCache { sessionUser }
+    cache.put(historyKey("alice"), emptyList(), confirmedAt = now)
+    val online = MutableStateFlow(false)
+    val delayed = GatedOrderRepository(swallowCancellation = true)
+    val vm = MyOrdersViewModel(delayed, trips, "alice", cache = cache, online = online)
+    val confirmedEmpty = MyOrdersUiState.Content(emptyList(), now)
+
+    online.value = true
+    runCurrent()
+    assertEquals(confirmedEmpty, vm.uiState.value)
+    online.value = false
+    runCurrent()
+    delayed.gates.single().complete(OrderResult.Success(listOf(aliceOld)))
+    advanceUntilIdle()
+
+    assertEquals(1, delayed.staleReturns)
+    assertEquals(confirmedEmpty, vm.uiState.value)
+    assertEquals(emptyList<MyOrderRow>(), cache.get(historyKey("alice"))?.value)
+    assertEquals(now, cache.get(historyKey("alice"))?.confirmedAt)
+  }
 
   @Test
   fun refreshAfterCancellationRetainsHistoryWithPersistedStatusAndUnchangedOtherRows() = runTest {

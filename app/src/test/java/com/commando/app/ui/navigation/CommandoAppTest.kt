@@ -208,7 +208,7 @@ class CommandoAppTest {
   @Test
   fun stoppedAppReleasesConnectivityCallbackAndRefreshesOnReturn() {
     val manager = compose.activity.application.getSystemService(ConnectivityManager::class.java)
-    show(FakeAuthRepository(alice))
+    show(FakeAuthRepository(alice), connectivity = null)
     compose.onNodeWithTag(ConnectivityBannerTestTags.OFFLINE).assertIsDisplayed()
     compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
     ShadowLooper.idleMainLooper(6_000)
@@ -271,7 +271,7 @@ class CommandoAppTest {
       repository: AuthRepository,
       picker: Picker = Picker(),
       openForm: Boolean = true,
-      connectivity: ConnectivityMonitor? = null,
+      connectivity: ConnectivityMonitor? = FakeConnectivityMonitor(),
   ) {
     show(
         repository,
@@ -288,7 +288,7 @@ class CommandoAppTest {
       picker: Picker = Picker(),
       openForm: Boolean = true,
       ratings: ((() -> String?) -> RatingRepository)? = null,
-      connectivity: ConnectivityMonitor? = null,
+      connectivity: ConnectivityMonitor? = FakeConnectivityMonitor(),
   ) {
     compose.setContent {
       SampleAppTheme {
@@ -1352,6 +1352,7 @@ class CommandoAppTest {
         CommandoApp(
             tripRepository = trips,
             googleCredentials = picker,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }
@@ -1525,6 +1526,7 @@ class CommandoAppTest {
             publicProfileRepositoryFactory = { publicProfiles },
             orderRepositoryFactory = { FakeOrderRepository(it, tripRepository = trips) },
             savedSearchRepositoryFactory = savedSearches,
+            connectivityMonitor = FakeConnectivityMonitor(),
         )
       }
     }

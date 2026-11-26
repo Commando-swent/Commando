@@ -1,6 +1,6 @@
 package com.commando.app.ui.orders
 
-// AI assistance: OpenAI Codex (shared session guard); Commando cancellation (#402): Claude Code.
+// AI assistance: OpenAI Codex (session guard and offline rating); cancellation (#402): Claude Code.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.cache.SessionCache
@@ -233,6 +233,7 @@ class OrderDetailsViewModel(
     get() = online?.value == false
 
   private val ratingsConfigured = ratingRepositoryFactory != null
+  private var ratingSubmitJob: Job? = null
   private var ratingReadJob: Job? = null
   private var ratingReadGeneration = 0L
   private var paymentReadJob: Job? = null
@@ -319,14 +320,10 @@ class OrderDetailsViewModel(
       offline()
       return
     }
-    // Preserve modal input during reloads; the independent session observer still clears it.
-    if (
-        isLoading ||
-            mutableRating.value.visible ||
-            session.ended ||
-            (mutableState.value as? OrderDetailsUiState.Content)?.isSaving == true
-    )
-        return
+    val content = mutableState.value as? OrderDetailsUiState.Content
+    // Only a displayed dialog can hold a refresh to preserve its input.
+    if (isLoading || session.ended || content?.isSaving == true) return
+    if (content?.live == true && mutableRating.value.visible) return
     // Set before launching so rapid retries cannot start simultaneous loads.
     invalidateRatingRead()
     invalidatePaymentRead()
@@ -498,37 +495,55 @@ class OrderDetailsViewModel(
     )
         return
     val state = mutableRating.value
-    if (!state.visible || state.submitting || !state.valid || state.terminalError) return
+    if (!state.visible || ratingSubmitJob?.isActive == true || !state.valid || state.terminalError)
+        return
     invalidateRatingRead()
-    mutableRating.value = state.copy(submitting = true, error = null)
-    viewModelScope.launch {
-      val result =
-          try {
-            reconcileOrSubmit(NewRating(orderId, state.score, state.comment))
-          } catch (_: Exception) {
-            currentCoroutineContext().ensureActive()
-            RatingResult.Error(RatingError.Unknown)
-          }
-      currentCoroutineContext().ensureActive()
-      if (endSessionIfChanged()) return@launch
-      if (result is RatingResult.Success) {
+    val submitting = state.copy(submitting = true, error = null)
+    mutableRating.value = submitting
+    val job =
+        viewModelScope.launch(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+          val result =
+              try {
+                reconcileOrSubmit(NewRating(orderId, state.score, state.comment))
+              } catch (_: Exception) {
+                currentCoroutineContext().ensureActive()
+                RatingResult.Error(RatingError.Unknown)
+              }
+          currentCoroutineContext().ensureActive()
+          finishRatingSubmission(submitting, result)
+        }
+    ratingSubmitJob = job
+    job.start()
+  }
+
+  private fun finishRatingSubmission(
+      submitting: RatingDialogState,
+      result: RatingResult<Rating>,
+  ) {
+    if (endSessionIfChanged()) return
+    when (result) {
+      is RatingResult.Success -> {
         invalidateRatingRead()
         publishSubmittedRating(result.data)
-      } else if (
-          result is RatingResult.Error &&
-              result.error == RatingError.AlreadyRated &&
-              !ratingUncertain
-      ) {
-        // Uncertain-write reconciliation already read and published any existing feedback.
-        loadSubmittedRating()
       }
-      mutableRating.value =
-          when (result) {
-            is RatingResult.Success -> state.copy(visible = false, submitted = true, error = null)
-            is RatingResult.Error ->
-                state.copy(visible = result.error != RatingError.AlreadyRated, error = result.error)
-          }
+      is RatingResult.Error -> {
+        // Uncertain-write reconciliation already read and published any existing feedback.
+        if (result.error == RatingError.AlreadyRated && !ratingUncertain) loadSubmittedRating()
+      }
     }
+    // A disconnect closes the dialog. The write still settles so uncertainty can be reconciled.
+    if (isOffline || mutableRating.value !== submitting) return
+    mutableRating.value =
+        when (result) {
+          is RatingResult.Success ->
+              submitting.copy(visible = false, submitting = false, submitted = true)
+          is RatingResult.Error ->
+              submitting.copy(
+                  visible = result.error != RatingError.AlreadyRated,
+                  submitting = false,
+                  error = result.error,
+              )
+        }
   }
 
   private suspend fun reconcileOrSubmit(input: NewRating): RatingResult<Rating> {
@@ -659,4 +674,7 @@ class OrderDetailsViewModel(
   }
 }
 
-internal fun orderDetailsKey(id: String) = SessionCache.key<Pair<Order, Trip>>("order-details/$id")
+internal const val ORDER_DETAILS_CACHE_PREFIX = "order-details/"
+
+internal fun orderDetailsKey(id: String) =
+    SessionCache.key<Pair<Order, Trip>>("$ORDER_DETAILS_CACHE_PREFIX$id")

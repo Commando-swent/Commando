@@ -144,6 +144,39 @@ class MyOrdersViewModelTest {
   }
 
   @Test
+  fun historyRefreshInvalidatesAnotherOrderEvenAfterCancellationEvictsHistory() = runTest {
+    val cache = SessionCache { sessionUser }
+    var other = aliceOld
+    val repository =
+        object : OrderRepository by orders {
+          override suspend fun getMyOrders(): OrderResult<List<Order>> =
+              OrderResult.Success(
+                  listOf((orders.getOrderById(aliceNew.id) as OrderResult.Success).data, other)
+              )
+        }
+    val history = MyOrdersViewModel(repository, trips, "alice", cache = cache)
+    val details =
+        OrderDetailsViewModel(aliceNew.id, repository, trips, { sessionUser }, cache = cache)
+    advanceUntilIdle()
+    cache.put(orderDetailsKey(aliceOld.id), aliceOld to trip)
+    cache.put(orderDetailsKey(bobOrder.id), bobOrder to trip)
+
+    details.cancel()
+    advanceUntilIdle()
+    assertNull(cache.get(historyKey("alice")))
+    assertEquals(aliceOld, cache.get(orderDetailsKey(aliceOld.id))?.value?.first)
+
+    other = aliceOld.copy(status = OrderStatus.ACCEPTED)
+    history.retry()
+    advanceUntilIdle()
+
+    val rows = (history.uiState.value as MyOrdersUiState.Content).rows
+    assertEquals(OrderStatus.ACCEPTED, rows.single { it.order.id == aliceOld.id }.order.status)
+    assertNull(cache.get(orderDetailsKey(aliceOld.id)))
+    assertEquals(bobOrder, cache.get(orderDetailsKey(bobOrder.id))?.value?.first)
+  }
+
+  @Test
   fun coldOfflineHistoryHasNoSavedCopy() = runTest {
     val cache = SessionCache { sessionUser }
     val model =

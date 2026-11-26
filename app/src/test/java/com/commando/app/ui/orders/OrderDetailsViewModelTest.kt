@@ -1298,6 +1298,65 @@ class OrderDetailsViewModelTest {
   }
 
   @Test
+  fun lateRatingFailureAfterDisconnectCannotBlockRevalidation() =
+      assertLateRatingFailureKeepsDetailsUsable(reconnectFirst = false)
+
+  @Test
+  fun lateRatingFailureAfterReconnectionCannotReopenTheDialog() =
+      assertLateRatingFailureKeepsDetailsUsable(reconnectFirst = true)
+
+  private fun assertLateRatingFailureKeepsDetailsUsable(reconnectFirst: Boolean) = runTest {
+    val online = kotlinx.coroutines.flow.MutableStateFlow(true)
+    val cache = com.commando.app.data.cache.SessionCache { order.requesterId }
+    val ratings = TestRatings()
+    val pendingRating = CompletableDeferred<RatingResult<Rating>>()
+    ratings.save = { pendingRating.await() }
+    var persisted = order.copy(status = OrderStatus.READY_FOR_HANDOFF)
+    orders.lookup = { OrderResult.Success(persisted) }
+    orders.decision = {
+      persisted = persisted.copy(status = OrderStatus.DELIVERED)
+      OrderResult.Success(persisted)
+    }
+    val vm =
+        OrderDetailsViewModel(
+            order.id,
+            orders,
+            trips,
+            { order.requesterId },
+            ratingRepositoryFactory = { ratings },
+            cache = cache,
+            online = online,
+        )
+    advanceUntilIdle()
+    vm.confirmReceipt()
+    advanceUntilIdle()
+    vm.selectScore(4)
+    vm.submitRating()
+    runCurrent()
+    assertEquals(1, ratings.inputs.size)
+
+    online.value = false
+    runCurrent()
+    assertEquals(OrderDetailsUiState.OfflineUnavailable, vm.uiState.value)
+    if (reconnectFirst) {
+      online.value = true
+      advanceUntilIdle()
+    }
+    pendingRating.complete(RatingResult.Error(RatingError.Unknown))
+    advanceUntilIdle()
+    assertEquals(RatingDialogState(), vm.ratingState.value)
+
+    online.value = true
+    advanceUntilIdle()
+    val reloaded = vm.uiState.value as OrderDetailsUiState.Content
+    assertTrue(reloaded.live)
+    assertEquals(OrderStatus.DELIVERED, reloaded.order.status)
+    assertFalse(vm.ratingState.value.visible)
+    assertEquals(1, ratings.inputs.size)
+    vm.viewModelScope.cancel()
+  }
+
+  @Test
   fun ratingSubmissionIgnoresDuplicateClicksWhilePending() = runTest {
     val ratings = TestRatings()
     val vm = confirmedRatingVm(ratings)

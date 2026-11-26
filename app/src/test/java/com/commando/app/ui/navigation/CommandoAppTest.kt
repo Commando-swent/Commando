@@ -124,6 +124,23 @@ class CommandoAppTest {
   private val bob = AuthUser("bob", displayName = "Bob Jones", email = "bob@example.com")
 
   @Test
+  @Config(qualifiers = "en-rUS-w412dp-h917dp-mdpi")
+  fun tripDetailsRemainsReadableAndOrderingRequiresRevalidation() {
+    val network = FakeConnectivityMonitor()
+    show(FakeAuthRepository(alice), twoTrips(alice.uid), connectivity = network)
+    click(HomeTestTags.TRIP_ACTION)
+    compose.onTripCard(firstTrip.id).performClick()
+    compose.onNodeWithText("Add items to this run").assertIsEnabled()
+    compose.runOnIdle { network.setOnline(false) }
+    compose.onNodeWithText("Saved copy", substring = true).assertExists()
+    compose.onNodeWithText(firstTrip.store.name).assertExists()
+    compose.onNodeWithText("Add items to this run").assertIsNotEnabled()
+    compose.runOnIdle { network.setOnline(true) }
+    compose.onNodeWithText("Saved copy", substring = true).assertDoesNotExist()
+    compose.onNodeWithText("Add items to this run").assertIsEnabled()
+  }
+
+  @Test
   @Config(qualifiers = "en-rUS-w412dp-h830dp-mdpi")
   fun profileKeepsItsScrollPositionAfterReturningFromEveryMenuCategory() {
     show(FakeAuthRepository(alice))

@@ -179,7 +179,7 @@ private fun TripCard(trip: Trip, onClick: () -> Unit) {
 
 /** Shows the stored status; closed trips use a muted style, as in the Figma. */
 @Composable
-private fun StatusBadge(trip: Trip) {
+internal fun StatusBadge(trip: Trip, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme
   val (label, active) =
       when (trip.status) {
@@ -190,7 +190,8 @@ private fun StatusBadge(trip: Trip) {
       }
   Text(
       stringResource(label),
-      Modifier.testTag(MyTripsTestTags.STATUS_PREFIX + trip.id)
+      modifier
+          .testTag(MyTripsTestTags.STATUS_PREFIX + trip.id)
           .background(
               if (active) colors.secondaryContainer else colors.surfaceContainerHigh,
               CircleShape,

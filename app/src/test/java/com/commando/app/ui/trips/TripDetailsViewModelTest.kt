@@ -50,6 +50,105 @@ class TripDetailsViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   @Test
+  fun networkLossDuringOwnerTransitionRequiresFreshConfirmation() = runTest {
+    val online = MutableStateFlow(true)
+    val cache = com.commando.app.data.cache.SessionCache { "owner" }
+    val vm =
+        TripDetailsViewModel(
+            repository,
+            trip.id,
+            currentUserId = { "owner" },
+            cache = cache,
+            online = online,
+        )
+    advanceUntilIdle()
+    repository.transitionGate = CompletableDeferred()
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    runCurrent()
+    online.value = false
+    advanceUntilIdle()
+    repository.transitionGate!!.complete(Unit)
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.NetworkError, true), vm.uiState.value)
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(TripStatus.IN_PROGRESS, content(vm).trip.status)
+  }
+
+  @Test
+  fun expiredSessionDropsLateTripReadAndAllSubsequentActions() = runTest {
+    var uid: String? = "owner"
+    val session = MutableStateFlow(uid)
+    val cache = com.commando.app.data.cache.SessionCache { uid }
+    repository.gate = CompletableDeferred()
+    val vm =
+        TripDetailsViewModel(
+            repository,
+            trip.id,
+            currentUserId = { uid },
+            sessionChanges = session,
+            cache = cache,
+        )
+    runCurrent()
+    uid = "new-owner"
+    session.value = uid
+    runCurrent()
+    repository.gate!!.complete(Unit)
+    advanceUntilIdle()
+    vm.retry()
+    assertEquals(TripDetailsUiState.Error(TripError.PermissionDenied), vm.uiState.value)
+    assertEquals(listOf(trip.id), repository.requestedIds)
+  }
+
+  @Test
+  fun staleTripWhileConnectedCannotStartOrCommitATransition() = runTest {
+    val online = MutableStateFlow(true)
+    val cache = com.commando.app.data.cache.SessionCache { "owner" }
+    val vm = TripDetailsViewModel(repository, trip.id, online = online, cache = cache)
+    advanceUntilIdle()
+    fake.forcedError = TripError.Unknown
+    vm.retry()
+    advanceUntilIdle()
+    val state = content(vm)
+    assertNotNull(state.cachedAt)
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    assertTrue(repository.transitions.isEmpty())
+    assertEquals(state, vm.uiState.value)
+    cache.close()
+    fake.forcedError = null
+    vm.retry()
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.PermissionDenied), vm.uiState.value)
+  }
+
+  @Test
+  fun offlineTripRetainsTimeRejectsTransitionsAndEvictsDeniedData() = runTest {
+    val online = MutableStateFlow(false)
+    val cache = com.commando.app.data.cache.SessionCache { "owner" }
+    val vm = TripDetailsViewModel(repository, trip.id, cache = cache, online = online)
+    assertEquals(TripDetailsUiState.Error(TripError.NetworkError, true), vm.uiState.value)
+    online.value = true
+    advanceUntilIdle()
+    online.value = false
+    advanceUntilIdle()
+    val stale = vm.uiState.value as TripDetailsUiState.Content
+    assertNotNull(stale.cachedAt)
+    vm.retry()
+    vm.requestTransition(TripTransition.CLOSE)
+    vm.confirmTransition()
+    assertEquals(stale, vm.uiState.value)
+    fake.forcedError = TripError.PermissionDenied
+    online.value = true
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.PermissionDenied), vm.uiState.value)
+    online.value = false
+    advanceUntilIdle()
+    assertEquals(TripDetailsUiState.Error(TripError.NetworkError, true), vm.uiState.value)
+  }
+
+  @Test
   fun startsLoadingAndAutomaticallyRequestsSuppliedTripId() = runTest {
     repository.gate = CompletableDeferred()
     val viewModel = TripDetailsViewModel(repository, trip.id)

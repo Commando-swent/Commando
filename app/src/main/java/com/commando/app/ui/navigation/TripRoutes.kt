@@ -14,6 +14,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.commando.app.data.cache.SessionCache
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.PublicProfileRepository
 import com.commando.app.data.repository.RatingRepository
@@ -51,6 +52,7 @@ internal class TripRouteSession(
     val publicProfiles: Lazy<PublicProfileRepository>,
     val currentUserId: () -> String?,
     val sessionChanges: Flow<String?>,
+    val cache: SessionCache? = null,
 )
 
 /** Registers trip creation, discovery, the owner's list and Trip Details. */
@@ -151,23 +153,26 @@ internal fun NavGraphBuilder.tripRoutes(
               session.publicProfiles,
               session.currentUserId,
               session.sessionChanges,
+              session.cache,
+              isOnline,
           )
         }
     val tripState by tripDetailsViewModel.uiState.collectAsState()
-    val ownerId = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId
+    val confirmedTrip =
+        (tripState as? TripDetailsUiState.Content)?.takeIf { it.cachedAt == null }?.trip
+    val ownerId = confirmedTrip?.ownerId
     val publicName by tripDetailsViewModel.publicName.collectAsState()
     RefreshOnResume(tripDetailsViewModel to ownerId) {
       tripDetailsViewModel.refreshPublicName(ownerId)
     }
     val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
     // The entry point is for the owner only; the repository and rules check ownership again.
-    val ownsTrip = (tripState as? TripDetailsUiState.Content)?.trip?.ownerId == session.userId
-    val showOwnerActions = session.mode() == AppMode.Commando && ownsTrip
+    val showOwnerActions = session.mode() == AppMode.Commando && ownerId == session.userId
     TripDetailsScreen(
         viewModel = tripDetailsViewModel,
         onBack = { navController.popBackStack() },
         onAddItems =
-            if (session.mode() == AppMode.Requester) {
+            if (confirmedTrip != null && session.mode() == AppMode.Requester) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
               }

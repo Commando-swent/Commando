@@ -100,6 +100,21 @@ class TripDetailsScreenTest {
   }
 
   @Test
+  fun missingOfflineTripOffersRetryWithoutShowingPrivateFields() {
+    show(TripDetailsUiState.Error(TripError.NetworkError, offlineUnavailable = true))
+    compose.onNodeWithText("No saved copy is available offline.").assertExists()
+    compose.onNodeWithText(trip.store.name).assertDoesNotExist()
+  }
+
+  @Test
+  fun cachedTripShowsItsLastKnownStatusAndBlocksOrdering() {
+    show(TripDetailsUiState.Content(trip, cachedAt = departure))
+    compose.onNodeWithText("Saved copy", substring = true).assertExists()
+    compose.onNodeWithTag(MyTripsTestTags.STATUS_PREFIX + trip.id).assertExists()
+    compose.onNodeWithText("Add items to this run").assertIsNotEnabled()
+  }
+
+  @Test
   fun ratingContentEmptyAndLoadingRenderWithoutInventingAZeroAverage() {
     val state = mutableStateOf<TripRatingUiState>(TripRatingUiState.Loading)
     compose.setContent { MaterialTheme { TripRatingSummary(state.value, {}, null) } }

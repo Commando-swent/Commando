@@ -117,9 +117,11 @@ fun TripDetailsScreen(
       when (state) {
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
+          state.cachedAt?.let { com.commando.app.ui.components.CachedDataLabel(it) }
+          if (state.cachedAt != null) StatusBadge(state.trip)
           TripDetailsContent(state.trip, ratingState, onRetryRating, commandoName)
-          ownerControls?.let { TripOwnerSection(state, it) }
-          if (onViewOrders != null) {
+          if (state.cachedAt == null) ownerControls?.let { TripOwnerSection(state, it) }
+          if (state.cachedAt == null && onViewOrders != null) {
             TripDetailsButton(
                 text = stringResource(R.string.trip_details_view_orders),
                 onClick = { onViewOrders(state.trip.id) },
@@ -129,7 +131,10 @@ fun TripDetailsScreen(
               text = stringResource(R.string.trip_details_add_items),
               onClick = { onAddItems?.invoke(state.trip.id) },
               // A closed trip refuses new orders, so only a published trip can be shopped from.
-              enabled = onAddItems != null && state.trip.status == TripStatus.PUBLISHED,
+              enabled =
+                  state.cachedAt == null &&
+                      onAddItems != null &&
+                      state.trip.status == TripStatus.PUBLISHED,
           )
         }
         is TripDetailsUiState.Error -> {
@@ -137,7 +142,9 @@ fun TripDetailsScreen(
           TripDetailsError(
               message =
                   stringResource(
-                      if (notFound) R.string.trip_details_not_found else R.string.trip_details_error
+                      if (state.offlineUnavailable) R.string.offline_no_copy
+                      else if (notFound) R.string.trip_details_not_found
+                      else R.string.trip_details_error
                   ),
               onRetry = if (notFound) null else onRetry,
           )

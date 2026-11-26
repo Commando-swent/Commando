@@ -1,7 +1,7 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the close and complete actions (#233).
-// AI assistance: OpenAI Codex for public-name lookup and refresh.
+// AI assistance: OpenAI Codex for public-name lookup and offline transition handling.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.cache.SessionCache
@@ -173,26 +173,30 @@ class TripDetailsViewModel(
           } catch (error: Exception) {
             TripResult.Error(TripError.Unknown)
           }
-      // A reload started meanwhile owns the state and shows the stored trip itself.
-      cache?.remove(key)
+      ensureActive()
       if (sessionEnded()) return@launch
-      if (online?.value == false) {
-        loadTrip()
-        return@launch
-      }
-      val current = mutableState.value as? TripDetailsUiState.Content ?: return@launch
       mutableState.value =
           when (result) {
             is TripResult.Success -> confirmed(result.data)
-            is TripResult.Error ->
-                current.copy(transitionInProgress = false, transitionError = result.error)
+            is TripResult.Error -> {
+              cache?.remove(key)
+              if (online?.value == false) fallback(result.error)
+              else content.copy(pendingTransition = null, transitionError = result.error)
+            }
           }
     }
   }
 
-  private fun confirmed(trip: Trip): TripDetailsUiState =
-      if (cache?.put(key, trip) == false) TripDetailsUiState.Error(TripError.PermissionDenied)
-      else TripDetailsUiState.Content(trip)
+  private fun confirmed(trip: Trip): TripDetailsUiState {
+    val confirmedAt = Instant.now()
+    if (cache?.put(key, trip, confirmedAt) == false) {
+      return TripDetailsUiState.Error(TripError.PermissionDenied)
+    }
+    return TripDetailsUiState.Content(
+        trip,
+        cachedAt = confirmedAt.takeIf { online?.value == false },
+    )
+  }
 
   private fun fallback(error: TripError) =
       cache?.get(key)?.let { TripDetailsUiState.Content(it.value, cachedAt = it.confirmedAt) }
@@ -200,6 +204,8 @@ class TripDetailsViewModel(
 
   private fun loadTrip() {
     if (sessionEnded()) return
+    // Keep the screen and its action guard until the write's authoritative result arrives.
+    if ((mutableState.value as? TripDetailsUiState.Content)?.transitionInProgress == true) return
     if (online?.value == false) {
       loadJob?.cancel()
       mutableState.value = fallback(TripError.NetworkError)

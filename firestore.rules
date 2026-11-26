@@ -245,6 +245,72 @@ service cloud.firestore {
             getAfter(/databases/$(database)/documents/payments/$(orderId)).data, order);
     }
 
+    // Reliability (#387), AI assistance: OpenAI Codex. Match OrderCancellation.kt exactly:
+    // strictly less than ten minutes is early; equality is late. New acceptances require an
+    // immutable server-timed event. Only historical/imported orders can lack that evidence.
+    function cancellationGraceEnds(orderId) {
+      return get(/databases/$(database)/documents/orderEvents/$(orderId + "_ORDER_ACCEPTED"))
+        .data.occurredAt + duration.value(10, 'm');
+    }
+
+    function penaltyFreeCancellation(orderId) {
+      let path = /databases/$(database)/documents/orderEvents/$(orderId + "_ORDER_ACCEPTED");
+      return !exists(path) || (get(path).data.occurredAt <= request.time
+        && request.time < cancellationGraceEnds(orderId));
+    }
+
+    function reliabilityCountersIncrement(ownerId, completed) {
+      let summaryPath = /databases/$(database)/documents/reliabilitySummaries/$(ownerId);
+      let old = exists(summaryPath) ? get(summaryPath).data
+        : {"completedCount": 0, "lateCancellationCount": 0};
+      let next = getAfter(summaryPath).data;
+      return old.completedCount is int && old.completedCount >= 0 && old.completedCount <= 2147483647
+        && old.lateCancellationCount is int && old.lateCancellationCount >= 0
+        && old.lateCancellationCount <= 2147483647
+        && next.keys().hasAll(["completedCount", "lateCancellationCount"])
+        && next.keys().hasOnly(["completedCount", "lateCancellationCount"])
+        && next.completedCount is int && next.completedCount <= 2147483647
+        && next.lateCancellationCount is int && next.lateCancellationCount <= 2147483647
+        && next.completedCount == old.completedCount + (completed ? 1 : 0)
+        && next.lateCancellationCount == old.lateCancellationCount + (completed ? 0 : 1);
+    }
+
+    // Both sides validate the same transition; a terminal order cannot be replayed. The witness
+    // keeps order IDs private and limits one counted order per owner in an atomic request.
+    function validReliabilityUpdate(ownerId, orderId) {
+      let path = /databases/$(database)/documents/orders/$(orderId);
+      let before = get(path).data;
+      let after = getAfter(path).data;
+      let witness = getAfter(/databases/$(database)/documents/reliabilitySummaryWrites/$(ownerId)).data;
+      let completed = before.status == "READY_FOR_HANDOFF" && after.status == "DELIVERED";
+      return orderId is string && orderId.matches('[^/]+')
+        && get(/databases/$(database)/documents/trips/$(before.tripId)).data.ownerId == ownerId
+        && request.auth.uid == (completed ? before.requesterId : ownerId)
+        && (completed || (before.status == "ACCEPTED" && after.status == "CANCELLED"
+          && request.time >= cancellationGraceEnds(orderId)))
+        && witness.keys().hasAll(["lastOrderId"]) && witness.keys().hasOnly(["lastOrderId"])
+        && witness.lastOrderId == orderId && reliabilityCountersIncrement(ownerId, completed);
+    }
+
+    function recordsReliability(orderId, order, completed) {
+      let owner = get(/databases/$(database)/documents/trips/$(order.tripId)).data.ownerId;
+      return getAfter(/databases/$(database)/documents/reliabilitySummaryWrites/$(owner)).data.lastOrderId == orderId
+        && reliabilityCountersIncrement(owner, completed);
+    }
+
+    match /reliabilitySummaries/{ownerId} {
+      allow get: if isAuthenticated();
+      allow create, update: if isAuthenticated() && validReliabilityUpdate(ownerId,
+        getAfter(/databases/$(database)/documents/reliabilitySummaryWrites/$(ownerId)).data.lastOrderId);
+      allow list, delete: if false;
+    }
+
+    match /reliabilitySummaryWrites/{ownerId} {
+      allow create, update: if isAuthenticated()
+        && validReliabilityUpdate(ownerId, request.resource.data.lastOrderId);
+      allow read, delete: if false;
+    }
+
     function paymentParticipant(orderId) {
       let order = get(/databases/$(database)/documents/orders/$(orderId)).data;
       return isAuthenticated() && (order.requesterId == request.auth.uid || ownsOrderTrip(order));
@@ -344,13 +410,15 @@ service cloud.firestore {
                   // Commando cancellation (#388) publishes its trusted cancellation time.
                   || (resource.data.status == "ACCEPTED"
                     && request.resource.data.status == "CANCELLED"
-                    && hasOrderEvent(orderId, "ORDER_CANCELLED", resource.data.requesterId))))
+                    && hasOrderEvent(orderId, "ORDER_CANCELLED", resource.data.requesterId)
+                    && (penaltyFreeCancellation(orderId) || recordsReliability(orderId, resource.data, false)))))
             || (resource.data.status == "PENDING"
               && resource.data.requesterId == request.auth.uid
               && request.resource.data.status == "CANCELLED")
             || (resource.data.requesterId == request.auth.uid
               && resource.data.status == "READY_FOR_HANDOFF"
-              && request.resource.data.status == "DELIVERED"));
+              && request.resource.data.status == "DELIVERED"
+              && recordsReliability(orderId, resource.data, true)));
       // Requester edits preserve identity/status and independently revalidate the whole payload.
       allow update: if isAuthenticated()
         && hasNoPayment(orderId)

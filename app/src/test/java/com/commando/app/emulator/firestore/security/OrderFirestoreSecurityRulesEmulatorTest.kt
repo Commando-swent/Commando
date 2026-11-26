@@ -14,10 +14,12 @@ import com.commando.app.model.OrderDecision.REJECT
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -864,7 +866,6 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         (requester, owner, other, signedOut) ->
       for (status in listOf(OrderStatus.PENDING, OrderStatus.ACCEPTED, OrderStatus.REJECTED)) {
         val saved = createOrder(requester, publish(owner))
-        val ref = requester.firestore.collection("orders").document(saved.id)
         if (status != OrderStatus.PENDING) {
           orders(owner)
               .decideOrder(
@@ -877,7 +878,11 @@ class OrderFirestoreSecurityRulesEmulatorTest {
             OrderResult.Error(OrderError.AlreadyDecided(saved.copy(status = status))),
             orders(requester).confirmReceipt(saved.id),
         )
-        assertPermissionDenied { ref.update("status", "DELIVERED").await() }
+        assertPermissionDenied {
+          requester.firestore
+              .runBatch { it.recordDelivery(requester, saved.id, owner.auth.currentUser!!.uid) }
+              .await()
+        }
       }
       val saved = createOrder(requester, publish(owner))
       orders(owner).decideOrder(saved.id, ACCEPT, saved.revision)
@@ -894,9 +899,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
         )
         assertPermissionDenied {
           client.firestore
-              .collection("orders")
-              .document(saved.id)
-              .update("status", "DELIVERED")
+              .runBatch { it.recordDelivery(client, saved.id, owner.auth.currentUser!!.uid) }
               .await()
         }
       }
@@ -909,7 +912,14 @@ class OrderFirestoreSecurityRulesEmulatorTest {
               mapOf("createdAt" to Timestamp(0, 0)),
               mapOf("extra" to true),
               mapOf("commissionCents" to FieldValue.delete()),
-          )) assertPermissionDenied { ref.update(mutation + ("status" to "DELIVERED")).await() }
+          )) assertPermissionDenied {
+        requester.firestore
+            .runBatch {
+              it.recordDelivery(requester, saved.id, owner.auth.currentUser!!.uid)
+              it.update(ref, mutation)
+            }
+            .await()
+      }
       val expected = OrderResult.Success(saved.copy(status = OrderStatus.DELIVERED))
       val gate = CompletableDeferred<Unit>()
       val calls =
@@ -935,9 +945,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
       orders(owner).decideOrder(direct.id, ACCEPT, 0)
       orders(owner).markReadyForHandoff(direct.id)
       requester.firestore
-          .collection("orders")
-          .document(direct.id)
-          .update("status", "DELIVERED")
+          .runBatch { it.recordDelivery(requester, direct.id, owner.auth.currentUser!!.uid) }
           .await()
       assertEquals(
           OrderResult.Success(direct.copy(status = OrderStatus.DELIVERED)),
@@ -1057,6 +1065,427 @@ class OrderFirestoreSecurityRulesEmulatorTest {
     val order = createOrder(requester, publish(owner))
     val decided = orders(owner).decideOrder(order.id, ACCEPT, order.revision)
     return (decided as OrderResult.Success).data
+  }
+
+  // AI assistance: OpenAI Codex authored #387 security and transaction regressions for human
+  // review.
+  @Test
+  fun concurrentDeliveriesAndTerminalRetriesCountEachOrderOnce() =
+      withReliability { owner, requester, order ->
+        val another = createOrder(requester, order.tripId)
+        orders(owner).decideOrder(another.id, ACCEPT, 0)
+        for (id in listOf(order.id, another.id)) orders(owner).markReadyForHandoff(id)
+        val gate = CompletableDeferred<Unit>()
+        val calls =
+            listOf(order.id, another.id, order.id).map { id ->
+              async(Dispatchers.IO) {
+                gate.await()
+                orders(requester).confirmReceipt(id)
+              }
+            }
+        gate.complete(Unit)
+        calls.awaitAll().forEach { assertTrue(it is OrderResult.Success) }
+        assertTrue(orders(requester).confirmReceipt(another.id) is OrderResult.Success)
+        assertEquals(counts(2, 0), reliability(owner).get(Source.SERVER).await().data)
+      }
+
+  @Test
+  fun earlyCancellationDoesNotCreateCounters() =
+      withReliability(late = false) { owner, _, order ->
+        assertTrue(orders(owner).cancelAcceptedOrder(order.id) is OrderResult.Success)
+        assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+      }
+
+  @Test
+  fun cancellationNineMinutesAfterAcceptancePreservesCounters() =
+      withReliability(late = false) { owner, requester, order ->
+        val acceptedAt =
+            eventTime(requester, order.id, NotificationEventType.ORDER_ACCEPTED)
+                .minus(COMMANDO_CANCELLATION_GRACE.minusMinutes(1))
+        updateDocumentAsOwner(
+            "orderEvents/${order.id}_ORDER_ACCEPTED",
+            mapOf("occurredAt" to Timestamp(acceptedAt)),
+        )
+        val before = counts(2, 1)
+        createDocumentAsOwner("reliabilitySummaries", owner.auth.currentUser!!.uid, before)
+
+        writeDecision(owner, order.id, "CANCELLED")
+
+        assertEquals(
+            OrderResult.Success(order.copy(status = OrderStatus.CANCELLED)),
+            orders(requester).getOrderById(order.id),
+        )
+        assertTrue(
+            isPenaltyFreeCancellation(
+                acceptedAt,
+                eventTime(requester, order.id, NotificationEventType.ORDER_CANCELLED),
+            )
+        )
+        assertEquals(before, reliability(owner).get(Source.SERVER).await().data)
+      }
+
+  @Test
+  fun cancellationElevenMinutesAfterAcceptanceRequiresOneLateIncrement() =
+      withReliability(late = false) { owner, requester, order ->
+        val acceptedAt =
+            eventTime(requester, order.id, NotificationEventType.ORDER_ACCEPTED)
+                .minus(COMMANDO_CANCELLATION_GRACE.plusMinutes(1))
+        updateDocumentAsOwner(
+            "orderEvents/${order.id}_ORDER_ACCEPTED",
+            mapOf("occurredAt" to Timestamp(acceptedAt)),
+        )
+
+        assertPermissionDenied { writeDecision(owner, order.id, "CANCELLED") }
+        assertEquals(OrderResult.Success(order), orders(requester).getOrderById(order.id))
+        assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+
+        val cancelled = OrderResult.Success(order.copy(status = OrderStatus.CANCELLED))
+        assertEquals(cancelled, orders(owner).cancelAcceptedOrder(order.id))
+        assertEquals(cancelled, orders(requester).getOrderById(order.id))
+        assertFalse(
+            isPenaltyFreeCancellation(
+                acceptedAt,
+                eventTime(requester, order.id, NotificationEventType.ORDER_CANCELLED),
+            )
+        )
+        assertEquals(counts(0, 1), reliability(owner).get(Source.SERVER).await().data)
+        assertEquals(cancelled, orders(owner).cancelAcceptedOrder(order.id))
+        assertEquals(counts(0, 1), reliability(owner).get(Source.SERVER).await().data)
+      }
+
+  @Test
+  fun concurrentLateCancellationsAndRetriesIncrementOnce() = withReliability { owner, _, order ->
+    val gate = CompletableDeferred<Unit>()
+    val calls =
+        List(3) {
+          async(Dispatchers.IO) {
+            gate.await()
+            orders(owner).cancelAcceptedOrder(order.id)
+          }
+        }
+    gate.complete(Unit)
+    calls.awaitAll().forEach { assertTrue(it is OrderResult.Success) }
+    assertTrue(orders(owner).cancelAcceptedOrder(order.id) is OrderResult.Success)
+    assertEquals(counts(0, 1), reliability(owner).get(Source.SERVER).await().data)
+  }
+
+  @Test
+  fun legacyMissingAcceptanceRemainsPenaltyFree() = withReliability { owner, _, order ->
+    deleteDocumentAsOwner("orderEvents/${order.id}_ORDER_ACCEPTED")
+    assertTrue(orders(owner).cancelAcceptedOrder(order.id) is OrderResult.Success)
+    assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun newAcceptanceEvidenceCannotBeOmittedDeletedOrRewritten() =
+      withReliability { owner, requester, order ->
+        val pending = createOrder(requester, order.tripId)
+        assertPermissionDenied {
+          owner.firestore
+              .collection("orders")
+              .document(pending.id)
+              .update("status", "ACCEPTED")
+              .await()
+        }
+        assertPermissionDenied("backdated new acceptance") {
+          owner.firestore
+              .runBatch {
+                it.update(
+                    owner.firestore.collection("orders").document(pending.id),
+                    "status",
+                    "ACCEPTED",
+                )
+                it.set(
+                    owner.firestore
+                        .collection("orderEvents")
+                        .document("${pending.id}_ORDER_ACCEPTED"),
+                    event(pending.id, pending.requesterId, "ORDER_ACCEPTED") +
+                        ("occurredAt" to Timestamp(0, 0)),
+                )
+              }
+              .await()
+        }
+        val evidence =
+            owner.firestore.collection("orderEvents").document("${order.id}_ORDER_ACCEPTED")
+        assertPermissionDenied { evidence.delete().await() }
+        assertPermissionDenied {
+          evidence.update("occurredAt", FieldValue.serverTimestamp()).await()
+        }
+      }
+
+  @Test
+  fun malformedOrFutureAcceptanceFailsClosed() = withReliability { owner, _, order ->
+    for (value in listOf(null, "invalid", Timestamp(4102444800L, 0))) {
+      updateDocumentAsOwner("orderEvents/${order.id}_ORDER_ACCEPTED", mapOf("occurredAt" to value))
+      assertEquals(
+          OrderResult.Error(OrderError.PermissionDenied),
+          orders(owner).cancelAcceptedOrder(order.id),
+      )
+      assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+    }
+  }
+
+  @Test
+  fun missingOrForgedDeliveryCountersCannotCommit() = withReliability { owner, requester, order ->
+    orders(owner).markReadyForHandoff(order.id)
+    val summary = reliability(owner)
+    val witness = requester.firestore.collection("reliabilitySummaryWrites").document(summary.id)
+    val invalid =
+        listOf(
+            null,
+            counts(0, 0),
+            counts(2, 0),
+            counts(1, 1),
+            counts(1, 0) + ("private" to order.id),
+        ) +
+            listOf("completedCount", "lateCancellationCount").flatMap { field ->
+              listOf(counts(1, 0) - field) +
+                  listOf(null, -1L, 0.5, "1").map { counts(1, 0) + (field to it) }
+            }
+    for (payload in invalid) {
+      assertPermissionDenied("delivery counters $payload") {
+        requester.firestore
+            .runBatch {
+              it.update(
+                  requester.firestore.collection("orders").document(order.id),
+                  "status",
+                  "DELIVERED",
+              )
+              it.set(witness, mapOf("lastOrderId" to order.id))
+              if (payload != null)
+                  it.set(
+                      requester.firestore.collection("reliabilitySummaries").document(summary.id),
+                      payload,
+                  )
+            }
+            .await()
+      }
+    }
+    assertEquals(
+        "READY_FOR_HANDOFF",
+        requester.firestore
+            .collection("orders")
+            .document(order.id)
+            .get(Source.SERVER)
+            .await()
+            .getString("status"),
+    )
+    assertFalse(summary.get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun deliveryRequiresItsMatchingWitness() = withReliability { owner, requester, order ->
+    orders(owner).markReadyForHandoff(order.id)
+    for (id in listOf<String?>(null, "another-order")) assertPermissionDenied {
+      requester.firestore
+          .runBatch { it.recordDelivery(requester, order.id, owner.auth.currentUser!!.uid, id) }
+          .await()
+    }
+  }
+
+  @Test
+  fun earlyCancellationCannotForgeALateIncrement() =
+      withReliability(late = false) { owner, _, order ->
+        assertPermissionDenied {
+          owner.firestore
+              .runBatch {
+                it.update(
+                    owner.firestore.collection("orders").document(order.id),
+                    "status",
+                    "CANCELLED",
+                )
+                it.set(
+                    owner.firestore
+                        .collection("orderEvents")
+                        .document("${order.id}_ORDER_CANCELLED"),
+                    event(order.id, order.requesterId, "ORDER_CANCELLED"),
+                )
+                it.set(reliability(owner), counts(0, 1))
+                it.set(
+                    owner.firestore
+                        .collection("reliabilitySummaryWrites")
+                        .document(owner.auth.currentUser!!.uid),
+                    mapOf("lastOrderId" to order.id),
+                )
+              }
+              .await()
+        }
+      }
+
+  @Test
+  fun lateCancellationCannotOmitCounters() = withReliability { owner, _, order ->
+    assertPermissionDenied { writeDecision(owner, order.id, "CANCELLED") }
+    assertEquals(OrderResult.Success(order), orders(owner).getOrderById(order.id))
+    assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun lateCounterOverflowRejectsTheEntireCancellation() = withReliability { owner, _, order ->
+    val before = counts(4, Int.MAX_VALUE.toLong())
+    createDocumentAsOwner("reliabilitySummaries", owner.auth.currentUser!!.uid, before)
+    assertEquals(
+        OrderResult.Error(OrderError.PermissionDenied),
+        orders(owner).cancelAcceptedOrder(order.id),
+    )
+    assertEquals(before, reliability(owner).get(Source.SERVER).await().data)
+    assertEquals(OrderResult.Success(order), orders(owner).getOrderById(order.id))
+  }
+
+  @Test
+  fun detachedCounterAndWitnessCannotCommit() = withReliability { owner, _, order ->
+    assertPermissionDenied {
+      owner.firestore
+          .runBatch {
+            it.set(reliability(owner), counts(0, 1))
+            it.set(
+                owner.firestore
+                    .collection("reliabilitySummaryWrites")
+                    .document(owner.auth.currentUser!!.uid),
+                mapOf("lastOrderId" to order.id),
+            )
+          }
+          .await()
+    }
+    assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun sessionChangeBeforeTerminalWritesLeavesOrderAndCountersUntouched() =
+      withReliability { owner, requester, order ->
+        for (identity in listOf(null, "another-account")) for (check in listOf(3, 8)) {
+          var checks = 0
+          val uid = owner.auth.currentUser!!.uid
+          // Check 3 follows the first order/trip reads; check 8 precedes the fallback late writes.
+          val source =
+              FirebaseOrderFirestoreDataSource(owner.firestore) {
+                if (++checks < check) uid else identity
+              }
+          try {
+            source.cancelAccepted(order.id, uid)
+            fail("Changed session must abort the transaction")
+          } catch (error: FirebaseFirestoreException) {
+            assertEquals(FirebaseFirestoreException.Code.UNAUTHENTICATED, error.code)
+          }
+          assertTrue(checks >= check)
+          assertEquals(OrderResult.Success(order), orders(requester).getOrderById(order.id))
+          assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+        }
+      }
+
+  @Test
+  fun wrongOwnerAndUnauthorizedDeliveryCountersAreDenied() =
+      withReliability { owner, requester, order ->
+        orders(owner).markReadyForHandoff(order.id)
+        withClients("outsider" to true, "signedOut" to false) { clients ->
+          for (client in listOf(owner) + clients) assertPermissionDenied {
+            client.firestore
+                .runBatch { it.recordDelivery(client, order.id, owner.auth.currentUser!!.uid) }
+                .await()
+          }
+          assertPermissionDenied("wrong summary owner") {
+            requester.firestore
+                .runBatch {
+                  it.recordDelivery(requester, order.id, clients[0].auth.currentUser!!.uid)
+                }
+                .await()
+          }
+        }
+      }
+
+  @Test
+  fun twoDeliveriesCannotShareOneIncrement() = withReliability { owner, requester, order ->
+    val another = createOrder(requester, order.tripId)
+    orders(owner).decideOrder(another.id, ACCEPT, 0)
+    for (id in listOf(order.id, another.id)) orders(owner).markReadyForHandoff(id)
+    assertPermissionDenied {
+      requester.firestore
+          .runBatch {
+            it.recordDelivery(requester, order.id, owner.auth.currentUser!!.uid)
+            it.update(
+                requester.firestore.collection("orders").document(another.id),
+                "status",
+                "DELIVERED",
+            )
+          }
+          .await()
+    }
+    assertFalse(reliability(owner).get(Source.SERVER).await().exists())
+  }
+
+  @Test
+  fun invalidAndOverflowingCountersRejectTheEntireDelivery() =
+      withReliability { owner, requester, order ->
+        orders(owner).markReadyForHandoff(order.id)
+        for (field in listOf("completedCount", "lateCancellationCount")) {
+          for (value in
+              listOf(-1L, 0.5, "0", null, 2147483648L) +
+                  if (field == "completedCount") listOf(Int.MAX_VALUE.toLong()) else emptyList()) {
+            val data = counts(0, 0) + (field to value)
+            createDocumentAsOwner("reliabilitySummaries", owner.auth.currentUser!!.uid, data)
+            assertEquals(
+                OrderResult.Error(OrderError.PermissionDenied),
+                orders(requester).confirmReceipt(order.id),
+            )
+            assertEquals(data, reliability(owner).get(Source.SERVER).await().data)
+            deleteDocumentAsOwner("reliabilitySummaries/${owner.auth.currentUser!!.uid}")
+          }
+        }
+      }
+
+  @Test
+  fun summaryReadsExposeOnlyCountersAndProtectPrivateWitnesses() =
+      withReliability { owner, requester, order ->
+        assertTrue(orders(owner).cancelAcceptedOrder(order.id) is OrderResult.Success)
+        withClients("outsider" to true, "signedOut" to false) { (outsider, signedOut) ->
+          for (client in listOf(owner, requester, outsider, signedOut)) {
+            val summary =
+                client.firestore
+                    .collection("reliabilitySummaries")
+                    .document(owner.auth.currentUser!!.uid)
+            if (client == signedOut) assertPermissionDenied { summary.get(Source.SERVER).await() }
+            else assertEquals(counts(0, 1), summary.get(Source.SERVER).await().data)
+            assertPermissionDenied { summary.parent.get(Source.SERVER).await() }
+            assertPermissionDenied { summary.delete().await() }
+            assertPermissionDenied { summary.set(counts(1, 1)).await() }
+            val witness =
+                client.firestore.collection("reliabilitySummaryWrites").document(summary.id)
+            assertPermissionDenied { witness.get(Source.SERVER).await() }
+            assertPermissionDenied { witness.parent.get(Source.SERVER).await() }
+            assertPermissionDenied { witness.delete().await() }
+            assertPermissionDenied { witness.set(mapOf("lastOrderId" to order.id)).await() }
+          }
+          assertPermissionDenied {
+            outsider.firestore.collection("orders").document(order.id).get(Source.SERVER).await()
+          }
+          assertPermissionDenied {
+            outsider.firestore
+                .collection("orderEvents")
+                .document("${order.id}_ORDER_ACCEPTED")
+                .get(Source.SERVER)
+                .await()
+          }
+        }
+      }
+
+  private fun counts(completed: Long, late: Long): Map<String, Any?> =
+      mapOf("completedCount" to completed, "lateCancellationCount" to late)
+
+  private fun reliability(owner: EmulatorClient) =
+      owner.firestore.collection("reliabilitySummaries").document(owner.auth.currentUser!!.uid)
+
+  private fun withReliability(
+      late: Boolean = true,
+      test: suspend CoroutineScope.(EmulatorClient, EmulatorClient, Order) -> Unit,
+  ) = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val order = acceptedOrder(owner, requester)
+      if (late)
+          updateDocumentAsOwner(
+              "orderEvents/${order.id}_ORDER_ACCEPTED",
+              mapOf("occurredAt" to Timestamp(0, 0)),
+          )
+      test(owner, requester, order)
+    }
   }
 
   /** Server time of the [type] event of [orderId], read by its [recipient]. */

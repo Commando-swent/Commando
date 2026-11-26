@@ -46,3 +46,86 @@ Unknown failures preserve input for retry, reading existing feedback before anot
 Success and AlreadyRated close the dialog and prevent another submission in that flow.
 Session changes clear dialog state and invalidate its repository identity; late results are discarded.
 Historical rating loading and display belong to #328, not this receipt-triggered flow.
+
+## Trusted reliability tracking (#387)
+
+AI assistance: OpenAI Codex contributed this persistence implementation and documentation.
+
+`reliabilitySummaries/{ownerId}` contains exactly integer `completedCount` and
+`lateCancellationCount`, each nonnegative and at most 2147483647, matching the star count's bound.
+Authenticated users may get one summary, including its absence; listing and deletion are denied.
+`reliabilitySummaryWrites/{ownerId}` contains exactly `lastOrderId`. Clients cannot read or delete
+this witness. Private orders/events keep their existing read restrictions. Customer-star documents,
+submission, averages and names are unchanged. Tracking persists counts; calculation and UI belong to #448.
+
+The agreed reliability contract is:
+
+- Evaluated commitments = `completedCount + lateCancellationCount`.
+- Reliability percentage = `completedCount / (completedCount + lateCancellationCount) × 100`.
+- The evaluation window is cumulative eligible outcomes since reliability tracking was introduced.
+- Minimum history is five evaluated commitments. Below five, including zero history, display no
+  reliability percentage; #448 implements this calculation and presentation policy.
+- Early cancellations and non-terminal orders are excluded. Orders remaining indefinitely in
+  `READY_FOR_HANDOFF` contribute to neither counter; readiness alone is not completion.
+- No historical backfill.
+
+Receipt confirmation atomically increments completedCount with READY_FOR_HANDOFF -> DELIVERED.
+An eligible ACCEPTED -> CANCELLED owner transition increments lateCancellationCount only when the
+server cancellation time is at least ten minutes after the immutable ORDER_ACCEPTED event time.
+Strictly under ten minutes is early; exactly ten minutes is late. Rules mirror
+`OrderCancellation.kt`'s policy because Kotlin helpers cannot execute in Firestore rules.
+Neither device time nor a caller-supplied classification is trusted. Existing payment/refund rules
+remain mandatory: captured payment requires a matching CONFIRMED refund before terminal cancellation.
+
+The first cancellation attempt proposes no increment. A permission denial is not evidence of lateness:
+an authorized, session-checked read-back first reconciles a competing terminal transition. Only if
+the order is still ACCEPTED does one alternative propose the late increment. Rules independently
+revalidate timing, actor, refund, transition and counters. A second denial receives the same read-back;
+unchanged state preserves the original denial. Other failures propagate; no offline writes are queued.
+Every transaction callback and returned result checks the session. All transaction reads precede writes.
+
+Counters use atomic increment transforms, not client-computed totals. Both the terminal transition
+and counter/witness rules require an exact matching increment. The witness binds one order per owner
+per atomic request; two commitments for one owner cannot share an increment. A terminal order cannot
+transition again, so retries do not recount it. Counter and witness writes cannot commit alone, nor can
+a counted terminal transition omit them. Concurrent operations serialize through the summary/witness.
+
+Missing historical acceptance evidence remains penalty-free. This is not a new-order escape hatch:
+PENDING -> ACCEPTED already requires the matching server-timestamped event, and clients cannot delete
+or modify that event or rewrite an order's identity/status history. Malformed/future evidence fails
+closed. Previously terminal orders are not backfilled. No completion timestamp is needed for this
+agreed cumulative window; repairing legacy history is separate work.
+Delivery tracking reads the persisted trip owner; supported trip lifecycle states permit that read.
+Historical CANCELLED trips remain owner-only, so imported handoff orders on those trips need trusted
+data repair before requesters can record delivery. Admin SDK imports bypass rules and must preserve
+order/event/counter invariants; missing evidence from an import cannot be distinguished from legacy data.
+
+### Rule access budget and deployment
+
+Static audit of the complete adapter transaction, counting distinct document states/paths and reused
+rule lookups (before and after states counted separately):
+
+| Operation | Maximum per write | Complete transaction |
+| --- | ---: | ---: |
+| Delivered (order, summary, witness) | 6 | 7 |
+| Early cancellation (order, event) | 5 | 7 |
+| Late cancellation (order, event, summary, witness) | 8 | 10 |
+
+The late path includes payment/refund checks: trip, payment-after, refund-after, acceptance event,
+cancellation-event-after, order-before/after, summary-before/after and witness-after. Counter/witness
+validators use at most seven of those states; adapter reads add no new rule lookup path.
+[Firestore limits](https://firebase.google.com/docs/firestore/security/rules-conditions#access_call_limits)
+are ten access calls per operation and twenty per atomic request; cached accesses do not count.
+The table is a static cached-path analysis rather than measured per-operation access counts.
+Do not combine multiple owners' transitions in one request without reassessing the twenty-call budget.
+
+Deploy the updated client and rules in coordination. Old clients omit reliability writes and will
+receive permission errors for delivery and late cancellation after enforcement; early/requester
+cancellation and rating submission retain their rules. New clients cannot write reliability under
+old rules. Do not relax either side's atomic requirement for compatibility: require an upgraded client
+before enabling enforcement. Record the actual enforcement rollout externally; no date is invented here.
+
+### Coverage limitations
+
+Exact ten-minute Firestore rule boundary coverage and controlled boundary-crossing retry coverage
+remain gaps. Model-level boundary tests do not establish those server-side cases.

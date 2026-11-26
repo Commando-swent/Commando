@@ -7,10 +7,13 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreSettings
 import com.google.firebase.firestore.MemoryCacheSettings
+import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.WriteBatch
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
@@ -51,6 +54,30 @@ internal suspend fun assertPermissionDenied(
         "Unexpected result for $description",
         FirebaseFirestoreException.Code.PERMISSION_DENIED,
         exception.code,
+    )
+  }
+}
+
+// AI assistance: OpenAI Codex (#387). Keep direct SDK fixtures on the atomic delivery contract.
+internal fun WriteBatch.recordDelivery(
+    client: EmulatorClient,
+    id: String,
+    ownerId: String,
+    witnessOrderId: String? = id,
+) {
+  update(client.firestore.collection("orders").document(id), "status", "DELIVERED")
+  set(
+      client.firestore.collection("reliabilitySummaries").document(ownerId),
+      mapOf(
+          "completedCount" to FieldValue.increment(1L),
+          "lateCancellationCount" to FieldValue.increment(0L),
+      ),
+      SetOptions.merge(),
+  )
+  if (witnessOrderId != null) {
+    set(
+        client.firestore.collection("reliabilitySummaryWrites").document(ownerId),
+        mapOf("lastOrderId" to witnessOrderId),
     )
   }
 }

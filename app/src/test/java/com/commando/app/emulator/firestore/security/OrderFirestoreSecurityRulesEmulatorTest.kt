@@ -1598,6 +1598,7 @@ class OrderFirestoreSecurityRulesEmulatorTest {
                 "scheduledAt" to Timestamp(time.epochSecond + 3600, 0),
                 "createdAt" to Timestamp(time.epochSecond, 0),
                 "updatedAt" to Timestamp(time.epochSecond, 0),
+                "openOrderCount" to 0,
             )
         )
         .await()

@@ -231,9 +231,11 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
         assertEquals(TripResult.Error(OrdersStillOpen), trips(owner).transitionTrip(legacy, CANCEL))
       }
       assertPermissionDenied("cancel") { tripRef(owner, trip).update(move("CANCELLED")).await() }
-      // Settling an uncounted order would take the counter below zero.
+      // Until counted, no order can be settled or created there, so the count cannot drift.
       val denied = OrderResult.Error(OrderError.PermissionDenied)
       assertEquals(denied, orders(requester).cancelOrder(order.id))
+      val placed = orders(requester).createOrder(OrderDraft(empty, listOf(ITEM)))
+      assertTrue(placed !is OrderResult.Success)
 
       updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // tools/trip-counters
       assertTrue(orders(requester).cancelOrder(order.id) is OrderResult.Success)

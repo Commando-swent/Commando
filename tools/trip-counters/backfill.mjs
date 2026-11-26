@@ -9,8 +9,9 @@ export const OPEN_STATUSES = new Set(['PENDING', 'ACCEPTED', 'READY_FOR_HANDOFF'
 const BATCH_SIZE = 400; // Firestore commits hold at most 500 writes.
 
 /**
- * One write per trip whose stored counter differs from its open orders, guarded by the trip's
- * updateTime: an order created or settled meanwhile fails the commit, and a rerun recounts.
+ * One write per trip without a counter. The rules block creating or settling orders on such a trip,
+ * so its open orders cannot change while they are counted; trips that already have a counter are
+ * kept by the order writes and never rewritten. The trip's updateTime guards each write.
  */
 export function planCounterWrites(trips, orders) {
   const open = new Map();
@@ -19,7 +20,7 @@ export function planCounterWrites(trips, orders) {
   }
   return trips
     .map(([path, { data, updateTime }]) => ({ path, updateTime, count: open.get(path.split('/')[1]) ?? 0, stored: data.openOrderCount }))
-    .filter(({ count, stored }) => count !== stored)
+    .filter(({ stored }) => stored === undefined)
     .map(({ path, updateTime, count }) => ({
       update: { name: documentName(path), fields: { openOrderCount: { integerValue: String(count) } } },
       updateMask: { fieldPaths: ['openOrderCount'] },

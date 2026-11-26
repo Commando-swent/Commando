@@ -1,6 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; open-order counter fixture (#449): Claude Code.
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.NotificationRepositoryFirestore
 import com.commando.app.data.repository.OrderRepositoryFirestore
@@ -260,6 +260,7 @@ class NotificationOrderEventsEmulatorTest {
                 "scheduledAt" to Timestamp(time.plusSeconds(3600)),
                 "createdAt" to Timestamp(time),
                 "updatedAt" to Timestamp(time),
+                "openOrderCount" to 0,
             )
         )
         .await()

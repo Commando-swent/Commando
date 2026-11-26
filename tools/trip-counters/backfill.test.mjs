@@ -7,7 +7,7 @@ import { backfill, planCounterWrites } from './backfill.mjs';
 const trip = (id, openOrderCount) => [`trips/${id}`, { data: { openOrderCount }, updateTime: `t-${id}` }];
 const order = (tripId, status) => [`orders/${tripId}-${status}`, { data: { tripId, status } }];
 
-test('counts only open orders and skips trips already correct', () => {
+test('counts only open orders, for trips without a counter only', () => {
   const trips = [trip('legacy', undefined), trip('drifted', -1), trip('correct', 1), trip('empty', undefined)];
   const orders = [
     order('legacy', 'PENDING'), order('legacy', 'ACCEPTED'), order('legacy', 'DELIVERED'),
@@ -16,7 +16,8 @@ test('counts only open orders and skips trips already correct', () => {
   const writes = planCounterWrites(trips, orders);
   const counts = Object.fromEntries(writes.map(({ update, currentDocument }) =>
     [update.name.split('/').at(-1), [update.fields.openOrderCount.integerValue, currentDocument.updateTime]]));
-  assert.deepEqual(counts, { legacy: ['2', 't-legacy'], drifted: ['1', 't-drifted'], empty: ['0', 't-empty'] });
+  // A trip with a counter is never rewritten: order writes may be moving it while orders are read.
+  assert.deepEqual(counts, { legacy: ['2', 't-legacy'], empty: ['0', 't-empty'] });
   assert.deepEqual(writes[0].updateMask, { fieldPaths: ['openOrderCount'] });
 });
 
@@ -49,6 +50,6 @@ test('sets the counters in the Firestore emulator, then has nothing left to writ
   ]);
   await backfill({ client, write: true, log: () => {} });
   const stored = await client.get([`trips/${id}-legacy`, `trips/${id}-drifted`]);
-  assert.deepEqual(stored.map(([, { data }]) => data.openOrderCount), [1, 0]);
+  assert.deepEqual(stored.map(([, { data }]) => data.openOrderCount), [1, 5]);
   assert.equal(await backfill({ client, write: true, log: () => {} }), 0);
 });

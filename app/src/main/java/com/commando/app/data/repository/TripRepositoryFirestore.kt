@@ -13,6 +13,7 @@ import com.commando.app.model.blocksTripCompletion
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import java.time.Instant
@@ -189,7 +190,10 @@ internal interface TripFirestoreDataSource {
    */
   suspend fun createTripIfAbsent(tripId: String, data: Map<String, Any?>): TripFirestoreDocument
 
-  /** Uses the SDK default read source; returns null only for a readable missing document. */
+  /**
+   * Reads a server-confirmed trip without pending local writes. Returns null only for a
+   * server-confirmed missing document; an unavailable server must fail, never fall back to cache.
+   */
   suspend fun getTrip(tripId: String): TripFirestoreDocument?
 
   /** Filters by status and future departure, ordered by scheduled time ascending. */
@@ -223,7 +227,7 @@ internal interface TripFirestoreDataSource {
   suspend fun transitionTrip(tripId: String, from: String, to: String): TripTransitionWrite?
 }
 
-/** Trip SDK adapter; intentionally preserves default-source reads and existing query filters. */
+/** Trip SDK adapter; by-ID reads require server confirmation; list query policies are unchanged. */
 internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFirestore) :
     TripFirestoreDataSource {
 
@@ -250,7 +254,14 @@ internal class FirebaseTripFirestoreDataSource(private val firestore: FirebaseFi
   }
 
   override suspend fun getTrip(tripId: String): TripFirestoreDocument? {
-    val snapshot = trips.document(tripId).get().await()
+    val snapshot = trips.document(tripId).get(Source.SERVER).await()
+    // SERVER reads can still include latency-compensated local writes.
+    if (snapshot.metadata.isFromCache || snapshot.metadata.hasPendingWrites()) {
+      throw FirebaseFirestoreException(
+          "Trip is not server-confirmed",
+          FirebaseFirestoreException.Code.UNAVAILABLE,
+      )
+    }
     return snapshot.takeIf { it.exists() }?.let { it.toFirestoreDocument() }
   }
 

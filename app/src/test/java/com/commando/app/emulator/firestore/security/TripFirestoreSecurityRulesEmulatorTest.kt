@@ -1,5 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
+// AI assistance: OpenAI Codex for revoked-access read regression (#391).
 // AI assistance: Claude Code for trip status seeding (#233) and trip ID reuse (#394).
 
 import com.commando.app.data.repository.TripError
@@ -285,6 +286,27 @@ class TripFirestoreSecurityRulesEmulatorTest {
       assertEquals(denied, repository(otherId, other).publishTrip(tripId, newTrip))
 
       assertEquals(stored + ("status" to "CANCELLED"), reference.get().await().data)
+    }
+  }
+
+  @Test
+  fun byIdRead_afterAccessRevocationDoesNotReturnPreviouslyCachedTrip() = runTest {
+    withClients("owner" to true, "reader" to true) { (owner, reader) ->
+      val ownerId = checkNotNull(owner.auth.currentUser).uid
+      val readerId = checkNotNull(reader.auth.currentUser).uid
+      val id = "revoked-${UUID.randomUUID()}"
+      owner.firestore.collection(TRIPS_COLLECTION).document(id).set(storedTrip(ownerId)).await()
+      val repository =
+          TripRepositoryFirestore(
+              FakeAuthRepository(AuthUser(uid = readerId)),
+              reader.firestore,
+              now = { NOW },
+          )
+      assertEquals(id, repository.getTripById(id).successData().id)
+
+      setStatusAsAdmin(id, TripStatus.CANCELLED)
+
+      assertEquals(TripResult.Error(TripError.PermissionDenied), repository.getTripById(id))
     }
   }
 

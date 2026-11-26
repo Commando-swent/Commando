@@ -60,3 +60,20 @@ error in its repository first.
 - It does not replace Firestore's own offline cache, which is shared by all accounts on the
   device. Do not read private data from it without checking its owner against the session.
 - Showing cached data never proves it is current; always mark it as stale with `confirmedAt`.
+
+## Trip details reads
+
+<!-- AI assistance: OpenAI Codex (#391 / #392). -->
+
+`TripRepository.getTripById` requires a server read and rejects snapshots containing pending
+local writes. An offline SDK cache hit therefore returns `TripError.NetworkError`, not success
+or `NotFound`. A successful read can populate the account-scoped session cache after the caller
+checks its session. Retrying after reconnection must confirm the trip again before enabling live
+actions or updating the confirmation time.
+
+Future offline consumers may retain previously confirmed data on `NetworkError` (including an
+unconfirmed pending-write snapshot) or `Unknown`, visibly stale and with its original timestamp.
+`NotFound`, `PermissionDenied` and `InvalidData` must invalidate that trip's entry. Cancellation
+propagates to the caller. This change does not implement screen caching or change the source policy
+of the one-shot upcoming/owned trip lists. By-ID publication reconciliation and transition
+prechecks also require confirmation; they cannot report cached success while offline.

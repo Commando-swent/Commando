@@ -31,6 +31,12 @@ interface TripRepository {
    */
   suspend fun publishTrip(tripId: String, newTrip: NewTrip): TripResult<Trip>
 
+  /**
+   * Reads the currently server-confirmed trip, never an SDK-cached or pending local version.
+   * NetworkError means confirmation is unavailable; NotFound means absent (or a blank ID),
+   * PermissionDenied means access was refused, and InvalidData means the stored trip is malformed.
+   * Offline screens own account-scoped fallback and must preserve its original confirmation time.
+   */
   suspend fun getTripById(tripId: String): TripResult<Trip>
 
   suspend fun getUpcomingTrips(): TripResult<List<Trip>>

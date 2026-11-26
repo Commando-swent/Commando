@@ -442,8 +442,9 @@ private fun FirestoreFailure.toTripError(notFoundError: TripError): TripError =
 internal const val TRIPS_COLLECTION = "trips"
 /** Open orders of a trip, kept by the order writes and checked by the rules (#449). */
 internal const val FIELD_OPEN_ORDER_COUNT = "openOrderCount"
-/** Order whose creation or settlement last moved [FIELD_OPEN_ORDER_COUNT]. */
-internal const val FIELD_COUNTER_ORDER_ID = "counterOrderId"
+/** Private witness naming the order that last moved a trip's [FIELD_OPEN_ORDER_COUNT]. */
+internal const val ORDER_COUNTER_WRITES_COLLECTION = "tripOrderCounterWrites"
+internal const val FIELD_LAST_ORDER_ID = "lastOrderId"
 private const val ORDERS_COLLECTION = "orders"
 private const val FIELD_ORDER_TRIP_ID = "tripId"
 private const val FIELD_OWNER_ID = "ownerId"

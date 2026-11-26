@@ -343,7 +343,9 @@ internal class FirebaseOrderFirestoreDataSource(
         .runBatch { batch ->
           batch.set(ref, data)
           batch.setEvent(id, recipient, NotificationEventType.ORDER_PLACED)
-          batch.update(tripReference(data.getValue("tripId") as String), openOrderCountMove(id, 1))
+          val tripId = data.getValue("tripId") as String
+          batch.update(tripReference(tripId), openOrderCountMove(1))
+          batch.set(counterWitness(tripId), mapOf(FIELD_LAST_ORDER_ID to id))
         }
         .await()
     return checkNotNull(get(ref.id))
@@ -531,7 +533,8 @@ internal class FirebaseOrderFirestoreDataSource(
         ownerTransition?.let { transaction.setDecisionEvent(ref, document, it) }
         if (!target.blocksTripCompletion()) {
           val tripId = document.data.getValue("tripId") as String
-          transaction.update(tripReference(tripId), openOrderCountMove(id, -1))
+          transaction.update(tripReference(tripId), openOrderCountMove(-1))
+          transaction.set(counterWitness(tripId), mapOf(FIELD_LAST_ORDER_ID to id))
         }
         document.copy(data = document.data + ("status" to status))
       } else document
@@ -652,9 +655,13 @@ internal class FirebaseOrderFirestoreDataSource(
   private fun tripReference(tripId: String) =
       firestore.collection(TRIPS_COLLECTION).document(tripId)
 
-  /** The trip counter move the rules require with each creation and settlement of order [id]. */
-  private fun openOrderCountMove(id: String, delta: Long) =
-      mapOf(FIELD_OPEN_ORDER_COUNT to FieldValue.increment(delta), FIELD_COUNTER_ORDER_ID to id)
+  /** The trip counter move the rules require with each order creation and settlement (#449). */
+  private fun openOrderCountMove(delta: Long) =
+      mapOf(FIELD_OPEN_ORDER_COUNT to FieldValue.increment(delta))
+
+  /** Private document naming the order that moves the counter, so the trip exposes no order ID. */
+  private fun counterWitness(tripId: String) =
+      firestore.collection(ORDER_COUNTER_WRITES_COLLECTION).document(tripId)
 
   private fun transitionError(code: FirebaseFirestoreException.Code) =
       FirebaseFirestoreException("Order transition failed", code)

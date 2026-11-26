@@ -170,7 +170,9 @@ settle them (reject, cancel or deliver). A cancelled trip leaves discovery, refu
 order edits, and stays readable by id so requesters keep the trip of their past orders.
 
 Rules cannot query orders, so each trip counts them in `openOrderCount`: creating an order adds one
-and settling it removes one, in the same atomic write that names the order in `counterOrderId`. The
+and settling it removes one, in the same atomic write that names the order in the private
+`tripOrderCounterWrites/{tripId}` (unreadable, so the trip exposes no order ID). Publication must set
+it to 0. The
 rules require that move, refuse any other counter change, and allow Cancel and Complete only at zero,
 even for a direct write. The transition transaction re-reads the counter, so an order placed after the
 order query still refuses with `OrdersStillOpen`. The counter never goes below zero.
@@ -180,7 +182,8 @@ orders cannot be settled, until `tools/trip-counters/backfill.mjs` sets it from 
 Rollout (Ghali, in one sitting; older app versions cannot create or settle orders under these rules,
 and this version cannot under the old ones):
 
-1. Release the app version that includes #449.
+1. Release the app version that includes #449 on GitHub Releases and have every tester install it.
+   Older APKs are then refused (publishing a trip, placing or settling an order), never half-applied.
 2. Deploy the rules: `firebase deploy --only firestore:rules --project command-o`.
 3. Set the counters: `node tools/trip-counters/backfill.mjs --project command-o` (dry run), then the
    same with `--write`. A trip changed meanwhile fails its commit; rerun until no counter is left.

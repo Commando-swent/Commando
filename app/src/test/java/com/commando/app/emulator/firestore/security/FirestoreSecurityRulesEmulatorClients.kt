@@ -34,8 +34,12 @@ internal fun WriteBatch.moveOpenOrderCount(
 ) {
   set(
       client.firestore.collection("trips").document(tripId),
-      mapOf("openOrderCount" to FieldValue.increment(delta), "counterOrderId" to orderId),
+      mapOf("openOrderCount" to FieldValue.increment(delta)),
       SetOptions.merge(),
+  )
+  set(
+      client.firestore.collection("tripOrderCounterWrites").document(tripId),
+      mapOf("lastOrderId" to orderId),
   )
 }
 

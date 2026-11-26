@@ -1,7 +1,7 @@
 package com.commando.app.emulator.firestore.security
 
 // AI assistance: Claude Code for trip status seeding (#233), trip ID reuse (#394) and cancelled
-// trip reads (#449).
+// trip reads and the open-order counter at publication (#449).
 
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepositoryFirestore
@@ -44,6 +44,15 @@ class TripFirestoreSecurityRulesEmulatorTest {
             .collection(TRIPS_COLLECTION)
             .document("unauthenticated-${UUID.randomUUID()}")
             .set(storedTrip(ownerId))
+            .await()
+      }
+      // Publication must start the open-order counter at exactly 0 (#449), so an older client
+      // cannot publish a trip that no order could ever be placed on.
+      for (counter in listOf(null, 1, "0")) assertPermissionDenied("openOrderCount $counter") {
+        val trip = storedTrip(ownerId) - "openOrderCount"
+        trips
+            .document()
+            .set(if (counter == null) trip else trip + ("openOrderCount" to counter))
             .await()
       }
       val publishedTrip =
@@ -345,6 +354,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
           "status" to status,
           "createdAt" to Timestamp(NOW.epochSecond, NOW.nano),
           "updatedAt" to Timestamp(updatedAt.epochSecond, updatedAt.nano),
+          "openOrderCount" to 0,
       )
 
   private fun storeLocation(

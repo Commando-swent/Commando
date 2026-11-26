@@ -217,7 +217,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
         val uid = owner.auth.currentUser!!.uid
         repo(owner).publish(trip, fix())
         val orderId = order(requester, trip)
-        updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // seeded order (#449)
+        updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // the seeded order
         owner.firestore
             .collection("trips")
             .document(trip)
@@ -457,6 +457,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
                 "scheduledAt" to Timestamp(now.plusSeconds(3600)),
                 "createdAt" to Timestamp(now),
                 "updatedAt" to Timestamp(now),
+                "openOrderCount" to 0,
             )
         )
         .await()

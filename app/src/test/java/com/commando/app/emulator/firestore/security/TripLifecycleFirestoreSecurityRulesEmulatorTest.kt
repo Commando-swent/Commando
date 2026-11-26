@@ -206,8 +206,11 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
       // Nobody can lower the counter without settling the order it names.
       for (actor in listOf(owner, requester)) {
         assertPermissionDenied("counter reset by ${actor.app.name}") {
-          tripRef(actor, trip)
-              .update(mapOf("openOrderCount" to 0, "counterOrderId" to order.id))
+          actor.firestore
+              .runBatch {
+                it.update(tripRef(actor, trip), "openOrderCount", 0)
+                it.set(witness(actor, trip), mapOf("lastOrderId" to order.id))
+              }
               .await()
         }
       }
@@ -215,6 +218,20 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
       assertEquals(0L, openOrderCount(owner, trip))
       tripRef(owner, trip).update(move("CANCELLED")).await()
       assertEquals("CANCELLED", statusOf(owner, trip))
+    }
+  }
+
+  @Test
+  fun readersSeeTheCountButNotWhichOrderMovedIt() = runTest {
+    withClients("owner" to true, "requester" to true, "outsider" to true) {
+        (owner, requester, outsider) ->
+      val trip = publishWithOrder(owner, requester)
+      val read = tripRef(outsider, trip).get(Source.SERVER).await()
+      assertEquals(1L, read.getLong("openOrderCount"))
+      assertTrue(read.data!!.keys.none { it.contains("OrderId") })
+      for (client in listOf(owner, requester, outsider)) {
+        assertPermissionDenied("witness read") { witness(client, trip).get(Source.SERVER).await() }
+      }
     }
   }
 
@@ -300,8 +317,11 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   private suspend fun asLegacy(owner: EmulatorClient, trip: String) {
     val data = tripRef(owner, trip).get(Source.SERVER).await().data!!
     deleteDocumentAsOwner("trips/$trip")
-    createDocumentAsOwner("trips", trip, data - "openOrderCount" - "counterOrderId")
+    createDocumentAsOwner("trips", trip, data - "openOrderCount")
   }
+
+  private fun witness(client: EmulatorClient, trip: String) =
+      client.firestore.collection("tripOrderCounterWrites").document(trip)
 
   private suspend fun openOrderCount(client: EmulatorClient, id: String) =
       tripRef(client, id).get(Source.SERVER).await().getLong("openOrderCount")

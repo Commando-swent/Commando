@@ -38,6 +38,34 @@ class TripRatingViewModelTest {
   }
 
   @Test
+  fun reliabilityCompletionRejectsAccountChangeWithoutASessionEvent() = runTest {
+    var uid = "requester"
+    val scoped = TripRatingViewModel(ratings, { uid })
+    ratings.loadReliability = {
+      uid = "other-account"
+      RatingResult.Success(ReliabilitySummary(it, 5, 0))
+    }
+    scoped.refreshReliability("owner")
+    runCurrent()
+    scoped.assertReliabilityError(RatingError.NotAuthenticated)
+    assertEquals(TripRatingUiState.Error(RatingError.NotAuthenticated), scoped.uiState.value)
+  }
+
+  @Test
+  fun starCompletionRejectsSignOutWithoutASessionEvent() = runTest {
+    var uid: String? = "requester"
+    val scoped = TripRatingViewModel(ratings, { uid })
+    ratings.load = {
+      uid = null
+      RatingResult.Success(summary)
+    }
+    scoped.refresh("owner")
+    runCurrent()
+    assertEquals(TripRatingUiState.Error(RatingError.NotAuthenticated), scoped.uiState.value)
+    scoped.assertReliabilityError(RatingError.NotAuthenticated)
+  }
+
+  @Test
   fun starsFinishWhileReliabilityIsPendingAndOverlappingReadsAreDeduplicated() = runTest {
     val gate = CompletableDeferred<RatingResult<ReliabilitySummary>>()
     ratings.load = { RatingResult.Success(summary) }
@@ -149,6 +177,10 @@ class TripRatingViewModelTest {
       ratings.loadReliability = { withContext(NonCancellable) { gate.await() } }
       scoped.refreshAll("owner")
       runCurrent()
+      changes.emit(uid)
+      runCurrent()
+      assertEquals(TripRatingUiState.Empty, scoped.uiState.value)
+      assertNull(scoped.reliabilityState.value)
       uid = next
       changes.emit(uid)
       runCurrent()

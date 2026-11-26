@@ -25,14 +25,22 @@ class FakeRatingRepositoryTest {
   @Test
   fun seededReliabilityDoesNotDependOnCustomerStars() = runTest {
     val summary = ReliabilitySummary("commando", 4, 1)
-    val repository =
-        FakeRatingRepository(
-            { userId },
-            FakeOrderRepository({ userId }),
-            FakeTripRepository("commando"),
-            reliabilitySummaries = mapOf("commando" to summary),
-        )
-    assertEquals(RatingResult.Success(summary), repository.getReliabilitySummary("commando"))
+    val f = Fixture(reliabilitySummaries = mapOf("commando" to summary))
+    assertEquals(RatingResult.Success(summary), f.rating.getReliabilitySummary("commando"))
+  }
+
+  @Test
+  fun reliabilityRejectsInvalidOwnerIds() = runTest {
+    val f = Fixture()
+    for (id in invalidIds) {
+      assertEquals(id, failure(RatingError.InvalidData), f.rating.getReliabilitySummary(id))
+    }
+  }
+
+  @Test
+  fun reliabilityRejectsSeedBelongingToAnotherOwner() = runTest {
+    val f = Fixture(reliabilitySummaries = mapOf("commando" to ReliabilitySummary("other", 5, 0)))
+    assertEquals(failure(RatingError.InvalidData), f.rating.getReliabilitySummary("commando"))
   }
 
   @Test
@@ -295,6 +303,7 @@ class FakeRatingRepositoryTest {
       orders: List<Order> = listOf(order()),
       trips: List<Trip> = listOf(trip()),
       now: () -> Instant = { time },
+      reliabilitySummaries: Map<String, ReliabilitySummary> = emptyMap(),
   ) {
     var beforeOrder: suspend () -> Unit = {}
     var beforeTrip: suspend () -> Unit = {}
@@ -316,7 +325,14 @@ class FakeRatingRepositoryTest {
             return tripResult ?: tripSource.getTripById(tripId)
           }
         }
-    val rating = FakeRatingRepository({ userId }, orderRepository, tripRepository, now)
+    val rating =
+        FakeRatingRepository(
+            { userId },
+            orderRepository,
+            tripRepository,
+            now,
+            reliabilitySummaries,
+        )
 
     suspend fun read() = rating.getRatingForOrder("order")
 

@@ -149,7 +149,7 @@ class TripRatingViewModel(
   @MainThread
   fun refresh(commandoId: String) {
     if (!selectOwner(commandoId)) return
-    if (this.commandoId == commandoId && requestJob?.isActive == true) return
+    if (requestJob?.isActive == true) return
     val requestGeneration = ++generation
     requestJob?.cancel()
     mutableState.value = TripRatingUiState.Loading

@@ -184,6 +184,18 @@ class MyOrdersViewModelTest {
     assertEquals(MyOrdersUiState.OfflineUnavailable, model.uiState.value)
   }
 
+  @Test
+  fun unclassifiedReadFailureDiscardsSavedHistory() = runTest {
+    val cache = cacheWithConfirmedHistory()
+    orders.forcedError = OrderError.Unknown
+    val vm = MyOrdersViewModel(orders, trips, "alice", cache = cache)
+
+    advanceUntilIdle()
+
+    assertEquals(MyOrdersUiState.Error(OrderError.Unknown), vm.uiState.value)
+    assertNull(cache.get(historyKey("alice")))
+  }
+
   private fun cacheWithConfirmedHistory() = SessionCache {
     sessionUser
   }

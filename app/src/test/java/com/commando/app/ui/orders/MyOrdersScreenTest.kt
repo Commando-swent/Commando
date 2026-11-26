@@ -131,7 +131,8 @@ class MyOrdersScreenTest {
   @Test
   fun coldOfflineHistoryExplainsTheMissingCopy() {
     show(MyOrdersUiState.OfflineUnavailable)
-    compose.onNodeWithText("No saved copy is available offline.").assertIsDisplayed()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    compose.onNodeWithText(context.getString(R.string.offline_no_copy)).assertIsDisplayed()
   }
 
   @Test

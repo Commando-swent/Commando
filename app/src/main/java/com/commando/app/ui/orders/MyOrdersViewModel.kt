@@ -103,6 +103,8 @@ class MyOrdersViewModel(
       mutableState.value =
           when {
             cache == null -> state
+            // Only a known temporary failure can reuse the saved rows. Unknown does not
+            // establish that fallback is safe, so discard the copy before a later offline load.
             state is MyOrdersUiState.Error && state.error != OrderError.NetworkError -> {
               cache.remove(key)
               state

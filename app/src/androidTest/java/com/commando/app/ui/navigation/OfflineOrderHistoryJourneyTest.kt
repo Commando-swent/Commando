@@ -96,7 +96,7 @@ class OfflineOrderHistoryJourneyTest {
           val accepted =
               accounts.ownerOrders.decideOrder(order.id, OrderDecision.ACCEPT, order.revision)
           assertTrue(accepted is OrderResult.Success)
-          assertEquals(OrderResult.Error(OrderError.Unknown), accounts.orders.getMyOrders())
+          assertEquals(OrderResult.Error(OrderError.NetworkError), accounts.orders.getMyOrders())
           assertEquals(
               OrderResult.Error(OrderError.Unknown),
               accounts.orders.getOrderById(order.id),

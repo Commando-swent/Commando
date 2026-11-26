@@ -2,6 +2,7 @@ package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the incoming-orders entry point (#147), the owner's close and
 // complete actions (#233) and the owner's earnings (#301).
+// AI assistance: OpenAI Codex for the trip details network error (#453).
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -137,7 +138,11 @@ fun TripDetailsScreen(
           TripDetailsError(
               message =
                   stringResource(
-                      if (notFound) R.string.trip_details_not_found else R.string.trip_details_error
+                      when (state.error) {
+                        TripError.NotFound -> R.string.trip_details_not_found
+                        TripError.NetworkError -> R.string.trip_details_error_network
+                        else -> R.string.trip_details_error
+                      }
                   ),
               onRetry = if (notFound) null else onRetry,
           )

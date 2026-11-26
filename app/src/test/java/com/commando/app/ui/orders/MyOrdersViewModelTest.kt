@@ -144,28 +144,53 @@ class MyOrdersViewModelTest {
   }
 
   @Test
-  fun cachedHistoryKeepsConfirmationThroughNetworkFailureAndEvictsAfterDenial() = runTest {
-    val cache = com.commando.app.data.cache.SessionCache { sessionUser }
-    val online = kotlinx.coroutines.flow.MutableStateFlow(false)
-    val model = MyOrdersViewModel(orders, trips, "alice", cache = cache, online = online)
+  fun coldOfflineHistoryHasNoSavedCopy() = runTest {
+    val cache = SessionCache { sessionUser }
+    val model =
+        MyOrdersViewModel(orders, trips, "alice", cache = cache, online = MutableStateFlow(false))
+
     advanceUntilIdle()
+
     assertEquals(MyOrdersUiState.OfflineUnavailable, model.uiState.value)
-    online.value = true
-    advanceUntilIdle()
-    assertEquals(listOf(aliceNew.id, aliceOld.id), rowIds(model.uiState.value))
-    online.value = false
-    advanceUntilIdle()
-    val stale = model.uiState.value as MyOrdersUiState.Content
-    assertEquals(cache.get(historyKey("alice"))!!.confirmedAt, stale.confirmedAt)
-    orders.forcedError = OrderError.Unknown
-    online.value = true
-    advanceUntilIdle()
-    assertEquals(stale, model.uiState.value)
-    orders.forcedError = OrderError.PermissionDenied
-    model.retry()
-    advanceUntilIdle()
     assertNull(cache.get(historyKey("alice")))
   }
+
+  @Test
+  fun temporaryReadFailureKeepsSavedRowsAndTheirConfirmationTime() = runTest {
+    val cache = cacheWithConfirmedHistory()
+    orders.forcedError = OrderError.NetworkError
+    val model = MyOrdersViewModel(orders, trips, "alice", cache = cache)
+
+    advanceUntilIdle()
+
+    val saved = requireNotNull(cache.get(historyKey("alice")))
+    assertEquals(now, saved.confirmedAt)
+    assertEquals(
+        MyOrdersUiState.Content(listOf(MyOrderRow(aliceOld, trip)), now),
+        model.uiState.value,
+    )
+  }
+
+  @Test
+  fun permissionDenialEvictsSavedRowsAndClearsThemFromTheUi() = runTest {
+    val cache = cacheWithConfirmedHistory()
+    orders.forcedError = OrderError.PermissionDenied
+    val online = MutableStateFlow(true)
+    val model = MyOrdersViewModel(orders, trips, "alice", cache = cache, online = online)
+
+    advanceUntilIdle()
+
+    assertEquals(MyOrdersUiState.Error(OrderError.PermissionDenied), model.uiState.value)
+    assertNull(cache.get(historyKey("alice")))
+    online.value = false
+    advanceUntilIdle()
+    assertEquals(MyOrdersUiState.OfflineUnavailable, model.uiState.value)
+  }
+
+  private fun cacheWithConfirmedHistory() = SessionCache {
+    sessionUser
+  }
+      .apply { put(historyKey("alice"), listOf(MyOrderRow(aliceOld, trip)), confirmedAt = now) }
 
   @Test
   fun savedRowsStayVisibleDuringReconnectionUntilTheServerConfirmsNewRows() = runTest {

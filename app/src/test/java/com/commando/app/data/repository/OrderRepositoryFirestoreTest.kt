@@ -140,7 +140,8 @@ class OrderRepositoryFirestoreTest {
         listOf(
             FirebaseFirestoreException.Code.PERMISSION_DENIED to OrderError.PermissionDenied,
             FirebaseFirestoreException.Code.UNAUTHENTICATED to OrderError.NotAuthenticated,
-            FirebaseFirestoreException.Code.UNAVAILABLE to OrderError.Unknown,
+            FirebaseFirestoreException.Code.UNAVAILABLE to OrderError.NetworkError,
+            FirebaseFirestoreException.Code.DEADLINE_EXCEEDED to OrderError.NetworkError,
             FirebaseFirestoreException.Code.DATA_LOSS to OrderError.InvalidData,
         )) {
       source.beforeRead = { throw FirebaseFirestoreException("test", code) }

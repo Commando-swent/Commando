@@ -1,6 +1,6 @@
 package com.commando.app.ui.orders
 
-// AI assistance: Claude (Anthropic).
+// AI assistance: Claude (Anthropic) and OpenAI Codex.
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.commando.app.data.cache.SessionCache
@@ -103,12 +103,12 @@ class MyOrdersViewModel(
       mutableState.value =
           when {
             cache == null -> state
-            online?.value == false -> cached() ?: MyOrdersUiState.OfflineUnavailable
-            state is MyOrdersUiState.Error && state.error == OrderError.Unknown -> cached() ?: state
-            state is MyOrdersUiState.Error -> {
+            state is MyOrdersUiState.Error && state.error != OrderError.NetworkError -> {
               cache.remove(key)
               state
             }
+            online?.value == false -> cached() ?: MyOrdersUiState.OfflineUnavailable
+            state is MyOrdersUiState.Error -> cached() ?: state
             else -> {
               val rows = (state as? MyOrdersUiState.Content)?.rows.orEmpty()
               val currentOrders = rows.associateBy { it.order.id }

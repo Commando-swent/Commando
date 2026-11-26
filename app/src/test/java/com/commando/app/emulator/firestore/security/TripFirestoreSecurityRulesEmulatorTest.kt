@@ -1,6 +1,7 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: Claude Code for trip status seeding (#233) and trip ID reuse (#394).
+// AI assistance: Claude Code for trip status seeding (#233), trip ID reuse (#394) and cancelled
+// trip reads and the open-order counter at publication (#449).
 
 import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepositoryFirestore
@@ -43,6 +44,16 @@ class TripFirestoreSecurityRulesEmulatorTest {
             .collection(TRIPS_COLLECTION)
             .document("unauthenticated-${UUID.randomUUID()}")
             .set(storedTrip(ownerId))
+            .await()
+      }
+      // Publication must start the open-order counter at an integer 0 (#449), so an older client
+      // cannot publish a trip that no order could ever be placed on. A 0.0 would stay a double
+      // after the first increment, which the order rules refuse.
+      for (counter in listOf(null, 1, "0", 0.0)) assertPermissionDenied("openOrderCount $counter") {
+        val trip = storedTrip(ownerId) - "openOrderCount"
+        trips
+            .document()
+            .set(if (counter == null) trip else trip + ("openOrderCount" to counter))
             .await()
       }
       val publishedTrip =
@@ -122,12 +133,13 @@ class TripFirestoreSecurityRulesEmulatorTest {
       nonPublished.set(storedTrip(ownerId)).await()
       setStatusAsAdmin(nonPublished.id, TripStatus.IN_PROGRESS)
       assertTrue(nonPublished.get().await().exists())
-      // A closed trip stays readable by id so requesters keep the trip of their order (#233).
+      // A closed (#233) or cancelled (#449) trip stays readable by id so requesters keep the trip
+      // of their order.
       val otherNonPublished = other.firestore.collection(TRIPS_COLLECTION).document(nonPublished.id)
       assertTrue(otherNonPublished.get().await().exists())
       setStatusAsAdmin(nonPublished.id, TripStatus.CANCELLED)
       assertTrue(nonPublished.get().await().exists())
-      assertPermissionDenied { otherNonPublished.get().await() }
+      assertTrue(otherNonPublished.get().await().exists())
     }
   }
 
@@ -280,7 +292,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
             .set(storedTrip(otherId))
             .await()
       }
-      // A cancelled trip is hidden from others, so the transaction read itself is denied.
+      // A cancelled trip of another owner is refused too, never claimed.
       setStatusAsAdmin(tripId, TripStatus.CANCELLED)
       assertEquals(denied, repository(otherId, other).publishTrip(tripId, newTrip))
 
@@ -343,6 +355,7 @@ class TripFirestoreSecurityRulesEmulatorTest {
           "status" to status,
           "createdAt" to Timestamp(NOW.epochSecond, NOW.nano),
           "updatedAt" to Timestamp(updatedAt.epochSecond, updatedAt.nano),
+          "openOrderCount" to 0,
       )
 
   private fun storeLocation(

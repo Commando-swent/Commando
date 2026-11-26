@@ -1,12 +1,14 @@
 package com.commando.app.ui.trips
 
-// AI assistance: Claude Code (#233); earnings card (#301).
+// AI assistance: Claude Code (#233); earnings card (#301); trip cancellation (#449).
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,6 +26,7 @@ import com.commando.app.model.TripTransition
 
 object TripOwnerTestTags {
   const val TRANSITION = "trip_owner_transition"
+  const val CANCEL_TRIP = "trip_owner_cancel_trip"
   const val TRANSITION_ERROR = "trip_owner_transition_error"
   const val CONFIRM = "trip_owner_confirm"
   const val DISMISS = "trip_owner_dismiss"
@@ -32,9 +35,9 @@ object TripOwnerTestTags {
 private val SECTION_SPACING = 8.dp
 
 /**
- * Owner-only part of Trip Details: [onRequestTransition] asks to close or complete the trip, and
- * [onConfirmTransition] and [onDismissTransition] answer the confirmation. [earnings] shows the
- * earnings card when not null, and [onRetryEarnings] reloads only the earnings.
+ * Owner-only part of Trip Details: [onRequestTransition] asks to close, complete or cancel the
+ * trip, and [onConfirmTransition] and [onDismissTransition] answer the confirmation. [earnings]
+ * shows the earnings card when not null, and [onRetryEarnings] reloads only the earnings.
  */
 class TripOwnerControls(
     val onRequestTransition: (TripTransition) -> Unit,
@@ -49,8 +52,9 @@ internal fun nextTransition(status: TripStatus): TripTransition? =
     TripTransition.entries.firstOrNull { it.source == status }
 
 /**
- * The earnings, then the close or complete action and its confirmation, for the owner of [state]'s
- * trip. Earnings stay visible once the trip has ended.
+ * The earnings, then the close or complete action, the cancel action of a trip that has not
+ * started, and their confirmation, for the owner of [state]'s trip. Earnings stay visible once the
+ * trip has ended.
  */
 @Composable
 internal fun TripOwnerSection(state: TripDetailsUiState.Content, controls: TripOwnerControls) {
@@ -63,6 +67,11 @@ internal fun TripOwnerSection(state: TripDetailsUiState.Content, controls: TripO
         enabled = !state.transitionInProgress,
         modifier = Modifier.testTag(TripOwnerTestTags.TRANSITION),
     )
+    if (state.trip.status == TripTransition.CANCEL.source) {
+      CancelTripButton(state.transitionInProgress) {
+        controls.onRequestTransition(TripTransition.CANCEL)
+      }
+    }
     state.transitionError?.let { error ->
       Text(
           stringResource(error.transitionMessage()),
@@ -100,6 +109,19 @@ internal fun TripOwnerSection(state: TripDetailsUiState.Content, controls: TripO
   }
 }
 
+/** Secondary, error-coloured action that withdraws the trip; [onClick] opens its confirmation. */
+@Composable
+private fun CancelTripButton(transitionInProgress: Boolean, onClick: () -> Unit) {
+  OutlinedButton(
+      onClick = onClick,
+      enabled = !transitionInProgress,
+      modifier = Modifier.fillMaxWidth().testTag(TripOwnerTestTags.CANCEL_TRIP),
+      colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+  ) {
+    Text(stringResource(TripTransition.CANCEL.texts().action))
+  }
+}
+
 /** Button label, confirmation title and confirmation message of a transition. */
 private class TransitionTexts(
     @StringRes val action: Int,
@@ -121,9 +143,15 @@ private fun TripTransition.texts(): TransitionTexts =
               R.string.trip_details_complete_title,
               R.string.trip_details_complete_message,
           )
+      TripTransition.CANCEL ->
+          TransitionTexts(
+              R.string.trip_details_cancel_trip,
+              R.string.trip_details_cancel_trip_title,
+              R.string.trip_details_cancel_trip_message,
+          )
     }
 
-/** Message for a failed close or complete; every other error asks the owner to try again. */
+/** Message for a failed transition; every other error asks the owner to try again. */
 @StringRes
 private fun TripError.transitionMessage(): Int =
     when (this) {

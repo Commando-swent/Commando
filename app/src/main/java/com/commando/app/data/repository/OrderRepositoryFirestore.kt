@@ -1,12 +1,14 @@
 package com.commando.app.data.repository
 
 // AI assistance: OpenAI Codex; trip-owner query (#147), error mapping (#193), Commando cancellation
-// (#401): Claude Code. Trusted reliability tracking (#387): OpenAI Codex.
+// (#401), open-order counter (#449): Claude Code. Trusted reliability tracking (#387): OpenAI
+// Codex.
 import com.commando.app.model.NotificationEventType
 import com.commando.app.model.Order
 import com.commando.app.model.OrderDecision
 import com.commando.app.model.OrderDraft
 import com.commando.app.model.OrderStatus
+import com.commando.app.model.blocksTripCompletion
 import com.google.firebase.FirebaseApp
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -341,6 +343,9 @@ internal class FirebaseOrderFirestoreDataSource(
         .runBatch { batch ->
           batch.set(ref, data)
           batch.setEvent(id, recipient, NotificationEventType.ORDER_PLACED)
+          val tripId = data.getValue("tripId") as String
+          batch.update(tripReference(tripId), openOrderCountMove(1))
+          batch.set(counterWitness(tripId), mapOf(FIELD_LAST_ORDER_ID to id))
         }
         .await()
     return checkNotNull(get(ref.id))
@@ -526,6 +531,11 @@ internal class FirebaseOrderFirestoreDataSource(
         val status = target.name
         transaction.update(ref, "status", status)
         ownerTransition?.let { transaction.setDecisionEvent(ref, document, it) }
+        if (!target.blocksTripCompletion()) {
+          val tripId = document.data.getValue("tripId") as String
+          transaction.update(tripReference(tripId), openOrderCountMove(-1))
+          transaction.set(counterWitness(tripId), mapOf(FIELD_LAST_ORDER_ID to id))
+        }
         document.copy(data = document.data + ("status" to status))
       } else document
     }
@@ -641,6 +651,17 @@ internal class FirebaseOrderFirestoreDataSource(
     }
     return document
   }
+
+  private fun tripReference(tripId: String) =
+      firestore.collection(TRIPS_COLLECTION).document(tripId)
+
+  /** The trip counter move the rules require with each order creation and settlement (#449). */
+  private fun openOrderCountMove(delta: Long) =
+      mapOf(FIELD_OPEN_ORDER_COUNT to FieldValue.increment(delta))
+
+  /** Private document naming the order that moves the counter, so the trip exposes no order ID. */
+  private fun counterWitness(tripId: String) =
+      firestore.collection(ORDER_COUNTER_WRITES_COLLECTION).document(tripId)
 
   private fun transitionError(code: FirebaseFirestoreException.Code) =
       FirebaseFirestoreException("Order transition failed", code)

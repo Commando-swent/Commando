@@ -1,7 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transitions and idempotent publication (#394); OpenAI
-// Codex for live feeds.
+// AI assistance: Claude Code for trip transitions (#233, #449) and idempotent publication
+// (#394); OpenAI Codex for live feeds.
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
 import com.commando.app.model.OrderStatus
@@ -109,7 +109,7 @@ class FakeTripRepository(
       return it
     }
     if (
-        transition == TripTransition.COMPLETE &&
+        transition.requiresSettledOrders &&
             tripOrderStatuses(tripId).any(OrderStatus::blocksTripCompletion)
     ) {
       return TripResult.Error(TripError.OrdersStillOpen)

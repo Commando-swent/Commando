@@ -1,6 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; open-order counter fixture (#449): Claude Code.
 import com.commando.app.data.repository.CommandoPositionRepositoryFirestore
 import com.commando.app.model.CommandoPosition
 import com.google.firebase.Timestamp
@@ -217,6 +217,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
         val uid = owner.auth.currentUser!!.uid
         repo(owner).publish(trip, fix())
         val orderId = order(requester, trip)
+        updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // the seeded order
         owner.firestore
             .collection("trips")
             .document(trip)
@@ -235,9 +236,14 @@ class CommandoPositionSecurityRulesEmulatorTest {
           withTimeout(10_000) { ready.await() }
           assertTrue(observation.isActive)
           requester.firestore
-              .collection("orders")
-              .document(orderId)
-              .update("status", "CANCELLED")
+              .runBatch {
+                it.update(
+                    requester.firestore.collection("orders").document(orderId),
+                    "status",
+                    "CANCELLED",
+                )
+                it.moveOpenOrderCount(requester, trip, orderId, -1)
+              }
               .await()
           val error = withTimeout(10_000) { revoked.await() }
           observation.join()
@@ -451,6 +457,7 @@ class CommandoPositionSecurityRulesEmulatorTest {
                 "scheduledAt" to Timestamp(now.plusSeconds(3600)),
                 "createdAt" to Timestamp(now),
                 "updatedAt" to Timestamp(now),
+                "openOrderCount" to 0,
             )
         )
         .await()

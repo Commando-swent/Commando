@@ -1,6 +1,7 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for trip transition tests (#233) and idempotent publication (#394).
+// AI assistance: Claude Code for trip transition tests (#233, #449) and idempotent publication
+// (#394).
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.model.Location
 import com.commando.app.model.NewTrip
@@ -64,6 +65,7 @@ class TripRepositoryFirestoreTest {
     assertEquals("PUBLISHED", storedData["status"])
     assertEquals(Timestamp(currentTime.epochSecond, currentTime.nano), storedData["createdAt"])
     assertEquals(storedData["createdAt"], storedData["updatedAt"])
+    assertEquals(0L, storedData["openOrderCount"])
   }
 
   @Test
@@ -586,12 +588,17 @@ class TripRepositoryFirestoreTest {
   )
 
   @Test
-  fun transitionTrip_writesOnlyValidChangesAndChecksOrdersOnlyToComplete() = runTest {
+  fun transitionTrip_writesOnlyValidChangesAndChecksOrdersOnlyToCompleteOrCancel() = runTest {
     val open = listOf("PENDING", "ACCEPTED", "READY_FOR_HANDOFF")
     val settled = listOf("DELIVERED", "REJECTED", "CANCELLED")
     val raceTo = { status: TripStatus ->
       { d: InMemoryTripFirestoreDataSource ->
         d.documents[TRIP_ID] = validStoredTrip(status = status)
+      }
+    }
+    val lateOrder = { status: TripStatus ->
+      { d: InMemoryTripFirestoreDataSource ->
+        d.documents[TRIP_ID] = validStoredTrip(status = status) + ("openOrderCount" to 1L)
       }
     }
     val failWith = { code: Code ->
@@ -622,14 +629,32 @@ class TripRepositoryFirestoreTest {
                 hook = failWith(Code.PERMISSION_DENIED),
             ),
             Row(CLOSE, PUBLISHED, error = NetworkError, hook = failWith(Code.UNAVAILABLE)),
+            Row(CANCEL, PUBLISHED, settled),
+            Row(CANCEL, CANCELLED, open), // repeat
+            Row(CANCEL, IN_PROGRESS, error = InvalidTransition),
+            Row(CANCEL, COMPLETED, error = InvalidTransition),
+            Row(CANCEL, PUBLISHED, listOf(null), InvalidData),
+            Row(CANCEL, PUBLISHED, error = PermissionDenied, user = "requester"),
+            // Closed by another device between the order check and the write.
+            Row(CANCEL, PUBLISHED, error = InvalidTransition, hook = raceTo(IN_PROGRESS)),
+            Row(CANCEL, PUBLISHED, error = OrdersStillOpen, hook = lateOrder(PUBLISHED)),
+            Row(COMPLETE, IN_PROGRESS, error = OrdersStillOpen, hook = lateOrder(IN_PROGRESS)),
+            Row(CLOSE, PUBLISHED, hook = lateOrder(PUBLISHED)), // closing ignores open orders
+            Row(CANCEL, PUBLISHED, error = NotFound, hook = { it.documents.remove(TRIP_ID) }),
         ) +
-            open.map { Row(COMPLETE, IN_PROGRESS, settled + it, OrdersStillOpen) } +
+            listOf(COMPLETE to IN_PROGRESS, CANCEL to PUBLISHED).flatMap { (transition, status) ->
+              open.map { Row(transition, status, settled + it, OrdersStillOpen) }
+            } +
             listOf("", "a/b", ".", "..").map { Row(CLOSE, PUBLISHED, error = InvalidData, id = it) }
     for (row in rows) {
       val dataSource = dataSourceWithTrip(row.status).apply { orderStatuses = row.orders }
       dataSource.beforeTransition = row.hook?.let { hook -> { hook(dataSource) } }
       val writes = row.hook != null || (row.error == null && row.status != row.transition.target)
-      val queriesOrders = row.transition == COMPLETE && row.status == IN_PROGRESS
+      val queriesOrders =
+          row.transition.requiresSettledOrders &&
+              row.status == row.transition.source &&
+              row.user == "authenticated-user" &&
+              row.id == TRIP_ID
 
       val result =
           createRepository(dataSource, userId = row.user).transitionTrip(row.id, row.transition)
@@ -640,6 +665,9 @@ class TripRepositoryFirestoreTest {
       assertEquals(message, if (writes) 1 else 0, dataSource.transitionCalls)
       assertEquals(message, if (queriesOrders) 1 else 0, dataSource.orderStatusCalls)
       if (writes && row.hook == null) assertEquals(SERVER_TIME, result.successData().updatedAt)
+      if (row.error == OrdersStillOpen) {
+        assertEquals(message, row.status.name, dataSource.documents[TRIP_ID]?.get("status"))
+      }
     }
   }
 
@@ -775,17 +803,21 @@ class TripRepositoryFirestoreTest {
         tripId: String,
         from: String,
         to: String,
+        requireSettledOrders: Boolean,
     ): TripTransitionWrite? {
       transitionCalls += 1
       beforeTransition?.invoke()
       throwFailureIfPresent()
       val stored = documents[tripId] ?: return null
-      val written = stored["status"] == from
+      val openOrders = stored["openOrderCount"] as? Long ?: 0L
+      val ordersOpen = stored["status"] == from && requireSettledOrders && openOrders > 0L
+      val written = stored["status"] == from && !ordersOpen
       if (written) {
         documents[tripId] = stored + mapOf("status" to to, "updatedAt" to SERVER_TIMESTAMP)
       }
       afterTransition?.invoke()
-      return TripTransitionWrite(TripFirestoreDocument(tripId, documents.getValue(tripId)), written)
+      val document = TripFirestoreDocument(tripId, documents.getValue(tripId))
+      return TripTransitionWrite(document, written, ordersOpen)
     }
 
     private fun throwFailureIfPresent() {

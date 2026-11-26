@@ -1,6 +1,6 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code (trip cancellation: #449).
 import com.commando.app.data.repository.TripError.*
 import com.commando.app.model.*
 import com.commando.app.model.OrderStatus.ACCEPTED
@@ -33,7 +33,7 @@ class FakeTripRepositoryTransitionTest {
     val settled = listOf(REJECTED, OrderStatus.CANCELLED, DELIVERED)
     val cases =
         listOf(
-            Case(CLOSE, PUBLISHED),
+            Case(CLOSE, PUBLISHED, open), // closing does not wait for open orders
             Case(COMPLETE, IN_PROGRESS),
             Case(COMPLETE, IN_PROGRESS, settled),
             Case(CLOSE, IN_PROGRESS, open), // repeat
@@ -42,7 +42,14 @@ class FakeTripRepositoryTransitionTest {
             Case(CLOSE, COMPLETED, error = InvalidTransition),
             Case(CLOSE, CANCELLED, error = InvalidTransition),
             Case(COMPLETE, CANCELLED, error = InvalidTransition),
-        ) + open.map { Case(COMPLETE, IN_PROGRESS, settled + it, OrdersStillOpen) }
+            Case(CANCEL, PUBLISHED, settled),
+            Case(CANCEL, CANCELLED, open), // repeat: orders are not consulted
+            Case(CANCEL, IN_PROGRESS, error = InvalidTransition),
+            Case(CANCEL, COMPLETED, error = InvalidTransition),
+        ) +
+            listOf(COMPLETE to IN_PROGRESS, CANCEL to PUBLISHED).flatMap { (transition, status) ->
+              open.map { Case(transition, status, settled + it, OrdersStillOpen) }
+            }
     for (case in cases) {
       val after =
           if (case.error != null || case.status == case.transition.target) trip(case.status)
@@ -62,6 +69,15 @@ class FakeTripRepositoryTransitionTest {
     val closed = repository.transitionTrip(ID, CLOSE).successData()
     assertTrue(repository.getUpcomingTrips().successData().isEmpty())
     assertEquals(listOf(closed), repository.getMyTrips().successData())
+  }
+
+  @Test
+  fun cancel_leavesDiscoveryButStaysInMyTrips() = runTest {
+    val repository = repository(trip(PUBLISHED))
+    val cancelled = repository.transitionTrip(ID, CANCEL).successData()
+    assertEquals(CANCELLED, cancelled.status)
+    assertTrue(repository.getUpcomingTrips().successData().isEmpty())
+    assertEquals(listOf(cancelled), repository.getMyTrips().successData())
   }
 
   @Test

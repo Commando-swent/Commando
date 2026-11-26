@@ -1,5 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
+// AI assistance: Claude Code for the open-order counter fixture (#449).
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.PaymentError.*
 import com.commando.app.model.*
@@ -293,12 +294,12 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
     val pending = repo(requester, RefundStatus.PENDING).refundForCancellation(order.id)
     assertEquals(RefundStatus.PENDING, (pending as PaymentResult.Success).data.status)
     assertEquals(pending, repo().getRefund(order.id))
-    assertPermissionDenied { doc("orders").update("status", "CANCELLED").await() }
+    assertPermissionDenied { cancelDirectly() }
     assertEquals(
         RefundStatus.CONFIRMED,
         (repo().refundForCancellation(order.id) as PaymentResult.Success).data.status,
     )
-    doc("orders").update("status", "CANCELLED").await()
+    cancelDirectly()
     assertTrue(repo().refundForCancellation(order.id) is PaymentResult.Success)
   }
 
@@ -409,10 +410,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
           failure(NOT_CAPTURED),
           repo().refundForCancellation(order.id),
       )
-      if (status != PaymentStatus.FAILED)
-          assertPermissionDenied(status.name) {
-            doc("orders").update("status", "CANCELLED").await()
-          }
+      if (status != PaymentStatus.FAILED) assertPermissionDenied(status.name) { cancelDirectly() }
     }
   }
 
@@ -429,9 +427,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
           mapOf("amountCents" to order.totalCents, "status" to "CONFIRMED") + fields,
       )
       assertEquals(failure(INVALID_DATA), repo().getPayment(order.id))
-      assertPermissionDenied(fields.toString()) {
-        doc("orders").update("status", "CANCELLED").await()
-      }
+      assertPermissionDenied(fields.toString()) { cancelDirectly() }
     }
     updateDocumentAsOwner("trips/${order.tripId}", mapOf("ownerId" to false))
     assertEquals(failure(INVALID_DATA), repo().getPayment(order.id))
@@ -446,7 +442,7 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
     deleteDocumentAsOwner("payments/${order.id}")
     assertFalse(doc("payments").get(Source.SERVER).await().exists())
     assertEquals(PaymentResult.Success(null), repo().getPayment(order.id))
-    doc("orders").update("status", "CANCELLED").await()
+    cancelDirectly()
   }
 
   @Test fun pendingPaymentBlocksHandoff() = handoff(PaymentStatus.PENDING)
@@ -524,6 +520,16 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
     assertPermissionDenied { doc("orders").update("commissionCents", 76, "revision", 1).await() }
   }
 
+  /** The requester's direct cancellation, with the counter move the rules require (#449). */
+  private suspend fun cancelDirectly() {
+    requester.firestore
+        .runBatch {
+          it.update(doc("orders"), "status", "CANCELLED")
+          it.moveOpenOrderCount(requester, order.tripId, order.id, -1)
+        }
+        .await()
+  }
+
   private fun doc(collection: String, id: String = order.id, client: EmulatorClient = requester) =
       client.firestore.collection(collection).document(id)
 
@@ -597,7 +603,12 @@ class PaymentFirestoreSecurityRulesEmulatorTest {
       createDocumentAsOwner(
           "trips",
           order.tripId,
-          mapOf("ownerId" to owner.auth.currentUser!!.uid, "status" to "PUBLISHED"),
+          mapOf(
+              "ownerId" to owner.auth.currentUser!!.uid,
+              "status" to "PUBLISHED",
+              // The seeded order is counted as the order writes count it (#449).
+              "openOrderCount" to if (status.blocksTripCompletion()) 1L else 0L,
+          ),
       )
       createDocumentAsOwner(
           "orders",

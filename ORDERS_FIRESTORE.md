@@ -156,6 +156,38 @@ existing `ORDER_ACCEPTED` event and the cancellation time is the `occurredAt` of
 The inbox shows the event to the requester as an order decision. READY_FOR_HANDOFF and later cannot be
 cancelled. Refunds (#385) are out of scope while no payment exists on main.
 
+A race between `cancelAcceptedOrder` and `markReadyForHandoff` on two devices leaves exactly one winner:
+the loser returns AlreadyDecided(persistedOrder), and `ORDER_CANCELLED` exists only if the cancellation won.
+
+## Trip cancellation — #396 / #449
+
+AI assistance: Claude Code.
+
+`transitionTrip(id, TripTransition.CANCEL)` lets the trip owner withdraw a PUBLISHED trip (PUBLISHED to
+CANCELLED) through the same transaction as Close and Complete. Like Complete, it is refused with
+`OrdersStillOpen` while an order is PENDING, ACCEPTED or READY_FOR_HANDOFF, so the owner must first
+settle them (reject, cancel or deliver). A cancelled trip leaves discovery, refuses new orders and
+order edits, and stays readable by id so requesters keep the trip of their past orders.
+
+Rules cannot query orders, so each trip counts them in `openOrderCount`: creating an order adds one
+and settling it removes one, in the same atomic write that names the order in the private
+`tripOrderCounterWrites/{tripId}` (unreadable, so the trip exposes no order ID). Publication must set
+it to 0. The
+rules require that move, refuse any other counter change, and allow Cancel and Complete only at zero,
+even for a direct write. The transition transaction re-reads the counter, so an order placed after the
+order query still refuses with `OrdersStillOpen`. The counter never goes below zero.
+
+Trips written before #449 have no counter: they cannot be cancelled or completed, and their open
+orders cannot be settled, until `tools/trip-counters/backfill.mjs` sets it from their orders.
+Rollout (Ghali, in one sitting; older app versions cannot create or settle orders under these rules,
+and this version cannot under the old ones):
+
+1. Release the app version that includes #449 on GitHub Releases and have every tester install it.
+   Older APKs are then refused (publishing a trip, placing or settling an order), never half-applied.
+2. Deploy the rules: `firebase deploy --only firestore:rules --project command-o`.
+3. Set the counters: `node tools/trip-counters/backfill.mjs --project command-o` (dry run), then the
+   same with `--write`. A trip changed meanwhile fails its commit; rerun until no counter is left.
+
 ## Meetup proposals (#389)
 
 A chat message may carry `meetup: {location, at, response}` instead of `delayMinutes`, with readable fallback text. The Firestore adapter normalizes `at` to microsecond precision before writing and comparing retries. The trip owner creates a future PENDING proposal on an active trip and order. Only the requester can finalize it as ACCEPTED or DECLINED; rules preserve the location/time and require server `respondedAt`. Concurrent replies cannot overwrite the first decision. Identical creation/response retries are read-only, including after expiry or delivery. History remains participant-only and permanent; this does not change the trip’s configured handoff point.

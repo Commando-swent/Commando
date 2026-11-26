@@ -1,7 +1,7 @@
 package com.commando.app.ui.trips
 
 // AI assistance: Claude Code for the incoming-orders entry point tests (#147) and the owner's
-// close and complete tests (#233).
+// close, complete and cancel tests (#233, #449).
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.material3.MaterialTheme
@@ -380,12 +380,34 @@ class TripDetailsScreenTest {
   }
 
   @Test
-  fun transitionInProgressDisablesTheAction() {
+  fun transitionInProgressDisablesTheActions() {
     show(
         TripDetailsUiState.Content(trip, transitionInProgress = true),
         ownerControls = RecordingControls().build(),
     )
     compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag(TripOwnerTestTags.CANCEL_TRIP).performScrollTo().assertIsNotEnabled()
+  }
+
+  @Test
+  fun ownerCanRequestCancellationOnlyBeforeTheTripStarts() {
+    val controls = RecordingControls()
+    val state = mutableStateOf<TripDetailsUiState>(TripDetailsUiState.Content(trip))
+    showOwner(state, controls.build())
+    compose
+        .onNodeWithTag(TripOwnerTestTags.CANCEL_TRIP)
+        .performScrollTo()
+        .assertTextEquals("Cancel trip")
+        .assertIsEnabled()
+        .performClick()
+    compose.runOnIdle { assertEquals(listOf(TripTransition.CANCEL), controls.requested) }
+    state.value = TripDetailsUiState.Content(trip, pendingTransition = TripTransition.CANCEL)
+    compose.onNodeWithText("Cancel this trip?").assertIsDisplayed()
+    compose.onNodeWithText("The trip is withdrawn", substring = true).assertIsDisplayed()
+    for (status in listOf(TripStatus.IN_PROGRESS, TripStatus.COMPLETED, TripStatus.CANCELLED)) {
+      state.value = TripDetailsUiState.Content(trip.copy(status = status))
+      compose.onNodeWithTag(TripOwnerTestTags.CANCEL_TRIP).assertDoesNotExist()
+    }
   }
 
   @Test
@@ -415,7 +437,8 @@ class TripDetailsScreenTest {
   fun transitionErrorsShowTheMatchingMessage() {
     val messages =
         mapOf(
-            TripError.OrdersStillOpen to "Settle every open order before completing the trip.",
+            TripError.OrdersStillOpen to
+                "Settle every open order before completing or cancelling the trip.",
             TripError.InvalidTransition to "This trip has changed. Go back and open it again.",
             TripError.NetworkError to
                 "Could not reach the server. Check your connection and try again.",

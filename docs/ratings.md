@@ -31,7 +31,7 @@ before retrying. Cancellation or an ended session cannot undo a committed transa
 identity callback; UID comparison alone cannot detect switching away and back. No offline submission queue is provided.
 Summaries serialize writes per Commando (contention at high volume) and expose the most recent order ID, but no
 requester UID or comment. Admin SDK writes bypass rules; external imports must preserve both documents' invariants.
-Existing lifecycle rules permit closed/completed trip reads; historical CANCELLED trips remain owner-only.
+Existing lifecycle rules permit closed, completed and cancelled (#449) trip reads by id.
 
 Run `bash scripts/ci/run-firebase-emulator-tests.sh` for production-rule security and repository integration tests,
 plus `./gradlew check` for ordinary unit/static checks. Ordinary check excludes emulator profiles.
@@ -105,8 +105,8 @@ or modify that event or rewrite an order's identity/status history. Malformed/fu
 closed. Previously terminal orders are not backfilled. No completion timestamp is needed for this
 agreed cumulative window; repairing legacy history is separate work.
 Delivery tracking reads the persisted trip owner; supported trip lifecycle states permit that read.
-Historical CANCELLED trips remain owner-only, so imported handoff orders on those trips need trusted
-data repair before requesters can record delivery. Admin SDK imports bypass rules and must preserve
+Cancelled trips are readable by id (#449), and a trip cannot be cancelled while an order is open.
+Admin SDK imports bypass rules and must preserve
 order/event/counter invariants; missing evidence from an import cannot be distinguished from legacy data.
 
 ### Rule access budget and deployment

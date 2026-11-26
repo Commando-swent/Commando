@@ -1,6 +1,6 @@
 package com.commando.app.emulator.firestore.security
 
-// AI assistance: Claude Code.
+// AI assistance: Claude Code (trip cancellation: #449).
 import com.commando.app.data.repository.*
 import com.commando.app.data.repository.OrderError
 import com.commando.app.data.repository.OrderRepositoryFirestore
@@ -13,6 +13,7 @@ import com.commando.app.data.repository.successData
 import com.commando.app.model.*
 import com.commando.app.model.OrderDecision.ACCEPT
 import com.commando.app.model.OrderDecision.REJECT
+import com.commando.app.model.TripTransition.CANCEL
 import com.commando.app.model.TripTransition.CLOSE
 import com.commando.app.model.TripTransition.COMPLETE
 import com.commando.app.model.authentication.AuthRepositoryFirebase
@@ -28,22 +29,25 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** Trip close and complete (#233) against the production rules, for every kind of actor. */
+/** Trip close, complete (#233) and cancel (#449) against the production rules, for every actor. */
 @RunWith(RobolectricTestRunner::class)
 class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   private val clients =
       arrayOf("owner" to true, "requester" to true, "outsider" to true, "signedOut" to false)
 
   @Test
-  fun owner_closesThenCompletesAndIsDeniedEveryOtherChange() = runTest {
+  fun owner_closesThenCompletesOrCancelsAndIsDeniedEveryOtherChange() = runTest {
     val denied =
         listOf(
             "PUBLISHED" to move("COMPLETED"),
-            "PUBLISHED" to move("CANCELLED"),
             "IN_PROGRESS" to move("PUBLISHED"),
             "IN_PROGRESS" to move("CANCELLED"),
             "COMPLETED" to move("IN_PROGRESS"),
             "COMPLETED" to move("PUBLISHED"),
+            "COMPLETED" to move("CANCELLED"),
+            "CANCELLED" to move("PUBLISHED"),
+            "CANCELLED" to move("IN_PROGRESS"),
+            "PUBLISHED" to mapOf("status" to "CANCELLED"),
             "PUBLISHED" to move("PUBLISHED"),
             "PUBLISHED" to mapOf("status" to "IN_PROGRESS"),
             "PUBLISHED" to move("IN_PROGRESS") + ("updatedAt" to Timestamp.now()),
@@ -57,6 +61,9 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
         tripRef(owner, trip).update(move(status)).await()
         assertEquals(status, statusOf(owner, trip))
       }
+      val cancelled = publish(owner, "PUBLISHED")
+      tripRef(owner, cancelled).update(move("CANCELLED")).await()
+      assertEquals("CANCELLED", statusOf(owner, cancelled))
       for ((from, change) in denied) {
         val seeded = publish(owner, from)
         assertPermissionDenied("$from -> $change") { tripRef(owner, seeded).update(change).await() }
@@ -66,7 +73,7 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun requesterOutsiderAndSignedOut_areDeniedBothTransitions() = runTest {
+  fun requesterOutsiderAndSignedOut_areDeniedEveryTransition() = runTest {
     withClients(*clients) { (owner, requester, outsider, signedOut) ->
       val trip = publishWithOrder(owner, requester)
       for (transition in TripTransition.entries) {
@@ -82,16 +89,15 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
-  fun closedTripsAreReadableByIdNotListableAndCancelledTripsAreOwnerOnly() = runTest {
+  fun endedTripsAreReadableByIdButNotListable() = runTest {
     withClients(*clients) { (owner, requester, outsider, signedOut) ->
       val trip = publishWithOrder(owner, requester)
       for (status in listOf("IN_PROGRESS", "COMPLETED", "CANCELLED")) {
         updateDocumentAsOwner("trips/$trip", mapOf("status" to status))
-        val canGet =
-            if (status == "CANCELLED") listOf(owner) else listOf(owner, requester, outsider)
+        // Order Details and My Orders read the trip of every past order by id.
         for (reader in listOf(owner, requester, outsider, signedOut)) {
           val get = suspend { tripRef(reader, trip).get(Source.SERVER).await() }
-          if (reader in canGet) assertTrue("$status get", get().exists())
+          if (reader != signedOut) assertTrue("$status get", get().exists())
           else assertPermissionDenied("$status get by ${reader.app.name}") { get() }
         }
         for (reader in listOf(requester, outsider)) {
@@ -153,6 +159,135 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
   }
 
   @Test
+  fun repositoryFlow_cancelWaitsForOpenOrdersThenHidesTheTripAndBlocksNewOrders() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val ownerTrips = trips(owner)
+      val trip = publishWithOrder(owner, requester)
+      val (order) = ordersOf(owner, trip)
+      assertEquals(TripResult.Error(OrdersStillOpen), ownerTrips.transitionTrip(trip, CANCEL))
+      assertEquals(TripStatus.PUBLISHED, ownerTrips.getTripById(trip).successData().status)
+      assertTrue("cancel order", orders(requester).cancelOrder(order.id) is OrderResult.Success)
+
+      val cancelled = ownerTrips.transitionTrip(trip, CANCEL).successData()
+
+      assertEquals(TripStatus.CANCELLED, cancelled.status)
+      assertEquals(TripResult.Success(cancelled), ownerTrips.transitionTrip(trip, CANCEL))
+      assertEquals(TripResult.Error(InvalidTransition), ownerTrips.transitionTrip(trip, CLOSE))
+      assertEquals(
+          OrderResult.Error(OrderError.InvalidData),
+          orders(requester).createOrder(OrderDraft(trip, listOf(ITEM))),
+      )
+      assertTrue(trips(requester).getUpcomingTrips().successData().none { it.id == trip })
+    }
+  }
+
+  @Test
+  fun rulesRefuseCancelOrCompleteWhileTheTripCountsAnOpenOrder() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publishWithOrder(owner, requester)
+      val (order) = ordersOf(owner, trip)
+      assertEquals(1L, openOrderCount(owner, trip))
+      val steps =
+          listOf<suspend () -> Unit>(
+              {}, // PENDING
+              { orders(owner).decideOrder(order.id, ACCEPT, order.revision) },
+              { orders(owner).markReadyForHandoff(order.id) },
+          )
+      // A direct write skips the repository's order check; the rules still refuse it.
+      for (step in steps) {
+        step()
+        assertPermissionDenied("cancel") { tripRef(owner, trip).update(move("CANCELLED")).await() }
+        updateDocumentAsOwner("trips/$trip", mapOf("status" to "IN_PROGRESS"))
+        assertPermissionDenied("complete") {
+          tripRef(owner, trip).update(move("COMPLETED")).await()
+        }
+        updateDocumentAsOwner("trips/$trip", mapOf("status" to "PUBLISHED"))
+      }
+      // Nobody can lower the counter without settling the order it names.
+      for (actor in listOf(owner, requester)) {
+        assertPermissionDenied("counter reset by ${actor.app.name}") {
+          actor.firestore
+              .runBatch {
+                it.update(tripRef(actor, trip), "openOrderCount", 0)
+                it.set(witness(actor, trip), mapOf("lastOrderId" to order.id))
+              }
+              .await()
+        }
+      }
+      assertTrue(orders(requester).confirmReceipt(order.id) is OrderResult.Success)
+      assertEquals(0L, openOrderCount(owner, trip))
+      tripRef(owner, trip).update(move("CANCELLED")).await()
+      assertEquals("CANCELLED", statusOf(owner, trip))
+    }
+  }
+
+  @Test
+  fun readersSeeTheCountButNotWhichOrderMovedIt() = runTest {
+    withClients("owner" to true, "requester" to true, "outsider" to true) {
+        (owner, requester, outsider) ->
+      val trip = publishWithOrder(owner, requester)
+      val read = tripRef(outsider, trip).get(Source.SERVER).await()
+      assertEquals(1L, read.getLong("openOrderCount"))
+      assertTrue(read.data!!.keys.none { it.contains("OrderId") })
+      for (client in listOf(owner, requester, outsider)) {
+        assertPermissionDenied("witness read") { witness(client, trip).get(Source.SERVER).await() }
+      }
+    }
+  }
+
+  @Test
+  fun tripWithoutCounterCannotEndUntilItsOrdersAreCounted() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publishWithOrder(owner, requester)
+      val (order) = ordersOf(owner, trip)
+      val empty = publish(owner, "PUBLISHED")
+      for (legacy in listOf(trip, empty)) asLegacy(owner, legacy)
+
+      // Without a counter the app and the rules assume open orders, even on a trip without any.
+      for (legacy in listOf(trip, empty)) {
+        assertEquals(TripResult.Error(OrdersStillOpen), trips(owner).transitionTrip(legacy, CANCEL))
+      }
+      assertPermissionDenied("cancel") { tripRef(owner, trip).update(move("CANCELLED")).await() }
+      // Until counted, no order can be settled or created there, so the count cannot drift.
+      val denied = OrderResult.Error(OrderError.PermissionDenied)
+      assertEquals(denied, orders(requester).cancelOrder(order.id))
+      val placed = orders(requester).createOrder(OrderDraft(empty, listOf(ITEM)))
+      assertTrue(placed !is OrderResult.Success)
+
+      updateDocumentAsOwner("trips/$trip", mapOf("openOrderCount" to 1L)) // tools/trip-counters
+      assertTrue(orders(requester).cancelOrder(order.id) is OrderResult.Success)
+      val cancelled = trips(owner).transitionTrip(trip, CANCEL).successData()
+      assertEquals(TripStatus.CANCELLED, cancelled.status)
+    }
+  }
+
+  @Test
+  fun orderPlacedAfterTheOrderCheckStillBlocksCancellation() = runTest {
+    withClients("owner" to true, "requester" to true) { (owner, requester) ->
+      val trip = publish(owner, "PUBLISHED")
+      val firestore = FirebaseTripFirestoreDataSource(owner.firestore)
+      // The order arrives after the repository's order query, before its transaction.
+      val racing =
+          object : TripFirestoreDataSource by firestore {
+            override suspend fun getOrderStatuses(tripId: String): List<String?> =
+                firestore.getOrderStatuses(tripId).also {
+                  val placed = orders(requester).createOrder(OrderDraft(trip, listOf(ITEM)))
+                  assertTrue(placed is OrderResult.Success)
+                }
+          }
+      val ownerTrips =
+          TripRepositoryFirestore(racing, AuthRepositoryFirebase(owner.auth), Instant::now)
+
+      assertEquals(TripResult.Error(OrdersStillOpen), ownerTrips.transitionTrip(trip, CANCEL))
+      assertEquals("PUBLISHED", statusOf(owner, trip))
+      assertEquals(1, ordersOf(owner, trip).size)
+      // A status that no longer matches is neither written nor reported as open orders.
+      val stale = firestore.transitionTrip(trip, "IN_PROGRESS", "COMPLETED", true)!!
+      assertEquals(false to false, stale.written to stale.ordersOpen)
+    }
+  }
+
+  @Test
   fun owner_keepsUsingTheShoppingChecklistAfterCloseAndComplete() = runTest {
     withClients("owner" to true) { (owner) ->
       val trip = publish(owner, "PUBLISHED")
@@ -177,6 +312,19 @@ class TripLifecycleFirestoreSecurityRulesEmulatorTest {
 
   private suspend fun statusOf(client: EmulatorClient, id: String) =
       tripRef(client, id).get(Source.SERVER).await().getString("status")
+
+  /** Rewrites [trip] as written before #449: no counter, so its orders were never counted. */
+  private suspend fun asLegacy(owner: EmulatorClient, trip: String) {
+    val data = tripRef(owner, trip).get(Source.SERVER).await().data!!
+    deleteDocumentAsOwner("trips/$trip")
+    createDocumentAsOwner("trips", trip, data - "openOrderCount")
+  }
+
+  private fun witness(client: EmulatorClient, trip: String) =
+      client.firestore.collection("tripOrderCounterWrites").document(trip)
+
+  private suspend fun openOrderCount(client: EmulatorClient, id: String) =
+      tripRef(client, id).get(Source.SERVER).await().getLong("openOrderCount")
 
   private suspend fun ordersOf(owner: EmulatorClient, trip: String) =
       (orders(owner).getOrdersForTrip(trip) as OrderResult.Success).data

@@ -1,6 +1,6 @@
 package com.commando.app.data.repository
 
-// AI assistance: Claude Code for the trip transition errors (#233).
+// AI assistance: Claude Code for the trip transition errors (#233, #449).
 sealed class TripError {
   data object NotFound : TripError()
 
@@ -18,7 +18,10 @@ sealed class TripError {
    */
   data object InvalidTransition : TripError()
 
-  /** Completion refused: an order of the trip is still PENDING, ACCEPTED or READY_FOR_HANDOFF. */
+  /**
+   * Completion or cancellation refused: an order of the trip is still PENDING, ACCEPTED or
+   * READY_FOR_HANDOFF.
+   */
   data object OrdersStillOpen : TripError()
 }
 

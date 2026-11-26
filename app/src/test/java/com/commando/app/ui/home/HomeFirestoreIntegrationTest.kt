@@ -1,6 +1,6 @@
 package com.commando.app.ui.home
 
-// AI assistance: OpenAI Codex.
+// AI assistance: OpenAI Codex; open-order counter signature (#449): Claude Code.
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
@@ -178,6 +178,7 @@ class HomeFirestoreIntegrationTest {
         tripId: String,
         from: String,
         to: String,
+        requireSettledOrders: Boolean,
     ): TripTransitionWrite? = error("Not used by Home")
   }
 }

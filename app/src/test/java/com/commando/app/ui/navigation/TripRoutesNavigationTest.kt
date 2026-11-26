@@ -16,13 +16,18 @@ import com.commando.app.data.repository.FakeTripRepository
 import com.commando.app.data.repository.OrderRepository
 import com.commando.app.data.repository.OrderResult
 import com.commando.app.data.repository.PublicProfileTestRepository
+import com.commando.app.data.repository.RatingError
+import com.commando.app.data.repository.RatingRepository
+import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.SavedTripSearchRepositoryLocal
+import com.commando.app.data.repository.TripError
 import com.commando.app.data.repository.TripRepository
 import com.commando.app.data.repository.TripResult
 import com.commando.app.model.Location
 import com.commando.app.model.Order
 import com.commando.app.model.OrderItem
 import com.commando.app.model.OrderStatus
+import com.commando.app.model.RatingSummary
 import com.commando.app.model.StoreFilter
 import com.commando.app.model.Trip
 import com.commando.app.model.TripSearchCriteria
@@ -38,6 +43,7 @@ import com.commando.app.ui.trips.CreateTripScreenTestTags
 import com.commando.app.ui.trips.MyTripsTestTags
 import com.commando.app.ui.trips.TripEarningsTestTags
 import com.commando.app.ui.trips.TripOwnerTestTags
+import com.commando.app.ui.trips.TripRatingTestTags
 import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.discoveryTrip
 import java.time.Instant
@@ -100,7 +106,10 @@ class TripRoutesNavigationTest {
   private val publicProfiles = PublicProfileTestRepository()
   private val connectivity = FakeConnectivityMonitor()
 
-  private fun show(trips: TripRepository) {
+  private fun show(
+      trips: TripRepository,
+      ratingResult: RatingResult<RatingSummary>? = null,
+  ) {
     val presets =
         SavedTripSearchRepositoryLocal(
             ApplicationProvider.getApplicationContext(),
@@ -134,7 +143,15 @@ class TripRoutesNavigationTest {
             },
             savedSearchRepositoryFactory = { presets },
             publicProfileRepositoryFactory = { publicProfiles },
-            ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
+            ratingRepositoryFactory = {
+              val ratings = FakeRatingRepository(it, FakeOrderRepository(it), trips)
+              object : RatingRepository by ratings {
+                override suspend fun getRatingSummary(
+                    commandoId: String
+                ): RatingResult<RatingSummary> =
+                    ratingResult ?: ratings.getRatingSummary(commandoId)
+              }
+            },
             connectivityMonitor = connectivity,
         )
       }
@@ -271,6 +288,56 @@ class TripRoutesNavigationTest {
     compose.onNodeWithText("Alice Commando").assertExists()
     addItems().assertIsNotEnabled()
     viewOrders().assertDoesNotExist()
+  }
+
+  @Test
+  fun cachedRequesterTripKeepsAnAlreadyLoadedRating() {
+    show(trips(coop), RatingResult.Success(RatingSummary(coop.ownerId, 2, 4.5)))
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    val count =
+        compose.activity.resources.getQuantityString(R.plurals.trip_details_rating_count, 2, 2)
+    val rating =
+        compose.onNodeWithContentDescription(
+            string(R.string.trip_details_rating_description, "4.5", count)
+        )
+    rating.assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    rating.assertExists()
+  }
+
+  @Test
+  fun cachedRequesterTripKeepsNameWithoutShowingFailedRatingRetry() {
+    publicProfiles.name = "Alice Commando"
+    show(trips(coop), RatingResult.Error(RatingError.Unknown))
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    compose.onNodeWithText("Alice Commando").assertExists()
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
+  fun cachedTripStillBlocksOrderingWhenServerIsUnreachableAfterReconnect() {
+    val fake = trips(coop)
+    show(fake)
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    compose.runOnIdle { connectivity.setOnline(false) }
+    addItems().assertIsNotEnabled()
+
+    compose.runOnIdle {
+      fake.forcedError = TripError.NetworkError
+      connectivity.setOnline(true)
+    }
+
+    addItems().assertIsNotEnabled()
+    compose.onNodeWithText(coop.store.name).assertExists()
   }
 
   @Test

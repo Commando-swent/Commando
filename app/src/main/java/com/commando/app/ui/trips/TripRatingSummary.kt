@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.commando.app.R
+import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingResult
 import com.commando.app.model.ReliabilitySummary
 import com.commando.app.ui.profile.ProfileAvatar
@@ -164,12 +165,14 @@ internal fun TripRatingSummary(
               style = detailStyle,
               color = colors.onSurfaceVariant,
           )
-          TextButton(
-              onClick = onRetry,
-              modifier = Modifier.testTag(TripRatingTestTags.RETRY),
-              contentPadding = PaddingValues(RETRY_CONTENT_PADDING),
-          ) {
-            Text(stringResource(R.string.trips_retry))
+          if (state.error != RatingError.NotAuthenticated) {
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier.testTag(TripRatingTestTags.RETRY),
+                contentPadding = PaddingValues(RETRY_CONTENT_PADDING),
+            ) {
+              Text(stringResource(R.string.trips_retry))
+            }
           }
         }
       }

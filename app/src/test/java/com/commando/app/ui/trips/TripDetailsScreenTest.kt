@@ -162,6 +162,15 @@ class TripDetailsScreenTest {
   }
 
   @Test
+  fun unauthenticatedStarsHideRetry() {
+    show(
+        TripDetailsUiState.Content(trip),
+        ratingState = TripRatingUiState.Error(RatingError.NotAuthenticated),
+    )
+    compose.onNodeWithTag(TripRatingTestTags.RETRY).assertDoesNotExist()
+  }
+
+  @Test
   fun unavailableReliabilityOffersRetryWithoutInventingACount() {
     var retries = 0
     reliability(RatingResult.Error(RatingError.Unknown), onRetry = { retries++ })

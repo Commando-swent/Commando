@@ -47,7 +47,7 @@ sealed class TripRatingUiState {
  */
 class TripRatingViewModel(
     private val repository: RatingRepository,
-    currentUserId: (() -> String?)? = null,
+    currentUserId: () -> String?,
     sessionChanges: Flow<String?> = emptyFlow(),
 ) : ViewModel() {
   private val mutableState = MutableStateFlow<TripRatingUiState>(TripRatingUiState.Loading)
@@ -58,16 +58,16 @@ class TripRatingViewModel(
   private var commandoId: String? = null
   private var requestJob: Job? = null
   private var generation = 0L
-  private val session = currentUserId?.let(::SessionGuard)
+  private val session = SessionGuard(currentUserId)
   private val mutableReliability = MutableStateFlow<RatingResult<ReliabilitySummary>?>(null)
-  /** Null means loading; success includes confirmed zero history, and failure offers retry. */
+  /** Null means loading; success includes zero history, and recoverable failures offer retry. */
   val reliabilityState = mutableReliability.asStateFlow()
   private var reliabilityJob: Job? = null
   private var reliabilityGeneration = 0L
 
   init {
     viewModelScope.launch {
-      sessionChanges.collect { uid -> if (session?.hasEnded(uid) == true) clearSession() }
+      sessionChanges.collect { uid -> if (session.hasEnded(uid)) clearSession() }
     }
   }
 
@@ -81,7 +81,7 @@ class TripRatingViewModel(
   }
 
   private fun selectOwner(id: String): Boolean {
-    if (session?.hasEnded() == true) {
+    if (session.hasEnded()) {
       clearSession()
       return false
     }
@@ -114,7 +114,7 @@ class TripRatingViewModel(
         viewModelScope.launch(start = CoroutineStart.LAZY) {
           val result = read { repository.getReliabilitySummary(commandoId) }
           coroutineContext.ensureActive()
-          if (session?.hasEnded() == true) clearSession()
+          if (session.hasEnded()) clearSession()
           else if (requested == reliabilityGeneration) {
             mutableReliability.value =
                 if (result is RatingResult.Success && result.data.commandoId != commandoId)
@@ -159,7 +159,7 @@ class TripRatingViewModel(
         viewModelScope.launch(start = CoroutineStart.LAZY) {
           val result = read { repository.getRatingSummary(commandoId) }
           coroutineContext.ensureActive()
-          if (session?.hasEnded() == true) {
+          if (session.hasEnded()) {
             clearSession()
             return@launch
           }

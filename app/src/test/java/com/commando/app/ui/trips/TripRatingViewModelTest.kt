@@ -19,7 +19,7 @@ import org.junit.Test
 class TripRatingViewModelTest {
   @get:Rule val main = MainDispatcherRule()
   private val ratings = RecordingRatings()
-  private val model by lazy { TripRatingViewModel(ratings) }
+  private val model by lazy { TripRatingViewModel(ratings, currentUserId = { "requester" }) }
   private val summary = RatingSummary("owner", 3, 13.0 / 3)
 
   private fun TripRatingViewModel.assertReliability(

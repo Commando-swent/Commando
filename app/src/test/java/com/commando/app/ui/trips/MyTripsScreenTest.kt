@@ -8,6 +8,7 @@ import com.commando.app.data.repository.TripError
 import com.commando.app.model.Location
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.components.TripStatusBadgeTestTags
 import com.commando.app.ui.theme.SampleAppTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -92,7 +93,7 @@ class MyTripsScreenTest {
     show(MyTripsUiState.Content(listOf(trip)))
     // Cards merge their children, so the badge is only found in the unmerged tree.
     compose
-        .onNodeWithTag(MyTripsTestTags.STATUS_PREFIX + trip.id, useUnmergedTree = true)
+        .onNodeWithTag(TripStatusBadgeTestTags.STATUS_PREFIX + trip.id, useUnmergedTree = true)
         .assertTextEquals(label)
   }
 

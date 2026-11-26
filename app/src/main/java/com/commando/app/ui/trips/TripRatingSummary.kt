@@ -48,7 +48,7 @@ private val RETRY_CONTENT_PADDING = 0.dp
  */
 @Composable
 internal fun TripRatingSummary(
-    state: TripRatingUiState,
+    state: TripRatingUiState?,
     onRetry: () -> Unit,
     commandoName: String?,
     modifier: Modifier = Modifier,
@@ -100,6 +100,7 @@ internal fun TripRatingSummary(
         )
       }
     }
+    if (state == null) return@Column
     Column(
         Modifier.fillMaxWidth()
             .padding(start = CREATOR_TEXT_INSET)

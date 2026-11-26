@@ -158,27 +158,31 @@ internal fun NavGraphBuilder.tripRoutes(
           )
         }
     val tripState by tripDetailsViewModel.uiState.collectAsState()
-    val confirmedTrip =
-        (tripState as? TripDetailsUiState.Content)?.takeIf { it.cachedAt == null }?.trip
-    val ownerId = confirmedTrip?.ownerId
+    val connected by isOnline.collectAsState()
+    val content = tripState as? TripDetailsUiState.Content
+    val ownerId = content?.trip?.ownerId
+    val canReadLive = connected && content != null && content.cachedAt == null
     val publicName by tripDetailsViewModel.publicName.collectAsState()
-    RefreshOnResume(tripDetailsViewModel to ownerId) {
-      tripDetailsViewModel.refreshPublicName(ownerId)
+    if (canReadLive) {
+      RefreshOnResume(tripDetailsViewModel to ownerId) {
+        tripDetailsViewModel.refreshPublicName(ownerId)
+      }
     }
-    val (ratingState, onRetryRating) = rememberTripRating(ownerId, entry, session.ratingRepository)
-    // The entry point is for the owner only; the repository and rules check ownership again.
-    val showOwnerActions = session.mode() == AppMode.Commando && ownerId == session.userId
+    val (ratingState, onRetryRating) =
+        rememberTripRating(ownerId, entry, session.ratingRepository, canReadLive)
+    val isTripOwner = session.mode() == AppMode.Commando && ownerId == session.userId
+    val showOwnerActions = canReadLive && isTripOwner
     TripDetailsScreen(
         viewModel = tripDetailsViewModel,
         onBack = { navController.popBackStack() },
         onAddItems =
-            if (confirmedTrip != null && session.mode() == AppMode.Requester) {
+            if (canReadLive && session.mode() == AppMode.Requester) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.catalogueRoute(selectedTripId))
               }
             } else null,
         onViewOrders =
-            if (showOwnerActions) {
+            if (isTripOwner) {
               { selectedTripId ->
                 navController.navigate(CommandoScreens.incomingOrdersRoute(selectedTripId)) {
                   launchSingleTop = true
@@ -225,6 +229,7 @@ private fun rememberTripRating(
     ownerId: String?,
     entry: NavBackStackEntry,
     ratingRepository: () -> RatingRepository,
+    canReadLive: Boolean,
 ): Pair<TripRatingUiState?, () -> Unit> {
   if (ownerId == null) return null to {}
   return key(ownerId) {
@@ -233,7 +238,11 @@ private fun rememberTripRating(
           TripRatingViewModel(ratingRepository())
         }
     val state by model.uiState.collectAsState()
-    RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
-    state to model::retry
+    if (canReadLive) {
+      RefreshOnResume(model to ownerId) { model.refresh(ownerId) }
+    }
+    state.takeIf {
+      canReadLive || it is TripRatingUiState.Content || it == TripRatingUiState.Empty
+    } to model::retry
   }
 }

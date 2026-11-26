@@ -25,6 +25,8 @@ import com.commando.app.R
 import com.commando.app.data.repository.TripError
 import com.commando.app.model.Trip
 import com.commando.app.model.TripStatus
+import com.commando.app.ui.components.CachedDataLabel
+import com.commando.app.ui.components.TripStatusBadge
 
 /**
  * Details of the trip loaded by [viewModel]. [onAddItems] opens the catalogue (disabled when null);
@@ -117,11 +119,11 @@ fun TripDetailsScreen(
       when (state) {
         TripDetailsUiState.Loading -> TripDetailsLoading()
         is TripDetailsUiState.Content -> {
-          state.cachedAt?.let { com.commando.app.ui.components.CachedDataLabel(it) }
-          if (state.cachedAt != null) StatusBadge(state.trip)
+          state.cachedAt?.let { CachedDataLabel(it) }
+          if (state.cachedAt != null) TripStatusBadge(state.trip)
           TripDetailsContent(state.trip, ratingState, onRetryRating, commandoName)
           if (state.cachedAt == null) ownerControls?.let { TripOwnerSection(state, it) }
-          if (state.cachedAt == null && onViewOrders != null) {
+          if (onViewOrders != null) {
             TripDetailsButton(
                 text = stringResource(R.string.trip_details_view_orders),
                 onClick = { onViewOrders(state.trip.id) },
@@ -179,7 +181,7 @@ private fun TripDetailsContent(
         label = stringResource(R.string.trip_details_handoff),
         value = trip.handoffLocation.name,
     )
-    if (ratingState != null) {
+    if (ratingState != null || commandoName != null) {
       HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
       TripRatingSummary(ratingState, onRetryRating, commandoName)
     }

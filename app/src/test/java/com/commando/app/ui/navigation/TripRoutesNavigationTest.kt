@@ -93,6 +93,7 @@ class TripRoutesNavigationTest {
       }
 
   private val publicProfiles = PublicProfileTestRepository()
+  private val connectivity = FakeConnectivityMonitor()
 
   private fun show(trips: FakeTripRepository) {
     val presets =
@@ -129,7 +130,7 @@ class TripRoutesNavigationTest {
             savedSearchRepositoryFactory = { presets },
             publicProfileRepositoryFactory = { publicProfiles },
             ratingRepositoryFactory = { FakeRatingRepository(it, FakeOrderRepository(it), trips) },
-            connectivityMonitor = FakeConnectivityMonitor(),
+            connectivityMonitor = connectivity,
         )
       }
     }
@@ -202,6 +203,35 @@ class TripRoutesNavigationTest {
     click(AppTestTags.REQUESTER_MODE)
     click(AppTestTags.TRIPS_BUTTON)
     openCoopAsRequester()
+  }
+
+  @Test
+  fun cachedOwnerTripKeepsIncomingOrdersNavigationAndHidesLiveOwnerActions() {
+    show(trips(migros, coop))
+    openCoopAsOwner()
+    compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    compose.onNodeWithTag(TripOwnerTestTags.TRANSITION).assertDoesNotExist()
+    earnings().assertDoesNotExist()
+    viewOrders().performScrollTo().performClick()
+    compose.onNodeWithText(string(R.string.incoming_orders_title)).assertExists()
+  }
+
+  @Test
+  fun cachedRequesterTripKeepsTheKnownPublicNameWithoutEnablingOrdering() {
+    publicProfiles.name = "Alice Commando"
+    show(trips(migros, coop))
+    click(AppTestTags.TRIPS_BUTTON)
+    openCoopAsRequester()
+    compose.onNodeWithText("Alice Commando").assertExists()
+
+    compose.runOnIdle { connectivity.setOnline(false) }
+
+    compose.onNodeWithText("Alice Commando").assertExists()
+    addItems().assertIsNotEnabled()
+    viewOrders().assertDoesNotExist()
   }
 
   @Test

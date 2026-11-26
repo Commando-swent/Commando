@@ -518,7 +518,7 @@ class CommandoAppTest {
     compose.onNodeWithTag(AppTestTags.BACK_BUTTON).performClick()
     assertAvailableTripsRestored()
     compose.onTripCard(secondTrip.id).performClick()
-    compose.onNodeWithText("Something went wrong while loading this trip.").assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.trip_details_error_network)).assertIsDisplayed()
     click(AppTestTags.BACK_BUTTON)
     assertAvailableTripsRestored()
     compose.runOnIdle { assertTrue(ratingIds.isEmpty()) }

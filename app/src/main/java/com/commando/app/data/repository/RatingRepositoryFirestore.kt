@@ -111,6 +111,13 @@ internal constructor(
         RatingSummary(commandoId, count, if (count == 0) null else total.toDouble() / count)
       }
 
+  /** Reads server-confirmed reliability independently of customer-star availability. */
+  override suspend fun getReliabilitySummary(commandoId: String): RatingResult<ReliabilitySummary> =
+      session { _, _ ->
+        requireRating(commandoId.isDocumentId())
+        source.get("reliabilitySummaries", commandoId).reliabilitySummary(commandoId)
+      }
+
   private suspend fun <T> session(action: suspend (String, () -> Unit) -> T): RatingResult<T> {
     val context = currentCoroutineContext()
     context.ensureActive()

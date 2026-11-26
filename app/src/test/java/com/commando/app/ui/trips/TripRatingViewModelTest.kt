@@ -7,7 +7,9 @@ import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingResult
 import com.commando.app.data.repository.summary
 import com.commando.app.model.RatingSummary
+import com.commando.app.model.ReliabilitySummary
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
 import org.junit.Rule
@@ -17,8 +19,147 @@ import org.junit.Test
 class TripRatingViewModelTest {
   @get:Rule val main = MainDispatcherRule()
   private val ratings = RecordingRatings()
-  private val model = TripRatingViewModel(ratings)
+  private val model by lazy { TripRatingViewModel(ratings) }
   private val summary = RatingSummary("owner", 3, 13.0 / 3)
+
+  private fun TripRatingViewModel.assertReliability(
+      completed: Int,
+      late: Int,
+      owner: String = "owner",
+  ) {
+    assertEquals(
+        RatingResult.Success(ReliabilitySummary(owner, completed, late)),
+        reliabilityState.value,
+    )
+  }
+
+  private fun TripRatingViewModel.assertReliabilityError(error: RatingError) {
+    assertEquals(RatingResult.Error(error), reliabilityState.value)
+  }
+
+  @Test
+  fun starsFinishWhileReliabilityIsPendingAndOverlappingReadsAreDeduplicated() = runTest {
+    val gate = CompletableDeferred<RatingResult<ReliabilitySummary>>()
+    ratings.load = { RatingResult.Success(summary) }
+    ratings.loadReliability = { gate.await() }
+    model.retryReliability()
+    assertTrue(ratings.reliabilityIds.isEmpty())
+    model.refreshAll("owner")
+    runCurrent()
+    model.retryReliability()
+    runCurrent()
+    assertEquals(listOf("owner"), ratings.reliabilityIds)
+    assertEquals(TripRatingUiState.Content(summary), model.uiState.value)
+    assertNull(model.reliabilityState.value)
+    gate.complete(RatingResult.Success(ReliabilitySummary("owner", 4, 1)))
+    runCurrent()
+    model.assertReliability(4, 1)
+  }
+
+  @Test
+  fun reliabilityFinishesWhileStarsArePendingAndStarRetryDoesNotReloadIt() = runTest {
+    val gate = CompletableDeferred<RatingResult<RatingSummary>>()
+    ratings.load = { gate.await() }
+    model.refreshAll("owner")
+    runCurrent()
+    val reliability = model.reliabilityState.value
+    assertEquals(RatingResult.Success(ReliabilitySummary("owner", 0, 0)), reliability)
+    gate.complete(RatingResult.Error(RatingError.Unknown))
+    runCurrent()
+    model.retry()
+    runCurrent()
+    assertEquals(listOf("owner"), ratings.reliabilityIds)
+    assertEquals(reliability, model.reliabilityState.value)
+  }
+
+  @Test
+  fun reliabilityFailureRetriesWithoutReloadingStars() = runTest {
+    ratings.loadReliability = { throw IllegalStateException("offline") }
+    model.refreshAll("owner")
+    runCurrent()
+    model.assertReliabilityError(RatingError.Unknown)
+    ratings.loadReliability = { RatingResult.Success(ReliabilitySummary(it, 5, 0)) }
+    model.retryReliability()
+    assertNull(model.reliabilityState.value)
+    runCurrent()
+    model.assertReliability(5, 0)
+    assertEquals(listOf("owner"), ratings.ids)
+  }
+
+  @Test
+  fun reliabilityRejectsAnotherOwnersResponse() = runTest {
+    ratings.loadReliability = { RatingResult.Success(ReliabilitySummary("other", 5, 0)) }
+    model.refreshReliability("owner")
+    runCurrent()
+    model.assertReliabilityError(RatingError.InvalidData)
+  }
+
+  @Test
+  fun reliabilityCancellationAllowsRetryWithoutShowingAnError() = runTest {
+    ratings.loadReliability = { throw CancellationException() }
+    model.refreshReliability("owner")
+    runCurrent()
+    assertNull(model.reliabilityState.value)
+    ratings.loadReliability = null
+    model.retryReliability()
+    runCurrent()
+    model.assertReliability(0, 0)
+  }
+
+  @Test
+  fun ownerRoundTripCancelsReliabilityAndDiscardsLateResponses() = runTest {
+    for (late in
+        listOf(
+            RatingResult.Success(ReliabilitySummary("owner", 5, 0)),
+            RatingResult.Error(RatingError.Unknown),
+        )) {
+      val gate = CompletableDeferred<RatingResult<ReliabilitySummary>>()
+      var cancelled = false
+      ratings.loadReliability = {
+        try {
+          gate.await()
+        } catch (_: CancellationException) {
+          cancelled = true
+          withContext(NonCancellable) { gate.await() }
+        }
+      }
+      model.refreshReliability("owner")
+      runCurrent()
+      ratings.loadReliability = null
+      model.refreshReliability("other")
+      assertNull(model.reliabilityState.value)
+      runCurrent()
+      assertTrue(cancelled)
+      model.assertReliability(0, 0, owner = "other")
+      model.refreshReliability("owner")
+      runCurrent()
+      gate.complete(late)
+      runCurrent()
+      model.assertReliability(0, 0)
+    }
+  }
+
+  @Test
+  fun endedAccountCannotRestoreSummariesAfterReturningToOriginalUser() = runTest {
+    for (next in listOf(null, "other-account")) {
+      var uid: String? = "requester"
+      val changes = MutableSharedFlow<String?>()
+      val scoped = TripRatingViewModel(ratings, { uid }, changes)
+      val gate = CompletableDeferred<RatingResult<ReliabilitySummary>>()
+      ratings.loadReliability = { withContext(NonCancellable) { gate.await() } }
+      scoped.refreshAll("owner")
+      runCurrent()
+      uid = next
+      changes.emit(uid)
+      runCurrent()
+      uid = "requester"
+      gate.complete(RatingResult.Success(ReliabilitySummary("owner", 5, 0)))
+      runCurrent()
+      scoped.refreshAll("owner")
+      assertEquals(TripRatingUiState.Error(RatingError.NotAuthenticated), scoped.uiState.value)
+      scoped.assertReliabilityError(RatingError.NotAuthenticated)
+    }
+  }
 
   @Test
   fun explicitLoadPreservesOwnerAverageAndCountAndRefreshesAfterCompletion() = runTest {

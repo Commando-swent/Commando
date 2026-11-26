@@ -23,6 +23,19 @@ class FakeRatingRepositoryTest {
   private val invalidIds = listOf("", " \t", "a/b", ".", "..")
 
   @Test
+  fun seededReliabilityDoesNotDependOnCustomerStars() = runTest {
+    val summary = ReliabilitySummary("commando", 4, 1)
+    val repository =
+        FakeRatingRepository(
+            { userId },
+            FakeOrderRepository({ userId }),
+            FakeTripRepository("commando"),
+            reliabilitySummaries = mapOf("commando" to summary),
+        )
+    assertEquals(RatingResult.Success(summary), repository.getReliabilitySummary("commando"))
+  }
+
+  @Test
   fun deliveredOrdersDeriveIdentitiesAndAcceptBoundaryScoresWithoutTripCompletion() = runTest {
     for (status in TripStatus.entries) {
       for (score in listOf(1, 5)) {

@@ -83,6 +83,7 @@ import com.commando.app.ui.trips.RecordingRatings
 import com.commando.app.ui.trips.SavedTripSearchTestTags
 import com.commando.app.ui.trips.ScriptedTripRepository
 import com.commando.app.ui.trips.TripRatingTestTags
+import com.commando.app.ui.trips.TripReliabilityTestTags
 import com.commando.app.ui.trips.TripSearchTestTags
 import com.commando.app.ui.trips.assertTripCard
 import com.commando.app.ui.trips.discoveryTrip
@@ -413,10 +414,16 @@ class CommandoAppTest {
     val trips = ScriptedTripRepository(twoTrips(alice.uid))
     val ratings = RecordingRatings()
     ratings.load = { RatingResult.Error(RatingError.Unknown) }
+    ratings.loadReliability = { RatingResult.Error(RatingError.Unknown) }
     show(FakeAuthRepository(alice), trips, ratings = { ratings })
     click(HomeTestTags.TRIP_ACTION)
     compose.onTripCard(firstTrip.id).performClick()
     compose.onNodeWithText("Public owner").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(TripReliabilityTestTags.RETRY).performScrollTo().performClick()
+    compose.runOnIdle {
+      assertEquals(listOf(firstTrip.ownerId), ratings.ids)
+      assertEquals(List(2) { firstTrip.ownerId }, ratings.reliabilityIds)
+    }
     compose.onNodeWithTag(TripRatingTestTags.RETRY).performScrollTo().performClick()
     compose.runOnIdle {
       assertEquals(listOf(firstTrip.id), trips.requestedIds)

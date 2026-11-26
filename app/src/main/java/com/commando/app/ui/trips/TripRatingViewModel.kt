@@ -8,13 +8,17 @@ import com.commando.app.data.repository.RatingError
 import com.commando.app.data.repository.RatingRepository
 import com.commando.app.data.repository.RatingResult
 import com.commando.app.model.RatingSummary
+import com.commando.app.model.ReliabilitySummary
+import com.commando.app.ui.session.SessionGuard
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 
 /** Rating-section state, independent of trip loading and lifecycle actions. */
@@ -33,14 +37,19 @@ sealed class TripRatingUiState {
 }
 
 /**
- * Loads the overall rating summary only when [refresh] is called with the loaded trip's owner ID.
- * Construction performs no query. Supply a [repository] bound to the authenticated session.
+ * Loads stars and reliability independently for the loaded trip's owner via [refreshAll].
+ * Construction performs no query. Supply a [repository] bound to the authenticated session;
+ * [currentUserId] and [sessionChanges] invalidate both states when that session ends.
  *
  * Owner changes cancel previous work without waiting for an uncooperative repository. Cancelled
  * work may finish in the background, but cancellation and request identity prevent stale updates.
  * Scope this model to the Trip Details destination; trip actions remain in [TripDetailsViewModel].
  */
-class TripRatingViewModel(private val repository: RatingRepository) : ViewModel() {
+class TripRatingViewModel(
+    private val repository: RatingRepository,
+    currentUserId: (() -> String?)? = null,
+    sessionChanges: Flow<String?> = emptyFlow(),
+) : ViewModel() {
   private val mutableState = MutableStateFlow<TripRatingUiState>(TripRatingUiState.Loading)
 
   /** Observable rating state; only this ViewModel can update it. */
@@ -49,6 +58,87 @@ class TripRatingViewModel(private val repository: RatingRepository) : ViewModel(
   private var commandoId: String? = null
   private var requestJob: Job? = null
   private var generation = 0L
+  private val session = currentUserId?.let(::SessionGuard)
+  private val mutableReliability = MutableStateFlow<RatingResult<ReliabilitySummary>?>(null)
+  /** Null means loading; success includes confirmed zero history, and failure offers retry. */
+  val reliabilityState = mutableReliability.asStateFlow()
+  private var reliabilityJob: Job? = null
+  private var reliabilityGeneration = 0L
+
+  init {
+    viewModelScope.launch {
+      sessionChanges.collect { uid -> if (session?.hasEnded(uid) == true) clearSession() }
+    }
+  }
+
+  private fun clearSession() {
+    generation++
+    reliabilityGeneration++
+    requestJob?.cancel()
+    reliabilityJob?.cancel()
+    mutableState.value = TripRatingUiState.Error(RatingError.NotAuthenticated)
+    mutableReliability.value = RatingResult.Error(RatingError.NotAuthenticated)
+  }
+
+  private fun selectOwner(id: String): Boolean {
+    if (session?.hasEnded() == true) {
+      clearSession()
+      return false
+    }
+    if (commandoId != id) {
+      generation++
+      reliabilityGeneration++
+      requestJob?.cancel()
+      reliabilityJob?.cancel()
+      mutableState.value = TripRatingUiState.Loading
+      mutableReliability.value = null
+      commandoId = id
+    }
+    return true
+  }
+
+  /** Loads both independent summaries on destination resume, without waiting for either read. */
+  @MainThread
+  fun refreshAll(commandoId: String) {
+    refresh(commandoId)
+    refreshReliability(commandoId)
+  }
+
+  /** Refreshes only reliability; overlapping same-owner reads are deduplicated. */
+  @MainThread
+  fun refreshReliability(commandoId: String) {
+    if (!selectOwner(commandoId) || reliabilityJob?.isActive == true) return
+    val requested = ++reliabilityGeneration
+    mutableReliability.value = null
+    reliabilityJob =
+        viewModelScope.launch(start = CoroutineStart.LAZY) {
+          val result = read { repository.getReliabilitySummary(commandoId) }
+          coroutineContext.ensureActive()
+          if (session?.hasEnded() == true) clearSession()
+          else if (requested == reliabilityGeneration) {
+            mutableReliability.value =
+                if (result is RatingResult.Success && result.data.commandoId != commandoId)
+                    RatingResult.Error(RatingError.InvalidData)
+                else result
+          }
+        }
+    reliabilityJob?.start()
+  }
+
+  /** Retries reliability for the selected owner without refreshing stars or trip details. */
+  @MainThread
+  fun retryReliability() {
+    commandoId?.let(::refreshReliability)
+  }
+
+  private suspend fun <T> read(action: suspend () -> RatingResult<T>): RatingResult<T> =
+      try {
+        action()
+      } catch (cancelled: CancellationException) {
+        throw cancelled
+      } catch (_: Exception) {
+        RatingResult.Error(RatingError.Unknown)
+      }
 
   /**
    * Loads the overall rating summary for [commandoId], which must be the trip owner's ID. Calls for
@@ -58,8 +148,8 @@ class TripRatingViewModel(private val repository: RatingRepository) : ViewModel(
    */
   @MainThread
   fun refresh(commandoId: String) {
+    if (!selectOwner(commandoId)) return
     if (this.commandoId == commandoId && requestJob?.isActive == true) return
-    this.commandoId = commandoId
     val requestGeneration = ++generation
     requestJob?.cancel()
     mutableState.value = TripRatingUiState.Loading
@@ -67,15 +157,12 @@ class TripRatingViewModel(private val repository: RatingRepository) : ViewModel(
     // Install the job before starting it, including when the repository returns synchronously.
     val job =
         viewModelScope.launch(start = CoroutineStart.LAZY) {
-          val result =
-              try {
-                repository.getRatingSummary(commandoId)
-              } catch (cancelled: CancellationException) {
-                throw cancelled
-              } catch (_: Exception) {
-                RatingResult.Error(RatingError.Unknown)
-              }
+          val result = read { repository.getRatingSummary(commandoId) }
           coroutineContext.ensureActive()
+          if (session?.hasEnded() == true) {
+            clearSession()
+            return@launch
+          }
           if (requestGeneration != generation) return@launch
           mutableState.value =
               when (result) {

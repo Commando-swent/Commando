@@ -49,3 +49,27 @@ data class RatingSummary(
     val ratingCount: Int,
     val averageScore: Double?,
 )
+
+/** Minimum tracked terminal commitments required before displaying a reliability percentage. */
+const val MIN_RELIABILITY_COMMITMENTS = 5L
+
+/** Trusted cumulative outcomes for [commandoId], independent of customer-star feedback. */
+data class ReliabilitySummary(
+    val commandoId: String,
+    val completedCount: Int,
+    val lateCancellationCount: Int,
+) {
+  init {
+    require(completedCount >= 0 && lateCancellationCount >= 0)
+  }
+
+  /** Sum in Long because two valid Firestore counters can exceed Int.MAX_VALUE. */
+  val evaluatedCount: Long = completedCount.toLong() + lateCancellationCount
+
+  /** Whole percentage, nearest with halves upward; absent until sufficient history exists. */
+  val percentage: Int?
+    get() =
+        if (evaluatedCount < MIN_RELIABILITY_COMMITMENTS) null
+        // Int-bounded counters keep the scaled numerator well within Long's range.
+        else ((completedCount.toLong() * 100 + evaluatedCount / 2) / evaluatedCount).toInt()
+}
